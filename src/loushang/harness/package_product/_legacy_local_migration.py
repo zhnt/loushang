@@ -108,10 +108,10 @@ from ._legacy_runtime import _FencedRuntime
 from ._local_source_catalog import wheel_source_binding_digest
 from ._plugin_bootstrap import (
     _PluginBootstrapPolicy,
-    _product_plugin_runtime,
     _ProductOwner,
     route_project_package,
 )
+from .product_runtime import hold_local_wheel_product_runtime
 
 RecordT = TypeVar("RecordT")
 ReviewT = TypeVar("ReviewT")
@@ -1641,7 +1641,7 @@ class _LegacyLocalInstallation:
 
     def route_install(self) -> None:
         session_id = self.session_id_prefix + secrets.token_hex(16)
-        with _product_plugin_runtime(
+        with hold_local_wheel_product_runtime(
             self.product, product_id=self.key.product_id, session_id=session_id
         ) as binding:
             outcome = route_project_package(

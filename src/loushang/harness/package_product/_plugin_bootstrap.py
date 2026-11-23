@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import Callable, Collection, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import NamedTuple, TypeVar
@@ -36,36 +35,12 @@ from .product_local_wheel_runtime import (
 )
 from .product_runtime import (
     PackageProductRuntimeBindingV1,
-    PackageProductRuntimeRequestV1,
+    hold_local_wheel_product_runtime,
 )
 
 _ProductOwner = (
     PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
 )
-
-
-@contextmanager
-def _product_plugin_runtime(
-    product: _ProductOwner, *, product_id: str, session_id: str
-) -> Iterator[PackageProductRuntimeBindingV1]:
-    """Activate one Product runtime and settle its original factory on all exits."""
-    factory = product.factory_for_session(
-        session_id=session_id, cwd=product.workspace, runtime_id=session_id
-    )
-    binding: PackageProductRuntimeBindingV1 | None = None
-    try:
-        binding = factory.create(
-            PackageProductRuntimeRequestV1(
-                product_id=product_id, session_id=session_id, cwd=str(product.workspace)
-            )
-        )
-        binding.activate()
-        yield binding
-    finally:
-        if binding is None:
-            factory.dispose_unbound_runtime()
-        else:
-            binding.dispose_runtime()
 
 
 def route_project_package(
@@ -207,7 +182,7 @@ def bootstrap_product_plugin(
     ):
         raise RuntimeError(f"{policy.error_prefix} was removed")
     bootstrap_id = f"{policy.operation_id_prefix}{secrets.token_hex(16)}"
-    with _product_plugin_runtime(
+    with hold_local_wheel_product_runtime(
         product, product_id=policy.product_id, session_id=bootstrap_id
     ) as binding:
         if current == "absent":

@@ -153,9 +153,9 @@ def run_fenced_package_changes(
     output: FencedPackageOperatorOutput,
 ) -> int:
     """Admit the batch, then settle each routed operation within its own runtime."""
-    from loushang.harness.package_product._plugin_bootstrap import (
-        _product_plugin_runtime,
-        route_project_package,
+    from loushang.harness.package_product._plugin_bootstrap import route_project_package
+    from loushang.harness.package_product.product_runtime import (
+        hold_local_wheel_product_runtime,
     )
 
     operation_id: str | None = None
@@ -165,7 +165,7 @@ def run_fenced_package_changes(
             product = owner.runtime_owner.product_owner
             for wheel in admitted:
                 operation_id = f"{operation_prefix}{action}:{secrets.token_hex(16)}"
-                with _product_plugin_runtime(
+                with hold_local_wheel_product_runtime(
                     product,
                     product_id=product_id,
                     session_id=f"{runtime_prefix}{secrets.token_hex(16)}",

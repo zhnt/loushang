@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
-from loushang.harness.package_product._plugin_bootstrap import _product_plugin_runtime
 from loushang.harness.package_product.product_gc_executor import (
     PackageProductGcExecutionError,
     PackageProductRootGcApplication,
@@ -22,6 +21,9 @@ from loushang.harness.package_product.product_gc_executor import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.package_product.product_runtime import (
+    hold_local_wheel_product_runtime,
 )
 from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeLedger,
@@ -988,7 +990,7 @@ class LocalWheelProductRootGcOwner:
 
     def _recover_product_transactions(self) -> None:
         recovery_id = f"product-gc-recovery:{secrets.token_hex(16)}"
-        with _product_plugin_runtime(
+        with hold_local_wheel_product_runtime(
             self.product,
             product_id=self.product.policy.product_id,
             session_id=recovery_id,

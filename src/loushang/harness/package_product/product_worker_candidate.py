@@ -57,13 +57,14 @@ from loushang.harness.worker.package_candidate import (
     verify_worker_package_candidate,
 )
 
-from ._plugin_bootstrap import _product_plugin_runtime, route_project_package
+from ._plugin_bootstrap import route_project_package
 from .product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
     _LocalWheelSelectedManifestReader,
 )
+from .product_runtime import hold_local_wheel_product_runtime
 
 
 class ProductWorkerOptInFacts:
@@ -396,7 +397,7 @@ def _observe_installed_worker_candidate(
     admission = binding.worker_admission
     assert admission is not None
     session_id = f"worker-candidate-selection-{secrets.token_hex(16)}"
-    with _product_plugin_runtime(
+    with hold_local_wheel_product_runtime(
         product, product_id=product_id, session_id=session_id
     ) as runtime:
         selected = runtime.capture_selected_plugin_manifest_for(
@@ -530,7 +531,7 @@ def _run_worker_candidate_lifecycle(
     Callers retain selection/CAS/opt-in preconditions and response formatting.
     Fixed internal inputs come from the already parsed operator command.
     """
-    with _product_plugin_runtime(
+    with hold_local_wheel_product_runtime(
         product, product_id=product_id, session_id=session_id
     ) as runtime:
         routed = route_project_package(
