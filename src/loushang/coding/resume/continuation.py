@@ -41,7 +41,7 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.resume._cleanup import (
     CodingResumeContinuationCleanupFailure as CodingResumeContinuationCleanupFailure,
 )
-from loushang.coding.resume._cleanup import discard_candidate
+from loushang.coding.resume._cleanup import discard_candidate as discard_candidate
 from loushang.coding.resume._cleanup import (
     retain_resume_cleanup_failure as retain_resume_cleanup_failure,
 )
@@ -435,16 +435,6 @@ async def prepare_coding_resume_continuation(
             difference_codes=plan.composition_comparison.difference_codes,
         )
 
-    async def discard(
-        session: AgentSession | None, error: BaseException, manager: SessionManager | None,
-    ) -> None:
-        await discard_candidate(
-            session,
-            error,
-            manager=manager,
-            cleanup_note="Original Coding Resume owner cleanup also failed: ",
-        )
-
     return await prepare_resume_continuation(
         product_label="Coding Resume",
         attempt=attempt,
@@ -461,6 +451,5 @@ async def prepare_coding_resume_continuation(
         input_query=CodingResumeInputLookupQueryV1,
         observe_input_identity=observe_input_identity,
         retained_cleanup_error=CodingResumeContinuationCleanupFailure,
-        discard=discard,
         deliver=CodingResumePreparedContinuation,
     )

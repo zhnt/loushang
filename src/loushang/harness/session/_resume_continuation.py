@@ -16,7 +16,7 @@ from dataclasses import replace
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
+from typing import Any, ClassVar, Generic, Protocol, Self, TypeVar, cast
 
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.types import ImagePart, UserMessage
@@ -618,6 +618,86 @@ _SessionT = TypeVar("_SessionT", bound=_ResumeContinuationSession[Any])
 _QueryT = TypeVar("_QueryT")
 _ContinuationT = TypeVar("_ContinuationT")
 _BindingT = TypeVar("_BindingT")
+_ResumeCleanupSession = _ResumeContinuationSession[Any]
+_ResumeCleanupWriter = _ResumeContinuationTranscript[Any, Any, Any, Any, Any]
+_ResumeCleanupOwner = _ResumeCleanupSession | _ResumeCleanupWriter
+
+
+class ResumeContinuationCleanupFailure(RuntimeError):
+    """Retain the original undelivered Session or Writer for cleanup retry."""
+
+    _cleanup_label: ClassVar[str]
+
+    def __init__(
+        self,
+        *,
+        original_owner: _ResumeCleanupOwner,
+        original_error: BaseException,
+        cleanup_error: BaseException,
+    ) -> None:
+        super().__init__(f"{self._cleanup_label} continuation cleanup remains pending")
+        self.original_owner = original_owner
+        self.original_error = original_error
+        self.cleanup_error = cleanup_error
+
+    async def retry_cleanup(self) -> None:
+        owner = self.original_owner
+        if isinstance(owner, _ResumeContinuationSession):
+            await owner.dispose()
+        else:
+            await owner.dispose_runtime_profile()
+
+    @classmethod
+    def retain_resume_cleanup_failure(
+        cls,
+        *,
+        original_owner: _ResumeCleanupOwner,
+        original_error: BaseException,
+        cleanup_error: BaseException,
+    ) -> Self:
+        """Fence the admitting factory before retaining its exact owner."""
+        writer = (
+            cast(_ResumeCleanupWriter, original_owner._resume_transcript)
+            if isinstance(original_owner, _ResumeContinuationSession)
+            else original_owner
+        )
+        try:
+            type(writer)._factory_for_persistence(True).fence()
+        except BaseException as fence_error:
+            original_error.add_note(
+                f"Original {cls._cleanup_label} factory fencing also failed: {fence_error!r}"
+            )
+        return cls(
+            original_owner=original_owner,
+            original_error=original_error,
+            cleanup_error=cleanup_error,
+        )
+
+    @classmethod
+    async def discard_candidate(
+        cls,
+        session: _ResumeCleanupSession | None,
+        original_error: BaseException,
+        *,
+        manager: _ResumeCleanupWriter | None = None,
+        cleanup_note: str | None = None,
+    ) -> None:
+        """Dispose the original candidate and retain its owner on failure."""
+        try:
+            if session is not None:
+                await session.dispose()
+            elif manager is not None:
+                await manager.dispose_runtime_profile()
+        except BaseException as cleanup_error:
+            if cleanup_note is not None:
+                original_error.add_note(f"{cleanup_note}{cleanup_error!r}")
+            owner = session if session is not None else manager
+            assert owner is not None
+            raise cls.retain_resume_cleanup_failure(
+                original_owner=owner,
+                original_error=original_error,
+                cleanup_error=cleanup_error,
+            ) from original_error
 
 
 async def prepare_resume_continuation(
@@ -636,8 +716,7 @@ async def prepare_resume_continuation(
     prepare_binding: Callable[[UserMessage], _BindingT],
     input_query: Callable[[str, str], _QueryT],
     observe_input_identity: Callable[[_QueryT], None] | None,
-    retained_cleanup_error: type[BaseException],
-    discard: Callable[[_SessionT | None, BaseException, _WriterT | None], Awaitable[None]],
+    retained_cleanup_error: type[ResumeContinuationCleanupFailure],
     deliver: Callable[[_SessionT, str, str, _QueryT], _ContinuationT],
 ) -> _ContinuationT:
     """Commit initial input on the original Writer and publish its prepared Session."""
@@ -762,5 +841,10 @@ async def prepare_resume_continuation(
                         error.add_note(
                             f"Resume input identity delivery also failed: {observation_error!r}"
                         )
-        await discard(session, error, manager)
+        await retained_cleanup_error.discard_candidate(
+            session,
+            error,
+            manager=manager,
+            cleanup_note=f"Original {product_label} owner cleanup also failed: ",
+        )
         raise
