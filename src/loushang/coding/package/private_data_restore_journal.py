@@ -9,7 +9,6 @@ from typing import Literal
 
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
 )
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -158,19 +157,11 @@ def restore_id_for(
     )
 
 
-def _decode(value: object) -> CodingArchPrivateDataRestoreEventV1:
-    try:
-        return CodingArchPrivateDataRestoreEventV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Arch restore event is invalid",
-            code="coding_arch_restore_event_invalid",
-        ) from exc
-
-
-_CODEC = FunctionalJournalRecordCodec(
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=CodingArchPrivateDataRestoreEventV1.to_dict,
-    decoder=_decode,
+    decoder=lambda value: CodingArchPrivateDataRestoreEventV1.from_dict(value),
+    message="Coding Arch restore event is invalid",
+    code="coding_arch_restore_event_invalid",
 )
 
 

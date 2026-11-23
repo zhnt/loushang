@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
+from loushang.harness.journal import FunctionalJournalRecordCodec
 from loushang.harness.plugin_management._private_data_expiry import (
     PrivateDataExpiryJournal,
     expiry_event_schema,
@@ -63,19 +63,11 @@ class CodingArchPrivateDataBackupExpiryEventV1:
         return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.decode(cls, value)
 
 
-def _decode(value: object) -> CodingArchPrivateDataBackupExpiryEventV1:
-    try:
-        return CodingArchPrivateDataBackupExpiryEventV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Arch backup expiry event is invalid",
-            code="coding_arch_backup_expiry_record_invalid",
-        ) from exc
-
-
-_CODEC = FunctionalJournalRecordCodec(
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=CodingArchPrivateDataBackupExpiryEventV1.to_dict,
-    decoder=_decode,
+    decoder=lambda value: CodingArchPrivateDataBackupExpiryEventV1.from_dict(value),
+    message="Coding Arch backup expiry event is invalid",
+    code="coding_arch_backup_expiry_record_invalid",
 )
 
 

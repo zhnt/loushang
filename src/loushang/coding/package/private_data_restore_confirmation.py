@@ -8,7 +8,6 @@ from pathlib import Path
 
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
 )
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -188,19 +187,11 @@ def _confirmation_fields(
     }
 
 
-def _decode(value: object) -> CodingArchPrivateDataRestoreConfirmationV1:
-    try:
-        return CodingArchPrivateDataRestoreConfirmationV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Arch restore confirmation is invalid",
-            code="coding_arch_restore_confirmation_invalid",
-        ) from exc
-
-
-_CODEC = FunctionalJournalRecordCodec(
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=CodingArchPrivateDataRestoreConfirmationV1.to_dict,
-    decoder=_decode,
+    decoder=lambda value: CodingArchPrivateDataRestoreConfirmationV1.from_dict(value),
+    message="Coding Arch restore confirmation is invalid",
+    code="coding_arch_restore_confirmation_invalid",
 )
 
 

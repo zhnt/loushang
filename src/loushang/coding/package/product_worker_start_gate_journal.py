@@ -14,7 +14,6 @@ from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
-    JournalCodecError,
     JournalFormatProfile,
     JournalRecordCodec,
 )
@@ -71,21 +70,11 @@ class CodingWorkerStartGateRecordV1(_StartGateRecordMethods):
     record_digest: str
 
 
-def _decode(value: object) -> CodingWorkerStartGateRecordV1:
-    try:
-        return CodingWorkerStartGateRecordV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Worker start gate record is invalid",
-            code="coding_worker_start_gate_record_invalid",
-        ) from exc
-
-
-_CODEC: FunctionalJournalRecordCodec[CodingWorkerStartGateRecordV1] = (
-    FunctionalJournalRecordCodec(
-        encoder=CodingWorkerStartGateRecordV1.to_dict,
-        decoder=_decode,
-    )
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
+    encoder=CodingWorkerStartGateRecordV1.to_dict,
+    decoder=lambda value: CodingWorkerStartGateRecordV1.from_dict(value),
+    message="Worker start gate record is invalid",
+    code="coding_worker_start_gate_record_invalid",
 )
 
 

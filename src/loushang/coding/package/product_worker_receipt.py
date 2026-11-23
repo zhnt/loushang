@@ -18,7 +18,6 @@ from loushang.coding.session.manager import SessionManager
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
-    JournalCodecError,
     JournalFormatProfile,
     JournalLoadPolicy,
     JournalRecordCodec,
@@ -124,21 +123,11 @@ class CodingWorkerReceiptRecordV1(_ReceiptRecordMethods):
     record_version: int = 1
 
 
-def _decode(value: object) -> CodingWorkerReceiptRecordV1:
-    try:
-        return CodingWorkerReceiptRecordV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Worker receipt record is invalid",
-            code="coding_worker_receipt_record_invalid",
-        ) from exc
-
-
-_CODEC: FunctionalJournalRecordCodec[CodingWorkerReceiptRecordV1] = (
-    FunctionalJournalRecordCodec(
-        encoder=CodingWorkerReceiptRecordV1.to_dict,
-        decoder=_decode,
-    )
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
+    encoder=CodingWorkerReceiptRecordV1.to_dict,
+    decoder=lambda value: CodingWorkerReceiptRecordV1.from_dict(value),
+    message="Coding Worker receipt record is invalid",
+    code="coding_worker_receipt_record_invalid",
 )
 
 

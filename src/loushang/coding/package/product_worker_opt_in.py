@@ -14,7 +14,6 @@ from typing import Literal
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
-    JournalCodecError,
     JournalFormatProfile,
     JournalRecordCodec,
 )
@@ -64,21 +63,11 @@ class CodingWorkerOptInDecisionV1(_OptInDecisionMethods):
     _opt_in_type = CodingWorkerOptInV1
 
 
-def _decode(value: object) -> CodingWorkerOptInDecisionV1:
-    try:
-        return CodingWorkerOptInDecisionV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Worker opt-in decision record is invalid",
-            code="coding_worker_opt_in_record_invalid",
-        ) from exc
-
-
-_CODEC: FunctionalJournalRecordCodec[CodingWorkerOptInDecisionV1] = (
-    FunctionalJournalRecordCodec(
-        encoder=CodingWorkerOptInDecisionV1.to_dict,
-        decoder=_decode,
-    )
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
+    encoder=CodingWorkerOptInDecisionV1.to_dict,
+    decoder=lambda value: CodingWorkerOptInDecisionV1.from_dict(value),
+    message="Coding Worker opt-in decision record is invalid",
+    code="coding_worker_opt_in_record_invalid",
 )
 
 
