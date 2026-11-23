@@ -68,10 +68,10 @@ from loushang.hosting import (
     ProcessStreamSpec,
     create_process_host,
 )
-from loushang.hosting._process_probe import (
-    _ProcessHostFactory,
-    _ProcessProbe,
-    _ProcessProbeOutputError,
+from loushang.hosting.process_probe import (
+    ProcessHostFactory,
+    ProcessProbe,
+    ProcessProbeOutputError,
 )
 
 CODING_APPHOST_CANARY_REPORT_VERSION = 1
@@ -252,7 +252,7 @@ class _NativeCanaryAttempt:
         selection_generation: int,
         cwd: Path,
         timeout_seconds: float,
-        probe: _ProcessProbe,
+        probe: ProcessProbe,
     ) -> None:
         self._nonce = token_hex(16)
         policy = _worker_policy(
@@ -349,7 +349,7 @@ class _NativeCanaryAttempt:
                 raise CodingAppHostCanaryError(
                     code="coding_apphost_canary_observation_invalid"
                 )
-        except _ProcessProbeOutputError as error:
+        except ProcessProbeOutputError as error:
             self._failure_code = f"coding_apphost_canary_protocol_{error.reason}"
             raise CodingAppHostCanaryError(code=self._failure_code) from None
         except TimeoutError as error:
@@ -390,7 +390,7 @@ class _AttemptFactory:
         selection_generation: int,
         cwd: Path,
         timeout_seconds: float,
-        probe: _ProcessProbe,
+        probe: ProcessProbe,
     ) -> None:
         self._selection_generation = selection_generation
         self._cwd = cwd
@@ -441,7 +441,7 @@ class _RollbackControl:
 async def run_coding_apphost_canary(
     request: CodingAppHostCanaryRequestV1,
     *,
-    process_host_factory: _ProcessHostFactory = create_process_host,
+    process_host_factory: ProcessHostFactory = create_process_host,
 ) -> CodingAppHostCanaryReportV1:
     """Execute one explicit control operation or settled native canary run."""
 
@@ -492,9 +492,9 @@ async def _run_native_canary(
     *,
     control: CodingAppHostCanaryControlSnapshotV1,
     journal: CodingAppHostCanaryControlJournal,
-    process_host_factory: _ProcessHostFactory,
+    process_host_factory: ProcessHostFactory,
 ) -> CodingAppHostCanaryReportV1:
-    probe = _ProcessProbe(
+    probe = ProcessProbe(
         process_host_factory,
         max_output_bytes=CODING_APPHOST_CANARY_MAX_PROTOCOL_BYTES,
         max_transitions=CODING_APPHOST_CANARY_MAX_TRANSITIONS,

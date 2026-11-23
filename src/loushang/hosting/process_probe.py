@@ -18,24 +18,24 @@ from .contracts import (
 )
 
 
-class _ProcessHostFactory(Protocol):
+class ProcessHostFactory(Protocol):
     def __call__(
         self, *, observation_sink: HostingObservationSink | None = None
     ) -> ProcessHostingPort: ...
 
 
-class _ProcessProbeOutputError(ValueError):
+class ProcessProbeOutputError(ValueError):
     def __init__(self, reason: Literal["oversize", "trailing_data"]) -> None:
         super().__init__(reason)
         self.reason = reason
 
 
-class _ProcessProbe:
+class ProcessProbe:
     """Keep process custody until both the lease and host have settled."""
 
     def __init__(
         self,
-        host_factory: _ProcessHostFactory,
+        host_factory: ProcessHostFactory,
         *,
         max_output_bytes: int,
         max_transitions: int,
@@ -106,7 +106,7 @@ class _ProcessProbe:
                 break
             output.extend(chunk)
         if len(output) > self._max_output_bytes:
-            raise _ProcessProbeOutputError("oversize")
+            raise ProcessProbeOutputError("oversize")
         if b"\n" in output and await lease.read_stdout(1):
-            raise _ProcessProbeOutputError("trailing_data")
+            raise ProcessProbeOutputError("trailing_data")
         return bytes(output)

@@ -124,7 +124,7 @@ above remain unchanged; historical imports retain compatibility routes.
 | `coding.hosted.composition` | Coding Product/AppHost edge | retain the sole G9 catalog/runtime/composition lifetime and phased settlement | parse CLI or discover Hosting/configuration |
 | AppHost public runtime | AppHost | exact catalog, Product/runtime, profile and Session-lease ownership | process launch, CLI, Product policy, persistence |
 | Hosting public process port | Hosting | shell-free native process launch, bounded stdio, wait/terminate/close, backend observations | interpret canary protocol or Product success |
-| `hosting._process_probe` | Hosting | retain the exact process host and lease, read a bounded stdout response, collect backend observations, and settle both owners | define the child command, expected nonce response, or Product result |
+| `hosting.process_probe` | Hosting | retain the exact process host and lease, read a bounded stdout response, collect backend observations, and settle both owners | define the child command, expected nonce response, or Product result |
 | Harness JSONL journal | Harness | cross-platform private lock, strict durable append/read mechanics | decide enabled state or selection generation |
 
 Implementation reconciliation (A201): the same Code control object now borrows
