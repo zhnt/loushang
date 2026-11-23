@@ -13,7 +13,7 @@ import os
 import re
 import secrets
 import sys as sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
@@ -78,6 +78,9 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionAuthority,
     PluginContinuityDeletionJournal,
+)
+from loushang.harness.plugin_management.configured_sources import (
+    resolve_configured_plugin_local_path,
 )
 from loushang.harness.plugin_management.continuity_adapter import (
     PluginContinuitySecurityRetirementJournal,
@@ -587,12 +590,14 @@ def _configured_sources(
         )
     sources = tuple(
         dict.fromkeys(
-            _normalize_configured_source(
-                item.strip(),
-                settings_manager=settings_manager,
-                cwd=cwd,
+            source
+            if is_remote_plugin_source(source)
+            else str(
+                resolve_configured_plugin_local_path(
+                    source, cwd, settings_manager=settings_manager
+                )
             )
-            for item in raw_sources
+            for source in (item.strip() for item in raw_sources)
         )
     )
     return sources, frozenset(item.strip() for item in raw_disabled)
@@ -628,49 +633,6 @@ def _bootstrap_request_fingerprint(
     for plugin_id in ordered_disabled:
         update_value("disabledPlugin", plugin_id)
     return digest.hexdigest()
-
-
-def _normalize_configured_source(
-    source: str,
-    *,
-    settings_manager: object,
-    cwd: str | Path,
-) -> str:
-    if is_remote_plugin_source(source):
-        return source
-    path = Path(source).expanduser()
-    if path.is_absolute():
-        return str(path.resolve())
-    base = _configured_source_base(source, settings_manager=settings_manager)
-    return str(((base or Path(cwd)) / path).expanduser().resolve())
-
-
-def _configured_source_base(
-    source: str,
-    *,
-    settings_manager: object,
-) -> Path | None:
-    # Layer precedence is session > project > global.  A session-relative
-    # source intentionally falls back to the requested Coding cwd.
-    for getter_name, base_name in (
-        ("get_session_settings", None),
-        ("get_project_settings", "project_base_dir"),
-        ("get_global_settings", "global_base_dir"),
-    ):
-        getter = getattr(settings_manager, getter_name, None)
-        if not callable(getter):
-            continue
-        patch = getter()
-        if not isinstance(patch, Mapping):
-            continue
-        values = patch.get("plugin_sources")
-        if not isinstance(values, list | tuple) or source not in values:
-            continue
-        if base_name is None:
-            return None
-        base = getattr(settings_manager, base_name, None)
-        return None if base is None else Path(base).expanduser().resolve()
-    return None
 
 
 def _require_continuity_package_authority(
