@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
+from .contracts import SessionBindingKeyV1, SessionCandidateRefV1
 from .errors import CleanupIncompleteError
 
 if TYPE_CHECKING:
@@ -16,6 +17,41 @@ if TYPE_CHECKING:
 
 AsyncClose = Callable[[], Awaitable[None]]
 AsyncCall = Callable[..., Awaitable[Any]]
+PayloadT = TypeVar("PayloadT")
+
+
+class _CandidatePayloadView(Generic[PayloadT]):
+    __slots__ = ("_binding",)
+
+    _binding: PayloadT
+
+    @property
+    def opaque_binding(self) -> PayloadT:
+        return self._binding
+
+
+class _ClaimedCandidateView(_CandidatePayloadView[PayloadT]):
+    __slots__ = ("_reference",)
+
+    def __init__(self, reference: SessionCandidateRefV1, binding: PayloadT) -> None:
+        self._reference = reference
+        self._binding = binding
+
+    @property
+    def reference(self) -> SessionCandidateRefV1:
+        return self._reference
+
+
+class _OpenedCandidateView(_CandidatePayloadView[PayloadT]):
+    __slots__ = ("_binding_key",)
+
+    def __init__(self, binding_key: SessionBindingKeyV1, binding: PayloadT) -> None:
+        self._binding_key = binding_key
+        self._binding = binding
+
+    @property
+    def binding_key(self) -> SessionBindingKeyV1:
+        return self._binding_key
 
 
 class RetryableCloser:

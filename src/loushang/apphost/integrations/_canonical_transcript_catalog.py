@@ -12,18 +12,22 @@ import errno
 import os
 import threading
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, TypeVar, cast
 
+from loushang.apphost._ownership import _ClaimedCandidateView, _OpenedCandidateView
 from loushang.apphost.contracts import (
+    ClaimedSessionCandidateV1,
+    SessionBindingKeyV1,
     SessionCandidateRefV1,
     SessionCreateIntentV1,
     SessionCreateRequestV1,
     SessionDiscoveryScope,
     SessionIdentityCatalogPortV1,
+    SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
 from loushang.apphost.workspace_registry import WorkspaceRegistrationError
@@ -119,6 +123,81 @@ class CanonicalTranscriptRecord(Protocol):
     def header(self) -> ConversationHeader: ...
 
 
+def canonical_discovery_scope(scope: SessionScopeV1) -> SessionDiscoveryScope:
+    return (
+        SessionDiscoveryScope.CURRENT_DIRECTORY
+        if scope is SessionScopeV1.CWD
+        else SessionDiscoveryScope.USER_GLOBAL_CANONICAL
+    )
+
+
+def canonical_create_metadata(
+    intent: SessionCreateIntentV1,
+    scope: CanonicalTranscriptScope,
+    session_id: str,
+    *,
+    compatibility_id: str,
+) -> dict[str, JSONValue]:
+    return {
+        "version": 1,
+        "compatibilityId": compatibility_id,
+        "continuityId": intent.request.requested_continuity_id,
+        "sessionId": session_id,
+        "scope": scope.scope.value,
+        "scopeFingerprint": scope.fingerprint,
+        "operationId": intent.request.operation_id,
+    }
+
+
+def read_canonical_create_identity(
+    header: ConversationHeader,
+    *,
+    scope: SessionScopeV1,
+    fingerprint: str,
+    product_id: str,
+    metadata_key: str,
+    create_identity: Callable[[SessionCreateRequestV1], str],
+    error: type[RuntimeError],
+) -> tuple[SessionIdentityV1, str, str]:
+    """Authenticate versioned create metadata against its original catalog scope."""
+    raw = header.metadata.get(metadata_key)
+    if not isinstance(raw, Mapping) or set(raw) != {
+        "version",
+        "compatibilityId",
+        "continuityId",
+        "sessionId",
+        "scope",
+        "scopeFingerprint",
+        "operationId",
+    }:
+        raise error()
+    if type(raw["version"]) is not int or raw["version"] != 1:
+        raise error()
+    if any(type(value) is not str for key, value in raw.items() if key != "version"):
+        raise error()
+    if (
+        raw["sessionId"] != header.conversation_id
+        or raw["scope"] != scope.value
+        or raw["scopeFingerprint"] != fingerprint
+    ):
+        raise error()
+    operation_id = cast(str, raw["operationId"])
+    continuity_id = cast(str, raw["continuityId"])
+    request = SessionCreateRequestV1(
+        product_id,
+        fingerprint,
+        operation_id,
+        requested_continuity_id=continuity_id,
+        requested_scope=canonical_discovery_scope(scope),
+    )
+    if create_identity(request) != header.conversation_id:
+        raise error()
+    identity = SessionIdentityV1(
+        product_id, continuity_id, header.conversation_id, scope, fingerprint
+    )
+    return identity, cast(str, raw["compatibilityId"]), operation_id
+
+
 @asynccontextmanager
 async def close_unpublished_candidate(
     close: Callable[[], Awaitable[None]],
@@ -142,6 +221,97 @@ ProductBindingT = TypeVar("ProductBindingT")
 BindingT = TypeVar("BindingT", bound=_AsyncBinding)
 ClaimedT = TypeVar("ClaimedT")
 HistoryT = TypeVar("HistoryT")
+ManagerT = TypeVar("ManagerT", bound=ProductTranscriptSession)
+
+
+class _CanonicalWritableCandidateBinding(Generic[RecordT, ManagerT]):
+    """Retain the original Writer or its completed Session until it transfers."""
+
+    _candidate_error: ClassVar[type[RuntimeError]]
+
+    def __init__(
+        self, record: RecordT, manager: ManagerT, *, created: bool = False
+    ) -> None:
+        self.record = record
+        self.created = created
+        self._manager: ManagerT | None = manager
+        self._dispose: Callable[[], Awaitable[None]] | None = (
+            manager.dispose_runtime_profile
+        )
+
+    def manager_for_construction(self) -> ManagerT:
+        if self._manager is None:
+            raise self._candidate_error()
+        return self._manager
+
+    def retain_constructed_owner(self, dispose: Callable[[], Awaitable[None]]) -> None:
+        self.manager_for_construction()
+        self._dispose = dispose
+
+    def take_manager(self) -> ManagerT:
+        if self._manager is None:
+            raise self._candidate_error()
+        manager, self._manager = self._manager, None
+        self._dispose = None
+        return manager
+
+    async def close(self) -> None:
+        if self._dispose is not None:
+            await self._dispose()
+            self._dispose = None
+            self._manager = None
+
+
+class _CanonicalClaimedCandidate(_ClaimedCandidateView[BindingT]):
+    async def close(self) -> None:
+        await self.opaque_binding.close()
+
+
+class _CanonicalRecordBinding(Protocol):
+    @property
+    def record(self) -> CanonicalTranscriptRecord: ...
+
+
+RecordBindingT = TypeVar("RecordBindingT", bound=_CanonicalRecordBinding)
+
+
+class _CanonicalOpenedCandidate(_OpenedCandidateView[RecordBindingT]):
+    """A Product construction borrow whose claimed candidate still owns cleanup."""
+
+    def __init__(self, binding: RecordBindingT) -> None:
+        identity = binding.record.identity
+        super().__init__(
+            SessionBindingKeyV1(
+                identity.product_id, identity.continuity_id, identity.session_id
+            ),
+            binding,
+        )
+
+    async def close(self) -> None:
+        return None
+
+
+def require_canonical_candidate_binding(
+    candidate: ClaimedSessionCandidateV1,
+    envelope: SessionIdentityEnvelopeV1,
+    *,
+    binding_types: tuple[type[RecordBindingT], ...],
+    compatibility_id: str,
+    error: type[RuntimeError],
+) -> RecordBindingT:
+    binding = candidate.opaque_binding
+    if type(binding) not in binding_types:
+        raise error()
+    selected = cast(RecordBindingT, binding)
+    projection = selected.record.projection
+    if (
+        projection.reference != candidate.reference
+        or projection.envelope != envelope
+        or projection.envelope is None
+        or projection.envelope.product_compatibility_id != compatibility_id
+    ):
+        raise error()
+    return selected
 
 
 class _CanonicalTranscriptCatalogMethods(

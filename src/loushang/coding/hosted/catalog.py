@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import os
 import threading
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, cast
 from loushang.apphost import (
     ClaimedSessionCandidateV1,
     OpenedProductCandidateV1,
-    SessionBindingKeyV1,
     SessionCandidateMode,
     SessionCandidateRefV1,
     SessionCreateIntentV1,
@@ -29,8 +28,15 @@ from loushang.apphost import (
 )
 from loushang.apphost.integrations._canonical_transcript_catalog import (
     CanonicalTranscriptScope,
+    _CanonicalClaimedCandidate,
+    _CanonicalOpenedCandidate,
     _CanonicalTranscriptCandidateMethods,
     _CanonicalTranscriptCatalogMethods,
+    _CanonicalWritableCandidateBinding,
+    canonical_create_metadata,
+    canonical_discovery_scope,
+    read_canonical_create_identity,
+    require_canonical_candidate_binding,
 )
 from loushang.appserver.protocol import (
     SessionIdentityV1,
@@ -122,11 +128,7 @@ class CodingHostedScopeV1:
 
     @property
     def discovery_scope(self) -> SessionDiscoveryScope:
-        return (
-            SessionDiscoveryScope.CURRENT_DIRECTORY
-            if self.scope is SessionScopeV1.CWD
-            else SessionDiscoveryScope.USER_GLOBAL_CANONICAL
-        )
+        return canonical_discovery_scope(self.scope)
 
     @property
     def source_id(self) -> str:
@@ -216,39 +218,12 @@ def _coding_hosted_record(
     return _Record(projection, identity, scope, path, operation, header, compatible)
 
 
-class CodingHostedCandidateBindingV1:
+class CodingHostedCandidateBindingV1(
+    _CanonicalWritableCandidateBinding[_Record, SessionManager]
+):
     """One already-open transcript; Product Session construction takes it once."""
 
-    def __init__(self, record: _Record, manager: SessionManager, *, created: bool = False) -> None:
-        self.record = record
-        self.created = created
-        self._manager: SessionManager | None = manager
-        self._dispose: Callable[[], Awaitable[None]] | None = (
-            manager.dispose_runtime_profile
-        )
-
-    def manager_for_construction(self) -> SessionManager:
-        if self._manager is None:
-            raise CodingHostedCatalogError()
-        return self._manager
-
-    def retain_constructed_owner(self, dispose: Callable[[], Awaitable[None]]) -> None:
-        """Keep construction cleanup reachable until the completed binding transfers."""
-        self.manager_for_construction()
-        self._dispose = dispose
-
-    def take_manager(self) -> SessionManager:
-        if self._manager is None:
-            raise CodingHostedCatalogError()
-        manager, self._manager = self._manager, None
-        self._dispose = None
-        return manager
-
-    async def close(self) -> None:
-        if self._dispose is not None:
-            await self._dispose()
-            self._dispose = None
-            self._manager = None
+    _candidate_error = CodingHostedCatalogError
 
 
 @dataclass(slots=True)
@@ -365,23 +340,8 @@ _CodingHostedCandidateBinding = (
 )
 
 
-class _Claimed:
-    def __init__(
-        self, reference: SessionCandidateRefV1, binding: _CodingHostedCandidateBinding
-    ) -> None:
-        self._reference = reference
-        self._binding = binding
-
-    @property
-    def reference(self) -> SessionCandidateRefV1:
-        return self._reference
-
-    @property
-    def opaque_binding(self) -> _CodingHostedCandidateBinding:
-        return self._binding
-
-    async def close(self) -> None:
-        await self.opaque_binding.close()
+class _Claimed(_CanonicalClaimedCandidate[_CodingHostedCandidateBinding]):
+    pass
 
 
 class _Candidate(
@@ -416,25 +376,8 @@ class _Candidate(
         self._closed = False
 
 
-class _Opened:
-    def __init__(self, binding: _CodingHostedCandidateBinding) -> None:
-        identity = binding.record.identity
-        self._binding_key = SessionBindingKeyV1(
-            identity.product_id, identity.continuity_id, identity.session_id
-        )
-        self._binding = binding
-
-    @property
-    def binding_key(self) -> SessionBindingKeyV1:
-        return self._binding_key
-
-    @property
-    def opaque_binding(self) -> _CodingHostedCandidateBinding:
-        return self._binding
-
-    async def close(self) -> None:
-        # The candidate owns an unconsumed binding; Product owns a taken one.
-        return None
+class _Opened(_CanonicalOpenedCandidate[_CodingHostedCandidateBinding]):
+    pass
 
 
 class CodingHostedCandidateValidatorV1:
@@ -443,22 +386,17 @@ class CodingHostedCandidateValidatorV1:
         candidate: ClaimedSessionCandidateV1,
         envelope: SessionIdentityEnvelopeV1,
     ) -> OpenedProductCandidateV1:
-        binding = candidate.opaque_binding
-        if type(binding) not in (
-            CodingHostedCandidateBindingV1, CodingHostedHistoryCandidateBindingV1,
-        ):
-            raise CodingHostedCatalogError()
-        binding = cast(_CodingHostedCandidateBinding, binding)
-        if binding.record.projection.reference != candidate.reference:
-            raise CodingHostedCatalogError()
-        if binding.record.projection.envelope != envelope:
-            raise CodingHostedCatalogError()
-        if binding.record.projection.envelope is None or (
-            binding.record.projection.envelope.product_compatibility_id
-            != CODING_HOSTED_COMPATIBILITY_ID
-        ):
-            raise CodingHostedCatalogError()
-        return _Opened(binding)
+        binding = require_canonical_candidate_binding(
+            candidate,
+            envelope,
+            binding_types=(
+                CodingHostedCandidateBindingV1,
+                CodingHostedHistoryCandidateBindingV1,
+            ),
+            compatibility_id=CODING_HOSTED_COMPATIBILITY_ID,
+            error=CodingHostedCatalogError,
+        )
+        return _Opened(cast(_CodingHostedCandidateBinding, binding))
 
 
 class CodingHostedSessionCatalogV1(
@@ -533,17 +471,10 @@ class CodingHostedSessionCatalogV1(
         scope: CanonicalTranscriptScope,
         session_id: str,
     ) -> dict[str, JSONValue]:
-        metadata: dict[str, JSONValue] = {
-            "version": 1,
-            "compatibilityId": CODING_HOSTED_COMPATIBILITY_ID,
-            "continuityId": intent.request.requested_continuity_id,
-            "sessionId": session_id,
-            "scope": scope.scope.value,
-            "scopeFingerprint": scope.fingerprint,
-            "operationId": intent.request.operation_id,
-        }
         return {
-            _METADATA_KEY: metadata,
+            _METADATA_KEY: canonical_create_metadata(
+                intent, scope, session_id, compatibility_id=CODING_HOSTED_COMPATIBILITY_ID
+            ),
             **composition_header_metadata(
                 resolve_coding_composition_set("coding-standard")
             ),
@@ -789,47 +720,15 @@ def _hosted_header_identity(
     header: ConversationHeader, *, scope: SessionScopeV1, fingerprint: str,
 ) -> tuple[SessionIdentityV1, str, str]:
     """Validate the original v1 identity independently of a selection view."""
-    raw = header.metadata.get(_METADATA_KEY)
-    if not isinstance(raw, Mapping) or set(raw) != {
-        "version",
-        "compatibilityId",
-        "continuityId",
-        "sessionId",
-        "scope",
-        "scopeFingerprint",
-        "operationId",
-    }:
-        raise CodingHostedCatalogError()
-    if type(raw["version"]) is not int or raw["version"] != 1:
-        raise CodingHostedCatalogError()
-    if any(type(value) is not str for key, value in raw.items() if key != "version"):
-        raise CodingHostedCatalogError()
-    if (
-        raw["sessionId"] != header.conversation_id
-        or raw["scope"] != scope.value
-        or raw["scopeFingerprint"] != fingerprint
-    ):
-        raise CodingHostedCatalogError()
-    create_request = SessionCreateRequestV1(
-        "coding",
-        fingerprint,
-        cast(str, raw["operationId"]),
-        requested_continuity_id=cast(str, raw["continuityId"]),
-        requested_scope=(SessionDiscoveryScope.CURRENT_DIRECTORY if scope is SessionScopeV1.CWD
-                         else SessionDiscoveryScope.USER_GLOBAL_CANONICAL),
+    return read_canonical_create_identity(
+        header,
+        scope=scope,
+        fingerprint=fingerprint,
+        product_id=CODING_PRODUCT_ID,
+        metadata_key=_METADATA_KEY,
+        create_identity=_create_identity,
+        error=CodingHostedCatalogError,
     )
-    if _create_identity(create_request) != header.conversation_id:
-        raise CodingHostedCatalogError()
-    identity = SessionIdentityV1(
-        "coding",
-        cast(str, raw["continuityId"]),
-        header.conversation_id,
-        scope,
-        fingerprint,
-    )
-    return identity, cast(str, raw["compatibilityId"]), cast(str, raw["operationId"])
-
-
 
 
 __all__ = [
