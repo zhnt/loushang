@@ -91,6 +91,9 @@ class _PluginBootstrapPolicy:
     enable_id_prefix: str
     error_prefix: str
 
+    def installation_key(self, scope_id: str, plugin_id: str) -> PluginInstallationKeyV1:
+        return PluginInstallationKeyV1.workspace(self.product_id, scope_id, plugin_id)
+
     def operation_id(self, store_id: str, plugin_id: str) -> str:
         return (
             self.operation_id_prefix
@@ -127,12 +130,7 @@ def product_bootstrap_completed(
 ) -> bool:
     transitions = product.desired_state.transitions()
     for plugin_id in plugin_ids:
-        key = PluginInstallationKeyV1(
-            product_id=policy.product_id,
-            installation_scope="workspace",
-            scope_id=product.policy.project_scope_id,
-            plugin_id=plugin_id,
-        )
+        key = policy.installation_key(product.policy.project_scope_id, plugin_id)
         history = tuple(
             item for item in transitions if item.mutation.installation_key == key
         )
@@ -179,12 +177,7 @@ def bootstrap_product_plugin(
     enable: bool = True,
 ) -> bool:
     desired = product.desired_state
-    key = PluginInstallationKeyV1(
-        product_id=policy.product_id,
-        installation_scope="workspace",
-        scope_id=product.policy.project_scope_id,
-        plugin_id=plugin_id,
-    )
+    key = policy.installation_key(product.policy.project_scope_id, plugin_id)
     operation_id = policy.operation_id(store_id, plugin_id)
     snapshot = desired.snapshot()
     current = snapshot.installation(key).selection.desired_state
@@ -403,12 +396,7 @@ def replay_reviewed_product_plugins(
     to subsequent operator choices. Products choose the supported mode.
     """
     for plugin_id in removed_ids:
-        removal_key = PluginInstallationKeyV1(
-            product_id=policy.product_id,
-            installation_scope="workspace",
-            scope_id=product.policy.project_scope_id,
-            plugin_id=plugin_id,
-        )
+        removal_key = policy.installation_key(product.policy.project_scope_id, plugin_id)
         preserve_removed_product_plugin(
             product, removal_key, operation_id_for(plugin_id), error_prefix=removal_label
         )
@@ -417,12 +405,7 @@ def replay_reviewed_product_plugins(
         if plugin_id in removed_ids:
             continue
         key = (
-            PluginInstallationKeyV1(
-                product_id=policy.product_id,
-                installation_scope="workspace",
-                scope_id=product.policy.project_scope_id,
-                plugin_id=plugin_id,
-            )
+            policy.installation_key(product.policy.project_scope_id, plugin_id)
             if strict_history
             else None
         )

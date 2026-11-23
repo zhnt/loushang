@@ -142,12 +142,7 @@ def coding_legacy_local_data_adoption_settled(
         desired = preview.selected_manifests.root_reader.desired_state
         disabled_builtins = _reviewed_disabled_ids(accepted.review)
         selection = _LegacyAdoptionSelection(
-            key=PluginInstallationKeyV1(
-                product_id="coding",
-                installation_scope="workspace",
-                scope_id=lifecycle.scope_id,
-                plugin_id=plugin_id,
-            ),
+            key=PluginInstallationKeyV1.workspace("coding", lifecycle.scope_id, plugin_id),
             source_identity=bound.source_identity,
             install_operation_id=_install_operation_id(
                 accepted.review.store_id, accepted.acceptance_id

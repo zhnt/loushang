@@ -121,6 +121,12 @@ class PluginInstallationKeyV1:
     plugin_id: str
     schema_version: int = PLUGIN_INSTALLATION_KEY_VERSION
 
+    @classmethod
+    def workspace(
+        cls, product_id: str, scope_id: str, plugin_id: str
+    ) -> PluginInstallationKeyV1:
+        return cls(product_id, "workspace", scope_id, plugin_id)
+
     def __post_init__(self) -> None:
         _require_nonempty(self.product_id, name="Product id")
         if self.installation_scope not in _INSTALLATION_SCOPES:

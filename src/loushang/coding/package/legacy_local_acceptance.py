@@ -133,11 +133,8 @@ def accept_coding_legacy_installed_local_review(
     return _acceptance_protocol(epoch_runtime).accept(
         proposed,
         plugin_id=review.plugin_id,
-        installation_key=lambda: PluginInstallationKeyV1(
-            product_id=_PRODUCT_ID,
-            installation_scope="workspace",
-            scope_id=review.scope_id,
-            plugin_id=review.plugin_id,
+        installation_key=lambda: PluginInstallationKeyV1.workspace(
+            _PRODUCT_ID, review.scope_id, review.plugin_id
         ),
         require_current_review=require_current_review,
     )

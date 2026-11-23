@@ -201,11 +201,8 @@ class CodingFencedProductReadOnlyPreviewOwner:
             raise ValueError("Coding Product preview disabled Skills are invalid")
         desired = self.selected_manifests.root_reader.desired_state
         before, _ = desired.capture_read_only()
-        base_key = PluginInstallationKeyV1(
-            product_id=self.policy.product_id,
-            installation_scope="workspace",
-            scope_id=self.policy.project_scope_id,
-            plugin_id="coding.base",
+        base_key = PluginInstallationKeyV1.workspace(
+            self.policy.product_id, self.policy.project_scope_id, "coding.base"
         )
         base_state = before.installation(base_key).selection.desired_state
         base_disabled = base_state == "installed_disabled"
