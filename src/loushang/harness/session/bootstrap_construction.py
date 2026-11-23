@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
@@ -101,6 +102,7 @@ if TYPE_CHECKING:
     from loushang.harness.resource_catalog.session_bootstrap import (
         InitialSessionResourceCatalogBootstrap,
     )
+    from loushang.harness.session.agent_product import AgentProductSession
 
 
 class _RootOwnedResourceHandles(Protocol):
@@ -970,29 +972,6 @@ def rollback_unpublished_construction(
     run_cleanup_steps(error, steps)
 
 
-def construct_catalog_session(
-    adapter: InitialResourceCatalogProductAdapter,
-    *,
-    product_id: str,
-    session_id: str,
-    bundle: ResourceBundle,
-    construct: Callable[[InitialSessionResourceCatalogBootstrap], SessionT],
-    abort_unpublished: CleanupStep | None = None,
-) -> SessionT:
-    """Keep the original Catalog and Plugin cleanup order on a failed handoff."""
-    try:
-        return adapter.construct_session(
-            product_id=product_id,
-            session_id=session_id,
-            base_resource_bundle=bundle,
-            construct=construct,
-        )
-    except BaseException as error:
-        if abort_unpublished is not None:
-            run_cleanup_steps(error, (abort_unpublished,))
-        raise
-
-
 def require_catalog_receipt(
     loader: ResourceLoader,
     cwd: Path,
@@ -1188,48 +1167,108 @@ class PreparationRootCustody(Generic[_PreparationT]):
             ),
         )
 
-    def rollback_startup(
+
+_StartupSessionT = TypeVar("_StartupSessionT", bound="AgentProductSession")
+
+
+@dataclass(slots=True)
+class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
+    """Hand prepared Catalog and Plugin owners to one original Session."""
+
+    catalog_adapter: InitialResourceCatalogProductAdapter | None = field(
+        default=None, init=False, repr=False
+    )
+    _constructed_session: AgentProductSession | None = field(
+        default=None, init=False, repr=False
+    )
+
+    def require_catalog_unprepared(self, error: str) -> None:
+        if self.catalog_adapter is not None:
+            raise RuntimeError(error)
+
+    def take_catalog_adapter(self) -> InitialResourceCatalogProductAdapter:
+        adapter = self.catalog_adapter
+        if adapter is None:
+            raise RuntimeError("Initial Resource Catalog projection adapter is unavailable")
+        self.catalog_adapter = None
+        return adapter
+
+    def construct_catalog_session(
         self,
-        error: BaseException,
+        adapter: InitialResourceCatalogProductAdapter,
         *,
-        failure_custodian: _PreparationFailureCleanup | None,
+        product_id: str,
+        session_id: str,
+        bundle: ResourceBundle,
+        construct: Callable[[InitialSessionResourceCatalogBootstrap], _StartupSessionT],
+        abort_unpublished: CleanupStep | None = None,
+    ) -> _StartupSessionT:
+        # The Catalog rolls back its inputs before the outer Plugin handoff.
+        try:
+            session = adapter.construct_session(
+                product_id=product_id,
+                session_id=session_id,
+                base_resource_bundle=bundle,
+                construct=construct,
+            )
+        except BaseException as error:
+            if abort_unpublished is not None:
+                run_cleanup_steps(error, (abort_unpublished,))
+            raise
+        self._constructed_session = session
+        return session
+
+    async def emit_workspace_audit(
+        self, event: Mapping[str, object], *, product_label: str
+    ) -> None:
+        session = self._constructed_session
+        if session is None:
+            raise RuntimeError(f"{product_label} workspace Session is not yet bound")
+        await session.emit_product_tool_audit_event(event)
+
+    @contextmanager
+    def guard_startup(
+        self,
+        *,
+        read_failure_custodian: Callable[[BaseException], _PreparationFailureCleanup | None],
         management_cleanup: Callable[[], None] | None,
         product_label: str,
         private_label: str,
         before: tuple[str, Callable[[], None] | None],
-        after: tuple[str, Callable[[], None] | None],
-    ) -> None:
-        """Release a failed preparation between its surrounding Product owners."""
-        preparation_cleanup: Callable[[], None] | None
-        private_cleanup: Callable[[], None] | None
-        selected_management: Callable[[], None] | None
-        if failure_custodian is not None:
-            # A preparation that acquired lifecycle evidence is its sole cleanup
-            # owner. Retrying that owner preserves lease -> management root ->
-            # private root ordering; naked callbacks would bypass the gate.
-            preparation_cleanup = failure_custodian.close
-            private_cleanup = None
-            selected_management = None
-        else:
-            preparation_cleanup = (
-                self.preparation.close
-                if self.preparation is not None
-                else self.state_cleanup
+        base_preparation: _PreparedCompositionCleanup | None,
+    ) -> Iterator[None]:
+        """Rollback original startup owners until the Session owns its own cleanup."""
+        try:
+            yield
+        except BaseException as error:
+            cleanup = get_session_construction_cleanup(error)
+            if cleanup is not None and cleanup.owns_session(self._constructed_session):
+                raise
+            failure_custodian = read_failure_custodian(error)
+            after = (
+                f"{product_label} base Plugin cleanup",
+                base_preparation.close if base_preparation is not None else None,
             )
-            private_cleanup = (
-                self.private_cleanup if self.preparation is None else None
+            # A retained failure custodian settles its own leases and roots.
+            preparation = self.preparation if failure_custodian is None else failure_custodian
+            preparation_label = f"{product_label} Capability Plugin preparation cleanup"
+            steps: tuple[tuple[str, Callable[[], None] | None], ...]
+            if preparation is None:
+                steps = (
+                    (
+                        f"{product_label} Capability Plugin management-state cleanup",
+                        management_cleanup,
+                    ),
+                    (preparation_label, self.state_cleanup),
+                    (private_label, self.private_cleanup),
+                )
+            else:
+                steps = ((preparation_label, preparation.close),)
+            run_cleanup_steps(
+                error,
+                ((label, cleanup) for label, cleanup in (before, *steps, after) if cleanup is not None),
             )
-            selected_management = (
-                management_cleanup if self.preparation is None else None
-            )
-        steps = (
-            before,
-            (f"{product_label} Capability Plugin management-state cleanup", selected_management),
-            (f"{product_label} Capability Plugin preparation cleanup", preparation_cleanup),
-            (private_label, private_cleanup),
-            after,
-        )
-        run_cleanup_steps(error, ((label, cleanup) for label, cleanup in steps if cleanup is not None))
+            raise
 
 
 _ConfigurationT = TypeVar("_ConfigurationT")

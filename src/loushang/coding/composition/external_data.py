@@ -8,9 +8,8 @@ from hashlib import sha256 as sha256
 
 from loushang.coding.composition.base_plugin import _owner_bindings as _owner_bindings
 from loushang.coding.composition.base_product import (
+    _EXTERNAL_DATA_RESOURCES,
     CodingBaseProductResourceBody,
-    _bind_coding_external_resource_owners,
-    _capture_external_resource_declarations,
 )
 from loushang.coding.composition.base_product import (
     _candidate as _candidate,
@@ -85,10 +84,10 @@ from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding as ProductContributionOwnerBinding,
 )
 from loushang.harness.session.product_composition_assembly import (
-    _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
+    StandaloneProductDataSelection,
 )
 from loushang.harness.session.product_composition_assembly import (
-    assemble_product_data_resources,
+    _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
 )
 
 
@@ -130,31 +129,17 @@ def compile_coding_external_data_product_selection(
         raise ValueError("Coding Product Session id is invalid")
     if type(evaluated_at) is not int or evaluated_at < 0:
         raise ValueError("Coding Product evaluation time is invalid")
-    declarations = _capture_external_resource_declarations(selected, standalone=True)
-    policy_digest = sha256(
-        canonical_json_bytes(
-            [
-                {
-                    "pluginId": item.manifest.name,
-                    "committedSetId": item.snapshot.committed_record.committed_set.set_id,
-                    "instanceRevision": item.snapshot.instance_revision_ref.to_dict(),
-                }
-                for item in selected
-            ]
-        )
-    ).hexdigest()
-    _, composition, _ = assemble_product_data_resources(
+    _, composition, _ = _EXTERNAL_DATA_RESOURCES.compile(
         selected,
-        declarations,
-        product_id=CODING_PRODUCT_ID,
-        scope_id=f"session:{session_id.strip()}",
-        policy_revision=(
-            f"coding-external-data-v1:{composition_set.set_id}:{composition_set.fingerprint}:{policy_digest}"
+        lambda: StandaloneProductDataSelection(
+            product_id=CODING_PRODUCT_ID,
+            scope_id=f"session:{session_id.strip()}",
+            policy_revision_prefix=(
+                f"coding-external-data-v1:{composition_set.set_id}:{composition_set.fingerprint}"
+            ),
         ),
+        standalone=True,
         evaluated_at=evaluated_at,
-        prepare=_candidate,
-        bind_owners=_bind_coding_external_resource_owners,
-        external_trust_classes=EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
     )
     return CodingExternalDataProductCompilation(
         product_composition=composition,

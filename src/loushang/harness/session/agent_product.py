@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, Protocol, cast
 
 if TYPE_CHECKING:
@@ -2838,6 +2838,14 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if runtime_host is None:
             return True
         return getattr(runtime_host, "current_session", None) is self
+
+    async def emit_product_tool_audit_event(
+        self,
+        event: Mapping[str, object],
+    ) -> None:
+        """Route a Product-owned runtime action through the session event stream."""
+
+        await self._dispatch_event(dict(event))
 
     def _bind_package_product_runtime(
         self, binding: PackageProductRuntimeBindingV1

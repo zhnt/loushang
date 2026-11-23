@@ -435,6 +435,38 @@ def capture_external_data_declaration(
     return declaration
 
 
+def select_external_resource_owners(
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+    *,
+    trust_classes: frozenset[str],
+    permits_owner: Callable[[str, str], bool],
+    base_owner_ids: Iterable[str],
+    base_trust_class: str,
+) -> tuple[set[str], dict[str, tuple[str, ...]]]:
+    """Collect the external Resource selections and trust of their shared owners."""
+    selected_ids: set[str] = set()
+    trust_by_owner: dict[str, set[str]] = {}
+    for item in selected:
+        trust = item.source_trust_snapshot
+        if trust is None or trust.source_trust_class not in trust_classes:
+            continue
+        owners = tuple(
+            reservation.owner
+            for reservation, _ in item.verified_data_only_declarations()
+        )
+        if not all(permits_owner(trust.source_trust_class, owner) for owner in owners):
+            continue
+        selected_ids.add(item.manifest.name)
+        for owner in owners:
+            trust_by_owner.setdefault(owner, set()).add(trust.source_trust_class)
+    for owner in base_owner_ids:
+        if owner in trust_by_owner:
+            trust_by_owner[owner].add(base_trust_class)
+    return selected_ids, {
+        owner: tuple(sorted(classes)) for owner, classes in trust_by_owner.items()
+    }
+
+
 def _host_distribution_lock(
     policy: ProductSelectedRevisionPolicy, plugin_id: str, content_digest: str
 ) -> PluginDependencyClosureLock:
