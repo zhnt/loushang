@@ -79,8 +79,6 @@ from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionAuthority,
     PluginContinuityDeletionJournal,
-    PluginDesiredStateLedger,
-    PluginManagementService,
 )
 from loushang.harness.plugin_management.continuity_adapter import (
     PluginContinuitySecurityRetirementJournal,
@@ -88,6 +86,7 @@ from loushang.harness.plugin_management.continuity_adapter import (
 )
 from loushang.harness.resources.packages._private_directory import (
     prepare_private_directory,
+    prepare_private_directory_tree,
 )
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
@@ -127,6 +126,7 @@ _CONTINUITY_ALREADY_BOUND = "coding_continuity_composition_already_bound"
 _REVISION_CLEANUP_NOTE = "Coding Continuity revision cleanup failed: "
 _LAST_READY_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_last_ready_status"
 _STABLE_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,95}$")
+_STATE_PERMISSIONS_FAILED = "coding_continuity_state_permissions_failed"
 
 
 class CodingContinuitySettingsPort(Protocol):
@@ -208,8 +208,6 @@ def _continuity_lifecycle_error(
 @dataclass(slots=True)
 class _InstalledLifecycle:
     common: CodingPluginLifecycle
-    desired: PluginDesiredStateLedger
-    management: PluginManagementService
     family_authority: PluginInstanceLedgerContinuityFamilyAuthority
     deletion_authority: PluginContinuityDeletionAuthority
 
@@ -759,8 +757,6 @@ def _build_lifecycle(
     )
     return _InstalledLifecycle(
         common=common,
-        desired=common.desired,
-        management=common.management,
         family_authority=family_authority,
         deletion_authority=PluginContinuityDeletionAuthority(deletion_journal),
     )
@@ -854,30 +850,17 @@ def _prepare_private_directory(root: Path, *, code: str) -> None:
         raise CodingContinuityBootstrapError(code=code) from None
 
 
-def _prepare_private_state_root(root: Path) -> None:
-    _prepare_private_directory(
-        root,
-        code="coding_continuity_state_permissions_failed",
-    )
-
-
 def _prepare_private_state_layout(layout: CodingContinuityStateLayout) -> None:
-    # Keep the lexical path so every existing component is checked with lstat;
-    # resolve() would follow an attacker-replaced intermediate symlink first.
-    base = layout.private_state_base.expanduser().absolute()
-    root = layout.root.expanduser().absolute()
-    try:
-        relative = root.relative_to(base)
-    except ValueError:
-        raise CodingContinuityBootstrapError(
-            code="coding_continuity_state_permissions_failed",
-            retryable=False,
-        ) from None
-    _prepare_private_state_root(base)
-    current = base
-    for part in relative.parts:
-        current /= part
-        _prepare_private_state_root(current)
+    prepare_private_directory_tree(
+        layout.root,
+        private_base=layout.private_state_base,
+        outside_base_error=lambda: CodingContinuityBootstrapError(
+            code=_STATE_PERMISSIONS_FAILED, retryable=False
+        ),
+        private_error=lambda: CodingContinuityBootstrapError(
+            code=_STATE_PERMISSIONS_FAILED
+        ),
+    )
 
 
 def _prepare_private_runtime_roots(layout: CodingContinuityStateLayout) -> None:
@@ -902,26 +885,43 @@ def _record_ready_status(
     provider_count: int,
     recovered_deletion_count: int,
 ) -> None:
-    status = CodingContinuityBootstrapStatus(
-        state="ready",
-        code="coding_continuity_ready",
-        configured_source_count=configured_source_count,
-        plugin_count=plugin_count,
-        provider_count=provider_count,
-        recovered_deletion_count=recovered_deletion_count,
+    _publish_bootstrap_status(
+        runtime,
+        diagnostics,
+        CodingContinuityBootstrapStatus(
+            state="ready",
+            code="coding_continuity_ready",
+            configured_source_count=configured_source_count,
+            plugin_count=plugin_count,
+            provider_count=provider_count,
+            recovered_deletion_count=recovered_deletion_count,
+        ),
     )
+
+
+def _publish_bootstrap_status(
+    runtime: object,
+    diagnostics: DiagnosticsService | None,
+    status: CodingContinuityBootstrapStatus,
+) -> None:
+    ready = status.state == "ready"
     with suppress(AttributeError, TypeError):
         setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
-        setattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, status)
+        if ready:
+            setattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, status)
     capture = getattr(diagnostics, "capture_failure", None)
     if callable(capture):
         with suppress(Exception):
             capture(
                 code=status.code,
-                error="Coding Continuity composition is ready.",
+                error=(
+                    "Coding Continuity composition is ready."
+                    if ready
+                    else f"Coding Continuity bootstrap failed ({status.code})."
+                ),
                 phase="startup",
                 source="bootstrap",
-                level="info",
+                **({"level": "info"} if ready else {}),
                 details=status.to_dict(),
             )
 
@@ -951,34 +951,6 @@ def _restore_ready_status(
     )
 
 
-def _record_failed_status(
-    runtime: object,
-    diagnostics: DiagnosticsService | None,
-    *,
-    code: str,
-    configured_source_count: int,
-    retryable: bool,
-) -> None:
-    status = CodingContinuityBootstrapStatus(
-        state="failed",
-        code=code,
-        configured_source_count=configured_source_count,
-        retryable=retryable,
-    )
-    with suppress(AttributeError, TypeError):
-        setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
-    capture = getattr(diagnostics, "capture_failure", None)
-    if callable(capture):
-        with suppress(Exception):
-            capture(
-                code=code,
-                error=f"Coding Continuity bootstrap failed ({code}).",
-                phase="startup",
-                source="bootstrap",
-                details=status.to_dict(),
-            )
-
-
 def _raise_bootstrap_failure(
     runtime: CodingContinuityRuntimePort,
     diagnostics_service: DiagnosticsService | None,
@@ -989,12 +961,19 @@ def _raise_bootstrap_failure(
     if not isinstance(error, Exception):
         raise error
     code = _stable_error_code(error)
-    _record_failed_status(
+    _publish_bootstrap_status(
         runtime,
         diagnostics_service,
-        code=code,
-        configured_source_count=configured_source_count,
-        retryable=error.retryable if isinstance(error, CodingContinuityBootstrapError) else True,
+        CodingContinuityBootstrapStatus(
+            state="failed",
+            code=code,
+            configured_source_count=configured_source_count,
+            retryable=(
+                error.retryable
+                if isinstance(error, CodingContinuityBootstrapError)
+                else True
+            ),
+        ),
     )
     if isinstance(error, CodingContinuityBootstrapError):
         raise error
