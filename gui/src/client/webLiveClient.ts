@@ -17,7 +17,7 @@ export interface WebLiveClient extends HarnessClientUiPort {
 }
 
 export function clientDirectoryControls(connectionId?: string) {
-  if (!isTauri() || !connectionId || connectionId === "local"
+  if (!isTauri() || !connectionId
     || !["linux", "windows", "macos"].includes(platform())) return undefined;
 
   const pickClientDirectory: DirectoryPicker = async (labels) => {

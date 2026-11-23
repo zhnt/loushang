@@ -134,6 +134,8 @@
   "opening": "正在打开 {{appName}}…",
   "attachments": {
     "add": "添加图片或文件",
+    "open": "用系统默认文本编辑器打开 {{name}}",
+    "openFailed": "无法用系统文本编辑器打开附件。",
     "preview": "预览 {{name}}",
     "close": "关闭预览",
     "remove": "移除 {{name}}",

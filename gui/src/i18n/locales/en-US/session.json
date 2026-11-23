@@ -136,6 +136,8 @@
   "opening": "Opening {{appName}}…",
   "attachments": {
     "add": "Add images or files",
+    "open": "Open {{name}} in the default text editor",
+    "openFailed": "Could not open the attachment in the system text editor.",
     "preview": "Preview {{name}}",
     "close": "Close preview",
     "remove": "Remove {{name}}",

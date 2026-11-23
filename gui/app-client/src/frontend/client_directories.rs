@@ -27,10 +27,11 @@ struct Grant {
 
 impl Grants {
     pub fn add(&mut self, target: Target, path: PathBuf) -> Result<Value> {
-        let Target::Tunnel(root, _) = &target else {
-            return Err("operation_unavailable".into());
+        let root = match &target {
+            Target::Local(root) | Target::Tunnel(root, _) => root,
         };
-        let credential = AppClient::tunnel_binding(root).map_err(|_| "connection_failed")?;
+        let credential =
+            AppClient::target_binding(target.borrow()).map_err(|_| "connection_failed")?;
         let private = root.canonicalize().map_err(|_| "connection_failed")?;
         if private.starts_with(&path) || path.starts_with(&private) {
             return Err("permission_denied".into());
@@ -87,7 +88,7 @@ impl Grants {
             .0
             .get_mut(id)
             .filter(|grant| {
-                grant.target == view.target && Some(grant.credential) == view.tunnel_binding
+                grant.target == view.target && grant.credential == view.credential_binding
             })
             .ok_or("resource_unavailable")?;
         if grant
@@ -137,7 +138,7 @@ impl Grants {
             return;
         };
         for grant in self.0.values().filter(|grant| {
-            grant.target == view.target && Some(grant.credential) == view.tunnel_binding
+            grant.target == view.target && grant.credential == view.credential_binding
         }) {
             let (Some(session), Some(id)) = (&grant.session, &grant.resource) else {
                 continue;

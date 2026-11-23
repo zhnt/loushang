@@ -1,3 +1,4 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
@@ -23,7 +24,7 @@ export function AttachmentImage({ blob, label }: { blob: Blob; label: string }) 
     <dialog ref={dialog} className="frame-dialog" aria-label={label}>
       <div className="settings-header">
         <h2>{label}</h2>
-        <button type="button" className="icon-button" aria-label={t("attachments.close")}
+        <button type="button" className="icon-close" aria-label={t("attachments.close")}
           onClick={() => dialog.current?.close()}><UiIcon name="close" /></button>
       </div>
       <img className="attachment-preview" src={url} alt={label} />
@@ -38,7 +39,35 @@ export function AttachmentLabel({ label, folder, title = label }: { label: strin
   </span>;
 }
 
-export function AttachmentText({ blob, label }: { blob: Blob; label: string }) {
+export function AttachmentText(props: { blob: Blob; label: string }) {
+  return isTauri() ? <DesktopTextAttachment {...props} /> : <WebTextAttachment {...props} />;
+}
+
+function DesktopTextAttachment({ blob, label }: { blob: Blob; label: string }) {
+  const { t } = useTranslation("session");
+  const [failed, setFailed] = useState(false);
+  const [opening, setOpening] = useState(false);
+  async function open() {
+    setFailed(false);
+    setOpening(true);
+    try {
+      const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await blob.arrayBuffer());
+      await invoke("open_text_attachment", { name: label, text });
+    } catch {
+      setFailed(true);
+    } finally {
+      setOpening(false);
+    }
+  }
+  return <>
+    <button type="button" className="attachment-label" title={label}
+      aria-label={t("attachments.open", { name: label })} disabled={opening}
+      onClick={() => { void open(); }}><span>{label}</span></button>
+    {failed ? <span role="status">{t("attachments.openFailed")}</span> : null}
+  </>;
+}
+
+function WebTextAttachment({ blob, label }: { blob: Blob; label: string }) {
   const { t } = useTranslation("session");
   const dialog = useRef<HTMLDialogElement>(null);
   const [preview, setPreview] = useState("");
@@ -55,7 +84,7 @@ export function AttachmentText({ blob, label }: { blob: Blob; label: string }) {
     <dialog ref={dialog} className="frame-dialog" aria-label={label}>
       <div className="settings-header">
         <h2>{label}</h2>
-        <button type="button" className="icon-button" aria-label={t("attachments.close")}
+        <button type="button" className="icon-close" aria-label={t("attachments.close")}
           onClick={() => dialog.current?.close()}><UiIcon name="close" /></button>
       </div>
       <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{preview}</pre>

@@ -514,11 +514,17 @@ impl AppClient {
     }
 
     #[cfg(feature = "frontend")]
-    pub(crate) fn tunnel_binding(root: &Path) -> Result<[u8; 32], ()> {
+    pub(crate) fn target_binding(target: AppTarget<'_>) -> Result<[u8; 32], ()> {
         use sha2::{Digest, Sha256};
-        let raw = record_native::read(root, &Record::filename("app-tunnel")?)?;
+        let (root, endpoint) = match target {
+            AppTarget::Local(root) => (root, "workspace"),
+            AppTarget::Tunnel {
+                credential_root, ..
+            } => (credential_root, "app-tunnel"),
+        };
+        let raw = record_native::read(root, &Record::filename(endpoint)?)?;
         let record = Record::decode(&raw)?;
-        record.selected("app-tunnel", &record.semantic_profile()?)?;
+        record.selected(endpoint, &record.semantic_profile()?)?;
         Ok(Sha256::digest(raw).into())
     }
 
