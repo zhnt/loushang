@@ -33,7 +33,6 @@ from loushang.coding.package.product_worker_query_consumer import (
     CODING_WORKER_QUERY_CAPABILITY_ID,
     CODING_WORKER_QUERY_DEFINITION,
     CODING_WORKER_QUERY_FACET_ID,
-    CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
     coding_worker_query_owner_authority,
 )
 from loushang.coding.package.product_worker_receipt import (
@@ -126,7 +125,6 @@ prepare_pending_session_inputs = partial(
     _prepare_pending_worker_session_inputs,
     definition=CODING_WORKER_QUERY_DEFINITION,
     expected_provider_owner=coding_worker_query_owner_authority,
-    owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
     base_policy_type=CodingWorkerBaseCompositionPolicyBinding,
     resume_matches=_resume_parent_matches_settlement,
     prepare_session_inputs=prepare_coding_product_worker_session_inputs,

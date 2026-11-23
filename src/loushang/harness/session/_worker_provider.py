@@ -62,6 +62,8 @@ if TYPE_CHECKING:
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
+    from loushang.harness.worker.contracts import WorkerLaunchIdentityV1
+    from loushang.harness.worker.supervisor import WorkerSupervisor
 
 
 class _FacetGrantAuthority(Protocol):
@@ -243,6 +245,51 @@ class _QueryAuthority(_FacetGrantAuthority, Protocol):
     def binding(self) -> CapabilityWorkerBindingV1: ...
 
     def current_authority(self) -> CapabilityWorkerAuthorityV1: ...
+
+
+def _selected_query_worker_binding(
+    identity: WorkerLaunchIdentityV1,
+    receipt: ProductWorkerActivationReceiptV1,
+    owner: CapabilityProviderOwnerAuthority,
+) -> CapabilityWorkerBindingV1:
+    policy = owner.policy
+    return _binding_for_worker(
+        identity,
+        allowed_capability_ids=(policy.capability_id,),
+        product_policy_revision=lambda: receipt.policy.product_policy_revision,
+        owner_policy_revision=policy.policy_revision,
+        revocation_epoch=policy.revocation_epoch,
+    )
+
+
+async def _admit_worker_query_adapter(
+    *,
+    supervisor: WorkerSupervisor,
+    authority: _QueryAuthority,
+    capability_id: str,
+    facet_id: str,
+    failure: Callable[[str], RuntimeError],
+    descriptor_mismatch: str = "descriptor_mismatch",
+    expected_admission: CapabilityWorkerAdmissionV1 | None = None,
+) -> tuple[CapabilityQueryWorkerAdapter, CapabilityWorkerAdmissionV1]:
+    """Admit and describe exactly one selected query facet before graph use."""
+    adapter = bind_capability_query_worker_adapter(
+        supervisor=supervisor,
+        binding=authority.binding,
+        authority_reader=authority.current_authority,
+        enabled=True,
+    )
+    admitted = adapter.admit()
+    if expected_admission is not None and admitted != expected_admission:
+        raise failure("admission_changed")
+    descriptors = await adapter.describe()
+    if (
+        len(descriptors) != 1
+        or descriptors[0].capability_id != capability_id
+        or descriptors[0].facet_ids != (facet_id,)
+    ):
+        raise failure(descriptor_mismatch)
+    return adapter, admitted
 
 
 _ReceiptOwnerT = TypeVar("_ReceiptOwnerT")
@@ -469,22 +516,14 @@ class _PreparedWorkerProviderMethods(
         try:
             attempt = await prepare_native()
             authority = bind_authority(request=attempt.request)
-            adapter = bind_capability_query_worker_adapter(
+            adapter, admitted = await _admit_worker_query_adapter(
                 supervisor=attempt.supervisor,
-                binding=authority.binding,
-                authority_reader=authority.current_authority,
-                enabled=True,
+                authority=authority,
+                capability_id=capability_id,
+                facet_id=facet_id,
+                failure=pending_failure,
+                expected_admission=expected_admission,
             )
-            admitted = adapter.admit()
-            if admitted != expected_admission:
-                raise pending_failure("admission_changed")
-            descriptors = await adapter.describe()
-            if (
-                len(descriptors) != 1
-                or descriptors[0].capability_id != capability_id
-                or descriptors[0].facet_ids != (facet_id,)
-            ):
-                raise pending_failure("descriptor_mismatch")
             [resolved] = resolved_providers.entries
             return cls._prepare(
                 resolved=resolved,
@@ -640,7 +679,6 @@ def _prepare_pending_worker_session_inputs(
     ],
     definition: CapabilityDefinition,
     expected_provider_owner: Callable[[], CapabilityProviderOwnerAuthority],
-    owner_policy_revision: str,
     base_policy_type: type[_BasePolicyGuard],
     host_type: Callable[..., _PendingWorkerHost],
     prepare_session_inputs: Callable[..., SessionCapabilityCompositionInputs],
@@ -664,13 +702,7 @@ def _prepare_pending_worker_session_inputs(
         raise policy.failure("selection_invalid")
     base_policy_binding.assert_current()
     identity = pending_launch.identity
-    binding = _binding_for_worker(
-        identity,
-        allowed_capability_ids=(definition.capability_id,),
-        product_policy_revision=lambda: receipt.policy.product_policy_revision,
-        owner_policy_revision=owner_policy_revision,
-        revocation_epoch=0,
-    )
+    binding = _selected_query_worker_binding(identity, receipt, provider_owner)
     admission = _admission_for_worker(binding, identity)
     host = host_type(
         resolved_providers=resolved_providers,

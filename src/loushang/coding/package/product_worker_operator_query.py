@@ -28,7 +28,10 @@ from loushang.harness.package_product.product_runtime import (
 )
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session._worker_operator_query import _query_selected_worker_once
-from loushang.harness.session._worker_provider import _QueryAuthority
+from loushang.harness.session._worker_provider import (
+    _QueryAuthority,
+    _selected_query_worker_binding,
+)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
@@ -36,7 +39,6 @@ from loushang.harness.transcript import AgentTranscriptDirectoryRuntime
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
     CapabilityWorkerAdmissionV1,
-    _binding_for_worker,
 )
 from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
 from loushang.harness.worker.product_activation import (
@@ -50,7 +52,6 @@ from .product_worker_capability import (
 from .product_worker_query_consumer import (
     CODING_WORKER_QUERY_CAPABILITY_ID,
     CODING_WORKER_QUERY_FACET_ID,
-    CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
     bind_coding_worker_query_consumer,
     coding_worker_query_owner_authority,
     validate_coding_worker_query_symbol,
@@ -88,20 +89,12 @@ class _CodingOperatorQueryPolicy:
     ) -> tuple[
         CapabilityProviderOwnerAuthority, CodingProductWorkerCapabilityAuthority
     ]:
-        identity = request.identity
         owner = coding_worker_query_owner_authority()
-        binding = _binding_for_worker(
-            identity,
-            allowed_capability_ids=(CODING_WORKER_QUERY_CAPABILITY_ID,),
-            product_policy_revision=lambda: self.receipt.policy.product_policy_revision,
-            owner_policy_revision=CODING_WORKER_QUERY_OWNER_POLICY_REVISION,
-            revocation_epoch=0,
-        )
         authority = _bind_query_authority(
             receipt_owner=self.receipt_owner,
             receipt=self.receipt,
             request=request,
-            binding=binding,
+            binding=_selected_query_worker_binding(request.identity, self.receipt, owner),
             provider_owner=owner,
         )
         return owner, authority

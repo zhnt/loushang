@@ -11,14 +11,8 @@ import secrets
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
-from loushang.agent import Agent
-from loushang.ai.model import Capabilities, Model
-from loushang.harness.capabilities import (
-    stage_resource_composition_candidate,
-    standard_capability_composition_plan,
-)
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderOwnerAuthority,
 )
@@ -26,7 +20,6 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeRequestV1,
 )
-from loushang.harness.runtime import RuntimeProfileResolver
 from loushang.harness.transcript.product_session import ProductTranscriptSession
 from loushang.harness.worker._native_profile_bridge import (
     ProductWorkerNativeProfilePort,
@@ -42,7 +35,6 @@ from loushang.harness.worker._ordinary_prepare import (
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
     CapabilityWorkerAdmissionV1,
-    bind_capability_query_worker_adapter,
 )
 from loushang.harness.worker.contracts import (
     ManagedWorkerLaunchRequestV1,
@@ -57,8 +49,8 @@ from loushang.harness.worker.product_activation import (
 from loushang.harness.worker.supervisor import WorkerSupervisor
 from loushang.hosting.runtime import create_child_session_host
 
-from ._worker_provider import _QueryAuthority
-from .agent_product import AgentProductSession
+from ._worker_provider import _admit_worker_query_adapter, _QueryAuthority
+from .agent_product import AgentProductSession, _create_query_only_session
 from .capability_composition_inputs import SessionCapabilityCompositionInputs
 
 if TYPE_CHECKING:
@@ -69,64 +61,6 @@ if TYPE_CHECKING:
 _PayloadT = TypeVar("_PayloadT")
 _NativeT = TypeVar("_NativeT")
 _TranscriptT = TypeVar("_TranscriptT", bound=ProductTranscriptSession[Any, Any])
-
-
-class _QueryOnlyFooter:
-    def set_extension_status(self, *_args: object) -> None:
-        pass
-
-    def set_available_provider_count(self, *_args: object) -> None:
-        pass
-
-    def dispose(self) -> None:
-        pass
-
-
-def _create_query_only_session(
-    manager: ProductTranscriptSession[Any, Any],
-    inputs: SessionCapabilityCompositionInputs,
-    *,
-    product_id: str,
-    failure: Callable[[str], RuntimeError],
-    error_prefix: str,
-) -> AgentProductSession:
-    """Bind the selected graph to a Session that cannot execute a model."""
-
-    async def refuse_model_execution(*_args: object, **_kwargs: object) -> NoReturn:
-        raise failure(error_prefix + "_model_execution_refused")
-
-    profile_plan = RuntimeProfileResolver().resolve(
-        standard_capability_composition_plan(product_id=product_id)
-    )
-    return AgentProductSession(
-        agent=Agent(
-            initial_state={
-                "system_prompt": "Worker query",
-                "model": Model(
-                    id="worker-query-only",
-                    name="Worker Query",
-                    provider="local",
-                    endpoint="local",
-                    capabilities=Capabilities(
-                        input=("text",),
-                        context_window=128_000,
-                        max_tokens=4_096,
-                    ),
-                ),
-                "thinking_level": None,
-            }
-        ),
-        session_manager=manager,
-        capability_runtime=stage_resource_composition_candidate(profile_plan),
-        execute_compaction=refuse_model_execution,
-        execute_branch_summary=refuse_model_execution,
-        get_changelog=lambda cwd, args: (cwd, args),
-        copy_to_clipboard=lambda text: text,
-        retry_sleep=refuse_model_execution,
-        footer_data_provider=_QueryOnlyFooter(),
-        allowed_tool_names=[],
-        capability_composition_inputs=inputs,
-    )
 
 
 class _OperatorLaunchSource(_ActivationInputs, Protocol[_PayloadT, _NativeT]):
@@ -263,37 +197,23 @@ async def _query_selected_worker_once(
             )
             native = source.current_native_launch_material(receipt)
             gate = source._worker_start_gate(receipt, request, attempt_id)
+            profile = None
+            host = None
+            supervisor: WorkerSupervisor | None = None
+            session: AgentProductSession | None = None
             try:
                 profile = source._worker_profile_from_material(
                     receipt, native, request, gate
                 )
-            except BaseException:
-                gate.close()
-                raise
-            try:
                 host = create_child_session_host(
                     max_sessions=1, enable_posix_static_capture=True
                 )
-            except BaseException:
-                gate.close()
-                await profile.close()
-                raise
-            try:
-                supervisor = WorkerSupervisor(
+                active_supervisor = supervisor = WorkerSupervisor(
                     identity=request.identity,
                     journal=journal,
                     protocol=request.runtime.protocol,
                     protocol_version=request.runtime.protocol_version,
                 )
-            except BaseException:
-                gate.close()
-                try:
-                    await profile.close()
-                finally:
-                    await host.close()
-                raise
-            session: AgentProductSession | None = None
-            try:
                 adapter = HostingManagedWorkerSessionAdapter(
                     hosting=host,
                     preparation=profile,
@@ -317,30 +237,24 @@ async def _query_selected_worker_once(
                 ) as c5_admission:
                     c5_admission.begin_effect()
                     c5_identity = request.identity
-                await supervisor.start_session(
+                await active_supervisor.start_session(
                     session_port=adapter,
                     launch_request=request,
                     correlation_id=correlation_id,
                 )
                 owner, authority = policy.bind_authority(request)
-                capability = bind_capability_query_worker_adapter(
-                    supervisor=supervisor,
-                    binding=authority.binding,
-                    authority_reader=authority.current_authority,
-                    enabled=True,
+                capability, admitted = await _admit_worker_query_adapter(
+                    supervisor=active_supervisor,
+                    authority=authority,
+                    capability_id=policy.capability_id,
+                    facet_id=policy.facet_id,
+                    failure=failure,
+                    descriptor_mismatch=error_prefix + "_contract_mismatch",
                 )
-                admitted = capability.admit()
-                descriptors = await capability.describe()
-                if (
-                    len(descriptors) != 1
-                    or descriptors[0].capability_id != policy.capability_id
-                    or descriptors[0].facet_ids != (policy.facet_id,)
-                ):
-                    raise failure(error_prefix + "_contract_mismatch")
 
                 async def release_attempt() -> None:
-                    if supervisor.status.state == "healthy":
-                        await supervisor.shutdown()
+                    if active_supervisor.status.state == "healthy":
+                        await active_supervisor.shutdown()
 
                 inputs = policy.prepare_inputs(
                     owner=owner,
@@ -366,27 +280,26 @@ async def _query_selected_worker_once(
                 return result
             finally:
                 try:
-                    try:
-                        if session is not None:
-                            await session.dispose()
-                    finally:
-                        if supervisor.status.state == "healthy":
-                            await supervisor.shutdown()
-                        elif supervisor.status.state not in {
-                            "stopped",
-                            "failed",
-                            "fenced",
-                        }:
-                            await supervisor.fence(code=error_prefix + "_failed")
+                    if supervisor is not None:
+                        try:
+                            if session is not None:
+                                await session.dispose()
+                        finally:
+                            if supervisor.status.state == "healthy":
+                                await supervisor.shutdown()
+                            elif supervisor.status.state not in {"stopped", "failed", "fenced"}:
+                                await supervisor.fence(code=error_prefix + "_failed")
                 finally:
                     gate.close()
                     try:
-                        await profile.close()
+                        if profile is not None:
+                            await profile.close()
                     finally:
                         try:
-                            await host.close()
+                            if host is not None:
+                                await host.close()
                         finally:
-                            if supervisor.status.state in {"failed", "fenced"}:
+                            if supervisor is not None and supervisor.status.state in {"failed", "fenced"}:
                                 await supervisor.settle_failed_process()
     except BaseException as error:
         query_error = error
