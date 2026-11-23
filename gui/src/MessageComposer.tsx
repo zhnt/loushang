@@ -185,7 +185,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
               event.currentTarget.value = "";
             }} /> : null}
           <button type="button" className="icon-button" aria-label={t(hasActions ? "attachments.actions" : "composer.attachUnavailable")}
-            title={t(hasActions ? "attachments.actions" : "composer.attachHint")} aria-haspopup="menu" disabled={!hasActions}
+            data-tooltip={t(hasActions ? "attachments.actions" : "composer.attachHint")} aria-haspopup="menu" disabled={!hasActions}
             onClick={(event) => menu(event, [
               ...(canAttach ? [{ label: t("attachments.addGroup"), items: [
                 { label: t("attachments.addFile"), icon: "paperclip" as const, run: () => chooser.current?.click() },
@@ -200,7 +200,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
         {model ?? <span />}
         <button className="composer-submit" type={onInterrupt ? "button" : "submit"}
           aria-label={submitLabel ?? t(onInterrupt ? "composer.interrupt" : "composer.send")}
-          title={submitLabel ?? t(onInterrupt ? "composer.stopHint" : "composer.sendHint")}
+          data-tooltip={submitLabel ?? t(onInterrupt ? "composer.stopHint" : "composer.sendHint")}
           disabled={buttonDisabled} onClick={onInterrupt}>
           {onInterrupt ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>
             : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 18V6m-5 5 5-5 5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}

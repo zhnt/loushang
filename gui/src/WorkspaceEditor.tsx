@@ -88,7 +88,7 @@ export function WorkspaceEditor({ project, save, onClose }: WorkspaceEditorProps
         <section className="local-host-card" aria-label={t("paths")}>
           <div className="local-host-heading">
             <h3>{t("paths")}</h3>
-            <button type="button" className="icon-button" aria-label={t("addPath")} title={t("addPath")}
+            <button type="button" className="icon-button" aria-label={t("addPath")} data-tooltip={t("addPath")}
               disabled={busy} onClick={() => setPath({ alias: "", path: "" })}><UiIcon name="plus" /></button>
           </div>
           {project.paths?.length ? <div role="list" aria-label={t("paths")}>

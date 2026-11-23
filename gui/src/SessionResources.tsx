@@ -33,7 +33,7 @@ export function AttachmentImage({ blob, label }: { blob: Blob; label: string }) 
 }
 
 export function AttachmentLabel({ label, folder, title = label }: { label: string; folder?: boolean; title?: string }) {
-  return <span className="attachment-label" title={title}>
+  return <span className="attachment-label" data-tooltip={title}>
     {folder ? <UiIcon name="folder" /> : null}
     <span>{label}</span>
   </span>;
@@ -60,7 +60,7 @@ function DesktopTextAttachment({ blob, label }: { blob: Blob; label: string }) {
     }
   }
   return <>
-    <button type="button" className="attachment-label" title={label}
+    <button type="button" className="attachment-label" data-tooltip={label}
       aria-label={t("attachments.open", { name: label })} disabled={opening}
       onClick={() => { void open(); }}><span>{label}</span></button>
     {failed ? <span role="status">{t("attachments.openFailed")}</span> : null}
@@ -79,7 +79,7 @@ function WebTextAttachment({ blob, label }: { blob: Blob; label: string }) {
     return () => { active = false; };
   }, [blob]);
   return <>
-    <button type="button" className="attachment-label" title={label}
+    <button type="button" className="attachment-label" data-tooltip={label}
       aria-label={t("attachments.preview", { name: label })} onClick={() => dialog.current?.showModal()}><span>{label}</span></button>
     <dialog ref={dialog} className="frame-dialog" aria-label={label}>
       <div className="settings-header">
@@ -111,7 +111,7 @@ export function StoredResource({ client, sessionId, id, allowRevoke }: StoredPro
   if (!result.blob) return <span className="attachment-item">
     <AttachmentLabel label={result.resource.name ?? t("attachments.file")} folder={result.resource.kind === "directory"} />
     {allowRevoke && result.resource.source === "client_reference" && client.revokeClientDirectory && !revoked ? <button
-      type="button" className="icon-button" title={t("attachments.stopSharing")} aria-label={t("attachments.stopSharing")}
+      type="button" className="icon-button" data-tooltip={t("attachments.stopSharing")} aria-label={t("attachments.stopSharing")}
       onClick={() => { void client.revokeClientDirectory?.(id).then(() => setRevoked(true)).catch(() => {}); }}>
       <UiIcon name="close" />
     </button> : null}

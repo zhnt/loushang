@@ -65,9 +65,10 @@
 | 键盘焦点 | Tab 到达可操作项时，有清晰的 `:focus-visible` 提示。菜单支持键盘移动和退出。焦点、悬停、展开和选中各自对应实际状态 |
 | 关闭按钮 | 工作区和设置弹窗使用同一 `icon-close` 样式，28 px 控件、6 px 圆角、默认透明，悬停用主题灰底 |
 | 菜单、提示和弹窗 | 继承应用主题，内边距和分组清楚，出现在滚动内容上方。侧栏滚动条不会盖住菜单或对话框。长内容用面板内部滚动 |
+| 悬停提示 | 用 `data-tooltip` 接入全局提示层，颜色跟随应用外观。提示留在窗口内，支持鼠标悬停和键盘焦点。控件的可访问名称用原有标签提供 |
 | 禁用和危险动作 | 未实现或当前不可用的入口置灰并阻止操作。停止 Host、删除等实际危险操作用红色和对应的确认流程 |
 
-实现参照 [ContextMenu](../../../gui/src/ContextMenu.tsx)、[WorkspaceEditor](../../../gui/src/WorkspaceEditor.tsx) 和 [SettingsDialog](../../../gui/src/SettingsDialog.tsx)。
+实现参照 [ContextMenu](../../../gui/src/ContextMenu.tsx)、[TooltipLayer](../../../gui/src/TooltipLayer.tsx)、[WorkspaceEditor](../../../gui/src/WorkspaceEditor.tsx) 和 [SettingsDialog](../../../gui/src/SettingsDialog.tsx)。
 
 ## 连接、设置与账户
 

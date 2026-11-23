@@ -56,8 +56,8 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
   if (!native) return null;
   return <>
     <header className="native-frame" aria-label={t("applicationMenu")}>
-      <button className="frame-icon" aria-label={t("back")} title={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
-      <button className="frame-icon" aria-label={t("forward")} title={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
+      <button className="frame-icon" aria-label={t("back")} data-tooltip={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
+      <button className="frame-icon" aria-label={t("forward")} data-tooltip={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
       <FrameMenu {...actions} onBack={onBack} onForward={onForward}
         onClose={() => void control("close")} onQuit={() => void invokeFrameAction("quit_app")}
         onOpenDevtools={() => void invokeFrameAction("open_devtools")} />

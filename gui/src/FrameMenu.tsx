@@ -177,7 +177,7 @@ export function FrameMenu(actions: FrameActions) {
             {index > 0 ? <div role="separator" className="frame-menu-separator" /> : null}
             {group.map((item) => <button key={item.label} role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
               aria-label={t(item.label, { appName })} aria-checked={item.checked} aria-haspopup={item.submenu ? "menu" : undefined}
-              disabled={!item.action} title={!item.action ? t("actionUnavailable") : undefined}
+              disabled={!item.action} data-tooltip={!item.action ? t("actionUnavailable") : undefined}
               onClick={() => { if (item.action) run(item.action); }}>
               <span className="menu-check" aria-hidden="true">{item.checked ? "✓" : ""}</span>
               <span className="menu-label">{t(item.label, { appName })}</span>

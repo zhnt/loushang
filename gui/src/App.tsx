@@ -3,6 +3,7 @@ import { appName } from "./branding";
 import { useTranslation } from "react-i18next";
 import { ContextMenuProvider, useContextMenu } from "./ContextMenu";
 import { CopyButton } from "./CopyButton";
+import { TooltipLayer } from "./TooltipLayer";
 import { AccountMenu } from "./AccountMenu";
 import { SettingsDialog } from "./SettingsDialog";
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
@@ -1023,7 +1024,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
         onToggleDock={selected ? toggleDock : undefined} />
       <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 48}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
         {!sidebarOpen ? <aside className="collapsed-rail" aria-label={shellText("collapsedSidebar")}>
-          <button className="frame-icon" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="false" onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button>
+          <button className="frame-icon" aria-label={shellText("toggleSidebar")} data-tooltip={shellText("toggleSidebarHint")} aria-expanded="false" onClick={() => setSidebarOpen(true)}><PanelIcon side="left" /></button>
           <AccountMenu compact account={account} onSettings={openSettings} />
         </aside> : null}
         <div className="sidebar-container" hidden={!sidebarOpen}>
@@ -1286,6 +1287,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
       </main>
       <SettingsDialog dialogRef={settingsDialog} hostSettings={hostSettings} hostRequest={hostSettingsRequest}
         markdown={markdown} onMarkdownChange={setMarkdown} />
+      <TooltipLayer />
       </ContextMenuProvider>
     </div>
   );
@@ -1318,8 +1320,8 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
         {/* i18next-instrument-ignore-next-line: product name */}
         <strong className="brand-name">{appName}</strong>
         <div className="brand-actions">
-          <button className="brand-search" type="button" aria-label={t("workspace:sidebar.searchUnavailable")} title={t("workspace:sidebar.searchHint")} disabled><UiIcon name="search" /></button>
-          <button className="frame-icon" type="button" aria-label={shellText("toggleSidebar")} title={shellText("toggleSidebarHint")} aria-expanded="true" onClick={onToggleSidebar}><PanelIcon side="left" /></button>
+          <button className="brand-search" type="button" aria-label={t("workspace:sidebar.searchUnavailable")} data-tooltip={t("workspace:sidebar.searchHint")} disabled><UiIcon name="search" /></button>
+          <button className="frame-icon" type="button" aria-label={shellText("toggleSidebar")} data-tooltip={shellText("toggleSidebarHint")} aria-expanded="true" onClick={onToggleSidebar}><PanelIcon side="left" /></button>
         </div>
       </div>
       <div className="workspace-scroll">
@@ -1330,9 +1332,9 @@ function Sidebar({ state, account, managedLocal, onSelect, onToggleWorkspace, on
           <span>{t("workspace:sidebar.newSession")}</span>
           <UiIcon name="plus" />
         </button>
-        <button type="button" disabled title={t("workspace:sidebar.prHint")}><UiIcon name="pull-request" /><span>{t("workspace:sidebar.pullRequests")}</span></button>
-        <button type="button" disabled title={t("workspace:sidebar.scheduleHint")}><UiIcon name="scheduled" /><span>{t("workspace:sidebar.scheduled")}</span></button>
-        <button type="button" disabled title={t("workspace:sidebar.pluginsHint")}><UiIcon name="plugins" /><span>{t("workspace:sidebar.plugins")}</span></button>
+        <button type="button" disabled data-tooltip={t("workspace:sidebar.prHint")}><UiIcon name="pull-request" /><span>{t("workspace:sidebar.pullRequests")}</span></button>
+        <button type="button" disabled data-tooltip={t("workspace:sidebar.scheduleHint")}><UiIcon name="scheduled" /><span>{t("workspace:sidebar.scheduled")}</span></button>
+        <button type="button" disabled data-tooltip={t("workspace:sidebar.pluginsHint")}><UiIcon name="plugins" /><span>{t("workspace:sidebar.plugins")}</span></button>
       </nav>
       {!managedLocal ? <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? t("workspace:sidebar.fixtureBanner") : t("workspace:sidebar.liveBanner")}</div> : null}
 
@@ -1505,7 +1507,7 @@ function SessionButton({ session, title, selected, unread, stale, pinned, onSele
         {unread ? <span className="unread-dot" aria-label={t("workspace:sidebar.unread")} /> : null}
       </button>
       <button type="button" className="session-pin" data-pin-session={session.id}
-        data-pinned={pinned} aria-label={pinLabel} title={pinLabel} onClick={onTogglePin}>
+        data-pinned={pinned} aria-label={pinLabel} data-tooltip={pinLabel} onClick={onTogglePin}>
         <UiIcon name="pin" />
       </button>
     </div>
@@ -1519,7 +1521,7 @@ function StatusMark({ status, stale = false }: {
   const { t } = useTranslation(["session", "workspace", "panels", "common"]);
   const label = stale ? t("workspace:sidebar.stale", { status: valueLabel(status) }) : valueLabel(status);
   return (
-    <span className={`status-mark ${status}${stale ? " stale" : ""}`} title={label}>
+    <span className={`status-mark ${status}${stale ? " stale" : ""}`} data-tooltip={label}>
       <span className="status-glyph" aria-hidden="true">{stale ? "–" : status === "running" ? "◌" : status === "waiting" ? "!" : status === "failed" ? "×" : ""}</span>
       <span className="sr-only">{label}</span>
     </span>
@@ -1550,11 +1552,11 @@ function SessionHeader({ title, contextLabel, sessionReady, connection, dockOpen
       </div>
       <div className="header-actions" data-conversation-open={title !== undefined}>
         <span className={`connection-chip ${connection}`} role="status"
-          title={connection === "connecting" ? t("session:sync.live")
+          data-tooltip={connection === "connecting" ? t("session:sync.live")
             : connection === "resync-required" ? t("common:connection.resync") : label}>{label}</span>
         <button type="button" aria-label={t("panels:header.shareUnavailable")} disabled>{t("panels:header.share")}</button>
-        <button type="button" aria-label={t("panels:header.bottomUnavailable")} title={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>
-        <button type="button" aria-label={t("panels:header.openDock")} title={t("panels:header.toggleDock")} aria-pressed={dockOpen} onClick={onOpenDock} disabled={!sessionReady}><PanelIcon side="right" /></button>
+        <button type="button" aria-label={t("panels:header.bottomUnavailable")} data-tooltip={t("panels:header.bottomHint")} disabled><PanelIcon side="bottom" /></button>
+        <button type="button" aria-label={t("panels:header.openDock")} data-tooltip={t("panels:header.toggleDock")} aria-pressed={dockOpen} onClick={onOpenDock} disabled={!sessionReady}><PanelIcon side="right" /></button>
       </div>
     </header>
   );
@@ -1674,7 +1676,7 @@ function WorkDock(props: WorkDockProps) {
         <strong>{t("panels:dock.title")}</strong>
         <div className="dock-header-actions">
           {showRefresh && <button type="button" className="panel-icon-button" aria-label={t("workspace:inspection.refresh")}
-            title={t("workspace:inspection.refresh")} onClick={() => setInspectionRefresh((value) => value + 1)}>
+            data-tooltip={t("workspace:inspection.refresh")} onClick={() => setInspectionRefresh((value) => value + 1)}>
             <UiIcon name="refresh" />
           </button>}
           <button type="button" className="panel-icon-button" onClick={onClose}
@@ -1784,7 +1786,7 @@ function LiveContextPanel({ state, session, workspacePath: path, temporary, open
         </strong>
         {root && <CopyButton icon text={root} feedbackMs={1600}
           label={t("common:clipboard.copyValue", { label: t("workspace:environment.root") })} />}
-        {root && <div className="workspace-location-path"><code title={root}>{root}</code></div>}
+        {root && <div className="workspace-location-path"><code data-tooltip={root}>{root}</code></div>}
         {openPath && <OpenWorkspacePath open={openPath} />}
       </div>
       {!workspace && !path && !temporary ? <UnavailablePanel label={t("workspace:capability.workspace")} /> : null}
@@ -1795,7 +1797,7 @@ function LiveContextPanel({ state, session, workspacePath: path, temporary, open
           <div><dt>{t("workspace:live.product")}</dt><dd>{session.context.project}</dd></div>
           <div><dt>{t("workspace:live.scope")}</dt><dd>{session.context.scope ?? unavailable}</dd></div>
           {identities.map(([label, value]) => <div key={label}>
-            <dt>{label}</dt><dd>{value ? <><code title={value}>{value}</code><CopyButton icon text={value}
+            <dt>{label}</dt><dd>{value ? <><code data-tooltip={value}>{value}</code><CopyButton icon text={value}
               label={t("common:clipboard.copyValue", { label })} /></> : unavailable}</dd>
           </div>)}
         </dl>

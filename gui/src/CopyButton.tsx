@@ -27,7 +27,7 @@ export function CopyButton({ text, label, icon = false, showLabel = false, feedb
   }
   if (icon) return <span className="panel-copy" data-outcome={outcome}>
     <button type="button" className="panel-icon-button" aria-label={label ?? t("clipboard.copy")}
-      title={outcome ? t(`clipboard.${outcome}`) : label ?? t("clipboard.copy")} onClick={() => void copy()}>
+      data-tooltip={outcome ? t(`clipboard.${outcome}`) : label ?? t("clipboard.copy")} onClick={() => void copy()}>
       <UiIcon name={feedbackMs === undefined || !outcome ? "copy" : outcome === "copied" ? "check" : "close"} />
     </button>
     <span className="sr-only" role="status">{outcome ? t(`clipboard.${outcome}`) : ""}</span>

@@ -110,7 +110,7 @@ for (const sample of [
       await page.mouse.move(sample.width - 10, 10);
       await expect(pin).toHaveCSS("opacity", "1");
       await selectedTitle.hover();
-      await expect(page.locator(".sidebar-chat-tooltip")).toHaveCount(0);
+      await expect(page.locator(".app-tooltip")).toHaveCount(0);
       const themedSurface = page.locator(".conversation-pane");
       const systemBackground = await themedSurface.evaluate((pane) => getComputedStyle(pane).backgroundColor);
       await page.locator("html").evaluate((root, appearance) => root.setAttribute("data-appearance", appearance),
@@ -122,7 +122,7 @@ for (const sample of [
         expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
         await expect(label.locator("..")).not.toHaveAttribute("title");
         await label.hover();
-        const tooltip = page.locator(".sidebar-chat-tooltip");
+        const tooltip = page.locator(".app-tooltip");
         await expect(tooltip).toBeVisible();
         await expect(tooltip).toHaveText((await label.textContent())!);
         await expect(tooltip).toHaveCSS("background-color", appBackground);
@@ -151,6 +151,28 @@ for (const sample of [
       expect(fontRequests).toEqual([]);
       await page.locator(".brand-actions .frame-icon").click();
       const actions = page.getByRole("button", { name: sample.locale === "zh-CN" ? "会话操作" : "Session actions" });
+      await page.locator("html").evaluate((root, appearance) => root.setAttribute("data-appearance", appearance),
+        sample.colorScheme === "dark" ? "light" : "dark");
+      await actions.hover();
+      const hint = page.locator(".app-tooltip");
+      await expect(actions).not.toHaveAttribute("title");
+      await expect(hint).toHaveText(sample.locale === "zh-CN" ? "会话操作" : "Session actions");
+      await expect(hint).toHaveCSS("background-color", await themedSurface.evaluate((element) => getComputedStyle(element).backgroundColor));
+      const hintBox = (await hint.boundingBox())!;
+      expect(hintBox.y).toBeGreaterThanOrEqual(0);
+      expect(hintBox.y + hintBox.height).toBeLessThanOrEqual(740);
+      await page.keyboard.press("Escape");
+      await expect(hint).toHaveCount(0);
+      const send = page.locator(".composer-submit");
+      await expect(send).toBeEnabled();
+      await send.hover();
+      await expect(hint).toHaveText((await send.getAttribute("data-tooltip"))!);
+      await page.mouse.move(10, 200);
+      await input.focus();
+      await page.keyboard.press("Tab");
+      await expect(actions).toBeFocused();
+      await expect(hint).toHaveText((await actions.getAttribute("data-tooltip"))!);
+      await page.locator("html").evaluate((root) => root.removeAttribute("data-appearance"));
       await actions.click();
       const add = page.getByRole("group", { name: sample.locale === "zh-CN" ? "添加" : "Add", exact: true });
       await expect(add.getByRole("menuitem")).toHaveCount(2);
