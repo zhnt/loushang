@@ -4,10 +4,13 @@ import { useTranslation } from "react-i18next";
 import { useContextMenu } from "./ContextMenu";
 import { AttachmentImage, AttachmentText } from "./SessionResources";
 import { UiIcon } from "./UiIcon";
-import { attachmentTypes, maxAttachments, supportedAttachment, supportedImage, type AttachmentDraft } from "./client/sessionResources";
+import { attachmentTypes, maxAttachments, supportedAttachment, supportedImage, type AttachmentDraft, type DirectoryPicker } from "./client/sessionResources";
 
 interface ComposerProps {
   readonly hostReferences?: boolean;
+  readonly attachmentScope?: string;
+  readonly pickClientDirectory?: DirectoryPicker;
+  readonly revokeClientDirectory?: (id: string) => Promise<boolean>;
   readonly images?: readonly AttachmentDraft[];
   readonly onImagesChange?: (images: readonly AttachmentDraft[]) => void;
   readonly title: string;
@@ -30,7 +33,7 @@ function resizeEditor(input: HTMLTextAreaElement) {
 }
 
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
-  buttonDisabled, fixture, leadingAction, model, notice, submitLabel, images = [], onImagesChange, hostReferences }: ComposerProps) {
+  buttonDisabled, fixture, leadingAction, model, notice, submitLabel, images = [], onImagesChange, hostReferences, attachmentScope, pickClientDirectory, revokeClientDirectory }: ComposerProps) {
   const { t } = useTranslation("session");
   const editor = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
@@ -40,6 +43,43 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
   const chooser = useRef<HTMLInputElement>(null);
   const [attachmentError, setAttachmentError] = useState(false);
   const canAttach = Boolean(onImagesChange && !disabled);
+  const [clientDirectoryError, setClientDirectoryError] = useState(false);
+  const picking = useRef(false);
+  const attachmentTarget = useRef({ scope: attachmentScope, images, change: onImagesChange, enabled: canAttach });
+  useLayoutEffect(() => {
+    attachmentTarget.current = { scope: attachmentScope, images, change: onImagesChange, enabled: canAttach };
+  }, [attachmentScope, images, onImagesChange, canAttach]);
+  useLayoutEffect(() => {
+    if (hostPathDialog.current?.open) hostPathDialog.current.close();
+    setClientDirectoryError(false);
+  }, [attachmentScope]);
+  useLayoutEffect(() => () => {
+    attachmentTarget.current.enabled = false;
+  }, []);
+  async function attachClientDirectory() {
+    if (!pickClientDirectory || picking.current) return;
+    const scope = attachmentScope;
+    picking.current = true;
+    setClientDirectoryError(false);
+    try {
+      const grant = await pickClientDirectory({
+        title: t("attachments.shareDirectory"), accept: t("attachments.shareReadOnly"), cancel: t("attachments.cancel"),
+      });
+      if (!grant) return;
+      const target = attachmentTarget.current;
+      const full = target.images.length >= maxAttachments;
+      if (target.scope === scope && target.enabled && !full) {
+        target.change?.([...target.images, grant]);
+      } else {
+        void revokeClientDirectory?.(grant.grantId).catch(() => {});
+        if (target.scope === scope) setAttachmentError(full);
+      }
+    } catch {
+      if (attachmentTarget.current.scope === scope) setClientDirectoryError(true);
+    } finally {
+      picking.current = false;
+    }
+  }
   function addImages(files: readonly File[]) {
     if (!canAttach || !files.length) return;
     const valid = files.filter(supportedAttachment);
@@ -86,19 +126,25 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
         addImages([...event.dataTransfer.files]);
       }}>
       {images.length ? <div className="attachment-list">
-        {images.map((file, index) => <div key={JSON.stringify(["hostPath" in file ? file.hostPath : file.name, index])}>
-          {"hostPath" in file ? <span className="permission-label" title={file.hostPath}>{file.hostPath}</span>
+        {images.map((file, index) => <div key={JSON.stringify(["grantId" in file ? file.grantId : "hostPath" in file ? file.hostPath : file.name, index])}>
+          {"grantId" in file ? <span className="permission-label"><UiIcon name="folder" />{file.name}</span>
+            : "hostPath" in file ? <span className="permission-label" title={file.hostPath}>{file.hostPath}</span>
             : supportedImage(file)
             ? <AttachmentImage blob={file} label={file.name || t("attachments.image")} />
             : <AttachmentText blob={file} label={file.name || t("attachments.file")} />}
           <button type="button" className="icon-button" disabled={!canAttach}
             aria-label={t("attachments.remove", { name: "hostPath" in file ? file.hostPath : file.name || t("attachments.image") })}
-            onClick={() => { setAttachmentError(false); onImagesChange?.(images.filter((_, i) => i !== index)); }}>
+            onClick={() => {
+              setAttachmentError(false);
+              if ("grantId" in file) void revokeClientDirectory?.(file.grantId).catch(() => {});
+              onImagesChange?.(images.filter((_, i) => i !== index));
+            }}>
             <UiIcon name="close" />
           </button>
         </div>)}
       </div> : null}
       {attachmentError && onImagesChange ? <p role="alert">{t("attachments.invalid")}</p> : null}
+      {clientDirectoryError ? <p role="alert">{t("attachments.unavailable")}</p> : null}
       <label className="visually-hidden" htmlFor="message-input">{t("composer.messageFor", { title })}</label>
       <textarea ref={editor} id="message-input" disabled={disabled} aria-describedby="message-keyboard-hint" rows={2}
         value={text} placeholder={t(fixture ? "composer.fixturePlaceholder" : "composer.livePlaceholder")}
@@ -135,10 +181,11 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
           <button type="button" className="icon-button" aria-label={t(canAttach ? "attachments.add" : "composer.attachUnavailable")}
             title={t(canAttach ? "attachments.add" : "composer.attachHint")} disabled={!canAttach}
             onClick={(event) => {
-              if (!hostReferences) chooser.current?.click();
+              if (!hostReferences && !pickClientDirectory) chooser.current?.click();
               else menu(event, [
                 { label: t("attachments.pickUpload"), run: () => chooser.current?.click() },
-                { label: t("attachments.referenceHostPath"), run: () => hostPathDialog.current?.showModal() },
+                ...(hostReferences ? [{ label: t("attachments.referenceHostPath"), run: () => hostPathDialog.current?.showModal() }] : []),
+                ...(pickClientDirectory ? [{ label: t("attachments.shareDirectory"), run: attachClientDirectory }] : []),
               ]);
             }}>＋</button>
           {leadingAction}

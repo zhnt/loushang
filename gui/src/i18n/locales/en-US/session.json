@@ -148,6 +148,11 @@
     "pickUpload": "Upload images or files",
     "referenceHostPath": "Reference an AppHost path",
     "hostPath": "Absolute AppHost file or folder path in the workspace",
-    "reference": "Add reference"
+    "reference": "Add reference",
+    "shareDirectory": "Share a local folder (read-only)",
+    "shareReadOnly": "Share read-only access",
+    "cancel": "Cancel",
+    "stopSharing": "Stop sharing",
+    "sharingStopped": "Sharing stopped"
   }
 }

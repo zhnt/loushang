@@ -2,7 +2,12 @@ import type { ResourceRefV1, ResourceV1, SessionResourceQueryV1, SessionResource
 import type { HarnessClientUiPort } from "./model";
 
 export type HostPathDraft = { readonly hostPath: string };
-export type AttachmentDraft = File | HostPathDraft;
+export interface ClientDirectoryDraft {
+  readonly grantId: string;
+  readonly name: string;
+}
+export type AttachmentDraft = File | HostPathDraft | ClientDirectoryDraft;
+export type DirectoryPicker = (labels: { title: string; accept: string; cancel: string }) => Promise<ClientDirectoryDraft | null>;
 
 export const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 const imageLimit = 4 * 1024 * 1024;
@@ -50,6 +55,15 @@ export async function uploadAttachments(client: HarnessClientUiPort, sessionId: 
   if (!files.length) return refs;
   if (!client.sessionResource || files.length > maxAttachments) throw new Error("resource_unavailable");
   for (const file of files) {
+    if ("grantId" in file) {
+      const result = await client.referenceClientDirectory?.(sessionId, file.grantId);
+      const resource = result?.resources[0];
+      if (!resource || resource.source !== "client_reference" || resource.kind !== "directory" || !/^[a-f0-9]{64}$/.test(resource.id)) {
+        throw new Error("resource_unavailable");
+      }
+      if (!refs.some((ref) => ref.id === resource.id)) refs.push({ id: resource.id, sha256: resource.id });
+      continue;
+    }
     if ("hostPath" in file) {
       const result = await client.sessionResource(sessionId, query("reference", { path: file.hostPath }));
       const resource = result.resources[0];
@@ -95,7 +109,7 @@ export async function readResource(client: HarnessClientUiPort, sessionId: strin
     signal.throwIfAborted();
     const reply = await client.sessionResource(sessionId, query("read", { resourceId: id, offset }));
     const item = reply.resources[0];
-    if (item?.id === id && item.source === "host_reference" && offset === 0 && reply.data === "") {
+    if (item?.id === id && (item.source === "host_reference" || item.source === "client_reference") && offset === 0 && reply.data === "") {
       return { blob: null, resource: item };
     }
     if (!item || item.id !== id || item.kind !== "file" || item.source !== "managed"

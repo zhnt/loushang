@@ -47,6 +47,7 @@ impl Target {
 
 pub(super) struct View {
     pub(super) target: Target,
+    pub(super) tunnel_binding: Option<[u8; 32]>,
     pub(super) path: String,
     pub(super) epoch: u64,
     stop: ReadStop,
@@ -64,6 +65,12 @@ impl View {
         mux: String,
         epoch: u64,
     ) -> Result<Self> {
+        let tunnel_binding = match &target {
+            Target::Tunnel(root, _) => {
+                Some(AppClient::tunnel_binding(root).map_err(|_| "connection_failed")?)
+            }
+            Target::Local(_) => None,
+        };
         let (commands, receive) = mpsc::channel();
         let (ready, initialized) = mpsc::channel();
         let stop = ReadStop::default();
@@ -106,6 +113,7 @@ impl View {
 
         let view = Self {
             target,
+            tunnel_binding,
             path,
             epoch,
             stop,
@@ -117,6 +125,11 @@ impl View {
         initialized
             .recv_timeout(TIMEOUT)
             .map_err(|_| "connection_failed")?;
+        if let Target::Tunnel(root, _) = &view.target {
+            if AppClient::tunnel_binding(root).ok() != view.tunnel_binding {
+                return Err("connection_failed".into());
+            }
+        }
         Ok(view)
     }
 

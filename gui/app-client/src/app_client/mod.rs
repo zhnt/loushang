@@ -513,6 +513,15 @@ impl AppClient {
         self.1.get()
     }
 
+    #[cfg(feature = "frontend")]
+    pub(crate) fn tunnel_binding(root: &Path) -> Result<[u8; 32], ()> {
+        use sha2::{Digest, Sha256};
+        let raw = record_native::read(root, &Record::filename("app-tunnel")?)?;
+        let record = Record::decode(&raw)?;
+        record.selected("app-tunnel", &record.semantic_profile()?)?;
+        Ok(Sha256::digest(raw).into())
+    }
+
     fn load_record(&self, target: AppTarget<'_>) -> Result<(Record, String, SocketAddr), ()> {
         let (root, endpoint, forwarded_port) = match target {
             AppTarget::Local(root) => (root, "workspace", None),
@@ -949,3 +958,5 @@ mod tests {
         assert!(!text.contains("controllerGeneration"));
     }
 }
+#[cfg(feature = "frontend")]
+pub(crate) mod client_directory;

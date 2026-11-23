@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryFile
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.appserver.execution.model import ResourceRefV1
@@ -32,6 +32,12 @@ from loushang.harness.artifacts import (
 )
 from loushang.harness.transcript.types import AgentTranscriptRecord, SessionImagePart
 
+from .client_references import (
+    CLIENT_REFERENCE,
+    ClientDirectoryBroker,
+    ClientReference,
+    key_digest,
+)
 from .host_references import HOST_REFERENCE, HostReference
 
 _SOURCE = "managed-resource"
@@ -90,6 +96,7 @@ class HostedResourceAccess:
         self._records = records
         self._workspace = workspace
         self._uploads: dict[str, _Upload] = {}
+        self._client = ClientDirectoryBroker()
 
     def submission_digest(self, submission_id: str) -> str | None:
         for entry in self._records():
@@ -100,6 +107,7 @@ class HostedResourceAccess:
         return None
 
     def close(self) -> None:
+        self._client.close()
         for item in self._uploads.values():
             item.file.close()
         self._uploads.clear()
@@ -128,6 +136,9 @@ class HostedResourceAccess:
             store, selected = self._uploaded(refs)
             images = []
             for blob in selected:
+                if blob.kind == CLIENT_REFERENCE:
+                    ClientReference.load(store, blob)
+                    continue
                 if blob.kind == HOST_REFERENCE:
                     HostReference.load(store, blob).resolve(self._workspace)
                     continue
@@ -144,11 +155,13 @@ class HostedResourceAccess:
         store, resources = self._manifest()
         used = {id for entry in self._records() for id in record_resource_ids(entry)}
         return tuple(self._metadata(store, blob) for id, blob in resources.items() if id in used
-                     and (kind is None or blob.kind == kind or blob.kind == HOST_REFERENCE))
+                     and (kind is None or blob.kind in {kind, HOST_REFERENCE, CLIENT_REFERENCE}))
 
     def _metadata(self, store: SessionBlobStore, blob: SessionBlobRef) -> ResourceV1:
         if blob.kind == HOST_REFERENCE:
             return HostReference.load(store, blob).resource(blob)
+        if blob.kind == CLIENT_REFERENCE:
+            return ClientReference.load(store, blob).resource(blob)
         return _resource(blob)
 
     def resolve_host(
@@ -165,6 +178,19 @@ class HostedResourceAccess:
             return reference, reference.resolve(self._workspace, relative)
         except (ArtifactStoreError, OSError, ValueError) as exc:
             raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from exc
+
+    async def read_client_directory(self, id: str, operation: Literal["list", "read"], path: str, offset: int) -> dict[str, JSONValue]:
+        try:
+            store, resources = self._manifest()
+            blob = resources.get(id)
+            if blob is None or blob.kind != CLIENT_REFERENCE or not any(
+                id in record_resource_ids(entry) for entry in self._records()
+            ):
+                raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)
+            ClientReference.load(store, blob)
+        except (ArtifactStoreError, OSError, ValueError) as exc:
+            raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from exc
+        return await self._client.request(id, operation, path, offset)
 
     def read_text(self, id: str, *, offset: int = 0) -> dict[str, JSONValue]:
         if type(offset) is not int or not 0 <= offset <= 2**20:
@@ -188,6 +214,16 @@ class HostedResourceAccess:
                 # The canonical transcript is authoritative, including messages outside the UI window.
                 return SessionResourceResultV1(self.associated())
             store, resources = self._manifest()
+            if query.action == "clientReference":
+                assert query.name is not None and query.proxy_key is not None
+                ref = ClientReference(query.name, key_digest(query.proxy_key))
+                data = ref.descriptor()
+                id = sha256(data).hexdigest()
+                blob = resources.get(id)
+                if blob is None:
+                    blob = store.put_bytes(data, logical_name=f"resources/{id}", kind=CLIENT_REFERENCE,
+                                           media_type="application/json", source=_SOURCE)
+                return SessionResourceResultV1((ref.resource(blob),))
             if query.action == "reference":
                 assert query.path is not None
                 ref = HostReference.select(self._workspace, query.path)
@@ -202,9 +238,19 @@ class HostedResourceAccess:
             if id is None or re.fullmatch(r"[a-f0-9]{64}", id) is None:
                 raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST)
             blob = resources.get(id)
+            if query.action in {"proxyPoll", "proxyComplete"}:
+                if blob is None or blob.kind != CLIENT_REFERENCE:
+                    raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)
+                assert query.proxy_key is not None
+                ClientReference.load(store, blob).require_key(query.proxy_key)
+                if query.action == "proxyPoll":
+                    return SessionResourceResultV1(proxy_request=self._client.poll(id))
+                assert query.request_id is not None
+                self._client.complete(id, query.request_id, query.data)
+                return SessionResourceResultV1()
             if query.action == "upload":
                 return self._upload(store, query, id, blob)
-            if blob is not None and blob.kind == HOST_REFERENCE:
+            if blob is not None and blob.kind in {HOST_REFERENCE, CLIENT_REFERENCE}:
                 # Descriptor bytes can include paths and native file identities.
                 if query.offset:
                     raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)

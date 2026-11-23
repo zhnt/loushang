@@ -113,6 +113,46 @@ fn workspace_error(creating: bool, code: &str) -> &'static str {
     }
 }
 
+fn backend(root: &Path) -> &'static Backend {
+    static BACKEND: OnceLock<Backend> = OnceLock::new();
+    BACKEND.get_or_init(|| Backend::new(root.to_owned()).with_service_management())
+}
+
+#[tauri::command]
+pub(crate) async fn pick_client_directory(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    connection_id: String,
+    title: String,
+    accept: String,
+    cancel: String,
+) -> Result<Option<Value>> {
+    let root = application_root(&app)?;
+    let port = Directory::read(&root)?
+        .tunnel_port(&connection_id)?
+        .ok_or("operation_unavailable")?;
+    let selected = crate::project_folder::pick_project_folder(window, title, accept, cancel)
+        .await
+        .map_err(|_| "operation_unavailable")?;
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let chosen = std::fs::canonicalize(selected).map_err(|_| "resource_unavailable")?;
+        let private = std::fs::canonicalize(&root).map_err(|_| SETTINGS_ERROR)?;
+        if private.starts_with(&chosen) || chosen.starts_with(&private) {
+            return Err("permission_denied");
+        }
+        backend(&root)
+            .through_tunnel(root.join("app-tunnels").join(&connection_id), port)
+            .grant_client_directory(chosen)
+            .map(Some)
+            .map_err(|_| "resource_unavailable")
+    })
+    .await
+    .map_err(|_| SETTINGS_ERROR)?
+}
+
 async fn dispatch(routed: Routed) -> Result<Value> {
     match routed {
         Routed::Settings(value) => Ok(value),
@@ -123,9 +163,7 @@ async fn dispatch(routed: Routed) -> Result<Value> {
             body,
             environment,
         } => {
-            static BACKEND: OnceLock<Backend> = OnceLock::new();
-            let backend =
-                BACKEND.get_or_init(|| Backend::new(root.clone()).with_service_management());
+            let backend = backend(&root);
             let backend = if let Some(port) = tunnel {
                 backend.through_tunnel(root.join("app-tunnels").join(&id), port)
             } else {

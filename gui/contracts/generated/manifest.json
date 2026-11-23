@@ -20,6 +20,7 @@
     "MuxSpaceV1"
   ],
   "safeNumericFields": [
+    "ClientResourceRequestV1.offset",
     "ExecutionGoalProgressV1.advances",
     "ExecutionGoalProgressV1.batch_count",
     "ExecutionGoalProgressV1.model_calls",
@@ -45,13 +46,13 @@
     "SessionResourceQueryV1.total_bytes"
   ],
   "scope": "execution nested values plus attachment model shapes; not complete envelopes or auth",
-  "sourceDigest": "acf38c5b022e93376ad1c3ed7f2b907bd626544b32894c51592794899fcf2231",
+  "sourceDigest": "cfa642204ac016def315f90b1be58b620a26e235b7ca714187797a4a5cb8c6b7",
   "sources": {
-    "src/loushang/appserver/execution/codec.py": "7a8b35e3268eb5ca1261de4b52c52999c56d161bed478127ff8a276ceec78154",
+    "src/loushang/appserver/execution/codec.py": "f0f81d3303408c3119c1dad1ed11a1e649f245e79d57554ba453716f82815bae",
     "src/loushang/appserver/execution/goal_codec.py": "8b6d7069b4545eefbcee860f9daf6f183cf4126c23b9edda5da6de5df2285598",
     "src/loushang/appserver/execution/goal_model.py": "00e66722106bcf9a7869e411fb59070e77bce5ff6f8101ce7f160038439bc988",
     "src/loushang/appserver/execution/model.py": "9bbe5e588809f82b652645e9ffa2ea0c636b17472c95a9fb46d2f730f228d326",
-    "src/loushang/appserver/execution/resources.py": "8818b6c5a906a506997ac16cf896a21a1eee7c80df490ae09ed191b964eebcd4",
+    "src/loushang/appserver/execution/resources.py": "5709cd0a5922e56186cdf0268cc065bc5c62f97f4e1ceaba365606068552ea77",
     "src/loushang/appserver/protocol/codec.py": "a2c5c8f16b6de4a67f2589c7c3a839566f0e63cc244dc5de6a1d4d7ee94cfd75",
     "src/loushang/appserver/protocol/errors.py": "19084c43b5fbeea67ecea58e310580c37b733364011e54570dd21f15fb00b0ee",
     "src/loushang/appserver/protocol/model.py": "904453e1b62ecce831a22cba4eacaa25cbd6cd5dd26e2328fdc06cbfd01d8af0",

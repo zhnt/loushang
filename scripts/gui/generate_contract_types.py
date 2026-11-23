@@ -44,6 +44,7 @@ DECIMAL = {
     "MuxDetachV1.controller_generation",
 }
 SAFE = {
+    "ClientResourceRequestV1.offset",
     "ResourceV1.size_bytes",
     "SessionResourceQueryV1.offset",
     "SessionResourceQueryV1.total_bytes",
@@ -166,10 +167,17 @@ def generate() -> dict[str, str]:
                 "    pub name: Option<String>,",
             ])
         if cls.__name__ == "SessionResourceQueryV1":
-            ts.append("  readonly path?: string;")
+            for field in ("path", "proxy_key", "request_id"):
+                ts.append(f"  readonly {camel(field)}?: string;")
+                rs.extend([
+                    f'    #[serde(rename = "{camel(field)}", skip_serializing_if = "Option::is_none")]',
+                    f"    pub {field}: Option<String>,",
+                ])
+        if cls.__name__ == "SessionResourceResultV1":
+            ts.append("  readonly proxyRequest?: ClientResourceRequestV1;")
             rs.extend([
-                '    #[serde(skip_serializing_if = "Option::is_none")]',
-                "    pub path: Option<String>,",
+                '    #[serde(rename = "proxyRequest", skip_serializing_if = "Option::is_none")]',
+                "    pub proxy_request: Option<ClientResourceRequestV1>,",
             ])
         if cls is app.TranscriptRecordV1:
             ts.extend(["  readonly recordId?: string;", "  readonly resourceIds?: readonly string[];",

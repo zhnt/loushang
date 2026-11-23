@@ -334,6 +334,9 @@ export interface HarnessClientUiPort {
   locateWorkspace?: (scope: import("./workspacePreview").WorkspacePreviewScope) => Promise<string>;
   sessionResource?(sessionId: string, query: import("../../contracts/generated/bridge").SessionResourceQueryV1):
     Promise<import("../../contracts/generated/bridge").SessionResourceResultV1>;
+  pickClientDirectory?: import("./sessionResources").DirectoryPicker;
+  referenceClientDirectory?(sessionId: string, grantId: string): Promise<import("../../contracts/generated/bridge").SessionResourceResultV1>;
+  revokeClientDirectory?(id: string): Promise<boolean>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   findSubmission?(sessionId: string, submissionId: string, serviceInstanceId: string): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
