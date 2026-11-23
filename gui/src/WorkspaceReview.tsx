@@ -89,7 +89,7 @@ function ReviewFile({ file, patch }: { readonly file: Change; readonly patch?: s
 function FileLabel({ file }: { readonly file: Change }) {
   const { t } = useTranslation("workspace");
   return <>
-    <code title={file.path}>{file.path}</code>
+    <code data-tooltip={file.path}>{file.path}</code>
     <span className="inspection-stat">
       {file.added !== null && file.removed !== null
         ? <><span>+{file.added}</span><span>−{file.removed}</span></>

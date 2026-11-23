@@ -489,8 +489,8 @@ body:has([role="menu"], .account-popover, dialog[open]) .workspace-scroll {
 .project-chat { display: block; width: 100%; min-height: var(--navigation-row-height); padding: 7px 8px; font-size: var(--font-size-small); font-weight: var(--font-weight-normal); }
 .project-chat-title, .project-chat-scope { display: block; overflow: hidden; text-overflow: ellipsis; }
 .project-chat-scope { margin-top: 1px; color: var(--muted); font-size: var(--font-size-caption); line-height: var(--line-height-caption); }
-.sidebar-chat-tooltip { position: fixed; z-index: 90; max-inline-size: min(280px, calc(100vw - 16px)); padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper); color: var(--ink); box-shadow: 0 4px 12px #0002; font-size: var(--font-size-caption); line-height: var(--line-height-caption); overflow-wrap: anywhere; pointer-events: none; }
-.sidebar-chat-tooltip small { display: block; color: var(--muted); font-size: inherit; }
+.app-tooltip { position: fixed; z-index: 110; max-inline-size: min(280px, calc(100vw - 16px)); padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper); color: var(--ink); box-shadow: 0 4px 12px #0002; font-size: var(--font-size-caption); line-height: var(--line-height-caption); overflow-wrap: anywhere; pointer-events: none; }
+.app-tooltip small { display: block; color: var(--muted); font-size: inherit; }
 .project-chats { display: grid; grid-template-rows: 0fr; }
 .project-chats[aria-hidden="false"] { grid-template-rows: 1fr; }
 .project-chats > div { min-height: 0; overflow: hidden; }

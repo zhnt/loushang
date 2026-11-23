@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
-import { createPortal } from "react-dom";
+import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useContextMenu } from "./ContextMenu";
 import { UiIcon } from "./UiIcon";
@@ -38,31 +37,6 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
   ];
   const sidebar = useRef<HTMLDivElement>(null);
   const pinFocus = useRef<{ id: string; pinned: boolean } | null>(null);
-  const [chatTooltip, setChatTooltip] = useState<{ text: string; workspace?: string; position: CSSProperties } | null>(null);
-
-  useEffect(() => {
-    if (!chatTooltip) return;
-    const hide = () => setChatTooltip(null);
-    const dismiss = (event: KeyboardEvent) => { if (event.key === "Escape") hide(); };
-    window.addEventListener("scroll", hide, true);
-    window.addEventListener("resize", hide);
-    window.addEventListener("keydown", dismiss);
-    return () => {
-      window.removeEventListener("scroll", hide, true);
-      window.removeEventListener("resize", hide);
-      window.removeEventListener("keydown", dismiss);
-    };
-  }, [chatTooltip]);
-
-  function showChatTooltip(button: HTMLButtonElement, text: string, workspace?: string) {
-    const labels = Array.from(button.children);
-    if (!labels.some((label) => label.scrollWidth > label.clientWidth)) return;
-    const bounds = button.getBoundingClientRect();
-    const left = Math.max(8, Math.min(bounds.left, window.innerWidth - 288));
-    const position = bounds.top < 120 ? { left, top: bounds.bottom + 4 } : { left, bottom: window.innerHeight - bounds.top + 4 };
-    setChatTooltip({ text, workspace, position });
-  }
-
   useLayoutEffect(() => {
     const expected = pinFocus.current;
     if (!expected) return;
@@ -107,17 +81,9 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
     return <div className={selected ? "session-row selected" : "session-row"} key={session.id}>
       <button type="button" className="project-chat"
         aria-current={selected ? "true" : undefined} disabled={!navigation.available}
-        onPointerEnter={(event) => {
-          if (event.pointerType !== "touch") showChatTooltip(event.currentTarget, title, scopeLabel);
-        }}
-        onPointerLeave={() => setChatTooltip(null)}
-        onFocus={(event) => {
-          if (event.currentTarget.matches(":focus-visible")) showChatTooltip(event.currentTarget, title, scopeLabel);
-        }}
-        onBlur={() => setChatTooltip(null)}
-        onClick={() => { setChatTooltip(null); navigation.select(workspace, session.id); }}
+        data-tooltip={title} data-tooltip-detail={scopeLabel} data-tooltip-overflow=""
+        onClick={() => navigation.select(workspace, session.id)}
         onContextMenu={(event) => {
-          setChatTooltip(null);
           openMenu(event, [
             { label: t(session.pinned ? "sidebar.unpin" : "sidebar.pin"), disabled: !editable, run: togglePin },
             ...(navigation.deleteChat ? [{
@@ -153,9 +119,6 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
   }
 
   return <div ref={sidebar}>
-    {chatTooltip ? createPortal(<div className="sidebar-chat-tooltip" aria-hidden="true" style={chatTooltip.position}>
-      {chatTooltip.text}{chatTooltip.workspace ? <small>{chatTooltip.workspace}</small> : null}
-    </div>, document.body) : null}
     {pinned.length ? <section className="project-navigation" aria-label={t("sidebar.pinned")}>
       <h2 className="section-label">{t("sidebar.pinned")}</h2>
       {pinned.map(({ workspace, session }) => chat(workspace, session, true))}
@@ -164,7 +127,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
       <div className="project-heading">
         <h2 className="section-label" onContextMenu={projectMenu}>{t("sidebar.projects")}</h2>
         <button type="button" className="project-action" aria-label={t("sidebar.addProject")}
-          title={t("sidebar.addProject")} disabled={!editable}
+          data-tooltip={t("sidebar.addProject")} disabled={!editable}
           onClick={navigation.openFolder} onContextMenu={projectMenu}><UiIcon name="plus" /></button>
       </div>
       {navigation.folderInput ? <form className="project-path" onSubmit={(event) => {
@@ -187,7 +150,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
         }
         return <div key={workspace}>
           <div className="project-heading project-row">
-            <button type="button" className="project-label" aria-expanded={expanded} title={project.path ?? undefined}
+            <button type="button" className="project-label" aria-expanded={expanded} data-tooltip={project.path ?? undefined}
               onContextMenu={(event) => openMenu(event, [
                 { label: t("sidebar.newSession"), disabled: createDisabled, run: create },
                 ...(project.id && navigation.editWorkspace ? [{
@@ -205,7 +168,7 @@ export function ProjectNavigation({ navigation, selectedId, titles, hiddenSessio
                 return next;
               })}><UiIcon name={expanded ? "folder" : "folder-closed"} /><span>{label}</span></button>
             <button type="button" className="project-action" disabled={createDisabled}
-              aria-label={t("sidebar.newProjectChat", { project: label })} title={t("sidebar.newProjectChat", { project: label })}
+              aria-label={t("sidebar.newProjectChat", { project: label })} data-tooltip={t("sidebar.newProjectChat", { project: label })}
               onClick={create}><UiIcon name="plus" /></button>
           </div>
           <div className="project-chats" aria-hidden={!expanded} inert={!expanded}>

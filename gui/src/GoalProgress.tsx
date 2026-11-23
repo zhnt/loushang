@@ -91,7 +91,7 @@ function GoalWorkBatches({ progress }: { progress: ExecutionGoalProgressV1 }) {
       </tr></thead>
       <tbody>{batches.map((batch) => <tr key={batch.batchId}>
         <th scope="row">
-          <code title={batch.batchId}>{batch.batchId}</code>
+          <code data-tooltip={batch.batchId}>{batch.batchId}</code>
           {batch.observationUnavailable && <small>{t("goalProgress.work.unavailable")}</small>}
         </th>
         <td>{batch.workStatus === null ? t("goalProgress.work.notObserved") : t(`goalProgress.work.states.${batch.workStatus}`)}</td>

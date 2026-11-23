@@ -356,7 +356,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.queryByText("No Session is available.")).not.toBeInTheDocument();
     expect(screen.queryByText("Connecting to AppHost…")).not.toBeInTheDocument();
     await act(async () => failSnapshot());
-    expect(screen.getByText("Disconnected", { exact: true })).toHaveAttribute("title", "Resync required");
+    expect(screen.getByText("Disconnected", { exact: true })).toHaveAttribute("data-tooltip", "Resync required");
     expect(screen.getByText("Synchronization interrupted. Resynchronize to continue.")).toBeVisible();
   });
 
