@@ -165,7 +165,8 @@ def test_execution_survives_client_process_and_recovers(owners, tmp_path, mode):
         _stop_original(coordinators[1]._starter)
 
 
-def test_managed_image_upload_execution_and_transcript_restore(owners, tmp_path):
+@pytest.mark.parametrize("linked", [False, True], ids=["default", "linked-project"])
+def test_managed_image_upload_execution_and_transcript_restore(owners, tmp_path, linked):
     import base64
     from hashlib import sha256
 
@@ -232,9 +233,12 @@ def test_managed_image_upload_execution_and_transcript_restore(owners, tmp_path)
 
         try:
             creation, connection, execution, selector, _ = await connect()
-            scope, = (await connection.client.workspace(
-                WorkspaceRequestV1("open-workspace", workspace_id="default")
-            )).workspaces
+            project = tmp_path / "project"
+            if linked:
+                project.mkdir()
+            workspace_request = (WorkspaceRequestV1("register", str(project)) if linked else
+                                 WorkspaceRequestV1("open-workspace", workspace_id="default"))
+            scope, = (await connection.client.workspace(workspace_request)).workspaces
             space = await connection.client.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
                 "coding", "image-continuity", scope.scope, scope.scope_fingerprint, "Images",
             )))

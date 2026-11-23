@@ -57,6 +57,10 @@ class LocalSandboxService:
         self._lifecycle_lock = asyncio.Lock()
         self._degraded_diagnostic_emitted = False
 
+    @property
+    def supports_captured_exec(self) -> bool:
+        return getattr(self._backend, "supports_captured_exec", False) is True
+
     def status(self) -> SandboxStatus:
         return self._status
 
@@ -160,6 +164,7 @@ class _TrackedSandboxScope:
         on_close: Callable[["_TrackedSandboxScope"], None],
     ) -> None:
         self._delegate = delegate
+        self.execute_captured = getattr(delegate, "execute_captured", None)
         self._on_close = on_close
         self._closed = False
 
