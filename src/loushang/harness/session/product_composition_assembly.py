@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import chain
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -109,9 +109,17 @@ from loushang.harness.session.capability_composition_inputs import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harness.package_product._selected_plugin_revisions import (
+        ProductSessionSelection,
+    )
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductPluginDesiredSelectionV1,
+        PackageProductRuntimeBindingV1,
+    )
+    from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
 
 
 ProductOptionalRequirementSelector = Callable[
@@ -132,6 +140,121 @@ _AGENT_HOST_CAPABILITY_IDS = tuple(
     definition.capability_id for definition in _AGENT_HOST_DEFINITIONS
 )
 
+
+class _PreparedBaseCompilation(Protocol):
+    @property
+    def plan(self) -> PluginSelectionPlanV2: ...
+    @property
+    def product_composition(self) -> ProductCompositionCompilation: ...
+    @property
+    def selected_manifest(self) -> PackageProductSelectedPluginManifestV1: ...
+    @property
+    def selected_capability_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+    @property
+    def selected_external_data_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+
+
+class _PreparedBaseSession(Protocol):
+    @property
+    def compilation(self) -> _PreparedBaseCompilation: ...
+    @property
+    def workspace_binding(self) -> CapabilityBundleProviderBinding: ...
+    @property
+    def session_inputs(self) -> SessionCapabilityCompositionInputs: ...
+
+
+class _PreparedCapabilitySession(Protocol):
+    @property
+    def runtime(self) -> PluginRuntimeResolution: ...
+    @property
+    def session_inputs(self) -> SessionCapabilityCompositionInputs: ...
+    @property
+    def selection(self) -> PluginSelection: ...
+    @property
+    def plugin_assembly(self) -> ProductPluginCompositionAssembly: ...
+
+
+def admit_prepared_product_session(
+    *,
+    base: _PreparedBaseSession | None,
+    capabilities: _PreparedCapabilitySession | None,
+    runtime: PackageProductRuntimeBindingV1 | None,
+    selected_capabilities: tuple[PackageProductSelectedPluginManifestV1, ...],
+    selected_external: tuple[PackageProductSelectedPluginManifestV1, ...],
+    desired_selections: tuple[PackageProductPluginDesiredSelectionV1, ...],
+    selected_worker: PackageProductSelectedPluginManifestV1 | None,
+    workspace_binding: CapabilityBundleProviderBinding | None,
+    has_peer_materializer: bool,
+    has_catalog_bootstrap: bool,
+    get_session_id: Callable[[], str],
+    product_id: str,
+    product_label: str,
+) -> ProductSessionSelection:
+    """Admit an exact prepared graph and pin its Package Product evidence."""
+    from loushang.harness.package_product._selected_plugin_revisions import (
+        ProductSessionSelection,
+    )
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeBindingV1,
+    )
+
+    if (
+        base is not None
+        and capabilities is not None
+        and (
+            capabilities.session_inputs is not base.session_inputs
+            or capabilities.selection.plan != base.compilation.plan
+            or capabilities.plugin_assembly.product_composition
+            is not base.compilation.product_composition
+        )
+    ):
+        raise ValueError(f"{product_label} Product Session composition changed")
+    compilation = base.compilation if base is not None else None
+    pinned = ProductSessionSelection(
+        runtime=runtime,
+        desired=desired_selections,
+        base=compilation.selected_manifest if compilation is not None else None,
+        capabilities=(
+            compilation.selected_capability_manifests
+            if compilation is not None
+            else selected_capabilities
+        ),
+        external=(
+            compilation.selected_external_data_manifests
+            if compilation is not None
+            else selected_external
+        ),
+        worker=selected_worker,
+    )
+    if capabilities is not None and (
+        base is not None or runtime is not None or selected_capabilities
+    ):
+        # Managed plugins have no Product Package pins.
+        pinned.require_prepared_inventory(
+            capabilities.runtime.packages, product_label=product_label
+        )
+    if base is not None:
+        if has_peer_materializer:
+            raise ValueError(
+                f"{product_label} base Product cannot use a peer materializer"
+            )
+        if not has_catalog_bootstrap:
+            raise ValueError(f"{product_label} base Product requires Catalog bootstrap")
+        if workspace_binding is not base.workspace_binding:
+            raise ValueError(f"{product_label} base Product workspace binding changed")
+        if runtime is None:
+            raise ValueError(f"{product_label} base Product requires runtime binding")
+        if (
+            base.compilation.plan.context.scope_id
+            != f"session:{get_session_id()}"
+        ):
+            raise ValueError(f"{product_label} base Product Session identity changed")
+    if runtime is not None and (
+        not isinstance(runtime, PackageProductRuntimeBindingV1)
+        or runtime.product_id != product_id
+    ):
+        raise ValueError(f"{product_label} Product runtime binding is invalid")
+    return pinned
 
 def bind_agent_host_session_inputs(
     compilation: ProductCompositionCompilation,

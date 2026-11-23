@@ -114,7 +114,6 @@ from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.package_product._selected_plugin_revisions import (
-    ProductSessionSelection,
     SelectionError,
     SelectionPhase,
 )
@@ -171,6 +170,9 @@ from loushang.harness.session.plugin_lifecycle._publication import (
     _owner_set_publication,
     _OwnerPublicationHooks,
     _single_owner_publication,
+)
+from loushang.harness.session.product_composition_assembly import (
+    admit_prepared_product_session,
 )
 from loushang.harness.session.resource_refresh_gate import (
     ResourceCatalogRefreshGatePort,
@@ -614,7 +616,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             needs_worker_receipt=coding_worker_turn_tool is not None,
             workspace_binding=workspace_capability_binding,
         )
-        product_selection = ProductSessionSelection.from_prepared(
+        product_selection = admit_prepared_product_session(
             base=coding_base_product_session_assembly,
             capabilities=capability_plugin_assembly,
             runtime=coding_base_product_runtime_binding,

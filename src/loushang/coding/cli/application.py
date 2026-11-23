@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import os
 import platform
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal, TextIO, cast
 
@@ -185,14 +185,18 @@ from loushang.harness.cli.plugin_listing import (
 )
 from loushang.harness.cli.session_resolution import (
     configure_agent_cli_session_discovery,
+    resolve_agent_cli_continuity_session,
 )
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.continuity import consume_prepared_activation
 from loushang.harness.diagnostics.observability_runtime import (
     session_observability_context,
     startup_observability_context,
 )
-from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
+from loushang.harness.host.product_host import (
+    ProductHostLifecycle,
+    dispose_runtime_or_session,
+    stream_is_tty,
+)
 from loushang.harness.host.rpc import run_rpc_host
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
@@ -686,7 +690,9 @@ async def run_cli(
         session_operations=_run_coding_cli_operations,
         run_host=host_binding.bind(host_runners),
         host_lifecycle=host_lifecycle,
-        dispose_runtime=_dispose_coding_cli_runtime,
+        dispose_runtime=partial(
+            dispose_runtime_or_session, runtime_method="dispose_session_runtime"
+        ),
         services=services,
         session_resolution_error=_coding_session_resolution_error,
         pre_session_bootstrap=lambda context: _run_coding_pre_session_bootstrap(
@@ -730,16 +736,6 @@ async def run_cli(
     )
 
 
-async def _dispose_coding_cli_runtime(runtime: object) -> None:
-    """Release a one-shot CLI Session and its Product runtime lease on exit."""
-
-    dispose = getattr(runtime, "dispose_session_runtime", None)
-    if callable(dispose):
-        result = dispose()
-        if inspect.isawaitable(result):
-            await result
-
-
 def _coding_session_resolution_error(context) -> str | None:
     args = context.state.args
     if args.resume is True and not resolve_effective_tui(
@@ -762,19 +758,14 @@ async def _run_coding_pre_session_bootstrap(
     args = context.state.args
     if args.resume is not True:
         return None
-    if not resolve_effective_tui(
-        context.bootstrap.launch_plan,
-        stdin_is_tty=stream_is_tty(context.bootstrap.stdin),
-        stdout_is_tty=stream_is_tty(context.bootstrap.stdout),
-    ):
-        raise RuntimeError(
-            "--resume without a session reference requires an interactive TUI; "
-            "use --continue for the latest session or --resume <session>"
-        )
+    message = _coding_session_resolution_error(context)
+    if message is not None:
+        raise RuntimeError(message)
 
     settings_manager = context.state.settings_manager
-    try:
-        composition = await bind_coding_configured_continuity(
+    session = await resolve_agent_cli_continuity_session(
+        context.runtime,
+        open_composition=lambda: bind_coding_configured_continuity(
             context.runtime,
             settings_manager=settings_manager,
             session_dir=context.state.session_dir,
@@ -785,54 +776,17 @@ async def _run_coding_pre_session_bootstrap(
                 "diagnostics_service",
                 None,
             ),
-        )
-    except BaseException as bootstrap_error:
-        try:
-            await shutdown_coding_continuity(context.runtime)
-        except BaseException as cleanup_error:
-            bootstrap_error.add_note(
-                "Coding Continuity bootstrap cleanup also failed: "
-                f"{type(cleanup_error).__name__}"
-            )
-        raise
-    continuity_reference = composition.hub.reference()
-    activated = False
-    try:
-
-        async def activate(target):
-            lease = await continuity_reference.prepare(target)
-            return await consume_prepared_activation(lease)
-
-        selection = await continuity_runner(
-            reference=continuity_reference,
-            activate=activate,
-            stdin=context.bootstrap.stdin,
-            stdout=context.bootstrap.stdout,
-            keybindings=_continuity_keybindings(context.state.settings_manager),
-        )
-        if selection is None:
-            return CliPhaseResult.exit(0)
-        result = selection.activation_result
-        session = getattr(result, "current", None)
-        if session is None:
-            getter = getattr(context.runtime, "get_current_session", None)
-            session = getter() if callable(getter) else None
-        if session is None:
-            raise RuntimeError(
-                "Continuity activation did not publish a Product session"
-            )
-        activated = True
-        return CliPhaseResult.continue_with(session)
-    finally:
-        continuity_reference.release()
-        await composition.dispose()
-        if not activated:
-            await shutdown_coding_continuity(context.runtime)
-
-
-def _continuity_keybindings(settings_manager: object | None) -> object | None:
-    getter = getattr(settings_manager, "get_keybindings", None)
-    return getter() if callable(getter) else None
+        ),
+        shutdown_continuity=shutdown_coding_continuity,
+        run_picker=continuity_runner,
+        stdin=context.bootstrap.stdin,
+        stdout=context.bootstrap.stdout,
+        settings_manager=settings_manager,
+        cleanup_label="Coding Continuity bootstrap cleanup",
+    )
+    if session is None:
+        return CliPhaseResult.exit(0)
+    return CliPhaseResult.continue_with(session)
 
 
 def _parse_application_args(

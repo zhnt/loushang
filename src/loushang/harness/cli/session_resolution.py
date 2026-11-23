@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TextIO
 
 from loushang.harness.cli.agent_args import AgentCliArgs
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session import require_session_operation_session
 from loushang.harness.transcript import SessionQuery
+
+if TYPE_CHECKING:
+    from loushang.harness.continuity import ContinuityTarget
+    from loushang.harness.continuity._binding_lifetime import (
+        _ContinuityCompositionLifetime,
+    )
 
 _COMPATIBILITY_SESSION_PRIORITIES = {
     "sessions.cwd_compatibility": 10,
@@ -174,6 +181,67 @@ async def resolve_agent_cli_session(
     )
 
 
+class _ContinuitySelection(Protocol):
+    @property
+    def activation_result(self) -> object: ...
+
+
+async def resolve_agent_cli_continuity_session(
+    runtime: object,
+    *,
+    open_composition: Callable[[], Awaitable[_ContinuityCompositionLifetime]],
+    shutdown_continuity: Callable[[object], Awaitable[None]],
+    run_picker: Callable[..., Awaitable[_ContinuitySelection | None]],
+    stdin: TextIO,
+    stdout: TextIO,
+    settings_manager: object | None,
+    cleanup_label: str,
+) -> object | None:
+    """Activate a picked session, releasing the startup composition on exit."""
+    from loushang.harness.continuity import consume_prepared_activation
+
+    try:
+        composition = await open_composition()
+    except BaseException as bootstrap_error:
+        try:
+            await shutdown_continuity(runtime)
+        except BaseException as cleanup_error:
+            bootstrap_error.add_note(
+                f"{cleanup_label} also failed: {type(cleanup_error).__name__}"
+            )
+        raise
+
+    reference = composition.hub.reference()
+    session = None
+    try:
+
+        async def activate(target: ContinuityTarget) -> object:
+            return await consume_prepared_activation(await reference.prepare(target))
+
+        get_keybindings = getattr(settings_manager, "get_keybindings", None)
+        selection = await run_picker(
+            reference=reference,
+            activate=activate,
+            stdin=stdin,
+            stdout=stdout,
+            keybindings=get_keybindings() if callable(get_keybindings) else None,
+        )
+        if selection is None:
+            return None
+        session = getattr(selection.activation_result, "current", None)
+        if session is None:
+            get_session = getattr(runtime, "get_current_session", None)
+            session = get_session() if callable(get_session) else None
+        if session is None:
+            raise RuntimeError("Continuity activation did not publish a Product session")
+        return session
+    finally:
+        reference.release()
+        await composition.dispose()
+        if session is None:
+            await shutdown_continuity(runtime)
+
+
 def resolve_latest_session_file(
     runtime: SessionResolutionRuntime,
     *,
@@ -215,6 +283,7 @@ __all__ = [
     "SessionResolutionRequest",
     "SessionResolutionRuntime",
     "agent_session_resolution_request",
+    "resolve_agent_cli_continuity_session",
     "resolve_agent_cli_session",
     "resolve_latest_session_file",
     "resolve_session",
