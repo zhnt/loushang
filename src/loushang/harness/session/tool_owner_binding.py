@@ -10,6 +10,7 @@ from loushang.harness.capabilities.contracts import CapabilityRequirement
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
 )
+from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_EDIT_FACET,
     WORKSPACE_LIST_FACET,
@@ -265,6 +266,7 @@ class _ReservedToolPackOwner:
     _requirement: ClassVar[CapabilityRequirement]
     _label: ClassVar[str]
     _disposal_error: ClassVar[Callable[[], Exception]]
+    _generation_family: ClassVar[Callable[[], object]]
 
     def __post_init__(self) -> None:
         if not isinstance(self.admission, OwnerContributionAdmissionRecord):
@@ -289,15 +291,11 @@ class _ReservedToolPackOwner:
         if admission.candidate.scope_id != self.scope_id:
             raise ValueError(f"{self._label} owner scope does not match admission")
 
-    def _bind_reserved_pack(
+    def bind(
         self,
         registration: SessionToolRegistrationPort,
-        *,
-        definitions_from_captures: Callable[
-            [tuple[SessionCapabilityConsumerCapture, ...]], tuple[ToolDefinition, ...]
-        ],
-        generation_family: Callable[[], object],
     ) -> SessionCapabilityOwnerGenerationBinding:
+        """Claim registration once; the Graph still stages the complete pack."""
         if self._bound:
             raise RuntimeError(f"{self._label} owner was already bound")
         if not callable(getattr(registration, "stage_runtime_tool", None)):
@@ -308,16 +306,21 @@ class _ReservedToolPackOwner:
             self,
             self.authority_gate,
             registration=registration,
-            definitions_from_captures=definitions_from_captures,
-            generation_family=generation_family(),
+            definitions_from_captures=self._definitions_from_captures,
+            generation_family=type(self)._generation_family(),
             label=self._label,
             disposal_error=type(self)._disposal_error,
         )
 
-    def _checked_runtime_capture(
+    def _tool_definitions(
+        self, facets: CapabilityFacetSet
+    ) -> tuple[ToolDefinition, ...]:
+        raise NotImplementedError
+
+    def _definitions_from_captures(
         self,
         captures: tuple[SessionCapabilityConsumerCapture, ...],
-    ) -> SessionCapabilityConsumerCapture:
+    ) -> tuple[ToolDefinition, ...]:
         if len(captures) != 1:
             raise ValueError(f"{self._label} owner requires one Consumer capture")
         [capture] = captures
@@ -328,4 +331,7 @@ class _ReservedToolPackOwner:
             or capture.entry.requirement != self._requirement
         ):
             raise ValueError(f"{self._label} owner received another Consumer")
-        return capture
+        definitions = self._tool_definitions(capture.facets)
+        if tuple(item.name for item in definitions) != self._tool_names:
+            raise RuntimeError(f"{self._label} factories changed admitted identities")
+        return definitions
