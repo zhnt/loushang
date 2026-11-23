@@ -4,13 +4,14 @@ import inspect
 from typing import Protocol
 
 from loushang.harness.workspace.exec import (
+    ExecCaptureSink,
     ExecRequest,
     ExecResult,
     ExecUpdateCallback,
 )
 
 from .protocols import SandboxService
-from .types import SandboxScopeRequest
+from .types import SandboxScopeRequest, SandboxUnavailableError
 
 
 class SandboxScopeRequestFactory(Protocol):
@@ -28,6 +29,9 @@ class SandboxExecBackend:
     ) -> None:
         self._service = service
         self._scope_request_factory = scope_request_factory
+        self.execute_captured = (
+            self._execute_captured if getattr(service, "supports_captured_exec", False) else None
+        )
 
     async def __call__(
         self,
@@ -35,6 +39,18 @@ class SandboxExecBackend:
         *,
         signal: object | None = None,
         on_update: ExecUpdateCallback | None = None,
+    ) -> ExecResult:
+        return await self._execute(request, signal=signal, on_update=on_update)
+
+    async def _execute_captured(
+        self, request: ExecRequest, *, capture: ExecCaptureSink,
+        signal: object | None = None, on_update: ExecUpdateCallback | None = None,
+    ) -> ExecResult:
+        return await self._execute(request, capture=capture, signal=signal, on_update=on_update)
+
+    async def _execute(
+        self, request: ExecRequest, *, signal: object | None,
+        on_update: ExecUpdateCallback | None, capture: ExecCaptureSink | None = None,
     ) -> ExecResult:
         if request.effective_environment is None:
             raise ValueError("sandbox backend requires a materialized ExecRequest")
@@ -45,7 +61,13 @@ class SandboxExecBackend:
             )
         scope = await self._service.open_scope(scope_request)
         try:
-            result = scope(request, signal=signal, on_update=on_update)
+            if capture is None:
+                result = scope(request, signal=signal, on_update=on_update)
+            else:
+                captured = getattr(scope, "execute_captured", None)
+                if not callable(captured):
+                    raise SandboxUnavailableError("sandbox scope does not support retained output capture")
+                result = captured(request, capture=capture, signal=signal, on_update=on_update)
             if inspect.isawaitable(result):
                 result = await result
             return result

@@ -10,9 +10,12 @@ from pathlib import Path
 
 from loushang.harness.environment import HostEnvironment
 from loushang.harness.workspace.exec import (
+    CapturedExecExecutor,
     ExecBackend,
+    ExecCaptureSink,
     ExecRequest,
     ExecResult,
+    ExecService,
     ExecUpdateCallback,
     LocalExecBackend,
 )
@@ -73,6 +76,7 @@ class LinuxBubblewrapBackend:
         self._local_backend = (
             local_backend if local_backend is not None else LocalExecBackend()
         )
+        self._capture_executor = ExecService(backend=self._local_backend).capture_executor()
         self._resolved_path: Path | None = None
         self._available = False
         self._managed_process_bindings = False
@@ -80,6 +84,10 @@ class LinuxBubblewrapBackend:
             "bubblewrap managed-process features have not been probed"
         )
         self._closed = False
+
+    @property
+    def supports_captured_exec(self) -> bool:
+        return self._capture_executor is not None
 
     def probe(self, environment: HostEnvironment) -> SandboxBackendStatus:
         self._available = False
@@ -186,6 +194,7 @@ class LinuxBubblewrapBackend:
             bwrap_path=self._resolved_path,
             request=request,
             local_backend=self._local_backend,
+            capture_executor=self._capture_executor,
         )
 
     def _prepare_guarded_command(
@@ -262,10 +271,12 @@ class _LinuxBubblewrapScope:
         bwrap_path: Path,
         request: SandboxScopeRequest,
         local_backend: ExecBackend,
+        capture_executor: CapturedExecExecutor | None,
     ) -> None:
         self._bwrap_path = bwrap_path
         self._request = request
         self._local_backend = local_backend
+        self._capture_executor = capture_executor
         self._closed = False
         capabilities = set(_CAPABILITIES)
         if request.network == "allowed":
@@ -287,11 +298,29 @@ class _LinuxBubblewrapScope:
         signal: object | None = None,
         on_update: ExecUpdateCallback | None = None,
     ) -> ExecResult:
+        result = self._local_backend(self._wrap(request), signal=signal, on_update=on_update)
+        if inspect.isawaitable(result):
+            result = await result
+        if not isinstance(result, ExecResult):
+            raise TypeError("bubblewrap exec backend must return ExecResult")
+        return result
+
+    async def execute_captured(
+        self, request: ExecRequest, *, capture: ExecCaptureSink,
+        signal: object | None = None, on_update: ExecUpdateCallback | None = None,
+    ) -> ExecResult:
+        if self._capture_executor is None:
+            raise SandboxUnavailableError("bubblewrap backend does not support retained output capture")
+        return await self._capture_executor.execute(
+            self._wrap(request), capture=capture, signal=signal, on_update=on_update,
+        )
+
+    def _wrap(self, request: ExecRequest) -> ExecRequest:
         if self._closed:
             raise RuntimeError("bubblewrap scope is closed")
         if request.effective_environment is None:
             raise ValueError("bubblewrap scope requires a materialized ExecRequest")
-        wrapped = replace(
+        return replace(
             request,
             command=build_bubblewrap_command(
                 self._bwrap_path,
@@ -299,16 +328,6 @@ class _LinuxBubblewrapScope:
                 request.command,
             ),
         )
-        result = self._local_backend(
-            wrapped,
-            signal=signal,
-            on_update=on_update,
-        )
-        if inspect.isawaitable(result):
-            result = await result
-        if not isinstance(result, ExecResult):
-            raise TypeError("bubblewrap exec backend must return ExecResult")
-        return result
 
     async def close(self) -> None:
         self._closed = True
