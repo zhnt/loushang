@@ -96,6 +96,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 
 from ._application_runtime import (
     FencedOrdinaryProductApplication,
+    handoff_product_open,
     hold_accepted_product_adoption,
 )
 from ._legacy_inventory import (
@@ -1399,7 +1400,7 @@ _ReplayLayoutT = TypeVar("_ReplayLayoutT")
 
 def replay_posix_legacy_product_cutover(
     layout: _ReplayLayoutT,
-    settings: SettingsManager,
+    open_settings: Callable[[], SettingsManager],
     *,
     roots: FencedRuntimeOpenKwargs,
     workspace: Path,
@@ -1419,14 +1420,24 @@ def replay_posix_legacy_product_cutover(
     default_local_kind: _LegacyResourceKind,
     removals_pending: str,
     sources_pending: str,
+    before_local_adoption: bool = False,
 ) -> None:
     """Close the read-only inventory before replaying any accepted changes."""
     read_disabled, replay_disabled = disabled
     read_builtin, replay_builtin = builtin
     read_removed, replay_removed = removed
-    with PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=True) as owner:
+    owner = PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=True)
+    with handoff_product_open(owner, cleanup_note="Legacy Product replay epoch cleanup also failed"):
+        settings = open_settings()
+    with owner:
         inventory = inventory_query(layout, owner)().inventory
-        local_ids = tuple(binding.plugin_id for binding, _, _ in inventory.active_local)
+        pending_removals = bool(inventory.unselected_source_identities)
+        if before_local_adoption and not pending_removals:
+            return
+        # A local adoption only settles the removals that precede its own receipt.
+        local_ids = () if before_local_adoption else tuple(
+            binding.plugin_id for binding, _, _ in inventory.active_local
+        )
         accepted_kinds = {
             plugin_id: accepted.resource_kind
             for plugin_id in local_ids
@@ -1438,17 +1449,18 @@ def replay_posix_legacy_product_cutover(
             is not None
         }
         disabled_acceptance = builtin_acceptance = None
-        if not local_ids:
+        if not local_ids and not before_local_adoption:
             disabled_acceptance = read_disabled(layout, owner, settings_manager=settings)
             builtin_acceptance = read_builtin(layout, owner, settings_manager=settings)
         removed_acceptance = read_removed(layout, owner, settings_manager=settings)
+        if before_local_adoption and removed_acceptance is None:
+            raise ValueError(removals_pending)
 
     replay_options = dict(
         workspace=workspace,
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
-    pending_removals = bool(inventory.unselected_source_identities)
     if pending_removals and removed_acceptance is None:
         raise RuntimeError(removals_pending)
     if removed_acceptance is not None and (pending_removals or not local_ids):
