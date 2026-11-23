@@ -5,16 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from loushang.harness.package_product._selected_plugin_revisions import (
-    ProductSessionSelection,
     SelectionFailure,
     translate_selection_failure,
-)
-from loushang.harness.package_product.product_local_wheel_runtime import (
-    PackageProductSelectedPluginManifestV1,
-)
-from loushang.harness.package_product.product_runtime import (
-    PackageProductPluginDesiredSelectionV1,
-    PackageProductRuntimeBindingV1,
 )
 from loushang.harness.session.composition_evidence import (
     observe_session_composition_evidence,
@@ -25,40 +17,23 @@ if TYPE_CHECKING:
     from loushang.coding.composition.base_product import (
         CodingBaseProductSessionAssembly,
     )
-    from loushang.coding.composition.capability_plugins import (
-        CodingCapabilityPluginCompositionAssembly,
-    )
-    from loushang.coding.composition.external_data import (
-        CodingExternalDataProductCompilation,
-    )
     from loushang.coding.package.product_worker_session_composition import (
         CodingProductWorkerOrdinarySessionBinding,
     )
     from loushang.coding.session.agent_session import AgentSession
-    from loushang.coding.session.manager import SessionManager
     from loushang.harness.capabilities.provider_binding import (
         CapabilityBundleProviderBinding,
     )
 
 
-def require_prepared_selection(
+def require_prepared_worker(
     *,
     base: CodingBaseProductSessionAssembly | None,
-    capabilities: CodingCapabilityPluginCompositionAssembly | None,
-    runtime: PackageProductRuntimeBindingV1 | None,
-    selected_capabilities: tuple[PackageProductSelectedPluginManifestV1, ...],
-    external: CodingExternalDataProductCompilation | None,
-    desired_selections: tuple[PackageProductPluginDesiredSelectionV1, ...],
     worker: CodingProductWorkerOrdinarySessionBinding | None,
     needs_worker_receipt: bool,
     workspace_binding: CapabilityBundleProviderBinding | None,
-    has_peer_materializer: bool,
-    has_catalog_bootstrap: bool,
-    session_manager: SessionManager,
-    product_id: str,
-    product_label: str,
-) -> ProductSessionSelection:
-    """Admit the original prepared graph and package evidence as one Session."""
+) -> None:
+    """Admit the explicit Coding Worker facade and its original ordinary graph."""
     if worker is not None:
         from loushang.coding.package.product_worker_session_composition import (
             CodingProductWorkerOrdinarySessionBinding,
@@ -72,7 +47,7 @@ def require_prepared_selection(
             or workspace_binding is not base.workspace_binding
             or worker.workspace_binding is not workspace_binding
         ):
-            raise ValueError(f"{product_label} Product Worker ordinary Session changed")
+            raise ValueError("Coding Product Worker ordinary Session changed")
         validate_coding_product_worker_ordinary_session_inputs(
             ordinary=worker.ordinary,
             combined=worker.combined,
@@ -80,67 +55,8 @@ def require_prepared_selection(
         )
     if needs_worker_receipt and (worker is None or worker.activation_receipt is None):
         raise ValueError(
-            f"{product_label} Worker turn Tool requires a selected Worker receipt"
+            "Coding Worker turn Tool requires a selected Worker receipt"
         )
-    if (
-        base is not None
-        and capabilities is not None
-        and (
-            capabilities.session_inputs is not base.session_inputs
-            or capabilities.selection.plan != base.compilation.plan
-            or capabilities.plugin_assembly.product_composition
-            is not base.compilation.product_composition
-        )
-    ):
-        raise ValueError(f"{product_label} Product Session composition changed")
-    compilation = base.compilation if base is not None else None
-    pinned = ProductSessionSelection(
-        runtime=runtime,
-        desired=desired_selections,
-        base=compilation.selected_manifest if compilation is not None else None,
-        capabilities=(
-            compilation.selected_capability_manifests
-            if compilation is not None
-            else selected_capabilities
-        ),
-        external=(
-            compilation.selected_external_data_manifests
-            if compilation is not None
-            else external.selected_manifests
-            if external is not None
-            else ()
-        ),
-        worker=worker.selected_worker_manifest if worker is not None else None,
-    )
-    if capabilities is not None and (
-        base is not None or runtime is not None or selected_capabilities
-    ):
-        # Managed plugins have no Product Package pins.
-        pinned.require_prepared_inventory(
-            capabilities.runtime.packages, product_label=product_label
-        )
-    if base is not None:
-        if has_peer_materializer:
-            raise ValueError(
-                f"{product_label} base Product cannot use a peer materializer"
-            )
-        if not has_catalog_bootstrap:
-            raise ValueError(f"{product_label} base Product requires Catalog bootstrap")
-        if workspace_binding is not base.workspace_binding:
-            raise ValueError(f"{product_label} base Product workspace binding changed")
-        if runtime is None:
-            raise ValueError(f"{product_label} base Product requires runtime binding")
-        if (
-            base.compilation.plan.context.scope_id
-            != f"session:{session_manager.get_header().conversation_id}"
-        ):
-            raise ValueError(f"{product_label} base Product Session identity changed")
-    if runtime is not None and (
-        not isinstance(runtime, PackageProductRuntimeBindingV1)
-        or runtime.product_id != product_id
-    ):
-        raise ValueError(f"{product_label} Product runtime binding is invalid")
-    return pinned
 
 
 def require_current_selection(session: AgentSession, failure: SelectionFailure) -> None:

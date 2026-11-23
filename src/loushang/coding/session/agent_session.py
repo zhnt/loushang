@@ -114,6 +114,7 @@ from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.package_product._selected_plugin_revisions import (
+    ProductSessionSelection,
     SelectionError,
     SelectionPhase,
 )
@@ -606,19 +607,30 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             )
         ):
             raise ValueError("Coding base Product cannot mix Plugin session routes")
-        product_selection = runtime_selection.require_prepared_selection(
+        worker = coding_product_worker_ordinary_binding
+        runtime_selection.require_prepared_worker(
+            base=coding_base_product_session_assembly,
+            worker=worker,
+            needs_worker_receipt=coding_worker_turn_tool is not None,
+            workspace_binding=workspace_capability_binding,
+        )
+        product_selection = ProductSessionSelection.from_prepared(
             base=coding_base_product_session_assembly,
             capabilities=capability_plugin_assembly,
             runtime=coding_base_product_runtime_binding,
             selected_capabilities=coding_selected_capability_manifests,
-            external=coding_external_data_product_compilation,
+            selected_external=(
+                coding_external_data_product_compilation.selected_manifests
+                if coding_base_product_session_assembly is None
+                and coding_external_data_product_compilation is not None
+                else ()
+            ),
             desired_selections=coding_product_desired_selections,
-            worker=coding_product_worker_ordinary_binding,
-            needs_worker_receipt=coding_worker_turn_tool is not None,
+            selected_worker=worker.selected_worker_manifest if worker is not None else None,
             workspace_binding=workspace_capability_binding,
             has_peer_materializer=package_materializer is not None,
             has_catalog_bootstrap=initial_resource_catalog_bootstrap is not None,
-            session_manager=session_manager,
+            get_session_id=lambda: session_manager.get_header().conversation_id,
             product_id=CODING_PRODUCT_ID,
             product_label="Coding",
         )
