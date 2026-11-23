@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Generic, Protocol, TypeVar
 
 from loushang.harness.capabilities.commands import (
@@ -19,6 +19,7 @@ from loushang.harness.capabilities.prompt_preflight import (
     SkillBodyLoader,
 )
 from loushang.harness.commands import (
+    CommandCatalog,
     CommandDispatchOutcome,
     ParsedSlashCommand,
     SessionCommandDescriptor,
@@ -54,6 +55,7 @@ from loushang.harness.session.commands.catalog import (
 )
 from loushang.harness.session.commands.execution import (
     StandardSessionCommandPorts,
+    complete_standard_session_arguments,
     execute_standard_session_command_async,
 )
 from loushang.harness.session.commands.projection import (
@@ -319,7 +321,7 @@ class SessionCommandController(Generic[ResultT]):
                     source="extension",
                     descriptor_priority=200,
                     handler_priority=300,
-                    list_descriptors=self._extension_source.list_descriptors,
+                    list_descriptors=self._extension_descriptors,
                     handler_name="extension",
                     handler=self._extension_source.dispatch,
                 ),
@@ -335,6 +337,18 @@ class SessionCommandController(Generic[ResultT]):
             ),
             pack_composer=self.pack_composer,
         )
+
+    def _extension_descriptors(self) -> list[SessionCommandDescriptor]:
+        # Wrapping only collisions preserves the displayed order of unrelated
+        # commands while matching the extension-first dispatch contract.
+        builtins = {item.effective_invocation_name: item for item in self.builtin_descriptors()}
+        result = []
+        for item in self._extension_source.list_descriptors():
+            builtin = builtins.get(item.effective_invocation_name)
+            if builtin is not None and item.precedence <= builtin.precedence:
+                item = replace(item, precedence=builtin.precedence + 1)
+            result.append(item)
+        return result
 
     def list_commands(self) -> list[SessionCommandDescriptor]:
         return self._runtime.list_commands()
@@ -485,6 +499,7 @@ class StandardSessionCommandController(
         get_skill_body_loader: Callable[[], SkillBodyLoader | None] | None = None,
         skill_body_authority: ResourceSkillBodyAuthority | None = None,
     ) -> None:
+        self._standard_ports = standard_ports
         super().__init__(
             session_manager=session_manager,
             get_extension_runner=get_extension_runner,
@@ -529,6 +544,20 @@ class StandardSessionCommandController(
             get_skill_body_loader=get_skill_body_loader,
             skill_body_authority=skill_body_authority,
         )
+
+
+    async def get_command_argument_completions(
+        self, invocation_name: str, prefix: str,
+    ) -> list[object] | None:
+        descriptor = CommandCatalog(self.list_commands()).lookup(invocation_name)
+        if descriptor is not None and descriptor.source == "builtin" and self._standard_ports is not None:
+            return [
+                {"value": value, "label": value.strip()}
+                for value in complete_standard_session_arguments(
+                    descriptor.effective_invocation_name, prefix, self._standard_ports,
+                )
+            ]
+        return await super().get_command_argument_completions(invocation_name, prefix)
 
 
 async def _execute_standard_command(

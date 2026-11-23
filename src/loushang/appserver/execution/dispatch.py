@@ -44,6 +44,18 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
                 return await client.goal_interrupt(*args, cast(str, call.execution_id))
     if call.operation.value.startswith("session/interactive_goal_"):
         return await dispatch_goal(client, call)
+    command_operations = {
+        ExecutionOperationV1.COMMAND_CATALOG: ("session_command_catalog", (call.command_prefix,)),
+        ExecutionOperationV1.COMMAND_READ: ("read_session_command", (call.command,)),
+        ExecutionOperationV1.COMMAND_SUBMIT: ("submit_session_command", (call.submission_id, call.command)),
+        ExecutionOperationV1.COMMAND_RESULT: ("session_command_result", (call.execution_id,)),
+    }
+    if call.operation in command_operations:
+        method, parameters = command_operations[call.operation]
+        handler = getattr(client, method, None)
+        if not inspect.iscoroutinefunction(handler):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await handler(*args, *parameters)
     if not isinstance(client, ExecutionPortV1):
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     match call.operation:

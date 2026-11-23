@@ -17,6 +17,11 @@ from loushang.appserver.execution.resources import (
     SessionResourceQueryV1,
     SessionResourceResultV1,
 )
+from loushang.appserver.execution.session_commands import (
+    SessionCommandCatalogV1,
+    SessionCommandInvocationV1,
+    SessionCommandResultV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -59,6 +64,7 @@ from ._execution_work import (
 from ._execution_work import (
     current_coding_hosted_resume_submission_id as current_coding_hosted_resume_submission_id,
 )
+from ._session_commands import CodingHostedSessionCommands
 from .execution_goal import _HostedExecutionGoal
 from .resources import SUBMISSION_DIGEST, SUBMISSION_ID, HostedResourceAccess
 from .resume import CodingDeferredHostedSessionV1
@@ -206,7 +212,39 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
         self._require_execution_open()
         return self._resources().exchange(query)
 
+    def _session_commands(self) -> CodingHostedSessionCommands | None:
+        binding = self._product_binding
+        active = binding._active if isinstance(binding, CodingDeferredHostedSessionV1) else binding
+        return CodingHostedSessionCommands(active._session) if active is not None else None
+
+    async def session_command_catalog(self, prefix: str) -> SessionCommandCatalogV1:
+        self._require_execution_open()
+        commands = self._session_commands()
+        if commands is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await commands.catalog(prefix)
+
+    async def read_session_command(self, invocation: SessionCommandInvocationV1) -> SessionCommandResultV1:
+        self._require_execution_open()
+        commands = self._session_commands()
+        if commands is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await commands.read(invocation)
+
+    def require_command_ready(self, invocation: SessionCommandInvocationV1) -> None:
+        self._require_execution_open()
+        commands = self._session_commands()
+        if commands is None or not self._product_binding.execution_available or self._model_lock.locked():
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        commands.require_ready(invocation)
+
     def start_execution(self, request: ExecutionRequestV1) -> None:
+        if request.command is not None:
+            self.require_command_ready(request.command)
+            commands = self._session_commands()
+            assert commands is not None
+            self._guard.start(request, commands.create_work(request.command, self._product_binding.wait_for_title))
+            return
         self.require_submission_ready()
         metadata = {
             SUBMISSION_ID: request.submission_id,
@@ -233,6 +271,9 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
         if isinstance(binding, CodingRealHostedSessionV1) and binding.goal_command_running:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         await binding.wait_for_title()
+        state = self._guard.state
+        if state is not None and not state.status.terminal:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return await super()._select_model(model_id, thinking_level)
 
     def subscribe_execution_observation(

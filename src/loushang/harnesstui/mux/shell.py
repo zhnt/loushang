@@ -29,6 +29,7 @@ from loushang.tui.theme import ThemeResolver
 
 from ..conversation.input import ConversationInputRouter
 from ..conversation.input_policy import ConversationCapabilities, ConversationOperation
+from ._session_commands import HostedSessionCommandUI, command_name
 from ._shell_screen import HostedMuxScreenV1, safe_text
 from ._shell_tasks import ShellActions, join, owned_task
 from .controller import HostedMuxControllerV1
@@ -42,6 +43,11 @@ from .projection import project_capabilities
 from .reducer import select_next, select_previous, select_window, set_active_draft
 from .session_picker import SessionPickerV1
 
+_LOCAL_COMMANDS = (
+    "help", "question", "refresh", "sessions", "resume", "new", "close",
+    "steer", "followup", "approve", "deny", "interrupt", "detach", "exit",
+    "commands", "command-result",
+)
 MAX_DRAFT_BYTES = 64 * 1024
 MAX_SHELL_DRAFT_BYTES = 1024 * 1024
 T = TypeVar("T")
@@ -96,10 +102,8 @@ class HostedMuxShellV1:
         self._execution_submissions: dict[
             ExecutionSubmissionKey, SubmissionRecoveryV1
         ] = {}
-        self._completion = SlashCommandCompletionProvider(tuple(SlashCommand(name) for name in (
-            "help", "question", "refresh", "sessions", "resume", "new", "close",
-            "steer", "followup", "approve", "deny", "interrupt", "detach", "exit",
-        )))
+        self._completion = SlashCommandCompletionProvider(tuple(SlashCommand(name) for name in _LOCAL_COMMANDS))
+        self._session_commands = HostedSessionCommandUI(self, _LOCAL_COMMANDS)
         self._completion_capabilities: ConversationCapabilities | None = None
         self.picker = SessionPickerV1(
             discovery_client,
@@ -262,6 +266,8 @@ class HostedMuxShellV1:
         # Rendering is not an authority barrier; route against the current
         # remote run fact even when no frame has been drawn since it changed.
         self.screen.state.active_started_at = 0.0 if window is not None and window.running else None
+        if key == "enter":
+            self._session_commands.preserve_typed_command()
         result = self._router.handle(event)
         try:
             self._set_draft(self.screen.composer.value)
@@ -313,6 +319,7 @@ class HostedMuxShellV1:
         # A -> B -> A is still a new presentation binding. Accepted remote
         # actions keep running, but their old global notices cannot follow it.
         self._request_serial += 1
+        self._session_commands.invalidate()
         self.screen.invalidate_binding()
         self.picker.dismiss()
         keys = {
@@ -373,12 +380,13 @@ class HostedMuxShellV1:
             "approve": "approve", "deny": "deny", "interrupt": "interrupt",
         }
         commands = [SlashCommand(name) for name in (
-            "help", "refresh", "sessions", "resume", "new", "close", "detach", "exit",
+            "help", "refresh", "sessions", "resume", "new", "close", "detach", "exit", "commands", "command-result",
         )]
         for name, operation in operations.items():
             entry = capabilities.get(operation, binding_key=capabilities.binding_key)
             if entry.availability != "unavailable":
                 commands.append(SlashCommand(name, description=entry.reason))
+        commands.extend(self._session_commands.completions())
         self._completion = SlashCommandCompletionProvider(tuple(commands))
         self._completion_capabilities = capabilities
         self.screen.composer.set_completion_provider(self._completion)
@@ -446,6 +454,12 @@ class HostedMuxShellV1:
             editor.clear()
 
     def _command(self, text: str) -> None:
+        name = command_name(text)
+        if name in {"commands", "command-result"} or name not in _LOCAL_COMMANDS:
+            if self._session_commands.client is None and name not in _LOCAL_COMMANDS:
+                raise ValueError("unsupported action")
+            self._session_commands.submit(text)
+            return
         parts = shlex.split(text)
         command, args = parts[0], parts[1:]
         if command in {"/detach", "/exit"} and not args:
@@ -490,7 +504,8 @@ class HostedMuxShellV1:
         elif command in {"/approve", "/deny", "/interrupt"} and not args:
             state, window = self._target()
             if command == "/interrupt":
-                self._turn("", mode="interrupt")
+                if not self._session_commands.interrupt(window):
+                    self._turn("", mode="interrupt")
             else:
                 if window.pending_interaction_id is None:
                     raise ValueError("no active interaction")
@@ -572,6 +587,7 @@ class HostedMuxShellV1:
             return
         try:
             await self._controller.poll()
+            self._session_commands.refresh()
             self.screen.approval_presented()  # Revoke receipts on observed invalidation, even with details closed.
             if self.state.snapshot_required:
                 self.notice = "snapshot_required: /refresh"

@@ -30,6 +30,7 @@ PageUp / PageDown scrolls history, or the open read-only details.
 F1 or /help opens this help. Esc closes details without changing a draft.
 Details and the picker consume ordinary keys; Ctrl+B remains a mux shortcut.
 F2 or /question opens the current approval details.
+/commands lists Session commands. /command-result ID retrieves a known submission.
 F3 or /sessions [cwd|user_home|global] discovers saved Sessions.
 In the picker: Tab scope, arrows select, n next page, r refresh, Enter resume.
 global means admitted user_home, not a union or filesystem-wide search.
@@ -131,6 +132,10 @@ class HostedMuxScreenV1(ScreenConversationApp):
         )
         self._help_capabilities = capabilities
         self._detail, self._detail_key = TextPager("Hosted help", _HELP.format(exit_help=exit_help, management_help=management_help) + summary), None
+
+    def show_command_details(self, title: str, body: str) -> None:
+        self.dismiss_details()
+        self._detail = TextPager(safe_text(title), safe_text(body))
 
     def show_approval(self) -> None:
         self._help_capabilities = None

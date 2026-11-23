@@ -17,7 +17,7 @@ from ..protocol import (
     SessionIdentityV1,
     SessionSnapshotRequestV1,
 )
-from .client import ExecutionPortV1
+from .client import ExecutionPortV1, SessionCommandClientV1
 from .model import (
     ExecutionErrorCodeV1,
     ExecutionRecordV1,
@@ -27,6 +27,7 @@ from .model import (
     ExecutionStateV1,
     _identifier,
 )
+from .session_commands import SessionCommandInvocationV1
 
 
 class SubmissionDeliveryV1(str, Enum):
@@ -45,13 +46,14 @@ class PendingSubmissionV1:
     identity: SessionIdentityV1
     submission_id: str
     text: str
+    command: SessionCommandInvocationV1 | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.service_instance_id)
         _identifier(self.submission_id)
         if type(self.identity) is not SessionIdentityV1:
             raise TypeError("invalid pending submission identity")
-        ExecutionRequestV1("validation", self.text)
+        ExecutionRequestV1("validation", self.text, command=self.command)
 
 
 class SubmissionRecoveryV1:
@@ -79,10 +81,18 @@ class SubmissionRecoveryV1:
         self._busy = True
         self.delivery = SubmissionDeliveryV1.SENDING
         try:
-            record = await client.submit_execution(
-                control, self.pending.service_instance_id,
-                self.pending.submission_id, self.pending.text,
-            )
+            if self.pending.command is not None:
+                if not isinstance(client, SessionCommandClientV1):
+                    raise RuntimeError("Session command capability unavailable")
+                record = await client.submit_session_command(
+                    control, self.pending.service_instance_id,
+                    self.pending.submission_id, self.pending.command,
+                )
+            else:
+                record = await client.submit_execution(
+                    control, self.pending.service_instance_id,
+                    self.pending.submission_id, self.pending.text,
+                )
             self._merge_record(record)
         except ExecutionServiceErrorV1 as error:
             self.delivery = (SubmissionDeliveryV1.INSTANCE_CHANGED

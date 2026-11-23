@@ -45,6 +45,12 @@ from .goal_model import (
 )
 from .operation import ExecutionOperationV1, ExecutionStatusV1, InterruptModeV1
 from .resources import SessionResourceQueryV1, SessionResourceResultV1
+from .session_commands import (
+    SessionCommandCatalogV1,
+    SessionCommandInvocationV1,
+    SessionCommandResultV1,
+    _bounded_text,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,17 +68,24 @@ class ResourceRefV1:
 class ExecutionInputV1:
     text: str
     resource_refs: tuple[ResourceRefV1, ...] = ()
+    command: SessionCommandInvocationV1 | None = None
 
     def __post_init__(self) -> None:
         if (type(self.resource_refs) is not tuple or len(self.resource_refs) > 4
                 or any(type(ref) is not ResourceRefV1 for ref in self.resource_refs)
                 or len({ref.id for ref in self.resource_refs}) != len(self.resource_refs)):
             raise ValueError("invalid execution resource references")
+        if self.command is not None:
+            if type(self.command) is not SessionCommandInvocationV1 or self.text != "" or self.resource_refs:
+                raise ValueError("invalid command execution input")
+            return
         if self.text != "" or not self.resource_refs:
             TurnTextV1("validation", 1, "validation", self.text)
 
     def digest(self) -> str:
         payload = [self.text, [[ref.id, ref.sha256] for ref in self.resource_refs]]
+        if self.command is not None:
+            payload = ["command", self.command.name, self.command.args]
         return sha256(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
 
@@ -82,12 +95,13 @@ class ExecutionRequestV1:
     text: str
     resource_refs: tuple[ResourceRefV1, ...] = ()
     submission_id: str | None = None
+    command: SessionCommandInvocationV1 | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.execution_id)
         if self.submission_id is not None:
             _identifier(self.submission_id)
-        ExecutionInputV1(self.text, self.resource_refs)
+        ExecutionInputV1(self.text, self.resource_refs, self.command)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +111,7 @@ class ExecutionOutcomeV1:
     status: ExecutionStatusV1
     error_code: str | None = None
     legacy_result: AckV1 | AppFailureV1 = field(default_factory=AckV1)
+    command_result: SessionCommandResultV1 | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if type(self.status) is not ExecutionStatusV1 or not self.status.terminal:
@@ -107,6 +122,8 @@ class ExecutionOutcomeV1:
             _identifier(self.error_code)
         if type(self.legacy_result) not in (AckV1, AppFailureV1):
             raise TypeError("invalid legacy execution result")
+        if self.command_result is not None and type(self.command_result) is not SessionCommandResultV1:
+            raise TypeError("invalid command execution result")
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,6 +358,8 @@ class ExecutionCallV1:
     review_submission: InteractiveGoalReviewSubmissionV1 | None = None
     resource_query: SessionResourceQueryV1 | None = None
     resource_refs: tuple[ResourceRefV1, ...] = ()
+    command: SessionCommandInvocationV1 | None = None
+    command_prefix: str | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -351,9 +370,11 @@ class ExecutionCallV1:
             raise TypeError("invalid execution call")
         submission = self.operation in {
             ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND, ExecutionOperationV1.GOAL_START,
+            ExecutionOperationV1.COMMAND_SUBMIT,
         }
         execution = self.operation in {
             ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
+            ExecutionOperationV1.COMMAND_RESULT,
         }
         text = self.operation is ExecutionOperationV1.SUBMIT
         if type(self.include_goal_batches) is not bool or (
@@ -378,6 +399,14 @@ class ExecutionCallV1:
             raise ValueError("unexpected resource references")
         if (type(self.resource_query) is SessionResourceQueryV1) != (self.operation is ExecutionOperationV1.RESOURCE):
             raise ValueError("unexpected resource query")
+        if (self.command is not None) != (self.operation in {ExecutionOperationV1.COMMAND_SUBMIT, ExecutionOperationV1.COMMAND_READ}):
+            raise ValueError("unexpected Session command")
+        if self.command is not None:
+            ExecutionInputV1("", command=self.command)
+        if (self.command_prefix is not None) != (self.operation is ExecutionOperationV1.COMMAND_CATALOG):
+            raise ValueError("unexpected command prefix")
+        if self.command_prefix is not None:
+            _bounded_text(self.command_prefix, 512)
         validate_goal_fields(self)
 
 @dataclass(frozen=True, slots=True)
@@ -403,6 +432,7 @@ class ExecutionFailureV1:
 ExecutionResultV1 = (
     ExecutionRecordV1 | ExecutionSessionSnapshotV1 | ExecutionEventsV1
     | ExecutionInterruptResultV1 | ExecutionFailureV1 | AppFailureV1 | None
+    | SessionCommandCatalogV1 | SessionCommandResultV1
     | SessionResourceResultV1 | ResumeInputLookupResultV1 | ExecutionGoalProgressV1 | InteractiveGoalViewV1 | InteractiveGoalReviewV1 | InteractiveGoalRecoveryV1
 )
 
@@ -418,6 +448,7 @@ class ExecutionResponseV1:
             ExecutionRecordV1, ExecutionSessionSnapshotV1, ExecutionEventsV1,
             ExecutionFailureV1, AppFailureV1,
             ExecutionInterruptResultV1, SessionResourceResultV1,
+            SessionCommandCatalogV1, SessionCommandResultV1,
             ResumeInputLookupResultV1, ExecutionGoalProgressV1, InteractiveGoalViewV1, InteractiveGoalReviewV1, InteractiveGoalRecoveryV1,
         ):
             raise TypeError("invalid execution response")
