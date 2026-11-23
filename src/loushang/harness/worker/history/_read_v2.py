@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Generic, TypeAlias, TypeVar, cast
@@ -13,6 +14,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .._segmented_history import (
+    CodingWorkerHistorySegmentError,
     CodingWorkerSealedSegmentV1,
     CodingWorkerSegmentedHistoryV1,
     CodingWorkerSegmentManifestV1,
@@ -21,7 +23,7 @@ from .._segmented_history import (
     _segment_name,
 )
 from ._activation_base import _ActivationReplayFields
-from ._checkpoint_history import CheckpointHistory
+from ._checkpoint_history import CheckpointHistory, _CodedFailure
 from ._cutover import _StreamCutoverMethods
 from ._deletion import _DeletionLedgerMethods
 from ._opt_in import _OptInReplayFields
@@ -61,6 +63,7 @@ class _RetainedHistoryFields:
 
 
 _HistoryT = TypeVar("_HistoryT", bound=_RetainedHistoryFields)
+_ReplayT = TypeVar("_ReplayT", bound=_V2Replay)
 
 
 def _seal_head(stem: str, seal: CodingWorkerSealedSegmentV1) -> bytes:
@@ -92,6 +95,66 @@ class RetainedHistoryReader(Generic[_HistoryT]):
         except FileNotFoundError:
             return False
         return True
+
+    def read_owned_stream(
+        self,
+        rooted: RootedFile,
+        *,
+        stem: str,
+        scope_id: str | None,
+        store_id: str | None,
+        replay_type: type[_ReplayT],
+        failure: Callable[[str], Exception],
+        allow_unbound: bool = False,
+        replay_failure: str = "owner_changed",
+    ) -> tuple[_HistoryT, CodingWorkerSegmentedHistoryV1, _ReplayT]:
+        """Check the caller's owner before replay and reconstruct its physical view."""
+        owner = self.preparation.prepared_type._index_type.from_bytes(
+            rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(
+                max_bytes=_MAX_INDEX_BYTES
+            )
+        )
+        if (
+            (not allow_unbound or scope_id is not None) and owner.scope_id != scope_id
+        ) or (
+            (not allow_unbound or store_id is not None) and owner.store_id != store_id
+        ):
+            raise failure("owner_changed")
+        retained = self.read(rooted, stem=stem)
+        replay = retained.replay
+        if not isinstance(replay, replay_type):
+            raise failure(replay_failure)
+        if stem == "worker-opt-in" and any(
+            item.scope_id != scope_id
+            for item in cast(_OptInReplayFields, replay).latest_decisions
+        ):
+            raise failure("owner_changed")
+        history = self.history_from_retained(
+            rooted,
+            retained,
+            stem=stem,
+            manifest_changed=lambda: failure("manifest_changed"),
+        )
+        return retained, history, replay
+
+    @contextmanager
+    def translate_stream_errors(
+        self,
+        error_type: type[RuntimeError],
+        *,
+        prefix: str,
+    ) -> Iterator[Callable[[str], Exception]]:
+        """Keep stream diagnostics while preserving coded lower-level failures."""
+
+        def fail(reason: str) -> RuntimeError:
+            return error_type(f"{prefix}_{reason}")
+
+        try:
+            yield fail
+        except (self.error_type, CodingWorkerHistorySegmentError) as exc:
+            raise error_type(cast(_CodedFailure, exc).code) from exc
+        except (OSError, ValueError) as exc:
+            raise fail("corrupt") from exc
 
     @staticmethod
     def history_from_retained(

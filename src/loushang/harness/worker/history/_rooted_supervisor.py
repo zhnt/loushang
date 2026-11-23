@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -263,41 +263,19 @@ class RootedSupervisorJournal(WorkerSupervisorJournal):
         self, rooted: RootedFile
     ) -> tuple[CodingWorkerSegmentedHistoryV1, _SupervisorReplayFields]:
         try:
-            owner = (
-                self._history_reader.preparation.prepared_type._index_type.from_bytes(
-                    rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
-                )
-            )
-            if (
-                owner.scope_id != self._access.scope_id
-                or owner.store_id != self._access.store_id
-            ):
-                raise self._error(
-                    "Worker Supervisor V2 owner changed",
+            _, history, replay = self._history_reader.read_owned_stream(
+                rooted,
+                stem=_STEM,
+                scope_id=self._access.scope_id,
+                store_id=self._access.store_id,
+                replay_type=self._history_reader.preparation.prepared_type._supervisor_type._replay_type,
+                failure=lambda reason: self._error(
+                    "Worker Supervisor V2 " + reason.replace("_", " "),
                     code="worker_supervisor_journal_corrupt",
-                )
-            retained = self._history_reader.read(rooted, stem=_STEM)
-            replay = retained.replay
-            if not isinstance(
-                replay,
-                self._history_reader.preparation.prepared_type._supervisor_type._replay_type,
-            ):
-                raise self._error(
-                    "Worker Supervisor V2 replay changed",
-                    code="worker_supervisor_journal_corrupt",
-                )
-            return (
-                self._history_reader.history_from_retained(
-                    rooted,
-                    retained,
-                    stem=_STEM,
-                    manifest_changed=lambda: self._error(
-                        "Worker Supervisor V2 manifest changed",
-                        code="worker_supervisor_journal_corrupt",
-                    ),
                 ),
-                cast(_SupervisorReplayFields, replay),
+                replay_failure="replay_changed",
             )
+            return history, replay
         except (
             self._history_reader.error_type,
             CodingWorkerHistorySegmentError,

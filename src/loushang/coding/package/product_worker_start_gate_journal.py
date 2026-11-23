@@ -7,14 +7,15 @@ record alone authorizes recovery cleanup or third-party Worker admission.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Literal
 
 from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
+    SORTED_UNICODE_JSONL_FORMAT as SORTED_UNICODE_JSONL_FORMAT,
+)
+from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalFormatProfile,
     JournalRecordCodec,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -47,7 +48,6 @@ from .product_worker_activation_state_journal import (
 )
 
 _FILE_NAME = "worker-start-gates.jsonl"
-_FORMAT = replace(SORTED_UNICODE_JSONL_FORMAT, separators=(",", ":"))
 
 
 class CodingWorkerStartGateJournalError(RuntimeError):
@@ -103,10 +103,6 @@ class CodingWorkerStartGateJournal(StartGateHistory[CodingWorkerStartGateRecordV
     @property
     def _record_type(self) -> type[CodingWorkerStartGateRecordV1]:
         return CodingWorkerStartGateRecordV1
-
-    @property
-    def _record_format(self) -> JournalFormatProfile:
-        return _FORMAT
 
     @property
     def _record_codec(self) -> JournalRecordCodec[CodingWorkerStartGateRecordV1]:

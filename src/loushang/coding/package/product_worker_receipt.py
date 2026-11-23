@@ -16,9 +16,10 @@ from loushang.coding.hosted._worker_canary import (
 from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 from loushang.coding.session.manager import SessionManager
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
+    SORTED_UNICODE_JSONL_FORMAT as SORTED_UNICODE_JSONL_FORMAT,
+)
+from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalFormatProfile,
     JournalLoadPolicy,
     JournalRecordCodec,
 )
@@ -65,7 +66,6 @@ from loushang.harness.worker.history._receipts import (
     receipt_line,
 )
 from loushang.harness.worker.product_activation import (
-    ActivationWitness,
     ProductWorkerActivationPolicyV1,
     ProductWorkerActivationReceiptV1,
 )
@@ -84,8 +84,6 @@ from .product_worker_policy import (
     CodingWorkerPolicySelectionError,
     derive_coding_selected_worker_policy,
 )
-
-_STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
 
 class CodingWorkerNativeClosureReadPort(ProductNativeClosureReadPort, Protocol):
@@ -149,10 +147,6 @@ class _CodingReceiptHistory(ReceiptHistory[CodingWorkerReceiptRecordV1]):
     @property
     def _record_codec(self) -> JournalRecordCodec[CodingWorkerReceiptRecordV1]:
         return _CODEC
-
-    @property
-    def _record_format(self) -> JournalFormatProfile:
-        return SORTED_UNICODE_JSONL_FORMAT
 
     def _max_history_records(self) -> int:
         return _MAX_RECEIPTS
@@ -237,25 +231,7 @@ class CodingWorkerProductReceiptOwner(
     _receipt_history_initialize = _CodingReceiptHistory.__init__
     _receipt_history_access = staticmethod(_CodingHistoryAccess)
 
-    def __init__(
-        self,
-        *,
-        product_owner: PosixLocalWheelProductSessionOwner,
-        runtime: PackageProductRuntimeBindingV1,
-        selected: PackageProductSelectedPluginManifestV1,
-        opt_in_journal: CodingWorkerOptInJournal,
-        native_closure_reader: CodingWorkerNativeClosureReadPort,
-        session_discovery_reader: CodingWorkerSessionDiscoveryReadPort | None = None,
-    ) -> None:
-        _PosixWorkerProductReceiptAuthority._initialize_receipt_owner(
-            self,
-            product_owner=product_owner,
-            runtime=runtime,
-            selected=selected,
-            opt_in_journal=opt_in_journal,
-            native_closure_reader=native_closure_reader,
-            session_discovery_reader=session_discovery_reader,
-        )
+    __init__ = _PosixWorkerProductReceiptAuthority._initialize_receipt_owner
 
     def _history_for_product(
         self, product: PosixLocalWheelProductSessionOwner

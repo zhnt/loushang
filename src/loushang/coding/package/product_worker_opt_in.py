@@ -6,15 +6,16 @@ selection, activation receipt, native launch, or Capability publication.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal
 
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
+    SORTED_UNICODE_JSONL_FORMAT as SORTED_UNICODE_JSONL_FORMAT,
+)
+from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalFormatProfile,
     JournalRecordCodec,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
@@ -88,22 +89,9 @@ def _decode_coding_worker_opt_in_history(
     )
 
 
-def _fold_opt_in_events(
-    events: tuple[CodingWorkerOptInDecisionV1, ...],
-    *,
-    scope_id: str,
-    start_revision: int = 1,
-    initial_latest: Mapping[str, CodingWorkerOptInDecisionV1] | None = None,
-    initial_operations: frozenset[str] = frozenset(),
-) -> tuple[dict[str, CodingWorkerOptInDecisionV1], frozenset[str]]:
-    return fold_opt_in_events(
-        events,
-        scope_id=scope_id,
-        start_revision=start_revision,
-        initial_latest=initial_latest,
-        initial_operations=initial_operations,
-        error_type=CodingWorkerOptInJournalError,
-    )
+_fold_opt_in_events = partial(
+    fold_opt_in_events, error_type=CodingWorkerOptInJournalError
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,10 +136,6 @@ class CodingWorkerOptInJournal(
     @property
     def _record_codec(self) -> JournalRecordCodec[CodingWorkerOptInDecisionV1]:
         return _CODEC
-
-    @property
-    def _record_format(self) -> JournalFormatProfile:
-        return SORTED_UNICODE_JSONL_FORMAT
 
     def _max_history_bytes(self) -> int:
         return _MAX_SEGMENT_BYTES

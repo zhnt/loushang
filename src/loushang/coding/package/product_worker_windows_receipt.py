@@ -11,12 +11,10 @@ from loushang.harness.package_product._worker_product_authority import (
     _WindowsWorkerProductReceiptAuthority,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
-    PackageProductSelectedPluginManifestV1,
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeActivationError,
-    PackageProductRuntimeBindingV1,
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
@@ -27,8 +25,10 @@ from .product_worker_receipt import (
     CodingWorkerReceiptError,
     CodingWorkerReceiptRecordV1,
     CodingWorkerSelectedPayloadV1,
-    CodingWorkerSessionDiscoveryReadPort,
     _CodingWorkerReceiptAuthority,
+)
+from .product_worker_receipt import (
+    CodingWorkerSessionDiscoveryReadPort as CodingWorkerSessionDiscoveryReadPort,
 )
 from .product_worker_windows_installed_backend import (
     CodingWindowsWorkerInstalledBackendError,
@@ -65,21 +65,7 @@ class CodingWindowsWorkerProductReceiptOwner(
     _receipt_native_factory = staticmethod(CodingWindowsWorkerInstalledBackendReader)
     _receipt_journal_factory = staticmethod(CodingWindowsWorkerReceiptJournal)
 
-    def __init__(
-        self,
-        *,
-        product: WindowsLocalWheelProductSessionOwner,
-        runtime: PackageProductRuntimeBindingV1,
-        selected: PackageProductSelectedPluginManifestV1,
-        session_discovery_reader: CodingWorkerSessionDiscoveryReadPort | None = None,
-    ) -> None:
-        _WindowsWorkerProductReceiptAuthority._initialize_receipt_owner(
-            self,
-            product=product,
-            runtime=runtime,
-            selected=selected,
-            session_discovery_reader=session_discovery_reader,
-        )
+    __init__ = _WindowsWorkerProductReceiptAuthority._initialize_receipt_owner
 
     def _read_backend(
         self, product: WindowsLocalWheelProductSessionOwner
