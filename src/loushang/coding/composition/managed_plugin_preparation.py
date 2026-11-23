@@ -14,7 +14,6 @@ from loushang.coding.composition.base_plugin import (
     CodingBasePluginAssemblyError,
 )
 from loushang.coding.composition.capability_plugins import (
-    CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionPreparation,
     CodingCapabilityPluginCompositionRequest,
     create_coding_capability_plugin_composition_request,
@@ -33,20 +32,11 @@ from loushang.coding.plugin_manager.lifecycle import (
 )
 from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.coding.session.manager import SessionManager
-from loushang.harness.capabilities.provider_binding import (
-    CapabilityBundleProviderBinding,
-)
-from loushang.harness.config.agent import CapabilityMountMode
-from loushang.harness.package_product._selected_plugin_revisions import (
-    ProductAdmissionFailure,
-    capture_enabled_plugin_recheck,
-)
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.session._cleanup import ExplicitTemporaryDirectory
 from loushang.harness.session.bootstrap_construction import (
-    PreparationRootCustody,
     prepare_managed_plugin_startup,
 )
 from loushang.harness.session.bootstrap_services import BootstrapServices
@@ -159,75 +149,42 @@ def prepare_managed_plugins(
     )
 
 
-def bind_deferred_plugin(
-    workspace_binding: CapabilityBundleProviderBinding,
+def prepare_deferred_capability(
+    configuration: CodingCapabilityPluginConfig,
+    state_root: Path,
+    state_cleanup: _Cleanup | None,
     *,
     session_manager: SessionManager,
     session_id: str,
     plugin_id: str,
     managed: ManagedPluginPreparation | None,
     runtime: PackageProductRuntimeBindingV1 | None,
-    build_config: Callable[[], CodingCapabilityPluginConfig],
-    temporary_prefix: str,
-    persistent_root: Callable[[], Path],
     legacy_disabled_plugin_ids: frozenset[str],
     clock: Callable[[], int],
-    host_boot_id: str,
-    tool_modes: Mapping[str, CapabilityMountMode],
-    max_manifest_files: int,
-    max_manifest_bytes: int,
-    admission_failure: ProductAdmissionFailure,
-) -> tuple[CodingCapabilityPluginCompositionAssembly, _Cleanup | None]:
-    """Prepare a requested generation and retain its selected Product evidence."""
-    custody = PreparationRootCustody[CodingCapabilityPluginCompositionPreparation]()
-    state_root = custody.prepare_roots(
-        state_prefix=None if session_manager.persist else temporary_prefix,
-        private_prefix=None,
-        persistent_root=persistent_root,
-        directory_factory=ExplicitTemporaryDirectory,
-    )
-    current_selection_check = None
-    try:
-        configurations = {plugin_id: build_config()}
-        if runtime is not None:
-            current_selection_check = capture_enabled_plugin_recheck(
-                runtime,
-                plugin_id,
-                max_files=max_manifest_files,
-                max_total_bytes=max_manifest_bytes,
-                admission_failure=admission_failure,
-            )
-            custody.preparation = prepare_coding_product_capability_plugin_composition(
-                runtime,
-                session_id=session_id,
-                configurations=configurations,
-                state_root=state_root,
-                clock=clock,
-            )
-            if custody.state_root is not None:
-                custody.preparation.state_cleanup = custody.state_cleanup
-        else:
-            assert managed is not None
-            custody.preparation = managed.prepare_capabilities(
-                create_coding_capability_plugin_composition_request(
-                    clock=clock, plugin_ids=frozenset({plugin_id})
-                ),
-                configurations,
-                session_manager=session_manager,
-                session_id=session_id,
-                state_root=state_root,
-                clock=clock,
-                legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
-                management_cleanup=managed.deferred_cleanup,
-                state_cleanup=custody.state_cleanup,
-            )
-        assembly = custody.preparation.bind_workspace(
-            workspace_binding, host_boot_id=host_boot_id, tool_modes=tool_modes, clock=clock
+) -> CodingCapabilityPluginCompositionPreparation:
+    configurations = {plugin_id: configuration}
+    if runtime is not None:
+        return prepare_coding_product_capability_plugin_composition(
+            runtime,
+            session_id=session_id,
+            configurations=configurations,
+            state_root=state_root,
+            clock=clock,
         )
-        return assembly, current_selection_check
-    except BaseException:
-        custody.cleanup_preparation_sequentially()
-        raise
+    assert managed is not None
+    return managed.prepare_capabilities(
+        create_coding_capability_plugin_composition_request(
+            clock=clock, plugin_ids=frozenset({plugin_id})
+        ),
+        configurations,
+        session_manager=session_manager,
+        session_id=session_id,
+        state_root=state_root,
+        clock=clock,
+        legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
+        management_cleanup=managed.deferred_cleanup,
+        state_cleanup=state_cleanup,
+    )
 
 
 def _session_manager_plugin_owner_id(session_manager: SessionManager) -> str:

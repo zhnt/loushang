@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from functools import partial
-from typing import ClassVar, Generic, ParamSpec, Protocol, TypeVar, cast
+from typing import ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.harness.capabilities.component_host import (
     CapabilityComponentAdmissionStart,
@@ -40,7 +39,7 @@ from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_WRITE_FACET,
 )
 from loushang.harness.config.agent import CapabilityMountMode
-from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
+from loushang.harness.runtime._owned_tasks import _run_owned_sync
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
     RegistrationLease,
@@ -449,8 +448,6 @@ _DeferredAssemblyT = TypeVar(
     "_DeferredAssemblyT", bound=_PublishedCapabilityComposition
 )
 _DeferredAccessT = TypeVar("_DeferredAccessT")
-_DeferredOperation = ParamSpec("_DeferredOperation")
-_DeferredResult = TypeVar("_DeferredResult")
 
 
 @dataclass(slots=True)
@@ -473,8 +470,12 @@ class _DeferredSessionCapabilityGeneration(
     profile_fingerprint: str
     workspace_binding: CapabilityBundleProviderBinding
     registration: SessionToolRegistrationPort
-    assembly_factory: Callable[[], Awaitable[_DeferredAssemblyT]] = field(repr=False)
-    current_selection_check: Callable[[], None] | None = field(default=None, repr=False)
+    assembly_factory: Callable[
+        [], Awaitable[tuple[_DeferredAssemblyT, Callable[[], None] | None]]
+    ] = field(repr=False)
+    current_selection_check: Callable[[], None] | None = field(
+        default=None, init=False, repr=False
+    )
     assembly: _DeferredAssemblyT | None = field(default=None, init=False, repr=False)
     graph: RuntimeCapabilityGraphRuntime | None = field(
         default=None, init=False, repr=False
@@ -507,7 +508,7 @@ class _DeferredSessionCapabilityGeneration(
             raise RuntimeError(
                 f"deferred {self._label} generation was already prepared"
             )
-        assembly = await self.assembly_factory()
+        assembly, self.current_selection_check = await self.assembly_factory()
         self.assembly = assembly
         self.assert_current()
         if set(assembly.tool_owners) != {self._plugin_id}:
@@ -537,7 +538,7 @@ class _DeferredSessionCapabilityGeneration(
             raise ValueError(
                 f"deferred {self._label} requires an ungated workspace binding"
             )
-        await _run_sync(
+        await _run_owned_sync(
             assembly.claim_runtime,
             f"{self._runtime_claim_prefix}:{self.session_id}",
         )
@@ -545,7 +546,7 @@ class _DeferredSessionCapabilityGeneration(
         self._component_start = request.begin_admission(component_host)
         binding = owner.bind(self.registration)
         self._owner_start = binding.authority_gate.begin(admission)
-        self.prepared_component = await _run_sync(
+        self.prepared_component = await _run_owned_sync(
             request.prepare_component, component_host, self._component_start
         )
         graph = RuntimeCapabilityGraphRuntime(
@@ -608,7 +609,7 @@ class _DeferredSessionCapabilityGeneration(
             )
             for plugin_id in assembly.management_leases
         }
-        await _run_sync(assembly.prepare_owner_generations, self.receipts)
+        await _run_owned_sync(assembly.prepare_owner_generations, self.receipts)
 
     def _access_from(self, capture: CapabilityFacetSet) -> _DeferredAccessT:
         raise NotImplementedError
@@ -679,12 +680,3 @@ class _DeferredSessionCapabilityGeneration(
         if owner_start is not None:
             owner_start.authority_gate.abort(owner_start)
             self._owner_start = None
-
-
-async def _run_sync(
-    func: Callable[_DeferredOperation, _DeferredResult],
-    *args: _DeferredOperation.args,
-    **kwargs: _DeferredOperation.kwargs,
-) -> _DeferredResult:
-    task = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
-    return await _await_cancellation_atomic(task)

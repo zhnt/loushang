@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Coroutine, Generator
 from time import monotonic
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Generic, ParamSpec, Protocol, TypeVar
 
 from loushang.foundation._owned_tasks import (
     _join_failure_first,
@@ -13,9 +13,21 @@ from loushang.foundation._owned_tasks import (
 )
 
 T = TypeVar("T")
+_Operation = ParamSpec("_Operation")
 
 
 _await_cancellation_atomic = _join_failure_first
+
+
+async def _run_owned_sync(
+    func: Callable[_Operation, T],
+    *args: _Operation.args,
+    **kwargs: _Operation.kwargs,
+) -> T:
+    """Join an offloaded runtime operation using the owner's cancellation order."""
+    return await _join_failure_first(
+        asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
+    )
 
 
 async def _finish_cooperative_scan(steps: Generator[object, None, T]) -> T:

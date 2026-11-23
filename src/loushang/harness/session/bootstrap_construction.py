@@ -1230,3 +1230,39 @@ class PreparationRootCustody(Generic[_PreparationT]):
             after,
         )
         run_cleanup_steps(error, ((label, cleanup) for label, cleanup in steps if cleanup is not None))
+
+
+_ConfigurationT = TypeVar("_ConfigurationT")
+_BoundPluginT = TypeVar("_BoundPluginT")
+
+
+def bind_deferred_plugin(
+    *,
+    state_prefix: Callable[[], str | None],
+    persistent_root: Callable[[], Path],
+    configure: Callable[[], _ConfigurationT],
+    capture_fenced_selection: Callable[[], _Cleanup] | None,
+    prepare: Callable[[_ConfigurationT, Path, _Cleanup | None], _PreparationT],
+    bind: Callable[[_PreparationT], _BoundPluginT],
+) -> tuple[_BoundPluginT, _Cleanup | None]:
+    """Transfer preparation and root custody to a bound deferred plugin."""
+
+    custody: PreparationRootCustody[_PreparationT] = PreparationRootCustody()
+    state_root = custody.prepare_roots(
+        state_prefix=state_prefix(),
+        private_prefix=None,
+        persistent_root=persistent_root,
+    )
+    try:
+        configuration = configure()
+        require_current = (
+            capture_fenced_selection() if capture_fenced_selection is not None else None
+        )
+        custody.preparation = prepare(configuration, state_root, custody.state_cleanup)
+        # Managed preparation receives cleanup up front for its failure custodian.
+        if capture_fenced_selection is not None and custody.state_root is not None:
+            custody.preparation.state_cleanup = custody.state_cleanup
+        return bind(custody.preparation), require_current
+    except BaseException:
+        custody.cleanup_preparation_sequentially()
+        raise
