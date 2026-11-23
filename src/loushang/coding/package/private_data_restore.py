@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import (
@@ -22,18 +23,17 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.private_data_backup import (
-    preview_posix_restore_target,
-    read_deleted_restore_source,
-    restore_private_archive,
-    verify_posix_restored_target,
-)
-from loushang.harness.plugin_management.private_data_deletion import (
-    PluginPrivateDataDeletionReceiptV1,
+    PosixPrivateDataRestore,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 from .installation_private_data import (
     coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
+)
+from .private_data_backup import (
+    CodingArchPrivateDataBackupReceiptV1,
+    _private_io,
+    _verify_files,
 )
 from .private_data_backup import (
     _archive_codec as _archive_codec,
@@ -43,10 +43,6 @@ from .private_data_backup import (
 )
 from .private_data_backup import (
     _digest as _digest,
-)
-from .private_data_backup import (
-    _private_io,
-    _verify_files,
 )
 from .private_data_backup import (
     _write_or_verify_file as _write_or_verify_file,
@@ -83,6 +79,25 @@ from .private_data_restore_records import (
 
 _RESTORE_STAGE_PREFIX = ".arch-restore-"
 _RESTORE_STAGE_SUFFIX = ".staging"
+
+
+def _archive_restore(
+    layout: CodingPluginLifecycleStateLayout,
+) -> PosixPrivateDataRestore[
+    CodingArchPrivateDataTargetSnapshotV1,
+    CodingArchPrivateDataBackupReceiptV1,
+]:
+    return PosixPrivateDataRestore(
+        private_base=layout.private_data_base,
+        io=_private_io,
+        codec=_archive_codec,
+        backup_parent=partial(_backup_parent, layout),
+        capture_target=partial(
+            _capture_target_snapshot, private_base=layout.private_data_base
+        ),
+        stage_prefix=_RESTORE_STAGE_PREFIX,
+        stage_suffix=_RESTORE_STAGE_SUFFIX,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,25 +202,22 @@ class CodingArchPrivateDataRestoreOwner:
                 self.product.desired_state.snapshot(),
                 expected_plan=expected_plan,
             )
-            return restore_private_archive(
-                self.layout.private_data_base,
-                _backup_parent(self.layout, key),
+            return _archive_restore(self.layout).restore(
+                target,
                 backup_id,
                 key,
                 deletion_events=deletion.events,
                 expected_archive=(
                     None
                     if expected_plan is None
-                    else (expected_plan.source_target_id, expected_plan.deletion_receipt_id)
+                    else (
+                        expected_plan.source_target_id,
+                        expected_plan.deletion_receipt_id,
+                    )
                 ),
-                target=target,
-                io=_private_io,
-                codec=_archive_codec,
                 expected_target_state=(
                     None if expected_plan is None else expected_plan.target_state
                 ),
-                stage_prefix=_RESTORE_STAGE_PREFIX,
-                stage_suffix=_RESTORE_STAGE_SUFFIX,
                 prepare=_prepare_private_tree,
                 verify_files=lambda fd, source: _verify_files(fd, source),
                 write_file_factory=lambda: _write_or_verify_file,
@@ -238,28 +250,6 @@ def _admit_restore(
     return deletion
 
 
-def _read_restore_source(
-    layout: CodingPluginLifecycleStateLayout,
-    key: PluginInstallationKeyV1,
-    backup_id: str,
-    deletion: CodingArchPrivateDataDeletionJournal,
-    *,
-    installation_error: str,
-    deletion_error: str,
-) -> tuple[CodingArchPrivateDataTargetSnapshotV1, PluginPrivateDataDeletionReceiptV1]:
-    return read_deleted_restore_source(
-        layout.private_data_base,
-        _backup_parent(layout, key),
-        backup_id,
-        key,
-        io=_private_io,
-        codec=_archive_codec,
-        deletion_events=deletion.events,
-        installation_error=installation_error,
-        deletion_error=deletion_error,
-    )
-
-
 def _current_completed_restore(
     layout: CodingPluginLifecycleStateLayout,
     state_root: Path,
@@ -276,24 +266,20 @@ def _current_completed_restore(
         desired_snapshot(),
         removal_error="Coding Arch restore confirmation requires removal",
     )
-    source, deletion_receipt = _read_restore_source(
-        layout,
-        key,
+
+    def find_completion(
+        deletion_receipt_id: str,
+    ) -> CodingArchPrivateDataRestoreEventV1:
+        restore_id = restore_id_for(key, backup_id, deletion_receipt_id)
+        return CodingArchPrivateDataRestoreJournal(state_root).completed_for(restore_id)
+
+    return _archive_restore(layout).completed(
         backup_id,
-        deletion,
-        installation_error="Coding Arch restore backup Installation changed",
-        deletion_error="Coding Arch restore confirmation lacks deletion",
+        key,
+        deletion_events=deletion.events,
+        find_completion=find_completion,
+        resolve_target=partial(coding_arch_installation_private_data_root, layout, key),
     )
-    completion_id = restore_id_for(key, backup_id, deletion_receipt.receipt_id)
-    completion = CodingArchPrivateDataRestoreJournal(state_root).completed_for(
-        completion_id
-    )
-    root = coding_arch_installation_private_data_root(layout, key)
-    verify_posix_restored_target(layout.private_data_base, root, source, io=_private_io)
-    target = _capture_target_snapshot(root, private_base=layout.private_data_base)
-    if target.root_identity is None:
-        raise ValueError("Coding Arch restored target is absent")
-    return completion, target.target_id
 
 
 def _preview_restore(
@@ -307,30 +293,14 @@ def _preview_restore(
 ) -> CodingArchPrivateDataRestorePlanV1:
     desired = desired_snapshot()
     deletion = _admit_restore(state_root, key, desired)
-    source, deletion_receipt = _read_restore_source(
-        layout,
-        key,
-        backup_id,
-        deletion,
-        installation_error="Coding Arch restore Installation changed",
-        deletion_error="Coding Arch restore lacks completed deletion",
-    )
-    current = _capture_target_snapshot(root, private_base=layout.private_data_base)
-    target_state = preview_posix_restore_target(
-        layout.private_data_base,
-        root,
-        source,
-        io=_private_io,
-        target_present=current.root_identity is not None,
-        stage_name=_RESTORE_STAGE_PREFIX + backup_id + _RESTORE_STAGE_SUFFIX,
-        stage_prefix=_RESTORE_STAGE_PREFIX,
-        stage_suffix=_RESTORE_STAGE_SUFFIX,
+    source_target_id, deletion_receipt_id, target_state = _archive_restore(layout).preview(
+        root, backup_id, key, deletion_events=deletion.events
     )
     return CodingArchPrivateDataRestorePlanV1(
         installation_key=key,
         backup_id=backup_id,
-        deletion_receipt_id=deletion_receipt.receipt_id,
-        source_target_id=source.target_id,
+        deletion_receipt_id=deletion_receipt_id,
+        source_target_id=source_target_id,
         desired_inventory_revision=desired.inventory_revision,
         target_state=target_state,
     )
