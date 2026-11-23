@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from dataclasses import replace as replace
 from hashlib import sha256
@@ -52,9 +52,6 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
 )
 from loushang.harness.environment import HostEnvironment
-from loushang.harness.package_product._selected_plugin_revisions import (
-    capture_external_data_declaration,
-)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resource_catalog.product_snapshot_source import (
     ProductSelectedResourceInput,
@@ -92,10 +89,8 @@ from loushang.harness.session.product_composition_assembly import (
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductDataBaseSelection,
-    SelectedProductDataDeclaration,
-    _rebind_resource_owner_trust,
+    ProductDataResourcePolicy,
     assemble_agent_data_composition,
-    assemble_product_data_resources,
     bind_agent_host_session_inputs,
     prepare_product_selected_contribution_candidate,
     project_selected_product_data_candidates,
@@ -309,23 +304,15 @@ def extend_coding_base_product_data_resources(
         item.manifest.name for item in external
     ):
         raise ValueError("External data selections must be sorted and unique")
-    declarations = _capture_external_resource_declarations(external, standalone=False)
-    plan, composition, owners = assemble_product_data_resources(
+    plan, composition, owners = _EXTERNAL_DATA_RESOURCES.compile(
         external,
-        declarations,
-        product_id=base.plan.context.product_id,
-        scope_id=base.plan.context.scope_id,
-        policy_revision=base.plan.context.policy_revision,
-        evaluated_at=evaluated_at,
-        prepare=_candidate,
-        bind_owners=_bind_coding_external_resource_owners,
-        external_trust_classes=EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
-        base=ProductDataBaseSelection(
+        lambda: ProductDataBaseSelection(
             plan=base.plan,
             manifest=base.selected_manifest,
             owner_bindings=base.owner_bindings,
             trust_classes=("host-equivalent-local",),
         ),
+        evaluated_at=evaluated_at,
     )
     return replace(
         base,
@@ -339,51 +326,15 @@ def extend_coding_base_product_data_resources(
     )
 
 
-def _capture_external_resource_declarations(
-    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
-    *,
-    standalone: bool,
-) -> tuple[SelectedProductDataDeclaration, ...]:
-    invalid = (
-        "Product external data Resource selection changed"
-        if standalone
-        else "External Product data Resource selection changed"
-    )
-    captured: list[SelectedProductDataDeclaration] = []
-    for item in selected:
-        reservation, declaration = capture_external_data_declaration(
-            item,
-            trust_classes=EXTERNAL_DATA_TRUST_CLASSES,
-            resource_owners=EXTERNAL_DATA_RESOURCE_OWNERS,
-            permits_owner=permits_external_data_owner,
-            invalid=invalid,
-            standalone=standalone,
-        )
-        captured.append((item, reservation, declaration))
-    return tuple(captured)
-
-
-def _bind_coding_external_resource_owners(
-    bindings: tuple[ProductContributionOwnerBinding, ...],
-    trust_by_owner: Mapping[str, tuple[str, ...]],
+def _make_external_resource_owners(
+    missing: set[str],
 ) -> tuple[ProductContributionOwnerBinding, ...]:
-    missing = trust_by_owner.keys() - {item.owner_key[0] for item in bindings}
-    if missing:
-        bindings = (
-            *bindings,
-            *_owner_bindings(
-                include_tools=False,
-                include_prompt="resources.prompt" in missing,
-                include_skill="resources.skill" in missing,
-                include_theme="resources.theme" in missing,
-                include_command=False,
-            ),
-        )
-    return tuple(
-        _rebind_resource_owner_trust(binding, trust_by_owner[binding.owner_key[0]])
-        if binding.owner_key[0] in trust_by_owner
-        else binding
-        for binding in bindings
+    return _owner_bindings(
+        include_tools=False,
+        include_prompt="resources.prompt" in missing,
+        include_skill="resources.skill" in missing,
+        include_theme="resources.theme" in missing,
+        include_command=False,
     )
 
 
@@ -443,6 +394,16 @@ def _candidate(
             message, code=code
         ),
     )
+
+
+_EXTERNAL_DATA_RESOURCES = ProductDataResourcePolicy(
+    trust_classes=EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
+    resource_owners=EXTERNAL_DATA_RESOURCE_OWNERS,
+    permits_owner=permits_external_data_owner,
+    prepare_candidate=_candidate,
+    make_resource_owners=_make_external_resource_owners,
+)
+_bind_coding_external_resource_owners = _EXTERNAL_DATA_RESOURCES.bind_owners
 
 
 __all__ = [

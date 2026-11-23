@@ -5,6 +5,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from hashlib import sha256
 from itertools import chain
 from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
@@ -72,6 +73,9 @@ from loushang.harness.plugin_authoring.resource_item import (
 )
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
 )
 from loushang.harness.resources.plugins.contribution_types import (
     PLUGIN_OWNER_CONTRIBUTION_KINDS,
@@ -2335,83 +2339,158 @@ class ProductDataBaseSelection:
     trust_classes: tuple[str, ...]
 
 
-def assemble_product_data_resources(
-    external: tuple[PackageProductSelectedPluginManifestV1, ...],
-    declarations: tuple[SelectedProductDataDeclaration, ...],
-    *,
-    product_id: str,
-    scope_id: str,
-    policy_revision: str,
-    evaluated_at: int,
-    prepare: SelectedProductDataCandidatePreparer,
-    bind_owners: Callable[
-        [tuple[ProductContributionOwnerBinding, ...], Mapping[str, tuple[str, ...]]],
-        tuple[ProductContributionOwnerBinding, ...],
-    ],
-    external_trust_classes: tuple[str, ...],
-    base: ProductDataBaseSelection | None = None,
-) -> tuple[
-    PluginSelectionPlanV2,
-    ProductCompositionCompilation,
-    tuple[ProductContributionOwnerBinding, ...],
-]:
-    """Compile external data with the optional base's existing owner admissions."""
-    plan = build_product_plugin_selection_plan(
-        product_id=product_id,
-        scope_id=scope_id,
-        policy_revision=policy_revision,
-        plugin_ids=tuple(item.manifest.name for item in external),
-        instance_refs=tuple(item.snapshot.instance_revision_ref for item in external),
-        source_trust=(
-            item.source_trust_snapshot
-            for item in external
-            if item.source_trust_snapshot is not None
-        ),
-        additions=(
-            PluginEffectiveConfigurationEntry(
-                plugin_id=item.manifest.name,
-                contribution_id=reservation.contribution_id,
-                configuration=reservation.configuration,
-            )
-            for item, reservation, _ in declarations
-        ),
-        base=base.plan if base is not None else None,
-        extend_base_selection=True,
-        allowed_authority_ceiling=()
-        if base is None
-        else base.plan.allowed_authority_ceiling,
-    )
-    inputs: Iterable[SelectedProductDataDeclaration] = declarations
-    if base is not None:
-        manifest = base.manifest
-        inputs = chain(
-            (
-                (manifest, reservation, declaration)
-                for reservation, declaration in manifest.verified_data_only_declarations()
-            ),
-            declarations,
+@dataclass(frozen=True, slots=True)
+class StandaloneProductDataSelection:
+    """Product context for Resources compiled without a base Plugin."""
+
+    product_id: str
+    scope_id: str
+    policy_revision_prefix: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProductDataResourcePolicy:
+    """Compile captured external Resources using their Product's trust policy."""
+
+    trust_classes: tuple[str, ...]
+    resource_owners: frozenset[str]
+    permits_owner: Callable[[str, str], bool]
+    prepare_candidate: SelectedProductDataCandidatePreparer
+    make_resource_owners: Callable[[set[str]], tuple[ProductContributionOwnerBinding, ...]]
+
+    def bind_owners(
+        self,
+        bindings: tuple[ProductContributionOwnerBinding, ...],
+        trust_by_owner: Mapping[str, tuple[str, ...]],
+    ) -> tuple[ProductContributionOwnerBinding, ...]:
+        missing = trust_by_owner.keys() - {item.owner_key[0] for item in bindings}
+        if missing:
+            bindings = (*bindings, *self.make_resource_owners(missing))
+        return tuple(
+            _rebind_resource_owner_trust(binding, trust_by_owner[binding.owner_key[0]])
+            if binding.owner_key[0] in trust_by_owner
+            else binding
+            for binding in bindings
         )
-    candidates = project_selected_product_data_candidates(plan, inputs, prepare=prepare)
-    trust_by_owner = {
-        reservation.owner: external_trust_classes for _, reservation, _ in declarations
-    }
-    if base is not None:
-        base_plugin_id = base.plan.selected_plugin_ids[0]
-        for owner in {
-            candidate.owner_id
-            for candidate in candidates
-            if candidate.plugin_id == base_plugin_id
-        } & trust_by_owner.keys():
-            trust_by_owner[owner] = (*base.trust_classes, *external_trust_classes)
-    owners = bind_owners(
-        base.owner_bindings if base is not None else (), trust_by_owner
-    )
-    if base is not None:
-        owners = tuple(sorted(owners, key=lambda binding: binding.owner_key))
-    compilation = assemble_agent_data_composition(
-        plan, candidates, owners, evaluated_at=evaluated_at
-    )
-    return plan, compilation, owners
+
+    def compile(
+        self,
+        external: tuple[PackageProductSelectedPluginManifestV1, ...],
+        read_context: Callable[[], ProductDataBaseSelection | StandaloneProductDataSelection],
+        *,
+        standalone: bool = False,
+        evaluated_at: int,
+    ) -> tuple[
+        PluginSelectionPlanV2,
+        ProductCompositionCompilation,
+        tuple[ProductContributionOwnerBinding, ...],
+    ]:
+        """Capture typed declarations before compiling or binding their owners."""
+        from loushang.harness.package_product._selected_plugin_revisions import (
+            capture_external_data_declaration,
+        )
+
+        invalid = (
+            "Product external data Resource selection changed"
+            if standalone
+            else "External Product data Resource selection changed"
+        )
+        trust_classes = frozenset(self.trust_classes)
+        declarations = tuple(
+            (
+                item,
+                *capture_external_data_declaration(
+                    item,
+                    trust_classes=trust_classes,
+                    resource_owners=self.resource_owners,
+                    permits_owner=self.permits_owner,
+                    invalid=invalid,
+                    standalone=standalone,
+                ),
+            )
+            for item in external
+        )
+        base: ProductDataBaseSelection | None = None
+        if standalone:
+            digest = sha256(
+                canonical_json_bytes(
+                    [
+                        {
+                            "pluginId": item.manifest.name,
+                            "committedSetId": item.snapshot.committed_record.committed_set.set_id,
+                            "instanceRevision": item.snapshot.instance_revision_ref.to_dict(),
+                        }
+                        for item in external
+                    ]
+                )
+            ).hexdigest()
+            context = read_context()
+            assert isinstance(context, StandaloneProductDataSelection)
+            product_id, scope_id = context.product_id, context.scope_id
+            policy_revision = f"{context.policy_revision_prefix}:{digest}"
+        else:
+            context = read_context()
+            assert isinstance(context, ProductDataBaseSelection)
+            base = context
+            base_context = base.plan.context
+            product_id, scope_id = base_context.product_id, base_context.scope_id
+            policy_revision = base_context.policy_revision
+        plan = build_product_plugin_selection_plan(
+            product_id=product_id,
+            scope_id=scope_id,
+            policy_revision=policy_revision,
+            plugin_ids=tuple(item.manifest.name for item in external),
+            instance_refs=tuple(item.snapshot.instance_revision_ref for item in external),
+            source_trust=(
+                item.source_trust_snapshot
+                for item in external
+                if item.source_trust_snapshot is not None
+            ),
+            additions=(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=item.manifest.name,
+                    contribution_id=reservation.contribution_id,
+                    configuration=reservation.configuration,
+                )
+                for item, reservation, _ in declarations
+            ),
+            base=base.plan if base is not None else None,
+            extend_base_selection=True,
+            allowed_authority_ceiling=()
+            if base is None
+            else base.plan.allowed_authority_ceiling,
+        )
+        inputs: Iterable[SelectedProductDataDeclaration] = declarations
+        if base is not None:
+            manifest = base.manifest
+            inputs = chain(
+                (
+                    (manifest, reservation, declaration)
+                    for reservation, declaration in manifest.verified_data_only_declarations()
+                ),
+                declarations,
+            )
+        candidates = project_selected_product_data_candidates(plan, inputs, prepare=self.prepare_candidate)
+        trust_by_owner = {
+            reservation.owner: self.trust_classes for _, reservation, _ in declarations
+        }
+        if base is not None:
+            base_plugin_id = base.plan.selected_plugin_ids[0]
+            for owner in {
+                candidate.owner_id
+                for candidate in candidates
+                if candidate.plugin_id == base_plugin_id
+            } & trust_by_owner.keys():
+                trust_by_owner[owner] = (*base.trust_classes, *self.trust_classes)
+        owners = self.bind_owners(
+            base.owner_bindings if base is not None else (), trust_by_owner
+        )
+        if base is not None:
+            owners = tuple(sorted(owners, key=lambda binding: binding.owner_key))
+        compilation = assemble_agent_data_composition(
+            plan, candidates, owners, evaluated_at=evaluated_at
+        )
+        return plan, compilation, owners
 
 
 def _extend_configured_resource_owner_binding(
