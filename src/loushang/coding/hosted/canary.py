@@ -22,15 +22,17 @@ from loushang.apphost import (
     SessionBindingKeyV1,
     SessionCandidateMode,
     SessionCandidateRefV1,
-    SessionCreateIntentV1,
-    SessionCreateRequestV1,
     SessionDiscoveryScope,
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
 from loushang.apphost._ownership import _settle_owned_closes
 from loushang.apphost.catalog import _InstalledAdmissionSource
-from loushang.apphost.integrations.session_product import _BorrowedProfileLease
+from loushang.apphost.integrations.session_product import (
+    _BorrowedProfileLease,
+    _StaticOpenedCandidate,
+    _StaticSessionCatalog,
+)
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted._canary_control import (
     CodingAppHostCanaryControlError,
@@ -403,7 +405,7 @@ class _AttemptFactory:
         opaque_session_binding: object,
     ) -> CodingAppHostWorkerAttemptV1:
         if self.attempt is not None or not isinstance(
-            opaque_session_binding, _OpenedCandidate
+            opaque_session_binding, _StaticOpenedCandidate
         ):
             raise CodingAppHostCanaryError(code="coding_apphost_canary_attempt_invalid")
         attempt = _NativeCanaryAttempt(
@@ -415,135 +417,6 @@ class _AttemptFactory:
         )
         self.attempt = attempt
         return attempt
-
-
-class _ClaimedCandidate:
-    __slots__ = ("_reference",)
-
-    def __init__(self, reference: SessionCandidateRefV1) -> None:
-        self._reference = reference
-
-    @property
-    def reference(self) -> SessionCandidateRefV1:
-        return self._reference
-
-    @property
-    def opaque_binding(self) -> object:
-        return self
-
-    async def close(self) -> None:
-        return None
-
-
-class _SessionCandidate:
-    __slots__ = ("_projection",)
-
-    def __init__(self, envelope: SessionIdentityEnvelopeV1) -> None:
-        self._projection = SessionIdentityProjectionV1(
-            reference=SessionCandidateRefV1(
-                "g10-ephemeral",
-                envelope.session_id,
-                _DIGESTS["locator"],
-            ),
-            scope=SessionDiscoveryScope.USER_GLOBAL_CANONICAL,
-            mode=SessionCandidateMode.CANONICAL,
-            envelope=envelope,
-        )
-
-    @property
-    def projection(self) -> SessionIdentityProjectionV1:
-        return self._projection
-
-    async def verify_current(self) -> None:
-        return None
-
-    async def claim(self) -> _ClaimedCandidate:
-        return _ClaimedCandidate(self._projection.reference)
-
-    async def close(self) -> None:
-        return None
-
-
-class _EphemeralSessions:
-    __slots__ = ("_candidate",)
-
-    def __init__(self, candidate: _SessionCandidate) -> None:
-        self._candidate = candidate
-
-    async def list_identities(
-        self,
-        scopes: tuple[SessionDiscoveryScope, ...],
-        *,
-        limit: int,
-    ) -> tuple[SessionIdentityProjectionV1, ...]:
-        if SessionDiscoveryScope.USER_GLOBAL_CANONICAL not in scopes or limit < 1:
-            return ()
-        return (self._candidate.projection,)
-
-    async def open_candidate(
-        self,
-        reference: SessionCandidateRefV1,
-    ) -> _SessionCandidate:
-        if reference != self._candidate.projection.reference:
-            raise CodingAppHostCanaryError(code="coding_apphost_canary_candidate_stale")
-        return self._candidate
-
-    async def find_created_candidate(
-        self,
-        request: SessionCreateRequestV1,
-    ) -> _SessionCandidate | None:
-        del request
-        return None
-
-    async def create_candidate(
-        self,
-        intent: SessionCreateIntentV1,
-    ) -> _SessionCandidate:
-        del intent
-        raise CodingAppHostCanaryError(code="coding_apphost_canary_create_forbidden")
-
-
-class _OpenedCandidate:
-    __slots__ = ("_key",)
-
-    def __init__(self, key: SessionBindingKeyV1) -> None:
-        self._key = key
-
-    @property
-    def binding_key(self) -> SessionBindingKeyV1:
-        return self._key
-
-    @property
-    def opaque_binding(self) -> object:
-        return self
-
-    async def close(self) -> None:
-        return None
-
-
-class _CandidateValidator:
-    async def open_product_candidate(
-        self,
-        candidate: object,
-        envelope: SessionIdentityEnvelopeV1,
-    ) -> _OpenedCandidate:
-        claimed = getattr(candidate, "opaque_binding", None)
-        if (
-            not isinstance(claimed, _ClaimedCandidate)
-            or envelope.product_id != CODING_PRODUCT_ID
-            or envelope.product_compatibility_id != _COMPATIBILITY_ID
-            or claimed.reference.candidate_id != envelope.session_id
-        ):
-            raise CodingAppHostCanaryError(
-                code="coding_apphost_canary_candidate_rejected"
-            )
-        return _OpenedCandidate(
-            SessionBindingKeyV1(
-                envelope.product_id,
-                envelope.continuity_id,
-                envelope.session_id,
-            )
-        )
 
 
 class _ProfileFactory:
@@ -730,7 +603,19 @@ async def _create_canary_composition(
         provider_id="g10-ephemeral",
         locator_token=token_hex(16),
     )
-    candidate = _SessionCandidate(envelope)
+    sessions = _StaticSessionCatalog(
+        SessionIdentityProjectionV1(
+            reference=SessionCandidateRefV1(
+                envelope.provider_id, envelope.session_id, _DIGESTS["locator"]
+            ),
+            scope=SessionDiscoveryScope.USER_GLOBAL_CANONICAL,
+            mode=SessionCandidateMode.CANONICAL,
+            envelope=envelope,
+        ),
+        error=lambda reason: CodingAppHostCanaryError(
+            code=f"coding_apphost_canary_{reason}"
+        ),
+    )
     product_identity = AdmissionIdentityV1(
         generation_id,
         AppHostAdmissionSubjectKind.PRODUCT,
@@ -748,7 +633,7 @@ async def _create_canary_composition(
             product_version="g10-canary-v1",
             compatibility_id=_COMPATIBILITY_ID,
             product_admission_source=_InstalledAdmissionSource(product_identity),
-            candidate_validator=_CandidateValidator(),
+            candidate_validator=sessions,
             attempt_factory=attempts,
             profiles=(
                 ProfileRegistrationV1(
@@ -758,12 +643,12 @@ async def _create_canary_composition(
                     admission_source=_InstalledAdmissionSource(profile_identity),
                 ),
             ),
-            sessions=_EphemeralSessions(candidate),
+            sessions=sessions,
             rollback_control=_RollbackControl(journal),
             shutdown_budget=AppHostShutdownBudgetV1(5.0, 2.0),
         )
     )
-    return composition, candidate.projection.reference
+    return composition, sessions.projection.reference
 
 
 def _worker_policy(

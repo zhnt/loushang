@@ -1,7 +1,7 @@
-"""Private foreground Product ownership over an admitted hosted Session.
+"""Private Product Session bindings for AppHost.
 
-The Product supplies its existing Session factory and catalog owner.  This
-adapter owns only the returned Session until the AppHost runtime adopts it.
+AppHost adopts the foreground Session returned by a Product factory. A Product
+with no transcript storage can supply one static Session identity instead.
 """
 
 from __future__ import annotations
@@ -13,7 +13,11 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
-from loushang.apphost._ownership import _settle_owned_closes
+from loushang.apphost._ownership import (
+    _ClaimedCandidateView,
+    _OpenedCandidateView,
+    _settle_owned_closes,
+)
 from loushang.apphost.application import _method_descriptor
 from loushang.apphost.contracts import (
     AppHostSessionLeaseV1,
@@ -21,8 +25,13 @@ from loushang.apphost.contracts import (
     ProductProfileBindingV1,
     ScopedProductRuntimeV1,
     SessionBindingKeyV1,
+    SessionCandidateRefV1,
+    SessionCreateIntentV1,
     SessionCreateRequestV1,
+    SessionDiscoveryScope,
     SessionIdentityCatalogPortV1,
+    SessionIdentityEnvelopeV1,
+    SessionIdentityProjectionV1,
 )
 from loushang.apphost.runtime import AppHostRuntimeV1, _BoundProfileView
 from loushang.appserver.protocol import SessionIdentityV1, SessionOpenSpecV1
@@ -90,6 +99,106 @@ class _BorrowedProfileLease:
 
     async def close(self) -> None:
         self._closed = True
+
+
+class _StaticClaimedCandidate(_ClaimedCandidateView[object]):
+    __slots__ = ()
+
+    def __init__(self, reference: SessionCandidateRefV1) -> None:
+        super().__init__(reference, None)
+
+    @property
+    def opaque_binding(self) -> object:
+        return self
+
+    async def close(self) -> None:
+        return None
+
+
+class _StaticOpenedCandidate(_OpenedCandidateView[object]):
+    __slots__ = ()
+
+    def __init__(self, envelope: SessionIdentityEnvelopeV1) -> None:
+        super().__init__(
+            SessionBindingKeyV1(
+                envelope.product_id, envelope.continuity_id, envelope.session_id
+            ),
+            None,
+        )
+
+    @property
+    def opaque_binding(self) -> object:
+        return self
+
+    async def close(self) -> None:
+        return None
+
+
+class _StaticSessionCatalog:
+    """Expose one preselected identity for a Product without transcript storage."""
+
+    __slots__ = ("_projection", "_error")
+
+    def __init__(
+        self,
+        projection: SessionIdentityProjectionV1,
+        *,
+        error: Callable[[str], Exception],
+    ) -> None:
+        self._projection = projection
+        self._error = error
+
+    @property
+    def projection(self) -> SessionIdentityProjectionV1:
+        return self._projection
+
+    async def list_identities(
+        self, scopes: tuple[SessionDiscoveryScope, ...], *, limit: int
+    ) -> tuple[SessionIdentityProjectionV1, ...]:
+        if self._projection.scope not in scopes or limit < 1:
+            return ()
+        return (self._projection,)
+
+    async def open_candidate(
+        self, reference: SessionCandidateRefV1
+    ) -> _StaticSessionCatalog:
+        if reference != self._projection.reference:
+            raise self._error("candidate_stale")
+        return self
+
+    async def find_created_candidate(
+        self, request: SessionCreateRequestV1
+    ) -> _StaticSessionCatalog | None:
+        return None
+
+    async def create_candidate(
+        self, intent: SessionCreateIntentV1
+    ) -> _StaticSessionCatalog:
+        raise self._error("create_forbidden")
+
+    async def verify_current(self) -> None:
+        return None
+
+    async def claim(self) -> _StaticClaimedCandidate:
+        return _StaticClaimedCandidate(self._projection.reference)
+
+    async def close(self) -> None:
+        return None
+
+    async def open_product_candidate(
+        self, candidate: object, envelope: SessionIdentityEnvelopeV1
+    ) -> _StaticOpenedCandidate:
+        claimed = getattr(candidate, "opaque_binding", None)
+        selected = self._projection.envelope
+        if (
+            not isinstance(claimed, _StaticClaimedCandidate)
+            or selected is None
+            or envelope.product_id != selected.product_id
+            or envelope.product_compatibility_id != selected.product_compatibility_id
+            or claimed.reference.candidate_id != envelope.session_id
+        ):
+            raise self._error("candidate_rejected")
+        return _StaticOpenedCandidate(envelope)
 
 
 class _LeasedForegroundBindingMethods(Generic[SnapshotT, EventT]):
