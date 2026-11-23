@@ -115,22 +115,10 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         if not path.is_relative_to(APPSERVICE)
         and _imports_prefix(_imports(path), "loushang.appservice")
     }
-    # A80's optional shared implementation adds no second Product adapter.
-    # Subtract only an admitted value consumer; do not require this helper to exist.
-    optional_catalog = {
-        consumer for consumer in consumers
-        if consumer == Path(
-            "src/loushang/apphost/integrations/_canonical_transcript_catalog.py"
-        )
-        and {
-            name for name in _imports(consumer)
-            if name == "loushang.appservice"
-            or name.startswith("loushang.appservice.")
-        } <= {"loushang.appservice.discovery_ports"}
-    }
+    canonical_catalog = Path("src/loushang/apphost/integrations/_canonical_transcript_catalog.py")
     # A179's optional shared attempt retains the original Product instance.
     # Admit this consumer without requiring the optional module to exist.
-    optional_shared = optional_catalog | {
+    optional_shared = {
         Path("src/loushang/apphost/integrations/_continuity_preparation.py"),
     }
     assert consumers - optional_shared == {
@@ -139,10 +127,10 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/apphost/continuity.py"),
         Path("src/loushang/apphost/foreground.py"),
         Path("src/loushang/apphost/integrations/session_control.py"),
+        canonical_catalog,
         Path('src/loushang/coding/hosted/application.py'),
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/bootstrap.py'),
-        Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/execution.py'),
         Path('src/loushang/coding/hosted/execution_goal.py'),
         Path('src/loushang/coding/hosted/resume.py'),
@@ -165,11 +153,10 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path('src/loushang/coding/hosted/managed/local.py'),
         Path('src/loushang/coding/hosted/foreground.py'),
         Path('src/loushang/coding/hosted/managed/bootstrap.py'),
-        Path('src/loushang/coding/hosted/managed/catalog.py'),
     }
     assert {name for name in _imports(Path("src/loushang/apphost/managed/mux_probe.py"))
             if name.startswith("loushang.appservice")} == {"loushang.appservice.continuity"}
-    assert {name for name in _imports(Path('src/loushang/coding/hosted/catalog.py'))
+    assert {name for name in _imports(canonical_catalog)
             if name.startswith("loushang.appservice")} == {
         "loushang.appservice.discovery_ports",
     }
@@ -210,7 +197,13 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
                        if isinstance(node, ast.ImportFrom)
                        and node.module and node.module.startswith("loushang.apphost")]
     assert [(node.module, [alias.name for alias in node.names])
-            for node in apphost_imports] == [("loushang.apphost", ["SessionBindingKeyV1"])]
+            for node in apphost_imports] == [
+        ("loushang.apphost", ["SessionBindingKeyV1"]),
+        ("loushang.apphost.integrations._canonical_transcript_catalog", [
+            "session_identity_matches_open",
+        ]),
+        ("loushang.apphost.integrations.session_control", ["_ExecutionSessionServiceAdapter"]),
+    ]
     # The foreground owner may select the optional adapter, but only within
     # its explicit execution branch. Default construction must not import it.
     composition = ast.parse(_read(Path('src/loushang/coding/hosted/application.py')))

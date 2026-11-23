@@ -20,17 +20,12 @@ from loushang.coding.plugin_manager.lifecycle import (
 )
 from loushang.coding.resources.runtime import CodingPackageMaterializer
 from loushang.coding.resources.tool_pack import coding_workspace_tool_profile
-from loushang.harness.capabilities import (
-    MODEL_INPUT_CAPABILITY_DEFINITION,
-    WORKSPACE_CAPABILITY_DEFINITION,
-)
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionKind,
-    OwnerContributionPolicy,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -51,11 +46,10 @@ from loushang.harness.resources.plugins.declarations import (
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
     PluginInstanceRevisionRef,
-    PluginPreflightContextV1,
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
+    build_product_plugin_selection_plan,
 )
 from loushang.harness.resources.plugins.types import (
     PluginSource,
@@ -66,7 +60,6 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
 from loushang.harness.session.product_composition_assembly import (
-    ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginCompositionAssembly,
     ProductPluginCompositionAssemblyRequest,
@@ -392,29 +385,10 @@ def prepare_coding_base_plugin_session(
     seed = selection_seed
     if _PLUGIN_ID not in seed.selection.plan.selected_plugin_ids:
         raise ValueError("Coding base Session selection omits coding.base")
-    contribution_request = ProductCompositionAssemblyRequest(
-        selection=seed.selection,
-        owner_bindings=seed.owner_bindings,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-        ),
-    )
-    request = ProductPluginCompositionAssemblyRequest(
-        contribution_request=contribution_request,
-        provider_owner_bindings=(),
-        provider_roots=(),
-        host_capability_ids=(
-            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
-        ),
-        select_capability_providers=lambda _admissions: (),
-    )
     return CodingBasePluginSessionPreparation(
         base=assembly,
         product=prepare_product_plugin_composition(
-            request,
+            ProductPluginCompositionAssemblyRequest.for_agent_session(seed),
             evaluated_at=evaluated_at,
         ),
     )
@@ -640,7 +614,7 @@ def prepare_coding_base_product_plan(
         reservation for reservation, _ in selected.verified_data_only_declarations()
     )
     scope_id = f"session:{_normalized(session_id, name='Coding Session id')}"
-    plan, tool_id, tool_names = _build_selection_plan_from_evidence(
+    return _build_selection_plan_from_evidence(
         contributions=contributions,
         source_trust_snapshot=source_trust_snapshot,
         instance_revision_ref=selected.snapshot.instance_revision_ref,
@@ -655,23 +629,8 @@ def prepare_coding_base_product_plan(
         include_tool_claim_prompt=include_tool_claim_prompt,
         include_skill_contribution=include_skill_contribution,
         include_command_contribution=include_command_contribution,
+        require_complete=True,
     )
-    expected_ids = {
-        contribution_id
-        for contribution_id in (
-            tool_id,
-            "prompt-standard" if include_tool_claim_prompt else None,
-            "skill-standard" if include_skill_contribution else None,
-            "coding.standard" if include_command_contribution else None,
-        )
-        if contribution_id is not None
-    }
-    if {item.contribution_id for item in plan.selected_contributions} != expected_ids:
-        raise CodingBasePluginAssemblyError(
-            "Selected Coding base Product contributions are incomplete",
-            code="coding_base_product_selection_mismatch",
-        )
-    return plan, tool_id, tool_names
 
 
 def _build_selection_plan_from_evidence(
@@ -686,6 +645,7 @@ def _build_selection_plan_from_evidence(
     include_tool_claim_prompt: bool,
     include_skill_contribution: bool,
     include_command_contribution: bool,
+    require_complete: bool = False,
 ) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
     tool_contribution_id = (
         "coding.builtin.windows"
@@ -729,28 +689,31 @@ def _build_selection_plan_from_evidence(
             f"s{int(include_skill_contribution)}"
             f"c{int(include_command_contribution)}"
         )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id=CODING_PRODUCT_ID,
-            scope_id=scope_id,
-            policy_revision=policy_revision,
-            instance_revision_refs=(instance_revision_ref,),
-        ),
-        selected_plugin_ids=(_PLUGIN_ID,),
+    plan = build_product_plugin_selection_plan(
+        product_id=CODING_PRODUCT_ID,
+        scope_id=scope_id,
+        policy_revision=policy_revision,
+        instance_refs=(instance_revision_ref,),
+        plugin_ids=(_PLUGIN_ID,),
         selected_contributions=selected_contributions,
-        source_trust_snapshots=(source_trust_snapshot,),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                PluginEffectiveConfigurationEntry(
-                    plugin_id=_PLUGIN_ID,
-                    contribution_id=item.contribution_id,
-                    configuration=item.configuration,
-                )
-                for item in contributions
+        source_trust=(source_trust_snapshot,),
+        additions=(
+            PluginEffectiveConfigurationEntry(
+                plugin_id=_PLUGIN_ID,
+                contribution_id=item.contribution_id,
+                configuration=item.configuration,
             )
+            for item in contributions
         ),
         allowed_authority_ceiling=(),
     )
+    if require_complete and {
+        item.contribution_id for item in plan.selected_contributions
+    } != selected_ids:
+        raise CodingBasePluginAssemblyError(
+            "Selected Coding base Product contributions are incomplete",
+            code="coding_base_product_selection_mismatch",
+        )
     return (
         plan,
         tool_contribution_id if include_tool_contribution else None,
@@ -851,19 +814,13 @@ def _owner_bindings(
     )
     return tuple(
         ProductContributionOwnerBinding(
-            authority=OwnerContributionAuthority(
-                OwnerContributionPolicy(
-                    owner_id=owner_id,
-                    contribution_kind=contribution_kind,
-                    product_id=CODING_PRODUCT_ID,
-                    policy_revision=f"coding-base-{owner_id}-owner-v1",
-                    revocation_epoch=0,
-                    allowed_source_trust_classes=(_SOURCE_TRUST_CLASS,),
-                    allowed_collection_ids=(collection_id,),
-                    allowed_requirement_bindings=("direct",),
-                    consumer_scope="session",
-                    consumer_refresh_boundary="sealed",
-                )
+            authority=OwnerContributionAuthority.for_direct_session(
+                owner_id=owner_id,
+                contribution_kind=contribution_kind,
+                product_id=CODING_PRODUCT_ID,
+                policy_revision=f"coding-base-{owner_id}-owner-v1",
+                trust_classes=(_SOURCE_TRUST_CLASS,),
+                collection_ids=(collection_id,),
             ),
             admission_ttl_seconds=_ADMISSION_TTL_SECONDS,
         )

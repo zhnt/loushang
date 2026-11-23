@@ -11,7 +11,7 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol, TypeVar, get_args
 
 PACKAGE_PRODUCT_INTENT_VERSION = 1
 PACKAGE_PRODUCT_RETRY_INTENT_VERSION = 1
@@ -52,6 +52,24 @@ PackageProductEntrypoint = Literal[
 ]
 PackageProductRoutingDisposition = Literal["plugin_handled", "non_plugin"]
 PackageProductScope = Literal["user", "project", "session"]
+PackageRepairActionV1 = Literal[
+    "repair-handoff",
+    "inspect-staging",
+    "inspect-published",
+    "repair-staging",
+    "repair-published",
+    "repair-pinned",
+    "repair-retryable",
+    "repair-unstarted",
+    "repair-acquired",
+    "repair-resolving",
+    "repair-verified",
+]
+PACKAGE_REPAIR_ACTIONS_V1: tuple[PackageRepairActionV1, ...] = get_args(
+    PackageRepairActionV1
+)
+PACKAGE_REPAIR_INSPECTIONS_V1 = frozenset({"inspect-staging", "inspect-published"})
+
 T = TypeVar("T")
 
 _SHA256_REF = re.compile(r"sha256:[0-9a-f]{64}\Z")

@@ -16,6 +16,9 @@ import loushang.harness.resources.packages._private_tree_windows as native_tree
 from loushang.coding.package.private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
 )
+from loushang.coding.package.private_data_restore_records import (
+    CodingArchPrivateDataRestorePlanV1,
+)
 from loushang.coding.package.private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreTransaction,
 )
@@ -85,6 +88,7 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
     )
     restore = SimpleNamespace(
         state_fd=9,
+        _plan_type=CodingArchPrivateDataRestorePlanV1,
         _require_active=lambda: None,
         _scan_confirmations=lambda: ((confirmation,), None),
         events=lambda: (started, completed),

@@ -4,17 +4,31 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import secrets
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Protocol, TypeVar, runtime_checkable
 
+from loushang.harness.approval.plugin_activation import (
+    OwnerComponentActivationApprovalSubject,
+    PluginActivationDecisionJournal,
+)
+from loushang.harness.approval.plugin_execution import PluginApprovalAuthorizationV1
 from loushang.harness.capabilities.component_admission import (
     CapabilityComponentAdmission,
     CapabilityComponentOwnerAuthority,
+    CapabilityComponentOwnerPolicy,
     CapabilityComponentOwnerSnapshot,
 )
-from loushang.harness.capabilities.component_contracts import _digest_document
+from loushang.harness.capabilities.component_binding import (
+    CapabilityOwnerComponentPayloadValidator,
+)
+from loushang.harness.capabilities.component_contracts import (
+    CapabilityComponentDefinition,
+    _digest_document,
+)
 from loushang.harness.capabilities.component_runtime import (
     CapabilityOwnerComponentBinder,
     CapabilityOwnerComponentGenerationSnapshot,
@@ -64,6 +78,7 @@ from loushang.harness.continuity.plugin_provider import (
     PluginContinuityProvider,
     recover_continuity_plugin_deletions,
 )
+from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.selection import (
     PluginContributionCandidate,
     PluginContributionRef,
@@ -165,6 +180,133 @@ class ResolvedContinuityPluginSelection:
             self.resolved_set.components
         ):
             raise ValueError("Continuity owner selection chain is incomplete")
+
+
+def prepare_continuity_activation(
+    selection: PluginSelection,
+    *,
+    owner_policy_revision: str,
+    revocation_epoch: int,
+    decision_path: Path,
+    approval_ttl_ms: int,
+    clock: Callable[[], int],
+    read_clock: Callable[[], int],
+    validate_subject: Callable[[OwnerComponentActivationApprovalSubject], None],
+    authorization: Callable[[], PluginApprovalAuthorizationV1],
+) -> tuple[
+    ResolvedContinuityPluginSelection, CapabilityOwnerComponentHost, dict[str, str]
+]:
+    """Prepare one selected Continuity host using admission from its Product."""
+    definition = CONTINUITY_PROVIDER_COMPONENT_DEFINITION
+    component_ids = tuple(
+        sorted(
+            _continuity_candidate_component_id(item)
+            for item in selection.candidates
+            if item.declaration.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
+        )
+    )
+    trust = selection.plan.source_trust_snapshots
+    owner = CapabilityComponentOwnerAuthority(
+        definition,
+        CapabilityComponentOwnerPolicy(
+            capability_id=definition.capability_id,
+            owner_id=definition.owner_id,
+            component_kind=definition.component_kind,
+            policy_revision=owner_policy_revision,
+            revocation_epoch=revocation_epoch,
+            allowed_component_ids=component_ids,
+            allowed_source_trust_classes=tuple(
+                sorted({item.source_trust_class for item in trust})
+            ),
+            authority_ceiling=selection.plan.allowed_authority_ceiling,
+        ),
+    )
+    now = read_clock()
+    resolved = resolve_continuity_plugin_selection(
+        selection,
+        owner_authority=owner,
+        issued_at=now,
+        expires_at=now + approval_ttl_ms,
+        now=now,
+    )
+    trust_by_plugin = {item.plugin_id: item for item in trust}
+    trust_by_source = {
+        (item.plugin_id, item.package_source_identity): item for item in trust
+    }
+    context = selection.plan.context
+
+    def read_owner(
+        capability_id: str, component_kind: str
+    ) -> CapabilityComponentOwnerSnapshot:
+        if (
+            capability_id != definition.capability_id
+            or component_kind != definition.component_kind
+        ):
+            raise ValueError("Continuity owner reader received another Definition")
+        return owner.snapshot()
+
+    def read_policy(product_id: str, scope_id: str) -> str:
+        if product_id != context.product_id or scope_id != context.scope_id:
+            raise ValueError("Continuity policy reader received another Product scope")
+        return context.policy_revision
+
+    def read_payload_validator(
+        requested: CapabilityComponentDefinition,
+    ) -> CapabilityOwnerComponentPayloadValidator:
+        if requested != definition:
+            raise ValueError("Continuity Host received another component Definition")
+        return validate_continuity_provider_component_payload
+
+    journal = PluginActivationDecisionJournal(
+        decision_path, scope_id=context.scope_id, clock=clock
+    )
+    host = CapabilityOwnerComponentHost(
+        decision_journal=journal,
+        import_realm=PluginImportRealm(),
+        host_boot_id=secrets.token_hex(16),
+        clock=clock,
+        owner_snapshot_reader=read_owner,
+        trust_snapshot_reader=lambda plugin_id, source_identity: trust_by_source[
+            (plugin_id, source_identity)
+        ],
+        product_policy_revision_reader=read_policy,
+        payload_validator_reader=read_payload_validator,
+    )
+    decision_ids: dict[str, str] = {}
+    for component in resolved.resolved_set.components:
+        plugin_id = component.admission.candidate.binding_spec.plugin_id
+        if plugin_id is None:
+            raise TypeError("Continuity component has no Plugin identity")
+        subject = host.activation_subject(
+            component,
+            owner_snapshot=resolved.owner_snapshot,
+            trust_snapshot=trust_by_plugin[plugin_id],
+        )
+        validate_subject(subject)
+        now = read_clock()
+        snapshot = journal.snapshot()
+        decision = next(
+            (
+                item
+                for item in snapshot.decisions
+                if item.subject_digest == subject.digest
+                and item.disposition == "approved"
+                and item.consumption_state == "AVAILABLE"
+                and now < item.expires_at_unix_ms
+            ),
+            None,
+        )
+        if decision is None:
+            decision = journal.issue_activation_decision(
+                subject,
+                disposition="approved",
+                authorization=authorization(),
+                issued_at_unix_ms=now,
+                expires_at_unix_ms=now + approval_ttl_ms,
+                expected_journal_revision=snapshot.journal_revision,
+            )
+        decision_ids[component.component_id] = decision.decision_id
+    return resolved, host, decision_ids
 
 
 def resolve_continuity_plugin_selection(
@@ -1129,6 +1271,12 @@ async def _join_owned_transition(
     return task.result(), cancellation
 
 
+def _continuity_candidate_component_id(item: PluginContributionCandidate) -> str:
+    return continuity_provider_component_id(
+        item.package.manifest.name, item.declaration.contribution_id
+    )
+
+
 async def _capture_generation_providers(
     runtime: CapabilityOwnerComponentRuntime,
     *,
@@ -1138,23 +1286,17 @@ async def _capture_generation_providers(
 ) -> tuple[tuple[ContinuityImportProvider, PluginContinuityProviderProvenance], ...]:
     leases = runtime.capture_all(CONTINUITY_PROVIDER_COMPONENT_KIND)
     try:
-        declared_actions_by_component_id = {
-            continuity_provider_component_id(
-                item.package.manifest.name,
-                item.declaration.contribution_id,
-            ): ContinuityProviderDeclarationPayload.from_finalized_candidate(
-                resolved.plugin_selection,
-                item,
-            ).supported_actions
-            for item in resolved.candidates
-        }
-        plugin_candidate_by_component_id = {
-            continuity_provider_component_id(
-                item.package.manifest.name,
-                item.declaration.contribution_id,
-            ): item
-            for item in resolved.candidates
-        }
+        plugin_candidate_by_component_id = {}
+        declared_actions_by_component_id = {}
+        for item in resolved.candidates:
+            component_id = _continuity_candidate_component_id(item)
+            plugin_candidate_by_component_id[component_id] = item
+            declared_actions_by_component_id[component_id] = (
+                ContinuityProviderDeclarationPayload.from_finalized_candidate(
+                    resolved.plugin_selection,
+                    item,
+                ).supported_actions
+            )
         resolved_by_id = {
             item.component_id: item for item in resolved.resolved_set.components
         }

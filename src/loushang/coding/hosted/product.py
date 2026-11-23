@@ -24,7 +24,7 @@ from loushang.apphost import (
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted._worker_canary import CodingProductWorkerCanaryStatusV1
-from loushang.harness.runtime import await_owned_task
+from loushang.harness.runtime._owned_tasks import _UnpublishedProductOwners
 from loushang.harness.worker import ProductWorkerActivationReceiptV1
 
 CODING_APPHOST_PRODUCT_JOIN_VERSION = 1
@@ -257,10 +257,9 @@ class CodingAppHostProductFactoryV1:
     """Concrete Coding Product factory implementing the default-dark G8 join."""
 
     __slots__ = (
-        "_active",
         "_correlation_id_factory",
         "_create_attempt",
-        "_debt",
+        "_unpublished",
     )
 
     def __init__(
@@ -280,15 +279,11 @@ class CodingAppHostProductFactoryV1:
         self._correlation_id_factory = correlation_id_factory or (
             lambda: token_hex(16)
         )
-        # Active owners are unpublished constructions. Debt contains only owners
-        # whose compensation already failed. Keeping the sets separate prevents
-        # one concurrent Session construction from closing another.
-        self._active: set[_WorkerAttemptOwner] = set()
-        self._debt: set[_WorkerAttemptOwner] = set()
+        self._unpublished = _UnpublishedProductOwners[_WorkerAttemptOwner]()
 
     @property
     def pending_cleanup_count(self) -> int:
-        return len(self._debt)
+        return self._unpublished.pending_count
 
     async def create_runtime(
         self,
@@ -308,7 +303,7 @@ class CodingAppHostProductFactoryV1:
             raise CodingAppHostProductError(
                 code="coding_apphost_attempt_unowned"
             ) from None
-        self._active.add(owner)
+        self._unpublished.adopt(owner)
         try:
             owner.bind()
             receipt = owner.receipt()
@@ -318,55 +313,26 @@ class CodingAppHostProductFactoryV1:
             binding = _bind_status(key, receipt, status)
             if owner.status != status:
                 raise CodingAppHostProductError(code="coding_apphost_status_changed")
-        except asyncio.CancelledError:
-            await self._settle_unpublished(owner)
-            raise
-        except CodingAppHostProductError:
-            await self._settle_unpublished(owner)
-            raise
-        except BaseException:
-            await self._settle_unpublished(owner)
+        except BaseException as error:
+            await self._unpublished.abort(
+                owner,
+                failure=CodingAppHostProductError(code="coding_apphost_cleanup_incomplete"),
+                join_close=True,
+            )
+            if isinstance(error, (asyncio.CancelledError, CodingAppHostProductError)):
+                raise
             raise CodingAppHostProductError(
                 code="coding_apphost_runtime_unavailable"
             ) from None
-        self._active.discard(owner)
+        self._unpublished.publish(owner)
         return _CodingScopedProductRuntime(owner, binding)
 
     async def settle_pending_cleanup(self) -> None:
-        debt = tuple(self._debt)
-        if not debt:
-            return
-        results = await asyncio.gather(
-            *(owner.close() for owner in debt),
-            return_exceptions=True,
-        )
-        for owner, result in zip(debt, results, strict=True):
-            if result is None:
-                self._debt.discard(owner)
-        if self._debt:
-            raise CodingAppHostProductError(
-                code="coding_apphost_cleanup_incomplete"
-            )
+        if not await self._unpublished.retry_cleanup():
+            raise CodingAppHostProductError(code="coding_apphost_cleanup_incomplete")
 
     async def close(self) -> None:
         await self.settle_pending_cleanup()
-
-    async def _settle_unpublished(self, owner: _WorkerAttemptOwner) -> None:
-        operation = asyncio.create_task(owner.close())
-        try:
-            await await_owned_task(operation)
-        except asyncio.CancelledError:
-            self._active.discard(owner)
-            self._debt.discard(owner)
-            raise
-        except BaseException:
-            self._active.discard(owner)
-            self._debt.add(owner)
-            raise CodingAppHostProductError(
-                code="coding_apphost_cleanup_incomplete"
-            ) from None
-        self._active.discard(owner)
-        self._debt.discard(owner)
 
     def _correlation_id(self) -> str:
         value = self._correlation_id_factory()

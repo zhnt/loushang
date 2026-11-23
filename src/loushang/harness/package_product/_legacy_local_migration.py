@@ -8,15 +8,25 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import stat
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, closing, contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from typing import Generic, Literal, Protocol, TypeVar
+from typing import (
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    NamedTuple,
+    Protocol,
+    Self,
+    TypeVar,
+    cast,
+)
 
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -24,6 +34,7 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.config.store import _read_stable_json_patch
 from loushang.harness.journal import (
     SORTED_UNICODE_JSONL_FORMAT,
+    FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalLoadPolicy,
     JournalRecordCodec,
@@ -51,50 +62,63 @@ from loushang.harness.plugin_management.records import (
     PluginDesiredStateMutationV1,
     PluginDesiredStateTransitionV1,
     PluginInstallationKeyV1,
+    PluginInstallationStateV1,
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
-    _hold_windows_private_cutover_directory,
     _PinnedWindowsAuthority,
-)
-from loushang.harness.resources.packages.product_contract import (
-    PackageProductLifecycleIntentV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    LEGACY_SOURCE_WHEEL_FILENAME,
     _LegacyLocalWheelFields,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
-    write_legacy_product_projection,
+    hold_legacy_product_projection_root,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from ._legacy_inventory import _BindingHead
-from ._legacy_runtime import _FencedRuntime
-from ._plugin_bootstrap import (
-    _PluginBootstrapPolicy,
-    _product_plugin_runtime,
-    _ProductOwner,
+from ._application_runtime import (
+    FencedOrdinaryProductApplication,
+    hold_accepted_product_adoption,
 )
+from ._legacy_inventory import (
+    LEGACY_REVIEW_DIGEST,
+    LEGACY_REVIEW_ID,
+    LegacyInventoryEvidence,
+    _BindingHead,
+    legacy_record_digest,
+)
+from ._legacy_runtime import FencedRuntimeOpenKwargs, _FencedRuntime
+from ._local_source_catalog import wheel_source_binding_digest
+from ._plugin_bootstrap import (
+    ReviewedPluginChoices,
+    _PluginBootstrapPolicy,
+    _ProductOwner,
+    replay_reviewed_product_plugins,
+    route_project_package,
+)
+from .product_runtime import hold_local_wheel_product_runtime
 
 RecordT = TypeVar("RecordT")
 ReviewT = TypeVar("ReviewT")
+_ACCEPTANCE_FIELDS = {"acceptanceId", "acceptanceVersion", "review"}
 
 
 @dataclass(frozen=True)
@@ -108,9 +132,15 @@ class _FirstAcceptanceEnvelope:
 
     @staticmethod
     def identity(review_id: str) -> str:
-        return sha256(
-            canonical_json_bytes({"acceptanceVersion": 1, "reviewId": review_id})
-        ).hexdigest()
+        return legacy_record_digest({"acceptanceVersion": 1, "reviewId": review_id})
+
+    def _document(
+        self, value: object, *, optional: frozenset[str] = frozenset()
+    ) -> dict[str, Any]:
+        allowed = _ACCEPTANCE_FIELDS | optional
+        if type(value) is not dict or not _ACCEPTANCE_FIELDS <= value.keys() <= allowed:
+            raise JournalCodecError(self.invalid_message, code=self.invalid_code)
+        return value
 
     def decode(
         self,
@@ -118,20 +148,21 @@ class _FirstAcceptanceEnvelope:
         review_decoder: Callable[[object], ReviewT],
         create: Callable[[ReviewT], RecordT],
     ) -> RecordT:
-        if type(value) is not dict or set(value) != {
-            "acceptanceId",
-            "acceptanceVersion",
-            "review",
-        }:
-            raise JournalCodecError(self.invalid_message, code=self.invalid_code)
-        try:
-            if (
-                type(value["acceptanceVersion"]) is not int
-                or value["acceptanceVersion"] != 1
-            ):
+        document = self._document(value)
+
+        def propose() -> RecordT:
+            if type(document["acceptanceVersion"]) is not int or document["acceptanceVersion"] != 1:
                 raise ValueError(self.version_error)
-            record = create(review_decoder(value["review"]))
-            if getattr(record, "acceptance_id") != value["acceptanceId"]:
+            return create(review_decoder(document["review"]))
+
+        return self._decode_proposal(document, propose)
+
+    def _decode_proposal(
+        self, document: dict[str, Any], propose: Callable[[], RecordT]
+    ) -> RecordT:
+        try:
+            record = propose()
+            if getattr(record, "acceptance_id") != document["acceptanceId"]:
                 raise ValueError(self.identity_error)
             return record
         except (TypeError, ValueError) as exc:
@@ -140,8 +171,160 @@ class _FirstAcceptanceEnvelope:
             ) from exc
 
 
+class _FirstAcceptanceReview(Protocol):
+    @property
+    def review_id(self) -> str: ...
+
+    def to_dict(self) -> dict[str, object]: ...
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
+
+
+_FirstReviewT = TypeVar("_FirstReviewT", bound=_FirstAcceptanceReview)
+
+
+class _FirstAcceptanceRecord(Generic[_FirstReviewT]):
+    """Keep the V1 receipt codec with the journal that publishes it."""
+
+    __slots__ = ()
+    review: _FirstReviewT
+    acceptance_id: str
+    acceptance_version: int
+    _envelope: ClassVar[_FirstAcceptanceEnvelope]
+    _review_type: ClassVar[type[_FirstAcceptanceReview]]
+    _review_required: ClassVar[str]
+
+    @classmethod
+    def create(cls, review: _FirstReviewT) -> Self:
+        if not isinstance(review, cls._review_type):
+            raise TypeError(cls._review_required)
+        cls._check_review(review)
+        create: Callable[..., Self] = cls
+        return create(
+            review=review, acceptance_id=cls._envelope.identity(review.review_id)
+        )
+
+    @classmethod
+    def _check_review(cls, review: _FirstReviewT) -> None:
+        """Apply any Product-specific eligibility rule after the nominal check."""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "acceptanceId": self.acceptance_id,
+            "acceptanceVersion": self.acceptance_version,
+            "review": self.review.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        review_type = cast(type[_FirstReviewT], cls._review_type)
+        return cls._envelope.decode(value, review_type.from_dict, cls.create)
+
+    @classmethod
+    def _record_codec(cls) -> FunctionalJournalRecordCodec[Self]:
+        return FunctionalJournalRecordCodec(encoder=cls.to_dict, decoder=cls.from_dict)
+
+
+class _LocalAcceptanceReview(_FirstAcceptanceReview, Protocol):
+    @property
+    def plugin_id(self) -> str: ...
+
+
+_LocalReviewT = TypeVar("_LocalReviewT", bound=_LocalAcceptanceReview)
+_LegacyResourceKind = Literal["skill", "prompt", "theme"]
+_RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
+
+
+def _legacy_resource_kind(
+    document: Mapping[str, object],
+    version: object,
+    *,
+    invalid_version: str,
+    invalid_kind: str,
+) -> _LegacyResourceKind:
+    if type(version) is not int:
+        raise ValueError(invalid_version)
+    if version == 1 and "resourceKind" not in document:
+        return "skill"
+    wire_kind = document.get("resourceKind")
+    if version == 2 and wire_kind == "prompt":
+        return "prompt"
+    if version == 3 and wire_kind == "theme":
+        return "theme"
+    raise ValueError(invalid_kind)
+
+
+class LegacyLocalAcceptanceRecord(_FirstAcceptanceRecord[_LocalReviewT]):
+    """Keep the three local receipt versions with the shared first-fence codec."""
+
+    __slots__ = ()
+    resource_kind: _LegacyResourceKind
+    _label: ClassVar[str]
+
+    def __post_init__(self) -> None:
+        review_type = cast(type[_LocalReviewT], self._review_type)
+        if (
+            not isinstance(self.review, review_type)
+            or type(self.acceptance_version) is not int
+            or _RESOURCE_KIND_VERSION.get(self.resource_kind) != self.acceptance_version
+        ):
+            raise ValueError(f"{self._label} acceptance record is invalid")
+        if self.acceptance_id != self._identity(
+            self.review, self.acceptance_version, self.resource_kind
+        ):
+            raise ValueError(self._envelope.identity_error)
+
+    @staticmethod
+    def _identity(review: _LocalAcceptanceReview, version: int, kind: _LegacyResourceKind) -> str:
+        identity: dict[str, object] = {
+            "acceptanceVersion": version,
+            "reviewId": review.review_id,
+            "pluginId": review.plugin_id,
+        }
+        if version >= 2:
+            identity["resourceKind"] = kind
+        return legacy_record_digest(identity)
+
+    @classmethod
+    def create(cls, review: _LocalReviewT, *, resource_kind: _LegacyResourceKind = "skill") -> Self:
+        review_type = cast(type[_LocalReviewT], cls._review_type)
+        if not isinstance(review, review_type):
+            raise TypeError(cls._review_required)
+        cls._check_review(review)
+        version = _RESOURCE_KIND_VERSION.get(resource_kind)
+        if version is None:
+            raise ValueError("Unsupported legacy local Resource type")
+        create: Callable[..., Self] = cls
+        return create(
+            review, cls._identity(review, version, resource_kind),
+            acceptance_version=version, resource_kind=resource_kind,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        document = super().to_dict()
+        if self.acceptance_version >= 2:
+            document["resourceKind"] = self.resource_kind
+        return document
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        document = cls._envelope._document(value, optional=frozenset({"resourceKind"}))
+
+        def propose(record_type: type[Self] = cls) -> Self:
+            kind = _legacy_resource_kind(
+                document, document["acceptanceVersion"],
+                invalid_version=cls._envelope.version_error,
+                invalid_kind=f"Unsupported {cls._label} acceptance type",
+            )
+            review_type = cast(type[_LocalReviewT], cls._review_type)
+            return record_type.create(review_type.from_dict(document["review"]), resource_kind=kind)
+
+        return cls._envelope._decode_proposal(document, propose)
+
+
 @dataclass(frozen=True)
-class _FirstAcceptanceJournal(Generic[RecordT]):
+class _FirstAcceptanceJournal(Generic[_FirstReviewT, RecordT]):
     """One frozen first-adoption receipt, committed before any Desired mutation.
 
     Products supply the authenticated record and original diagnostic profile.
@@ -156,57 +339,57 @@ class _FirstAcceptanceJournal(Generic[RecordT]):
     posix_read_error_type: type[Exception]
     posix_read_label: str
     untouched_message: str
+    create: Callable[[_FirstReviewT], RecordT]
+    changed_review: str
+    accept_conflict: str
+    read_conflict: str
     windows_receipts: WindowsPrivateReceiptIO | None = None
     windows_untouched_message: str = ""
     postcheck: Literal["separate", "combined"] = "separate"
     check_replay_epoch: bool = False
+    check_epoch_before_read: bool = False
+    empty_is_missing: bool = True
 
     def accept_review(
         self,
         runtime: _FencedRuntime,
         *,
         accepted_review_id: str,
-        current_review_id: str,
-        create: Callable[[], RecordT],
+        review: Callable[[], _FirstReviewT],
         expected_store_id: Callable[[], str],
-        changed_review: str,
-        conflict_message: str,
     ) -> RecordT:
-        if accepted_review_id != current_review_id:
-            raise self.error_type(changed_review)
-        proposed = create()
+        authenticated = review()
+        if accepted_review_id != authenticated.review_id:
+            raise self.error_type(self.changed_review)
+        proposed = self.create(authenticated)
         self._require_store(runtime, expected_store_id())
-        return self.accept(runtime, proposed, conflict_message=conflict_message)
+        return self.accept(runtime, proposed)
 
     def read_acceptance(
         self,
         runtime: _FencedRuntime,
         *,
         expected_store_id: str,
-        review: Callable[[], ReviewT],
-        create: Callable[[ReviewT], RecordT],
-        conflict_message: str,
-        check_epoch_before_read: bool = False,
-        empty_is_missing: bool = True,
+        review: Callable[[], _FirstReviewT],
     ) -> RecordT | None:
         self._require_store(runtime, expected_store_id)
-        if check_epoch_before_read:
+        if self.check_epoch_before_read:
             runtime.assert_current()
         path = runtime.control_root / "product-state" / self.filename
-        if check_epoch_before_read:
+        if self.check_epoch_before_read:
             records = self.records(
                 path,
                 windows=isinstance(runtime, PackageProductWindowsFencedRuntimeOwner),
             )
         else:
             records = self.records(path)
-        if records is None or (empty_is_missing and not records):
-            if check_epoch_before_read:
+        if records is None or (self.empty_is_missing and not records):
+            if self.check_epoch_before_read:
                 runtime.assert_current()
             return None
         current_review = review()
-        if len(records) != 1 or records[0] != create(current_review):
-            raise self.error_type(conflict_message)
+        if len(records) != 1 or records[0] != self.create(current_review):
+            raise self.error_type(self.read_conflict)
         runtime.assert_current()
         return records[0]
 
@@ -221,8 +404,6 @@ class _FirstAcceptanceJournal(Generic[RecordT]):
             | PackageProductWindowsFencedRuntimeOwner
         ),
         proposed: RecordT,
-        *,
-        conflict_message: str,
     ) -> RecordT:
         path = epoch_runtime.prepare_product_state_root() / self.filename
         windows = isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
@@ -233,7 +414,7 @@ class _FirstAcceptanceJournal(Generic[RecordT]):
             )
             if records:
                 if len(records) != 1 or records[0] != proposed:
-                    raise self.error_type(conflict_message)
+                    raise self.error_type(self.accept_conflict)
                 if self.check_replay_epoch:
                     epoch_runtime.assert_current()
                 return records[0]
@@ -505,6 +686,18 @@ class _ConfiguredSource(Protocol):
 
 class _AcceptedReview(Protocol):
     @property
+    def namespace_id(self) -> str: ...
+
+    @property
+    def scope_id(self) -> str: ...
+
+    @property
+    def policy_revision(self) -> str: ...
+
+    @property
+    def store_id(self) -> str: ...
+
+    @property
     def plugin_id(self) -> str: ...
     @property
     def review_id(self) -> str: ...
@@ -543,6 +736,206 @@ class _AcceptedSource(Protocol):
 
     @property
     def resource_kind(self) -> str: ...
+
+
+class LegacyLocalBindingRecord:
+    """Validate and encode the exact binding produced by an accepted legacy review."""
+
+    __slots__ = ()
+    record_revision: int
+    store_id: str
+    namespace_id: str
+    scope_id: str
+    plugin_id: str
+    legacy_source_identity: str
+    legacy_binding_digest: str
+    source_content_digest: str
+    manifest_digest: str
+    dependency_lock_digest: str
+    wheel_filename: str
+    artifact_digest: str
+    requested_package: str
+    plugin_manifest_path: str
+    policy_revision: str
+    approval_id: str
+    record_id: str
+    record_version: int
+    resource_kind: _LegacyResourceKind
+    _binding_schema: ClassVar[RecordSchema]
+    _candidate_type: ClassVar[type[_LegacyLocalWheelFields]]
+    _reserved_plugin_ids: ClassVar[frozenset[str]]
+    _invalid_record: ClassVar[str]
+    _invalid_code: ClassVar[str]
+
+    @staticmethod
+    def _trust_class_for(resource_kind: _LegacyResourceKind) -> str:
+        raise NotImplementedError
+
+    def __post_init__(self) -> None:
+        if type(self.record_revision) is not int or self.record_revision < 1:
+            raise ValueError("Legacy Product binding revision is invalid")
+        for value, name in (
+            (self.store_id, "Store"),
+            (self.scope_id, "scope"),
+            (self.plugin_id, "Plugin"),
+            (self.policy_revision, "policy"),
+            (self.approval_id, "approval"),
+        ):
+            if not isinstance(value, str) or LEGACY_REVIEW_ID.fullmatch(value) is None:
+                raise ValueError(f"Legacy Product {name} identity is invalid")
+        if self.plugin_id in self._reserved_plugin_ids:
+            raise ValueError("Legacy Product binding cannot replace a builtin Plugin")
+        for value, name in (
+            (self.namespace_id, "namespace"),
+            (self.legacy_binding_digest, "old binding"),
+            (self.source_content_digest, "Source content"),
+            (self.manifest_digest, "manifest"),
+            (self.dependency_lock_digest, "dependency lock"),
+            (self.artifact_digest, "Wheel artifact"),
+            (self.record_id, "record"),
+        ):
+            if (
+                not isinstance(value, str)
+                or LEGACY_REVIEW_DIGEST.fullmatch(value) is None
+            ):
+                raise ValueError(f"Legacy Product {name} digest is invalid")
+        if (
+            not isinstance(self.legacy_source_identity, str)
+            or not self.legacy_source_identity.startswith("local:")
+            or len(self.legacy_source_identity) > 4096
+            or LEGACY_SOURCE_WHEEL_FILENAME.fullmatch(self.wheel_filename) is None
+            or type(self.record_version) is not int
+            or _RESOURCE_KIND_VERSION.get(self.resource_kind) != self.record_version
+        ):
+            raise ValueError("Legacy Product binding Source shape is invalid")
+        if not self._wheel_names_match():
+            raise ValueError("Legacy Product binding Wheel identity is inconsistent")
+        binding = self.to_policy_binding(Path("/"))
+        if binding.requested_package != self.requested_package:
+            raise ValueError("Legacy Product binding package is invalid")
+        if self.record_id != wheel_source_binding_digest(self.to_dict()):
+            raise ValueError("Legacy Product binding record identity is invalid")
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        record_revision: int,
+        store_id: str,
+        namespace_id: str,
+        scope_id: str,
+        legacy_source_identity: str,
+        legacy_binding_digest: str,
+        dependency_lock_digest: str,
+        policy_revision: str,
+        approval_id: str,
+        candidate: _LegacyLocalWheelFields,
+        resource_kind: _LegacyResourceKind = "skill",
+    ) -> Self:
+        if not isinstance(candidate, cls._candidate_type):
+            raise TypeError("Reacquired legacy Wheel candidate is required")
+        if legacy_source_identity != candidate.original_source_identity:
+            raise ValueError("Legacy Product original Source identity changed")
+        record_version = _RESOURCE_KIND_VERSION.get(resource_kind)
+        if record_version is None:
+            raise ValueError("Unsupported legacy Product Resource type")
+        values: dict[str, object] = {
+            "recordRevision": record_revision,
+            "storeId": store_id,
+            "namespaceId": namespace_id,
+            "scopeId": scope_id,
+            "pluginId": candidate.plugin_id,
+            "legacySourceIdentity": legacy_source_identity,
+            "legacyBindingDigest": legacy_binding_digest,
+            "sourceContentDigest": candidate.source_content_digest,
+            "manifestDigest": candidate.manifest_digest,
+            "dependencyLockDigest": dependency_lock_digest,
+            "wheelFilename": candidate.filename,
+            "artifactDigest": candidate.artifact_digest,
+            "requestedPackage": candidate.requested_package,
+            "pluginManifestPath": candidate.plugin_manifest_path,
+            "policyRevision": policy_revision,
+            "approvalId": approval_id,
+            "recordVersion": record_version,
+        }
+        if record_version >= 2:
+            values["resourceKind"] = resource_kind
+        values["recordId"] = wheel_source_binding_digest(values)
+        construct: Callable[..., Self] = cls
+        return construct(
+            **cls._binding_schema.decode(dict, values), resource_kind=resource_kind
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        record = self._binding_schema.encode(self)
+        if self.record_version >= 2:
+            record["resourceKind"] = self.resource_kind
+        return record
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        expected = cls._binding_schema.keys
+        if type(value) is not dict or set(value) not in (
+            expected,
+            expected | {"resourceKind"},
+        ):
+            raise JournalCodecError(cls._invalid_record, code=cls._invalid_code)
+        try:
+            kind = _legacy_resource_kind(
+                value,
+                value["recordVersion"],
+                invalid_version="Unsupported legacy Product binding version",
+                invalid_kind="Unsupported legacy Product binding type",
+            )
+            construct: Callable[..., Self] = cls
+            return construct(
+                **cls._binding_schema.decode(dict, value), resource_kind=kind
+            )
+        except (TypeError, ValueError) as exc:
+            raise JournalCodecError(
+                cls._invalid_record, code=cls._invalid_code
+            ) from exc
+
+    def to_policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
+        return PackageProductLocalWheelBindingV1(
+            source_identity=str(source_root / self.wheel_filename),
+            requested_package=self.requested_package,
+            plugin_id=self.plugin_id,
+            artifact_digest=self.artifact_digest,
+            plugin_manifest_path=self.plugin_manifest_path,
+            source_trust_class=self._trust_class_for(self.resource_kind),
+        )
+
+    @classmethod
+    def _record_codec(cls) -> FunctionalJournalRecordCodec[Self]:
+        return FunctionalJournalRecordCodec(encoder=cls.to_dict, decoder=cls.from_dict)
+
+    def _wheel_names_match(self) -> bool:
+        prefix = self.wheel_filename.removesuffix("-1-py3-none-any.whl")
+        return (
+            self.requested_package == f"{prefix.replace('_', '-')}==1"
+            and self.plugin_manifest_path == f"{prefix}/plugin.json"
+        )
+
+    def _matches_approval(self, accepted: _AcceptedSource) -> bool:
+        review = accepted.review
+        return (
+            self.approval_id == accepted.acceptance_id
+            and self.resource_kind == accepted.resource_kind
+            and self.store_id == review.store_id
+            and self.namespace_id == review.namespace_id
+            and self.scope_id == review.scope_id
+            and self.plugin_id == review.plugin_id
+            and self.legacy_source_identity == review.legacy_source_identity
+            and self.legacy_binding_digest == review.legacy_binding_digest
+            and self.source_content_digest == review.source_content_digest
+            and self.manifest_digest == review.manifest_digest
+            and self.dependency_lock_digest == review.dependency_lock_digest
+            and self.wheel_filename == review.wheel_filename
+            and self.artifact_digest == review.wheel_artifact_digest
+            and self._wheel_names_match()
+            and self.policy_revision == review.policy_revision
+        )
 
 
 def verify_accepted_legacy_wheel(
@@ -904,31 +1297,6 @@ class _SourceConsumptionProtocol:
             os.close(descriptor)
 
 
-def resolve_legacy_accepted_source(
-    product: _ProductOwner,
-    *,
-    plugin_id: str,
-    source_trust_class: str,
-    artifact_digest: str,
-    wheel_filename: str,
-    error_type: type[Exception],
-) -> PackageProductLocalWheelBindingV1:
-    """Resolve one exact approved policy binding for install or enable."""
-    sources = tuple(
-        binding
-        for binding in product.policy.bindings
-        if binding.plugin_id == plugin_id
-        and binding.source_trust_class == source_trust_class
-        and binding.artifact_digest == artifact_digest
-        and Path(binding.source_identity).name == wheel_filename
-    )
-    if len(sources) != 1:
-        raise error_type(
-            "Legacy local Installation has no exact Product Source binding"
-        )
-    return sources[0]
-
-
 def match_legacy_replay_source(
     bindings: Sequence[PackageProductLocalWheelBindingV1],
     accepted: _AcceptedSource,
@@ -956,12 +1324,248 @@ def match_legacy_replay_source(
     return True, candidate
 
 
+_AcceptedT = TypeVar("_AcceptedT", bound=_AcceptedSource)
+_InstallationReceiptT = TypeVar("_InstallationReceiptT")
+_EnablementReceiptT = TypeVar("_EnablementReceiptT")
+
+
+_ReplayRoute = tuple[
+    Callable[..., _FirstAcceptanceRecord[Any] | None], Callable[..., object]
+]
+_ReplayLayoutT = TypeVar("_ReplayLayoutT")
+
+
+def replay_posix_legacy_product_cutover(
+    layout: _ReplayLayoutT,
+    settings: SettingsManager,
+    *,
+    roots: FencedRuntimeOpenKwargs,
+    workspace: Path,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+    inventory_query: Callable[
+        [_ReplayLayoutT, PackageProductPosixFencedRuntimeOwner],
+        Callable[[], LegacyInventoryEvidence],
+    ],
+    read_local_acceptance: Callable[..., LegacyLocalAcceptanceRecord[Any] | None],
+    local_adoption_settled: Callable[..., bool],
+    policy_revision: str,
+    disabled: _ReplayRoute,
+    builtin: _ReplayRoute,
+    removed: _ReplayRoute,
+    bootstrap: Callable[..., object],
+    default_local_kind: _LegacyResourceKind,
+    removals_pending: str,
+    sources_pending: str,
+) -> None:
+    """Close the read-only inventory before replaying any accepted changes."""
+    read_disabled, replay_disabled = disabled
+    read_builtin, replay_builtin = builtin
+    read_removed, replay_removed = removed
+    with PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=True) as owner:
+        inventory = inventory_query(layout, owner)().inventory
+        local_ids = tuple(binding.plugin_id for binding, _, _ in inventory.active_local)
+        accepted_kinds = {
+            plugin_id: accepted.resource_kind
+            for plugin_id in local_ids
+            if (
+                accepted := read_local_acceptance(
+                    layout, owner, plugin_id=plugin_id, policy_revision=policy_revision
+                )
+            )
+            is not None
+        }
+        disabled_acceptance = builtin_acceptance = None
+        if not local_ids:
+            disabled_acceptance = read_disabled(layout, owner, settings_manager=settings)
+            builtin_acceptance = read_builtin(layout, owner, settings_manager=settings)
+        removed_acceptance = read_removed(layout, owner, settings_manager=settings)
+
+    replay_options = dict(
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+    )
+    pending_removals = bool(inventory.unselected_source_identities)
+    if pending_removals and removed_acceptance is None:
+        raise RuntimeError(removals_pending)
+    if removed_acceptance is not None and (pending_removals or not local_ids):
+        replay_removed(
+            layout,
+            settings,
+            accepted_review_id=removed_acceptance.review.review_id,
+            **replay_options,
+        )
+    if local_ids:
+        if not all(
+            local_adoption_settled(
+                layout,
+                plugin_id=plugin_id,
+                workspace=workspace,
+                resource_kind=accepted_kinds.get(plugin_id, default_local_kind),
+            )
+            for plugin_id in local_ids
+        ):
+            raise RuntimeError(sources_pending)
+        return
+    if removed_acceptance is not None:
+        return
+    for acceptance, replay in (
+        (builtin_acceptance, replay_builtin),
+        (disabled_acceptance, replay_disabled),
+    ):
+        if acceptance is not None:
+            replay(
+                layout,
+                settings,
+                accepted_review_id=acceptance.review.review_id,
+                **replay_options,
+            )
+            return
+    bootstrap(layout, settings, **replay_options)
+
+
+def adopt_legacy_local_data(
+    *,
+    open_epoch: Callable[[], PackageProductPosixFencedRuntimeOwner],
+    open_application: Callable[[], FencedOrdinaryProductApplication],
+    accept_and_consume: Callable[
+        [PackageProductPosixFencedRuntimeOwner], tuple[_AcceptedT, bool]
+    ],
+    bind_source: Callable[[PackageProductPosixFencedRuntimeOwner, bool], None],
+    plugin_id: str,
+    trust_classes: Collection[str],
+    expected_trust: Callable[[], str],
+    changed_message: str,
+    install: Callable[[], _InstallationReceiptT],
+    enable: Callable[[], _EnablementReceiptT],
+    reviewed_choices: Callable[[_AcceptedT], ReviewedPluginChoices],
+    builtin_plugin_ids: tuple[str, ...],
+    bootstrap_policy: _PluginBootstrapPolicy,
+    removal_label: str,
+) -> tuple[_AcceptedT, _InstallationReceiptT, _EnablementReceiptT | None]:
+    """Complete the replayable Source, installation and builtin adoption chain."""
+    with hold_accepted_product_adoption(
+        open_epoch=open_epoch,
+        accept_review=accept_and_consume,
+        open_application=open_application,
+    ) as ((acceptance, admission_checked), application):
+        matches, bound = match_legacy_replay_source(
+            application.runtime_owner.product_owner.policy.bindings,
+            acceptance,
+            plugin_id=plugin_id,
+            trust_classes=trust_classes,
+            expected_trust=expected_trust(),
+        )
+        if not matches:
+            raise RuntimeError(changed_message)
+    if bound is None:
+        with closing(open_epoch()) as epoch:
+            bind_source(epoch, admission_checked)
+    installation = install()
+    enablement = enable() if acceptance.review.desired_state == "installed_enabled" else None
+    with closing(open_application()) as application:
+        choices = reviewed_choices(acceptance)
+        replay_reviewed_product_plugins(
+            application.runtime_owner.product_owner,
+            builtin_plugin_ids,
+            choices=choices,
+            removal_label=removal_label,
+            policy=bootstrap_policy,
+            strict_history=False,
+        )
+    return acceptance, installation, enablement
+
+
+class _LegacyLocalInstallationResult(NamedTuple):
+    acceptance_id: str
+    install_operation_id: str
+    install_command_id: str
+    enable_operation_id: str
+    package_revision: PluginPackageRevisionRefV1
+
+
+@dataclass(frozen=True, slots=True)
+class _LegacyLocalInstallPolicy:
+    product_id: str
+    install_prefix: str
+    enable_prefix: str
+    session_prefix: str
+    error_type: type[Exception]
+
+    def operation_identity(
+        self, accepted: _AcceptedSource, *, scope_id: str, plugin_id: str
+    ) -> tuple[PluginInstallationKeyV1, str, str]:
+        key = PluginInstallationKeyV1.workspace(self.product_id, scope_id, plugin_id)
+        store_id = accepted.review.store_id
+        acceptance_id = accepted.acceptance_id
+        digest = sha256(f"{store_id}\0{acceptance_id}".encode()).hexdigest()
+        return key, self.install_prefix + digest, self.enable_prefix + digest
+
+    def replay(
+        self,
+        application: FencedOrdinaryProductApplication,
+        *,
+        reopen_acceptance: Callable[
+            [PackageProductPosixFencedRuntimeOwner], _AcceptedT | None
+        ],
+        scope_id: str,
+        plugin_id: str,
+        trust_class_for: Callable[[_AcceptedT], str],
+        enable: bool,
+        resource_kind: str | None,
+    ) -> _LegacyLocalInstallationResult:
+        """Hold the original epoch through acceptance, Desired replay and receipt."""
+        with closing(application):
+            epoch = application.epoch_runtime
+            if not isinstance(epoch, PackageProductPosixFencedRuntimeOwner):
+                raise self.error_type(
+                    "Legacy local migration requires a POSIX Product epoch"
+                )
+            accepted = reopen_acceptance(epoch)
+            if accepted is None or (
+                enable
+                and (
+                    accepted.resource_kind != resource_kind
+                    or accepted.review.desired_state != "installed_enabled"
+                )
+            ):
+                raise self.error_type(
+                    "Legacy local data Resource has no accepted enabled selection"
+                    if enable
+                    else "Legacy local Installation has no accepted review"
+                )
+            installation = _LegacyLocalInstallation.from_accepted_source(
+                application.runtime_owner.product_owner,
+                accepted,
+                scope_id=scope_id,
+                plugin_id=plugin_id,
+                source_trust_class=trust_class_for(accepted),
+                policy=self,
+            )
+            command_id, revision = (
+                installation.enable()
+                if enable
+                else installation.install(
+                    allow_enabled=accepted.review.desired_state == "installed_enabled"
+                )
+            )
+            epoch.assert_current()
+            return _LegacyLocalInstallationResult(
+                accepted.acceptance_id,
+                installation.install_operation_id,
+                command_id,
+                installation.enable_operation_id,
+                revision,
+            )
+
+
 @dataclass(frozen=True)
 class _LegacyLocalInstallation:
     """Replay one approved source through the existing Product Desired owner.
 
-    Admission, trust and historical ID selection stay with the Product. This
-    owner executes the exact install/enable history and runtime lifetime.
+    Products supply admission, trust and operation prefixes. This owner
+    executes the exact install/enable history and holds the runtime lifetime.
     """
 
     product: _ProductOwner
@@ -972,13 +1576,78 @@ class _LegacyLocalInstallation:
     error_type: type[Exception]
     session_id_prefix: str
 
-    def install(self, *, allow_enabled: bool) -> tuple[str, PluginPackageRevisionRefV1]:
-        product, key, operation_id, plugin_id = (
-            self.product,
-            self.key,
-            self.install_operation_id,
-            self.key.plugin_id,
+    @classmethod
+    def from_accepted_source(
+        cls,
+        product: _ProductOwner,
+        accepted: _AcceptedSource,
+        *,
+        scope_id: str,
+        plugin_id: str,
+        source_trust_class: str,
+        policy: _LegacyLocalInstallPolicy,
+    ) -> _LegacyLocalInstallation:
+        review = accepted.review
+        sources = tuple(
+            binding
+            for binding in product.policy.bindings
+            if binding.plugin_id == plugin_id
+            and binding.source_trust_class == source_trust_class
+            and binding.artifact_digest == review.wheel_artifact_digest
+            and Path(binding.source_identity).name == review.wheel_filename
         )
+        if len(sources) != 1:
+            raise policy.error_type(
+                "Legacy local Installation has no exact Product Source binding"
+            )
+        key, install_id, enable_id = policy.operation_identity(
+            accepted, scope_id=scope_id, plugin_id=plugin_id
+        )
+        return cls(
+            product=product,
+            key=key,
+            source_identity=sources[0].source_identity,
+            install_operation_id=install_id,
+            enable_operation_id=enable_id,
+            error_type=policy.error_type,
+            session_id_prefix=policy.session_prefix,
+        )
+
+    def _settled_install_command(self) -> str:
+        command_id = self.product.settled_install_command_id(
+            operation_id=self.install_operation_id, plugin_id=self.key.plugin_id
+        )
+        if command_id is None:
+            raise self.error_type("Legacy local Product install handoff is not settled")
+        return command_id
+
+    def _require_selected_revision(
+        self, selected: PluginInstallationStateV1
+    ) -> PluginPackageRevisionRefV1:
+        revision = selected.selection.package_revision
+        if (
+            selected.selection.desired_state in {"installed_disabled", "installed_enabled"}
+            and revision is not None
+            and revision.package_source_identity == self.source_identity
+        ):
+            return revision
+        raise self.error_type("Legacy local Product Installation selection changed")
+
+    def _matches_enablement(
+        self,
+        transitions: tuple[PluginDesiredStateJournalTransition, ...],
+        selected: PluginInstallationStateV1,
+    ) -> bool:
+        return (
+            len(transitions) == 2
+            and isinstance(transitions[1], PluginDesiredStateTransitionV1)
+            and transitions[1].mutation.operation_id == self.enable_operation_id
+            and transitions[1].mutation.actor_id == self.product.actor_id
+            and transitions[1].committed_state == selected
+        )
+
+    def install(self, *, allow_enabled: bool) -> tuple[str, PluginPackageRevisionRefV1]:
+        product, key = self.product, self.key
         initial = product.desired_state.snapshot()
         prior_state = next(
             (item for item in initial.installations if item.installation_key == key),
@@ -993,73 +1662,31 @@ class _LegacyLocalInstallation:
             )
         if prior_state is None:
             self.route_install()
-        command_id = product.settled_install_command_id(
-            operation_id=operation_id, plugin_id=plugin_id
-        )
-        if command_id is None:
-            raise self.error_type("Legacy local Product install handoff is not settled")
+        command_id = self._settled_install_command()
         selected = product.desired_state.snapshot().installation(key)
-        if (
-            selected.selection.desired_state
-            not in {"installed_disabled", "installed_enabled"}
-            or selected.selection.package_revision is None
-            or selected.selection.package_revision.package_source_identity
-            != self.source_identity
-        ):
-            raise self.error_type("Legacy local Product Installation selection changed")
-        transitions = self._install_history(
-            command_id, selected.selection.package_revision
-        )
+        revision = self._require_selected_revision(selected)
+        transitions = self._install_history(command_id, revision)
         if selected.selection.desired_state == "installed_disabled":
             if len(transitions) != 1 or transitions[0].committed_state != selected:
                 raise self.error_type(
                     "Legacy local Product disablement was independently changed"
                 )
-        elif (
-            not allow_enabled
-            or len(transitions) != 2
-            or not isinstance(transitions[1], PluginDesiredStateTransitionV1)
-            or transitions[1].mutation.operation_id != self.enable_operation_id
-            or transitions[1].mutation.actor_id != product.actor_id
-            or transitions[1].committed_state != selected
-        ):
+        elif not allow_enabled or not self._matches_enablement(transitions, selected):
             raise self.error_type(
                 "Legacy local Product enablement was independently changed"
             )
-        return command_id, selected.selection.package_revision
+        return command_id, revision
 
     def enable(self) -> tuple[str, PluginPackageRevisionRefV1]:
-        product, key, install_id, plugin_id = (
-            self.product,
-            self.key,
-            self.install_operation_id,
-            self.key.plugin_id,
-        )
-        install_command_id = product.settled_install_command_id(
-            operation_id=install_id, plugin_id=plugin_id
-        )
-        if install_command_id is None:
-            raise self.error_type("Legacy local Product install handoff is not settled")
+        product, key = self.product, self.key
+        install_command_id = self._settled_install_command()
         snapshot = product.desired_state.snapshot()
         selected = snapshot.installation(key)
-        revision = selected.selection.package_revision
-        if (
-            revision is None
-            or revision.package_source_identity != self.source_identity
-            or selected.selection.desired_state
-            not in {"installed_disabled", "installed_enabled"}
-        ):
-            raise self.error_type("Legacy local Product Installation selection changed")
+        revision = self._require_selected_revision(selected)
         enable_id = self.enable_operation_id
         transitions = self._install_history(install_command_id, revision)
         if selected.selection.desired_state == "installed_enabled":
-            if (
-                len(transitions) != 2
-                or not isinstance(transitions[1], PluginDesiredStateTransitionV1)
-                or transitions[1].mutation.operation_id != enable_id
-                or transitions[1].mutation.actor_id != product.actor_id
-                or transitions[1].committed_state != selected
-            ):
+            if not self._matches_enablement(transitions, selected):
                 raise self.error_type(
                     "Legacy local Product enablement was independently changed"
                 )
@@ -1097,11 +1724,7 @@ class _LegacyLocalInstallation:
             if transition.mutation.installation_key == key
         )
         if (
-            len(final_transitions) != 2
-            or not isinstance(final_transitions[1], PluginDesiredStateTransitionV1)
-            or final_transitions[1].mutation.operation_id != enable_id
-            or final_transitions[1].mutation.actor_id != product.actor_id
-            or final_transitions[1].committed_state != selected
+            not self._matches_enablement(final_transitions, selected)
             or product.desired_state.snapshot().installation(key) != selected
         ):
             raise self.error_type("Legacy local Product enablement was superseded")
@@ -1115,30 +1738,25 @@ class _LegacyLocalInstallation:
             for transition in self.product.desired_state.transitions()
             if transition.mutation.installation_key == self.key
         )
+        event = _initial_legacy_install_event(transitions, command_id)
         if (
-            not transitions
-            or not isinstance(transitions[0], PluginDesiredStateTransitionV1)
-            or transitions[0].mutation.operation_id != command_id
-            or transitions[0].mutation.actor_id != self.product.actor_id
-            or transitions[0].committed_state.selection.desired_state
-            != "installed_disabled"
-            or transitions[0].committed_state.selection.package_revision != revision
+            event is None
+            or event.mutation.actor_id != self.product.actor_id
+            or event.committed_state.selection.package_revision != revision
         ):
             raise self.error_type("Legacy local Product install was superseded")
         return transitions
 
     def route_install(self) -> None:
         session_id = self.session_id_prefix + secrets.token_hex(16)
-        with _product_plugin_runtime(
+        with hold_local_wheel_product_runtime(
             self.product, product_id=self.key.product_id, session_id=session_id
         ) as binding:
-            outcome = binding.lifecycle.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id=self.install_operation_id,
-                    action="install",
-                    source=self.source_identity,
-                    scope="project",
-                ),
+            outcome = route_project_package(
+                binding,
+                operation_id=self.install_operation_id,
+                action="install",
+                source=self.source_identity,
                 entrypoint="operations",
             )
             if (
@@ -1149,6 +1767,31 @@ class _LegacyLocalInstallation:
                 or outcome.evidence.operation_id != self.install_operation_id
             ):
                 raise self.error_type("Legacy local Product Package install refused")
+
+
+_LegacySourceScope = Literal["global", "project"]
+_LEGACY_SOURCE_SCOPES: tuple[_LegacySourceScope, ...] = ("global", "project")
+_LEGACY_PACKAGE_FILTER_KEYS = frozenset({"extensions", "skills", "prompts", "themes"})
+_SOURCE_PROJECTION_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _valid_snapshot_package_source(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value)
+    if not isinstance(value, dict) or not set(value) <= {
+        "source",
+        *_LEGACY_PACKAGE_FILTER_KEYS,
+    }:
+        return False
+    source = value.get("source")
+    if not isinstance(source, str) or not source:
+        return False
+    return all(
+        isinstance(items, list)
+        and all(isinstance(item, str) and item for item in items)
+        for key, items in value.items()
+        if key in _LEGACY_PACKAGE_FILTER_KEYS
+    )
 
 
 @dataclass(frozen=True)
@@ -1229,24 +1872,14 @@ class _LegacySourceProjection:
             contents = self.projection_bytes(
                 {"productId": self.product_id, "projectionVersion": 1, "scopes": layers}
             )
-            if os.name == "nt":
-                with _hold_windows_private_cutover_directory(
-                    parent,
-                    prefix=self.prefix,
-                    projection_name=self.projection_name,
-                    projection_label=f"{self.label} Source projection",
-                    projection_contents=contents,
-                ) as source_root:
-                    yield source_root
-            else:
-                with TemporaryDirectory(prefix=self.prefix, dir=parent) as raw:
-                    source_root = Path(raw)
-                    write_legacy_product_projection(
-                        source_root,
-                        projection_name=self.projection_name,
-                        contents=contents,
-                    )
-                    yield source_root
+            with hold_legacy_product_projection_root(
+                parent,
+                prefix=self.prefix,
+                projection_name=self.projection_name,
+                projection_label=f"{self.label} Source projection",
+                projection_contents=contents,
+            ) as source_root:
+                yield source_root
 
     def require_path(self, path: Path, *, name: str) -> Path:
         if not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts:
@@ -1301,6 +1934,148 @@ class _LegacySourceProjection:
                 if not isinstance(value, list) or value:
                     return True
         return False
+
+    def classify(
+        self,
+        projection: object,
+        *,
+        disabled_setting: str,
+        configured_source_keys: frozenset[str],
+    ) -> tuple[tuple[tuple[_LegacySourceScope, str], ...], tuple[str, ...]]:
+        """Check the frozen settings wire and report its scoped source choices."""
+        if not isinstance(projection, dict) or set(projection) != {
+            "productId",
+            "projectionVersion",
+            "scopes",
+        }:
+            raise ValueError(f"{self.label} Source projection is invalid")
+        if (
+            projection["productId"] != self.product_id
+            or type(projection["projectionVersion"]) is not int
+            or projection["projectionVersion"] != 1
+        ):
+            raise ValueError(f"{self.label} Source projection version is unsupported")
+        scopes = projection["scopes"]
+        if not isinstance(scopes, dict) or set(scopes) != set(_LEGACY_SOURCE_SCOPES):
+            raise ValueError(f"{self.label} Source projection scopes are invalid")
+
+        disabled: list[tuple[_LegacySourceScope, str]] = []
+        sources: list[str] = []
+        for scope in _LEGACY_SOURCE_SCOPES:
+            layer = scopes[scope]
+            if not isinstance(layer, dict) or set(layer) != {
+                "present",
+                "rawSha256",
+                "settingsPath",
+                "sourcePatch",
+            }:
+                raise ValueError(f"{self.label} Source projection layer is invalid")
+            present, digest, path, patch = (
+                layer["present"],
+                layer["rawSha256"],
+                layer["settingsPath"],
+                layer["sourcePatch"],
+            )
+            if (
+                type(present) is not bool
+                or (
+                    present
+                    and (
+                        not isinstance(digest, str)
+                        or not _SOURCE_PROJECTION_DIGEST.fullmatch(digest)
+                    )
+                )
+                or (not present and digest is not None)
+                or not isinstance(path, str)
+                or not Path(path).is_absolute()
+                or ".." in Path(path).parts
+                or not isinstance(patch, dict)
+                or not set(patch) <= self.source_keys
+                or (not present and patch)
+                or ("packages" in patch and "package_sources" in patch)
+            ):
+                raise ValueError(f"{self.label} Source projection layer is invalid")
+            for key, value in patch.items():
+                if not isinstance(value, list):
+                    raise ValueError(f"{self.label} legacy Source setting is invalid")
+                if key == disabled_setting:
+                    if any(not isinstance(item, str) or not item for item in value):
+                        raise ValueError(f"{self.label} legacy disabled Plugin is invalid")
+                    if len(value) != len(set(value)):
+                        raise ValueError(f"{self.label} legacy disabled Plugin is duplicated")
+                    disabled.extend((scope, item) for item in value)
+                elif key in {"packages", "package_sources"}:
+                    if any(not _valid_snapshot_package_source(item) for item in value):
+                        raise ValueError(f"{self.label} legacy Package Source is invalid")
+                elif any(not isinstance(item, str) or not item for item in value):
+                    raise ValueError(f"{self.label} legacy Source setting is invalid")
+                if key in configured_source_keys and value:
+                    sources.append(f"{scope}:{key}")
+
+        return tuple(disabled), tuple(sources)
+
+    def index_configured_local_sources(
+        self,
+        projection: object,
+        identities: tuple[str, ...],
+        *,
+        required_identity: str | None,
+        max_sources: int,
+        builtin_ids: frozenset[str],
+        disabled_setting: str,
+        configured_source_keys: frozenset[str],
+    ) -> dict[str, _LegacySourceScope]:
+        """Match each approved configured Source against the frozen installed set."""
+        if (
+            type(identities) is not tuple
+            or not 0 < len(identities) <= max_sources
+            or any(
+                type(identity) is not str or not identity.startswith("local:/")
+                for identity in identities
+            )
+            or len(identities) != len(set(identities))
+            or (required_identity is not None and required_identity not in identities)
+        ):
+            raise ValueError("Legacy local data Source set is invalid")
+        disabled, configured_keys = self.classify(
+            projection,
+            disabled_setting=disabled_setting,
+            configured_source_keys=configured_source_keys,
+        )
+        if any(plugin_id not in builtin_ids for _, plugin_id in disabled):
+            raise ValueError("Legacy local data settings need a separate migration")
+        assert isinstance(projection, dict)
+        scopes = projection["scopes"]
+        configured: dict[str, _LegacySourceScope] = {}
+        configured_scopes = 0
+        for scope in _LEGACY_SOURCE_SCOPES:
+            patch = scopes[scope]["sourcePatch"]
+            if set(patch) - {disabled_setting, "plugin_sources"}:
+                raise ValueError("Legacy local data settings need a separate migration")
+            if "plugin_sources" not in patch:
+                continue
+            values = patch["plugin_sources"]
+            if values:
+                configured_scopes += 1
+            for path in values:
+                if (
+                    not isinstance(path, str)
+                    or not Path(path).is_absolute()
+                    or any(part in {".", ".."} for part in path.split("/"))
+                    or f"local:{path}" not in identities
+                ):
+                    raise ValueError(
+                        "Configured Source must be the same installed local Source"
+                    )
+                if path in configured:
+                    raise ValueError("Legacy Skill configured Sources are duplicated")
+                configured[path] = scope
+        if (
+            len(configured) > len(identities)
+            or len(configured_keys) != configured_scopes
+        ):
+            raise ValueError("Legacy local data settings need a separate migration")
+        return configured
 
     def verify_snapshot(
         self,
@@ -1368,155 +2143,57 @@ class _LegacySourceProjection:
         ).encode("utf-8")
 
 
-@dataclass(frozen=True)
-class _LegacyAdoptionSelection:
-    """Read-only adoption provenance over the original handoff and Desired owners.
+def read_settled_legacy_local_adoption(
+    accepted: _AcceptedSource,
+    *,
+    desired: PluginDesiredStateLedger,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    bindings: Sequence[PackageProductLocalWheelBindingV1],
+    scope_id: str,
+    plugin_id: str,
+    source_trust_class: str,
+    install_policy: _LegacyLocalInstallPolicy,
+    builtin_ids: tuple[str, ...],
+    choices: ReviewedPluginChoices,
+    bootstrap_policy: _PluginBootstrapPolicy,
+    handoff_error: str,
+) -> bool:
+    """Verify initial adoption on the original read-only Product owners."""
+    matches, bound = match_legacy_replay_source(
+        bindings,
+        accepted,
+        plugin_id=plugin_id,
+        trust_classes=(source_trust_class,),
+        expected_trust=source_trust_class,
+    )
+    if not matches or bound is None:
+        return False
+    handoffs = PackageRetentionHandoffJournal(
+        epoch_runtime.control_root / "product-state" / "handoff.jsonl"
+    )
+    key, install_id, enable_id = install_policy.operation_identity(
+        accepted,
+        scope_id=scope_id,
+        plugin_id=plugin_id,
+    )
+    require_enablement = accepted.review.desired_state == "installed_enabled"
+    disabled_ids = frozenset(choices.disabled_ids)
+    removed_operations = {
+        name: choices.operation_id_for(name)
+        for name in builtin_ids
+        if name in choices.removed_ids
+    }
+    before, history = desired.capture_read_only()
+    store_id = epoch_runtime.registry.store_id
 
-    Product choices and historical IDs are supplied as data. Later operator
-    mutations do not erase initial adoption; partial evidence cannot prove it.
-    """
-
-    key: PluginInstallationKeyV1
-    source_identity: str
-    install_operation_id: str
-    enable_operation_id: str | None
-    builtin_ids: tuple[str, ...]
-    disabled_builtin_ids: frozenset[str]
-    removed_builtin_operations: Mapping[str, str]
-
-    def settled(
-        self,
-        desired: PluginDesiredStateLedger,
-        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-        handoffs: PackageRetentionHandoffJournal,
-        bindings: Sequence[PackageProductLocalWheelBindingV1],
-        *,
-        store_id: str,
-        bootstrap_policy: _PluginBootstrapPolicy,
-        handoff_error: str,
-    ) -> bool:
-        before, history = desired.capture_read_only()
-
-        def transitions_for(
-            selected_plugin: str,
-        ) -> tuple[PluginDesiredStateJournalTransition, ...]:
-            key = PluginInstallationKeyV1(
-                product_id=self.key.product_id,
-                installation_scope="workspace",
-                scope_id=self.key.scope_id,
-                plugin_id=selected_plugin,
-            )
-            return tuple(
-                item for item in history if item.mutation.installation_key == key
-            )
-
-        old_install_id = self.install_operation_id
-        command_id = self._settled_command(
-            handoffs,
-            error_message=handoff_error,
-            operation_id=old_install_id,
-            plugin_id=self.key.plugin_id,
-        )
-        old_events = transitions_for(self.key.plugin_id)
-        if not self._initial_install_matches(
-            old_events, command_id, self.source_identity
-        ):
-            return False
-        if self.enable_operation_id is not None:
-            enable_id = self.enable_operation_id
-            if (
-                len(old_events) < 2
-                or not isinstance(old_events[1], PluginDesiredStateTransitionV1)
-                or old_events[1].mutation.operation_id != enable_id
-                or old_events[1].committed_state.selection.desired_state
-                != "installed_enabled"
-                or old_events[1].committed_state.selection.package_revision
-                != old_events[0].committed_state.selection.package_revision
-            ):
-                return False
-
-        for builtin_id in self.builtin_ids:
-            events = transitions_for(builtin_id)
-            if builtin_id in self.removed_builtin_operations:
-                if (
-                    not events
-                    or events[0].mutation.operation_id
-                    != self.removed_builtin_operations[builtin_id]
-                    or events[0].committed_state.selection.desired_state != "absent"
-                    or any(
-                        event.mutation.operation_id.startswith(
-                            bootstrap_policy.operation_id_prefix
-                        )
-                        for event in events[1:]
-                    )
-                ):
-                    return False
-                continue
-            operation_id = bootstrap_policy.operation_id(store_id, builtin_id)
-            command_id = self._settled_command(
-                handoffs,
-                error_message=handoff_error,
-                operation_id=operation_id,
-                plugin_id=builtin_id,
-            )
-            builtin_source = tuple(
-                item.source_identity
-                for item in bindings
-                if item.plugin_id == builtin_id
-            )
-            if len(builtin_source) != 1 or not self._initial_install_matches(
-                events, command_id, builtin_source[0]
-            ):
-                return False
-            if builtin_id in self.disabled_builtin_ids:
-                if any(
-                    event.mutation.operation_id.startswith(
-                        bootstrap_policy.enable_id_prefix
-                    )
-                    for event in events[1:]
-                ):
-                    return False
-            elif (
-                len(events) < 2
-                or not isinstance(events[1], PluginDesiredStateTransitionV1)
-                or events[1].committed_state.selection.desired_state
-                != "installed_enabled"
-                or events[1].committed_state.selection.package_revision
-                != events[0].committed_state.selection.package_revision
-            ):
-                return False
-        after, later_history = desired.capture_read_only()
-        epoch_runtime.assert_current()
-        return before == after and history == later_history
-
-    @staticmethod
-    def _initial_install_matches(
-        events: tuple[PluginDesiredStateJournalTransition, ...],
-        command_id: str | None,
-        source_identity: str,
-    ) -> bool:
-        return (
-            command_id is not None
-            and bool(events)
-            and isinstance(events[0], PluginDesiredStateTransitionV1)
-            and events[0].mutation.operation_id == command_id
-            and events[0].committed_state.selection.desired_state
-            == "installed_disabled"
-            and events[0].committed_state.selection.package_revision is not None
-            and events[
-                0
-            ].committed_state.selection.package_revision.package_source_identity
-            == source_identity
+    def transitions_for(
+        selected: PluginInstallationKeyV1,
+    ) -> tuple[PluginDesiredStateJournalTransition, ...]:
+        return tuple(
+            item for item in history if item.mutation.installation_key == selected
         )
 
-    def _settled_command(
-        self,
-        handoffs: PackageRetentionHandoffJournal,
-        *,
-        operation_id: str,
-        plugin_id: str,
-        error_message: str,
-    ) -> str | None:
+    def command_for(operation_id: str, selected_plugin: str) -> str | None:
         receipt = handoffs.read_operation(operation_id)
         if receipt is None or receipt.state != "settled":
             return None
@@ -1525,9 +2202,103 @@ class _LegacyAdoptionSelection:
             receipt.desired_receipt is None
             or receipt.desired_receipt.request != request
             or request.operation_id != operation_id
-            or request.plugin_id != plugin_id
-            or request.product_id != self.key.product_id
-            or request.scope_id != self.key.scope_id
+            or request.plugin_id != selected_plugin
+            or request.product_id != key.product_id
+            or request.scope_id != key.scope_id
         ):
-            raise ValueError(error_message)
+            raise ValueError(handoff_error)
         return request.command_id
+
+    command_id = command_for(install_id, plugin_id)
+    old_events = transitions_for(key)
+    if not _initial_legacy_install_matches(
+        old_events, command_id, bound.source_identity
+    ):
+        return False
+    if require_enablement and not (
+        _initial_legacy_enablement_matches(old_events, operation_id=enable_id)
+    ):
+        return False
+
+    for builtin_id in builtin_ids:
+        events = transitions_for(
+            PluginInstallationKeyV1.workspace(key.product_id, key.scope_id, builtin_id)
+        )
+        if builtin_id in removed_operations:
+            if (
+                not events
+                or events[0].mutation.operation_id != removed_operations[builtin_id]
+                or events[0].committed_state.selection.desired_state != "absent"
+                or any(
+                    event.mutation.operation_id.startswith(
+                        bootstrap_policy.operation_id_prefix
+                    )
+                    for event in events[1:]
+                )
+            ):
+                return False
+            continue
+        command_id = command_for(
+            bootstrap_policy.operation_id(store_id, builtin_id), builtin_id
+        )
+        builtin_sources = tuple(
+            item.source_identity for item in bindings if item.plugin_id == builtin_id
+        )
+        if len(builtin_sources) != 1 or not _initial_legacy_install_matches(
+            events, command_id, builtin_sources[0]
+        ):
+            return False
+        if builtin_id in disabled_ids:
+            if any(
+                event.mutation.operation_id.startswith(
+                    bootstrap_policy.enable_id_prefix
+                )
+                for event in events[1:]
+            ):
+                return False
+        elif not _initial_legacy_enablement_matches(events):
+            return False
+    after, later_history = desired.capture_read_only()
+    epoch_runtime.assert_current()
+    return before == after and history == later_history
+
+
+def _initial_legacy_install_event(
+    events: tuple[PluginDesiredStateJournalTransition, ...], command_id: str | None
+) -> PluginDesiredStateTransitionV1 | None:
+    if (
+        command_id is None
+        or not events
+        or not isinstance(events[0], PluginDesiredStateTransitionV1)
+        or events[0].mutation.operation_id != command_id
+        or events[0].committed_state.selection.desired_state != "installed_disabled"
+    ):
+        return None
+    return events[0]
+
+
+def _initial_legacy_install_matches(
+    events: tuple[PluginDesiredStateJournalTransition, ...],
+    command_id: str | None,
+    source_identity: str,
+) -> bool:
+    event = _initial_legacy_install_event(events, command_id)
+    if event is None:
+        return False
+    revision = event.committed_state.selection.package_revision
+    return revision is not None and revision.package_source_identity == source_identity
+
+
+def _initial_legacy_enablement_matches(
+    events: tuple[PluginDesiredStateJournalTransition, ...],
+    *,
+    operation_id: str | None = None,
+) -> bool:
+    return (
+        len(events) >= 2
+        and isinstance(events[1], PluginDesiredStateTransitionV1)
+        and (operation_id is None or events[1].mutation.operation_id == operation_id)
+        and events[1].committed_state.selection.desired_state == "installed_enabled"
+        and events[1].committed_state.selection.package_revision
+        == events[0].committed_state.selection.package_revision
+    )

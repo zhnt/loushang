@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-from argparse import ArgumentParser
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Never, TextIO
+from typing import Any, TextIO
 
 from loushang.coding.composition.capabilities import (
     CODING_LSP_CAPABILITY,
@@ -19,28 +18,24 @@ from loushang.coding.lsp.discovery import (
     default_lsp_environment,
     discover_lsp_catalog,
 )
+from loushang.harness.cli.parser import (
+    CliCommandUsageError,
+    RaisingArgumentParser,
+    extract_root_command,
+    write_usage_error,
+)
 
 
-class LspCliUsageError(ValueError):
-    def __init__(self, message: str, *, usage: str) -> None:
-        super().__init__(message)
-        self.usage = usage
+class LspCliUsageError(CliCommandUsageError):
+    pass
 
 
-class _NoExitParser(ArgumentParser):
-    def error(self, message: str) -> Never:
-        raise LspCliUsageError(message, usage=self.format_usage())
+class _NoExitParser(RaisingArgumentParser):
+    usage_error_type = LspCliUsageError
 
 
 def extract_lsp_argv(argv: Sequence[str]) -> tuple[str, ...] | None:
-    values = list(argv)
-    if values and values[0] == "lsp":
-        return tuple(values[1:])
-    if len(values) >= 3 and values[0] == "--cwd" and values[2] == "lsp":
-        return ("--cwd", values[1], *values[3:])
-    if len(values) >= 2 and values[0].startswith("--cwd=") and values[1] == "lsp":
-        return (values[0], *values[2:])
-    return None
+    return extract_root_command(argv, "lsp")
 
 
 async def run_coding_lsp_command(
@@ -59,9 +54,7 @@ async def run_coding_lsp_command(
     try:
         namespace = _parser().parse_args(list(argv))
     except LspCliUsageError as error:
-        stderr.write(error.usage)
-        stderr.write(f"Error: {error}\n")
-        return 2
+        return write_usage_error(stderr, error)
     if namespace.help or namespace.command is None:
         stdout.write(_parser().format_help())
         return 0

@@ -182,15 +182,91 @@ class _NativeWorkerAttempt:
     commit_activation: Callable[[], None]
 
 
-def _coordinator(
-    inputs: _ActivationInputs, evidence: _Evidence
+def _admitted_worker_coordinator(
+    inputs: _ActivationInputs,
+    evidence: _Evidence,
+    receipt: ProductWorkerActivationReceiptV1,
+    failure: Callable[[str], RuntimeError],
+    *,
+    refusal_code: str = "c5_admission_refused",
 ) -> ProductWorkerActivationCoordinator:
-    return ProductWorkerActivationCoordinator(
+    coordinator = ProductWorkerActivationCoordinator(
         authority=inputs._worker_activation_authority,
         evidence_authority=evidence,
         trusted_evidence_authority_id=evidence.authority_id,
         trusted_evidence_authority_fingerprint=evidence.authority_fingerprint,
         state_store=inputs._open_worker_state_store(),
+    )
+    if coordinator.evaluate(receipt.policy, receipt).get("reason") != "admitted":
+        raise failure(refusal_code)
+    return coordinator
+
+
+def _enroll_worker_resume_parent(
+    activation: _ActivationInputs,
+    receipt: ProductWorkerActivationReceiptV1,
+    context: ResumeEffectParentContextV1,
+    failure: Callable[[str], RuntimeError],
+    parent_failure: Callable[[str], RuntimeError],
+) -> tuple[_Evidence, ProductWorkerActivationCoordinator]:
+    evidence = activation._worker_evidence(receipt)
+    coordinator = _admitted_worker_coordinator(activation, evidence, receipt, failure)
+    ProductWorkerActivationCoordinator.observe_or_enroll_resume_parent(
+        coordinator, receipt=receipt, context=context, failure=parent_failure,
+    )
+    return evidence, coordinator
+
+
+def _publish_native_worker_activation(
+    coordinator: ProductWorkerActivationCoordinator,
+    receipt: ProductWorkerActivationReceiptV1,
+    identity: WorkerLaunchIdentityV1,
+    profile: ProductWorkerNativeProfilePort,
+) -> None:
+    coordinator.publish(
+        receipt=receipt,
+        attempt_id=identity.attempt_id,
+        owner_generation=identity.owner_generation,
+        realized_native_policy_closure_fingerprint=(
+            profile.realized_native_policy_closure_fingerprint
+        ),
+        native_profile_catalog_revision=profile.native_profile_catalog_revision,
+        native_profile_id=profile.native_profile_id,
+    )
+
+
+def _settle_posix_worker(
+    coordinator: ProductWorkerActivationCoordinator,
+    evidence: _Evidence,
+    receipt: ProductWorkerActivationReceiptV1,
+    identity: WorkerLaunchIdentityV1,
+    *,
+    host_identity: str,
+    boot_identity: str,
+) -> None:
+    """Retire one POSIX attempt and attest its native tree under the original witness."""
+    coordinator.retire_exact(
+        receipt=receipt,
+        attempt_id=identity.attempt_id,
+        owner_generation=identity.owner_generation,
+    )
+    coordinator.record_protocol_terminal(
+        receipt=receipt,
+        attempt_id=identity.attempt_id,
+        owner_generation=identity.owner_generation,
+    )
+    coordinator.record_cleanup_settlement(
+        WorkerCleanupSettlementV1(
+            receipt_fingerprint=receipt.fingerprint,
+            attempt_id=identity.attempt_id,
+            owner_generation=identity.owner_generation,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            protocol_terminal=True,
+            domain_retired=True,
+            tree_settled=True,
+        ),
+        witness=evidence.current_tree_witness(attempt_id=identity.attempt_id),
     )
 
 
@@ -227,32 +303,13 @@ async def _prepare_posix_native_worker(
                     assert cleanup_evidence is not None
                     assert host_identity is not None
                     assert boot_identity is not None
-                    attempt_id = pending_launch.identity.attempt_id
-                    owner_generation = pending_launch.identity.owner_generation
-                    coordinator.retire_exact(
-                        receipt=receipt,
-                        attempt_id=attempt_id,
-                        owner_generation=owner_generation,
-                    )
-                    coordinator.record_protocol_terminal(
-                        receipt=receipt,
-                        attempt_id=attempt_id,
-                        owner_generation=owner_generation,
-                    )
-                    coordinator.record_cleanup_settlement(
-                        WorkerCleanupSettlementV1(
-                            receipt_fingerprint=receipt.fingerprint,
-                            attempt_id=attempt_id,
-                            owner_generation=owner_generation,
-                            host_identity=host_identity,
-                            boot_identity=boot_identity,
-                            protocol_terminal=True,
-                            domain_retired=True,
-                            tree_settled=True,
-                        ),
-                        witness=cleanup_evidence.current_tree_witness(
-                            attempt_id=attempt_id
-                        ),
+                    _settle_posix_worker(
+                        coordinator,
+                        cleanup_evidence,
+                        receipt,
+                        pending_launch.identity,
+                        host_identity=host_identity,
+                        boot_identity=boot_identity,
                     )
 
         task = asyncio.create_task(
@@ -262,18 +319,8 @@ async def _prepare_posix_native_worker(
 
     try:
         if resume_parent_context is not None:
-            cleanup_evidence = activation._worker_evidence(receipt)
-            coordinator = _coordinator(activation, cleanup_evidence)
-            if (
-                coordinator.evaluate(receipt.policy, receipt).get("reason")
-                != "admitted"
-            ):
-                raise failure("c5_admission_refused")
-            ProductWorkerActivationCoordinator.observe_or_enroll_resume_parent(
-                coordinator,
-                receipt=receipt,
-                context=resume_parent_context,
-                failure=parent_failure,
+            cleanup_evidence, coordinator = _enroll_worker_resume_parent(
+                activation, receipt, resume_parent_context, failure, parent_failure,
             )
         payload = stack.enter_context(
             launch_source._materialize_worker_payload(
@@ -323,12 +370,9 @@ async def _prepare_posix_native_worker(
         stack.push_async_callback(settle_supervisor)
         if coordinator is None:
             cleanup_evidence = activation._worker_evidence(receipt)
-            coordinator = _coordinator(activation, cleanup_evidence)
-            if (
-                coordinator.evaluate(receipt.policy, receipt).get("reason")
-                != "admitted"
-            ):
-                raise failure("c5_admission_refused")
+            coordinator = _admitted_worker_coordinator(
+                activation, cleanup_evidence, receipt, failure
+            )
         if resume_settlement is not None:
             resume_settlement.bind(coordinator)
         assert cleanup_evidence is not None
@@ -358,19 +402,8 @@ async def _prepare_posix_native_worker(
 
         def commit_activation() -> None:
             assert coordinator is not None
-            coordinator.publish(
-                receipt=receipt,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-                realized_native_policy_closure_fingerprint=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).realized_native_policy_closure_fingerprint,
-                native_profile_catalog_revision=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).native_profile_catalog_revision,
-                native_profile_id=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).native_profile_id,
+            _publish_native_worker_activation(
+                coordinator, receipt, request.identity, profile
             )
             ProductWorkerActivationCoordinator.seal_current_resume_parent(
                 coordinator, context=resume_parent_context, failure=parent_failure
@@ -482,18 +515,8 @@ async def _prepare_windows_native_worker(
 
     try:
         if resume_parent_context is not None:
-            enrollment_evidence = activation._worker_evidence(receipt)
-            enrollment_coordinator = _coordinator(activation, enrollment_evidence)
-            if (
-                enrollment_coordinator.evaluate(receipt.policy, receipt).get("reason")
-                != "admitted"
-            ):
-                raise failure("c5_admission_refused")
-            ProductWorkerActivationCoordinator.observe_or_enroll_resume_parent(
-                enrollment_coordinator,
-                receipt=receipt,
-                context=resume_parent_context,
-                failure=parent_failure,
+            _enroll_worker_resume_parent(
+                activation, receipt, resume_parent_context, failure, parent_failure,
             )
         payload = launch_source._materialize_worker_payload(
             receipt, pending_launch.identity.attempt_id
@@ -529,9 +552,9 @@ async def _prepare_windows_native_worker(
 
         stack.push_async_callback(close_unowned_profile)
         cleanup_evidence = activation._worker_evidence(receipt, request)
-        coordinator = _coordinator(activation, cleanup_evidence)
-        if coordinator.evaluate(receipt.policy, receipt).get("reason") != "admitted":
-            raise failure("c5_admission_refused")
+        coordinator = _admitted_worker_coordinator(
+            activation, cleanup_evidence, receipt, failure
+        )
         if resume_settlement is not None:
             resume_settlement.bind(coordinator)
         host = _create_windows_lpac_product_worker_session_host()
@@ -588,19 +611,9 @@ async def _prepare_windows_native_worker(
 
         def commit_activation() -> None:
             assert coordinator is not None
-            coordinator.publish(
-                receipt=receipt,
-                attempt_id=request.identity.attempt_id,
-                owner_generation=request.identity.owner_generation,
-                realized_native_policy_closure_fingerprint=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).realized_native_policy_closure_fingerprint,
-                native_profile_catalog_revision=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).native_profile_catalog_revision,
-                native_profile_id=cast(
-                    ProductWorkerNativeProfilePort, profile
-                ).native_profile_id,
+            _publish_native_worker_activation(
+                coordinator, receipt, request.identity,
+                cast(ProductWorkerNativeProfilePort, profile),
             )
             ProductWorkerActivationCoordinator.seal_current_resume_parent(
                 coordinator, context=resume_parent_context, failure=parent_failure

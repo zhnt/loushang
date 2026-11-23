@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.hosted._worker_canary as canary_module
+import loushang.harness.worker._product_attempt_lifecycle as canary_lifecycle
 from loushang.coding.hosted._worker_canary import (
     CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
     CodingProductWorkerCanaryError,
@@ -230,7 +230,7 @@ class _WindowsProductContext:
 
         if not use_real_bridge:
             monkeypatch.setattr(
-                canary_module,
+                canary_lifecycle,
                 "_bind_windows_lpac_contained_product_worker_profile",
                 bind_windows,
             )

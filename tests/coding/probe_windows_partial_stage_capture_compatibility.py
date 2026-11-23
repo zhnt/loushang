@@ -393,7 +393,8 @@ def observed(case):
     result = error = None
     with ExitStack() as patches:
         for owner in (module, effect, io):
-            patches.enter_context(patch.object(owner, "os", port))
+            if hasattr(owner, "os"):
+                patches.enter_context(patch.object(owner, "os", port))
             for name, replacement in [
                 ("open_windows_directory", observer.open_dir),
                 ("windows_stat_at", observer.stat_at),
@@ -419,7 +420,16 @@ def observed(case):
         for owner in (consumption, retirement):
             patches.enter_context(patch.object(owner, "os", port))
         if case == "executable-overflow":
-            patches.enter_context(patch.object(module, "_MAX_PAYLOAD_BYTES", 8))
+            if hasattr(module, "_MAX_PAYLOAD_BYTES"):
+                patches.enter_context(patch.object(module, "_MAX_PAYLOAD_BYTES", 8))
+            else:
+                patches.enter_context(
+                    patch.object(
+                        module.CodingWindowsWorkerPartialStageReviewV1,
+                        "_payload_maximum",
+                        classmethod(lambda cls: 8),
+                    )
+                )
         if case.startswith("public-constructor-") or case.startswith(
             ("matrix-value-", "matrix-stop-")
         ):

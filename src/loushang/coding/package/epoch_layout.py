@@ -5,9 +5,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
+from loushang.harness.package_product._legacy_runtime import (
+    FencedRuntimeOpenKwargs,
+    legacy_product_fence_exists,
+)
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     inspect_legacy_product_domain_members,
 )
@@ -45,13 +48,6 @@ _PACKAGE_MEMBER_DOMAINS = {
 }
 
 
-class _FencedRuntimeOpenKwargs(TypedDict):
-    authority_root: Path
-    control_root: Path
-    store_id: str
-    epochs_root_name: str
-
-
 @dataclass(frozen=True, slots=True)
 class CodingPackageEpochLayoutV1:
     store_id: str
@@ -86,7 +82,7 @@ class CodingPackageEpochLayoutV1:
         ):
             raise ValueError("Coding Package epoch authorities overlap")
 
-    def fenced_runtime_open_kwargs(self) -> _FencedRuntimeOpenKwargs:
+    def fenced_runtime_open_kwargs(self) -> FencedRuntimeOpenKwargs:
         """Bind the existing fenced runtime entry points to this layout."""
 
         return {
@@ -285,12 +281,9 @@ __all__ = [
 def coding_fenced_product_exists(layout: CodingPluginLifecycleStateLayout) -> bool:
     """Only an existing fence selects B; malformed existing B fails closed later."""
 
-    epoch = resolve_coding_package_epoch_layout(layout)
-    try:
-        (epoch.control_root / "epoch.jsonl").lstat()
-    except FileNotFoundError:
-        return False
-    return True
+    return legacy_product_fence_exists(
+        resolve_coding_package_epoch_layout(layout).control_root
+    )
 
 
 # Preserve the deployed callable/pickle route after moving its implementation.

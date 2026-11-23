@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
-from typing import ClassVar, Generic, Literal, Protocol, TypeVar
+from typing import TYPE_CHECKING, ClassVar, Generic, Literal, Protocol, Self, TypeVar
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -21,6 +22,11 @@ from loushang.harness.journal._path_admission import (
     private_journal_exists,
     require_private_journal_parent,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+    decode_nullable,
+)
 
 from .private_data_restore_journal import (
     PrivateDataRestoreConfirmation,
@@ -28,12 +34,20 @@ from .private_data_restore_journal import (
 )
 from .records import PluginInstallationKeyV1
 
+if TYPE_CHECKING:
+    from .private_data_deletion import PrivateDataDeletionTarget
+
+
 
 class ExpiryPlan(Protocol):
     @property
     def installation_key(self) -> PluginInstallationKeyV1: ...
     @property
     def backup_id(self) -> str: ...
+    @property
+    def source_target_id(self) -> str: ...
+    @property
+    def desired_inventory_revision(self) -> int: ...
     @property
     def fingerprint(self) -> str: ...
     @property
@@ -65,6 +79,44 @@ class ExpiryHistoryEvent(Protocol):
     def receipt(self) -> object | None: ...
 
 
+class _ExpiryWireRecord(Protocol):
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
+
+    def to_dict(self) -> dict[str, object]: ...
+
+
+def expiry_event_schema(
+    event_type: type[ExpiryHistoryEvent],
+    *,
+    plan: type[_ExpiryWireRecord],
+    confirmation: type[_ExpiryWireRecord],
+    archive: type[_ExpiryWireRecord],
+    receipt: type[_ExpiryWireRecord],
+) -> RecordSchema:
+    """Use the same nested record fields for both native expiry journals."""
+    return RecordSchema.for_dataclass(
+        event_type,
+        lambda value: value,
+        RecordField("plan", decoder=plan.from_dict, encoder=plan.to_dict),
+        RecordField(
+            "confirmation", decoder=confirmation.from_dict, encoder=confirmation.to_dict
+        ),
+        RecordField(
+            "archive", decoder=partial(decode_nullable, decoder=archive.from_dict),
+            encoder=_encode_optional,
+        ),
+        RecordField(
+            "receipt", decoder=partial(decode_nullable, decoder=receipt.from_dict),
+            encoder=_encode_optional,
+        ),
+    )
+
+
+def _encode_optional(value: _ExpiryWireRecord | None) -> dict[str, object] | None:
+    return None if value is None else value.to_dict()
+
+
 class _ExpiryConfirmation(Protocol):
     @property
     def plan_fingerprint(self) -> str: ...
@@ -79,6 +131,48 @@ class _ArchiveReference(Protocol):
 
 _PlanT = TypeVar("_PlanT", bound=ExpiryPlan)
 _RecordConfirmationT = TypeVar("_RecordConfirmationT", bound=_ExpiryConfirmation)
+
+
+def plan_verified_backup_expiry(
+    create: Callable[..., _PlanT],
+    source: PrivateDataDeletionTarget,
+    confirmation: PrivateDataRestoreConfirmation,
+    completion: PrivateDataRestoreEvent,
+    archive: _ArchiveReference,
+    *,
+    key: PluginInstallationKeyV1,
+    backup_id: str,
+    backup_receipt_id: str,
+    restored_target_id: str,
+    desired_inventory_revision: int,
+) -> _PlanT:
+    """Freeze the exact proof already captured under native Product custody."""
+    return create(
+        installation_key=key,
+        backup_id=backup_id,
+        backup_receipt_id=backup_receipt_id,
+        source_target_id=source.target_id,
+        confirmation_id=confirmation.confirmation_id,
+        restore_completion_digest=completion.record_digest,
+        restored_target_id=restored_target_id,
+        desired_inventory_revision=desired_inventory_revision,
+        archive_root_identity=archive.root_identity,
+        archive_target_id=archive.target_id,
+    )
+
+
+def expiry_acceptance_matches(
+    plan: object,
+    confirmation: object,
+    *,
+    plan_type: type[_PlanT],
+    confirmation_type: type[_RecordConfirmationT],
+) -> bool:
+    return (
+        isinstance(plan, plan_type)
+        and isinstance(confirmation, confirmation_type)
+        and confirmation.plan_fingerprint == plan.fingerprint
+    )
 
 
 def matches_expiry_archive(archive: _ArchiveReference, plan: ExpiryPlan) -> bool:
@@ -195,11 +289,12 @@ _ArchiveT = TypeVar("_ArchiveT")
 _EventT = TypeVar("_EventT", bound=ExpiryHistoryEvent)
 
 
-class ExpiryAdvance(Generic[_AdvanceEventT]):
-    """One original checkpoint advance; stores retain scanning and publication."""
+class ExpiryJournalTransitions(Generic[_AdvanceEventT]):
+    """Exact confirmation and checkpoints over the native expiry journals."""
 
     __slots__ = ()
     _label: ClassVar[str]
+    _completed_phrase: ClassVar[str] = "was already completed"
 
     @property
     def _event_factory(self) -> Callable[..., _AdvanceEventT]:
@@ -219,6 +314,57 @@ class ExpiryAdvance(Generic[_AdvanceEventT]):
         event: _AdvanceEventT,
     ) -> _AdvanceEventT:
         raise NotImplementedError
+
+    def _record_confirmation(self, plan: ExpiryPlan, confirmation: object) -> None:
+        events, staged = self._scan()
+        completed_error = f"{self._label} backup expiry {self._completed_phrase}"
+        if events:
+            last = events[-1]
+            if last.phase != "completed":
+                if staged is not None:
+                    message = f"{self._label} backup expiry event needs recovery"
+                    raise ValueError(message)
+                if last.plan == plan and last.confirmation == confirmation:
+                    return
+                raise ValueError(f"Another {self._label} backup expiry is unfinished")
+            if last.plan == plan:
+                if staged is not None or last.confirmation != confirmation:
+                    raise ValueError(completed_error)
+                return
+            if any(
+                event.phase == "completed" and event.plan.backup_id == plan.backup_id
+                for event in events
+            ):
+                raise ValueError(completed_error)
+        event = self._event_factory(
+            revision=len(events) + 1,
+            phase="confirmed",
+            plan=plan,
+            confirmation=confirmation,
+        )
+        self._append_current(events, staged, event)
+
+    def _begin_current(
+        self, plan: ExpiryPlan, confirmation: object, archive: object
+    ) -> _AdvanceEventT:
+        events, staged = self._scan()
+        if not events or (
+            events[-1].plan != plan or events[-1].confirmation != confirmation
+        ):
+            raise ValueError(f"{self._label} backup expiry confirmation changed")
+        prior = events[-1]
+        if prior.phase != "confirmed":
+            if staged is not None or prior.archive != archive:
+                raise ValueError(f"{self._label} backup expiry archive changed")
+            return prior
+        event = self._event_factory(
+            revision=len(events) + 1,
+            phase="started",
+            plan=plan,
+            confirmation=confirmation,
+            archive=archive,
+        )
+        return self._append_current(events, staged, event)
 
     def _advance_current(
         self, prior: _AdvanceEventT, phase: Literal["renamed", "completed"]
@@ -250,7 +396,8 @@ class ExpiryAdvance(Generic[_AdvanceEventT]):
 
 
 class PrivateDataExpiryJournal(
-    ExpiryAdvance[_EventT], Generic[_PlanT, _ConfirmationT, _ArchiveT, _EventT]
+    ExpiryJournalTransitions[_EventT],
+    Generic[_PlanT, _ConfirmationT, _ArchiveT, _EventT],
 ):
     """One append-only exact attempt at a time in the Product state root."""
 
@@ -286,29 +433,8 @@ class PrivateDataExpiryJournal(
         )
         self._require_private_parent()
         with journal_file_lock(self._path, "exclusive"):
-            events = self._load(self._write_policy)
-            if events and events[-1].phase != "completed":
-                last = events[-1]
-                if last.plan == plan and last.confirmation == confirmation:
-                    return confirmation
-                raise ValueError(f"Another {self._label} backup expiry is unfinished")
-            if events and events[-1].plan == plan:
-                if events[-1].confirmation == confirmation:
-                    return confirmation
-                raise ValueError(f"{self._label} backup expiry was already completed")
-            if any(
-                event.phase == "completed" and event.plan.backup_id == plan.backup_id
-                for event in events
-            ):
-                raise ValueError(f"{self._label} backup expiry was already completed")
-            event = self._event_factory(
-                revision=len(events) + 1,
-                phase="confirmed",
-                plan=plan,
-                confirmation=confirmation,
-            )
-            self._append(event)
-            return confirmation
+            self._record_confirmation(plan, confirmation)
+        return confirmation
 
     def begin(
         self,
@@ -318,25 +444,7 @@ class PrivateDataExpiryJournal(
     ) -> _EventT:
         self._require_private_parent()
         with journal_file_lock(self._path, "exclusive"):
-            events = self._load(self._write_policy)
-            if not events or (
-                events[-1].plan != plan or events[-1].confirmation != confirmation
-            ):
-                raise ValueError(f"{self._label} backup expiry confirmation changed")
-            last = events[-1]
-            if last.phase != "confirmed":
-                if last.archive == archive:
-                    return last
-                raise ValueError(f"{self._label} backup expiry archive changed")
-            event = self._event_factory(
-                revision=len(events) + 1,
-                phase="started",
-                plan=plan,
-                confirmation=confirmation,
-                archive=archive,
-            )
-            self._append(event)
-            return event
+            return self._begin_current(plan, confirmation, archive)
 
     def advance(
         self, prior: _EventT, phase: Literal["renamed", "completed"]

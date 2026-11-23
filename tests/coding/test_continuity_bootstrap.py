@@ -6,7 +6,7 @@ import os
 import shutil
 import sys
 import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -429,15 +429,20 @@ def test_empty_continuity_keeps_registration_for_bound_compatibility_writer(
 def test_private_state_root_rejects_symlink_without_chmodding_target(
     tmp_path: Path,
 ) -> None:
-    from loushang.coding.composition.continuity import _prepare_private_state_root
+    from loushang.coding.composition.continuity import _prepare_private_state_layout
 
     target = tmp_path / "shared-target"
     target.mkdir(mode=0o755)
     link = tmp_path / "state-link"
     link.symlink_to(target, target_is_directory=True)
+    layout = replace(
+        _test_layout(tmp_path / "state", tmp_path / "workspace"),
+        root=link,
+        private_state_base=tmp_path,
+    )
 
     with pytest.raises(CodingContinuityBootstrapError) as caught:
-        _prepare_private_state_root(link)
+        _prepare_private_state_layout(layout)
 
     assert caught.value.code == "coding_continuity_state_permissions_failed"
     assert target.stat().st_mode & 0o777 == 0o755
@@ -1030,9 +1035,9 @@ def test_removed_continuity_tombstone_never_reinspects_configured_source(
         await shutdown_coding_continuity(first_runtime)
 
         lifecycle = continuity_bootstrap._build_lifecycle(layout)
-        snapshot = lifecycle.desired.snapshot()
+        snapshot = lifecycle.common.desired.snapshot()
         [installed] = snapshot.installations
-        removed = lifecycle.management.submit(
+        removed = lifecycle.common.management.submit(
             PluginManagementCommandV1(
                 action="remove",
                 mutation=PluginDesiredStateMutationV1(

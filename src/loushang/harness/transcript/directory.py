@@ -23,6 +23,10 @@ from threading import Lock
 from time import monotonic
 from typing import Literal
 
+from loushang.foundation.file_identity import same_file_status as _same_file_status
+from loushang.foundation.file_identity import (
+    status_is_link_or_reparse as _status_is_link_or_reparse,
+)
 from loushang.harness.conversation import (
     ConversationIndexState,
     IndexedProjection,
@@ -1145,22 +1149,6 @@ def _consume_bounded_file_digest(
     return _bounded_file_digest(path, budget=budget)
 
 
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
-
-
 def _safe_discovery_root(path: Path) -> bool:
     try:
         status = path.lstat()
@@ -1195,13 +1183,6 @@ def _discovery_root_issue(
             detail="discovery root is not a direct directory",
         )
     return None
-
-
-def _status_is_link_or_reparse(status: os.stat_result) -> bool:
-    return stat_module.S_ISLNK(status.st_mode) or bool(
-        getattr(status, "st_file_attributes", 0)
-        & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    )
 
 
 def _filter_discovered_session_summaries(

@@ -373,7 +373,11 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
             if name == "loushang.apphost" or name.startswith("loushang.apphost.")
         } <= {
             "loushang.apphost.integrations.session_control",
-            "loushang.apphost.integrations.session_control._HostedAgentExecutionWork",
+            "loushang.apphost.integrations.session_control." + (
+                "_HostedResumeInputExecutionWork"
+                if path == Path('src/loushang/coding/hosted/resume.py')
+                else "_HostedPromptExecutionWork"
+            ),
         } | (
             {
                 "loushang.apphost.integrations.session_control._DeferredSessionControl",

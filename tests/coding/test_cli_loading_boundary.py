@@ -218,6 +218,39 @@ assert calls == [['--version']]
     )
 
 
+def test_exact_apphost_entry_avoids_application_and_preserves_earlier_options(tmp_path):
+    _probe(
+        tmp_path,
+        """
+import loushang.coding.cli.__main__ as entry
+
+class BlockApplication(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'loushang.coding.cli.application':
+            raise AssertionError('standalone AppHost imported the application')
+
+sys.meta_path.insert(0, BlockApplication())
+for prefix in ([], ['--cwd', '.'], ['--cwd=.']):
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        assert entry.main([*prefix, 'apphost', 'canary', '--help']) == 0
+    assert 'usage: loushang apphost' in out.getvalue() and not err.getvalue()
+assert 'loushang.coding.cli.application' not in sys.modules
+
+calls = []
+async def fallback(argv):
+    calls.append(argv)
+    return 31
+
+entry.__getattr__ = lambda name: fallback
+for flag in ('--extension=removed', '--install-package=x.whl', '--discover-local-plugins'):
+    original = ['apphost', 'canary', 'status', flag]
+    assert entry.main(original) == 31
+    assert calls[-1] is original
+""",
+    )
+
+
 def test_tty_application_runner_injection_preserves_original_call(tmp_path):
     _probe(
         tmp_path,

@@ -56,6 +56,72 @@ class _AgentApprovalPresentationLease:
         self.close_callback(reason)
 
 
+def _open_approval_presentation(
+    resolver: InteractiveApprovalResolver,
+    presenter: ApprovalRequestPresenter,
+    *,
+    dismisser: ApprovalRequestDismisser | None,
+    close_callback: Callable[[str], None],
+) -> _AgentApprovalPresentationLease:
+    resolver.set_request_presenter(presenter, dismisser=dismisser)
+    resolver.open_session()
+    resolver.represent_pending_requests()
+    return _AgentApprovalPresentationLease(close_callback)
+
+
+async def _apply_permission_action(
+    action: str,
+    *,
+    resolver: InteractiveApprovalResolver | None,
+    set_permission_profile: PermissionProfileSetter,
+    profile_events: tuple[Callable[[], PermissionProfileSnapshot], EventDispatcher] | None = None,
+    require_profile_id: bool = True,
+) -> bool:
+    kind, separator, permission_id = action.partition(":")
+    if not separator or not permission_id:
+        return False
+    if kind == "set-profile":
+        scope, scope_separator, profile_id = permission_id.partition(":")
+        if (
+            not scope_separator
+            or scope not in {"session", "project", "user"}
+            or (require_profile_id and not profile_id)
+        ):
+            return False
+        requested = permission_profile(profile_id).profile_id
+        before = (
+            profile_events[0]().effective_profile.profile_id
+            if profile_events is not None else None
+        )
+        typed_scope = cast(PermissionProfileScope, scope)
+        # A saved default must succeed before changing the current session.
+        set_permission_profile(requested, scope=typed_scope)
+        if typed_scope != "session":
+            set_permission_profile(requested, scope="session")
+        if profile_events is not None:
+            assert before is not None
+            current_profile, report_profile_change = profile_events
+            after = current_profile()
+            await report_profile_change(
+                PermissionProfileChanged(
+                    previous_profile_id=before,
+                    requested_profile_id=requested,
+                    effective_profile_id=after.effective_profile.profile_id,
+                    scope=typed_scope,
+                )
+            )
+        return True
+    if resolver is None:
+        return False
+    if kind == "reopen":
+        return await resolver.represent_request(permission_id)
+    if kind == "revoke":
+        return resolver.revoke_grant(permission_id)
+    if kind == "revoke-policy":
+        return resolver.revoke_policy_rule(permission_id)
+    return False
+
+
 @dataclass
 class AgentSessionApprovalRuntime:
     """Own approval presentation, response, and lifecycle state for a session."""
@@ -112,11 +178,11 @@ class AgentSessionApprovalRuntime:
             previous.supersede()
         self._presenter_generation += 1
         generation = self._presenter_generation
-        resolver.set_request_presenter(presenter, dismisser=dismisser)
-        resolver.open_session()
-        resolver.represent_pending_requests()
-        lease = _AgentApprovalPresentationLease(
-            lambda reason: self._close_presenter_generation(generation, reason)
+        lease = _open_approval_presentation(
+            resolver,
+            presenter,
+            dismisser=dismisser,
+            close_callback=lambda reason: self._close_presenter_generation(generation, reason),
         )
         self._presenter_lease = lease
         return lease
@@ -188,46 +254,12 @@ class AgentSessionApprovalRuntime:
         return snapshot
 
     async def apply_permission_action(self, action: str) -> bool:
-        kind, separator, permission_id = action.partition(":")
-        if not separator or not permission_id:
-            return False
-        if kind == "set-profile":
-            scope, scope_separator, profile_id = permission_id.partition(":")
-            if (
-                not scope_separator
-                or scope not in {"session", "project", "user"}
-                or not profile_id
-            ):
-                return False
-            requested = permission_profile(profile_id).profile_id
-            before = self.permission_profile_snapshot().effective_profile.profile_id
-            typed_scope = cast(PermissionProfileScope, scope)
-            # Saving a default must succeed before changing this session. The
-            # settings setter still owns ordinary layer precedence; the user's
-            # interactive selection explicitly applies to this session too.
-            self.set_permission_profile(requested, scope=typed_scope)
-            if typed_scope != "session":
-                self.set_permission_profile(requested, scope="session")
-            after = self.permission_profile_snapshot()
-            await self.dispatch_event(
-                PermissionProfileChanged(
-                    previous_profile_id=before,
-                    requested_profile_id=requested,
-                    effective_profile_id=after.effective_profile.profile_id,
-                    scope=typed_scope,
-                )
-            )
-            return True
-        resolver = self.resolver
-        if resolver is None:
-            return False
-        if kind == "reopen":
-            return await resolver.represent_request(permission_id)
-        if kind == "revoke":
-            return resolver.revoke_grant(permission_id)
-        if kind == "revoke-policy":
-            return resolver.revoke_policy_rule(permission_id)
-        return False
+        return await _apply_permission_action(
+            action,
+            resolver=self.resolver,
+            set_permission_profile=self.set_permission_profile,
+            profile_events=(self.permission_profile_snapshot, self.dispatch_event),
+        )
 
     def stage_session(self) -> None:
         self._session_state = "staged"

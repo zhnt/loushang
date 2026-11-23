@@ -7,22 +7,34 @@ second manager, task registry, profile selection or publication authority.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
-from typing import ClassVar
+from typing import ClassVar, TypeVar
 
+from loushang.harness.capabilities.owner_component_host import (
+    CapabilityOwnerComponentHost,
+)
 from loushang.harness.runtime import (
     RuntimeProfileBinder,
     RuntimeProfileBinding,
     await_owned_task,
 )
 
+from .composition import ExperienceComposition
 from .hub import ContinuityHub
+from .import_provider import ContinuityActivationBridge
+from .mutation import ContinuityDeletionRecoveryAuthority
 from .plugin_runtime import (
     ContinuityPluginGeneration,
+    ContinuityPluginGenerationAuthority,
+    ContinuityPluginInstanceFamilyAuthority,
     ContinuityPluginLifecycleError,
     ContinuityPluginPendingCleanup,
     ContinuityPluginPublication,
+    ResolvedContinuityPluginSelection,
+    construct_continuity_plugin_generation,
+    publish_continuity_plugin_generation,
+    publish_continuity_plugin_generation_with_mutations,
 )
 
 
@@ -104,6 +116,100 @@ class _ContinuityBindingReservationLifetime:
         return tuple(codes)
 
 
+_CompositionT = TypeVar("_CompositionT", bound=_ContinuityCompositionLifetime)
+
+
+async def bind_continuity_plugin_generation(
+    runtime: object,
+    reservation: _ContinuityBindingReservationLifetime,
+    *,
+    binding_attribute: str,
+    generation_authority: ContinuityPluginGenerationAuthority,
+    resolved_plugins: ResolvedContinuityPluginSelection,
+    component_host: CapabilityOwnerComponentHost,
+    activation_decision_ids: Mapping[str, str],
+    instance_family_authority: ContinuityPluginInstanceFamilyAuthority,
+    deletion_authority: ContinuityDeletionRecoveryAuthority | None,
+    compose_base: Callable[
+        [], tuple[RuntimeProfileBinder, RuntimeProfileBinding, ExperienceComposition]
+    ],
+    create_activation_bridge: Callable[[], ContinuityActivationBridge],
+    make_composition: Callable[
+        [RuntimeProfileBinder, RuntimeProfileBinding, ContinuityPluginPublication],
+        _CompositionT,
+    ],
+    label: str,
+    cleanup_error_code: str,
+) -> _CompositionT:
+    """Hold the original reservation from construction through publication."""
+    try:
+        setattr(runtime, binding_attribute, reservation)
+    except (AttributeError, TypeError) as exc:
+        raise RuntimeError(
+            "Plugin continuity runtime must retain its sealed binding"
+        ) from exc
+    try:
+        binder, binding, base = compose_base()
+        reservation.binder = binder
+        reservation.binding = binding
+        generation = await construct_continuity_plugin_generation(
+            resolved_plugins,
+            component_host=component_host,
+            activation_decision_ids=activation_decision_ids,
+            instance_family_authority=instance_family_authority,
+            generation_authority=generation_authority,
+        )
+        reservation.generation = generation
+        activation_bridge = create_activation_bridge()
+        if deletion_authority is None:
+            publication = publish_continuity_plugin_generation(
+                base,
+                generation,
+                activation_bridge=activation_bridge,
+            )
+        else:
+            publication = await publish_continuity_plugin_generation_with_mutations(
+                base,
+                generation,
+                activation_bridge=activation_bridge,
+                deletion_authority=deletion_authority,
+            )
+    except BaseException as error:
+        if (
+            isinstance(error, ContinuityPluginLifecycleError)
+            and error.pending_cleanup is not None
+        ):
+            reservation.construction_cleanup = error.pending_cleanup
+        codes = await retry_bound_continuity_reservation(
+            runtime,
+            reservation,
+            binding_attribute=binding_attribute,
+        )
+        if codes:
+            raise _cleanup_error(
+                f"{label} binding cleanup remains retryable.", cleanup_error_code, codes
+            ) from error
+        raise
+
+    composition = make_composition(binder, binding, publication)
+    if getattr(runtime, binding_attribute, None) is not reservation:
+        raise RuntimeError(f"{label} binding reservation was replaced")
+    setattr(runtime, binding_attribute, composition)
+    composition.runtime_owned = True
+    return composition
+
+
+def _cleanup_error(
+    message: str,
+    code: str,
+    cleanup_codes: tuple[str, ...],
+) -> ContinuityPluginLifecycleError:
+    error = ContinuityPluginLifecycleError(message, code=code)
+    for cleanup_code in cleanup_codes:
+        error.add_note(cleanup_code)
+    return error
+
+
 async def retry_bound_continuity_reservation(
     runtime: object,
     reservation: _ContinuityBindingReservationLifetime,
@@ -112,7 +218,7 @@ async def retry_bound_continuity_reservation(
 ) -> tuple[str, ...]:
     cleanup_task = asyncio.create_task(reservation.retry_cleanup())
     try:
-        return await await_owned_task(cleanup_task)
+        codes = await await_owned_task(cleanup_task)
     except asyncio.CancelledError:
         if cleanup_task.done() and not cleanup_task.cancelled():
             try:
@@ -125,6 +231,11 @@ async def retry_bound_continuity_reservation(
                         runtime, reservation, binding_attribute=binding_attribute
                     )
         raise
+    if not codes:
+        delete_runtime_binding_if(
+            runtime, reservation, binding_attribute=binding_attribute
+        )
+    return codes
 
 
 async def shutdown_bound_continuity(
@@ -144,16 +255,7 @@ async def shutdown_bound_continuity(
             binding_attribute=binding_attribute,
         )
         if codes:
-            error = ContinuityPluginLifecycleError(
-                cleanup_error_message,
-                code=cleanup_error_code,
-            )
-            for code in codes:
-                error.add_note(code)
-            raise error
-        delete_runtime_binding_if(
-            runtime, composition, binding_attribute=binding_attribute
-        )
+            raise _cleanup_error(cleanup_error_message, cleanup_error_code, codes)
         return
     if not isinstance(composition, composition_type):
         return

@@ -22,11 +22,15 @@ from loushang.coding.adapters._work_evidence import (
 )
 from loushang.harness.artifacts import (
     SessionBlobHealth,
-    SessionBlobRef,
     SessionBlobStore,
 )
 from loushang.harness.artifacts.references import session_blob_authority_id
-from loushang.harness.session.bash import _execute_bash_with_complete_error
+from loushang.harness.session.bash import (
+    _execute_bash_with_complete_error,
+    bash_verification_output_refs,
+    build_bash_verification_report,
+    check_bash_verification_report,
+)
 from loushang.harnesswork.event_log import EventLogBackend, EventLogEntry
 from loushang.harnesswork.ports import WorkExecutionContext
 from loushang.harnesswork.run_projection import project_work_runs
@@ -70,64 +74,6 @@ def _document(content: bytes) -> dict[str, object]:
     ):
         raise ValueError("invalid Coding verification document")
     return value
-
-
-def _output_refs(report: Mapping[str, object]) -> tuple[SessionBlobRef, ...]:
-    required = {
-        "version",
-        "command",
-        "exit_code",
-        "cancelled",
-        "truncated",
-        "stdio_complete",
-        "stdio_drain_reason",
-        "retention_error",
-        "output_basis",
-        "output_complete",
-        "outputs",
-    }
-    if not required <= report.keys():
-        raise ValueError("verification report fields are missing")
-    if (
-        report["output_basis"] not in {"sdk-text-view", "sdk-retained-streams"}
-        or any(
-            type(report[key]) is not bool
-            for key in ("cancelled", "truncated", "stdio_complete", "output_complete")
-        )
-        or (
-            report["stdio_drain_reason"] is not None
-            and not isinstance(report["stdio_drain_reason"], str)
-        )
-    ):
-        raise ValueError("invalid verification report flags")
-    values = report.get("outputs")
-    if not isinstance(values, list):
-        raise ValueError("invalid verification outputs")
-    if any(not isinstance(value, Mapping) for value in values):
-        raise ValueError("invalid verification output references")
-    return tuple(SessionBlobRef.from_manifest_entry(value) for value in values)
-
-
-def _check_report(store: SessionBlobStore, report: Mapping[str, object]) -> bool:
-    outputs = _output_refs(report)
-    for reference in outputs:
-        store.read_bytes(reference)  # Exact authority/membership/digest, not preview.
-    code = report.get("exit_code")
-    complete_material = (
-        len(outputs) == 2
-        if report["output_basis"] == "sdk-retained-streams"
-        else len(outputs) == 1 and report["truncated"] is False
-    )
-    return (
-        complete_material
-        and type(code) is int
-        and code == 0
-        and report.get("cancelled") is False
-        and report.get("retention_error") is None
-        and report.get("output_complete") is True
-        and report["stdio_complete"] is True
-        and report["stdio_drain_reason"] is None
-    )
 
 
 @dataclass(frozen=True)
@@ -185,7 +131,7 @@ def inspect_verification(
     try:
         report = _document(report_content)
         validation = _document(validation_content)
-        outputs = _output_refs(report)
+        outputs = bash_verification_output_refs(report)
     except (ValueError, TypeError, KeyError):
         return VerificationEvidence(
             run, records, health, support, None, ("invalid_verification_document",)
@@ -196,7 +142,7 @@ def inspect_verification(
         return VerificationEvidence(
             run, records, health, support, None, ("output_unavailable",)
         )
-    expected = _check_report(blobs, report)
+    expected = check_bash_verification_report(blobs, report, outputs)
     operation_payload = selected[0].payload.get("payload")
     command = (
         operation_payload.get("command")
@@ -278,76 +224,13 @@ class CodingVerificationExecutor:
             )
             if operation.session_id != self._session.session_id:
                 raise ValueError("verification Session changed during command")
-            truncated = result.get("truncated")
-            cancelled = result.get("cancelled")
-            stdio_complete = result.get("stdio_complete")
-            drain_reason = result.get("stdio_drain_reason")
-            if any(
-                type(value) is not bool
-                for value in (truncated, cancelled, stdio_complete)
-            ):
-                raise ValueError(
-                    "SDK must explicitly report truncation, cancellation and stdio completeness"
-                )
-            if drain_reason is not None and not isinstance(drain_reason, str):
-                raise ValueError("invalid SDK stdio drain reason")
-            outputs = []
-            for key in ("stdout_blob", "stderr_blob"):
-                value = result.get(key)
-                if value is not None:
-                    if isinstance(value, SessionBlobRef):
-                        reference = value
-                    elif isinstance(value, Mapping):
-                        reference = SessionBlobRef.from_manifest_entry(value)
-                    else:
-                        raise ValueError("invalid SDK output reference")
-                    self._blobs.read_bytes(reference)
-                    outputs.append(reference)
-            basis = "sdk-retained-streams"
-            output_view = result.get("output")
-            if (
-                not outputs
-                and not truncated
-                and stdio_complete
-                and drain_reason is None
-                and isinstance(output_view, str)
-            ):
-                # Legacy SDK short output has no stream Blob. This is explicitly
-                # a complete SDK text view, not a claim about original OS bytes.
-                outputs.append(
-                    self._blobs.put_bytes(
-                        output_view.encode("utf-8"),
-                        logical_name="verification/sdk-output.txt",
-                        kind="coding-sdk-output",
-                        media_type="text/plain; charset=utf-8",
-                        source="coding-sdk:command-result",
-                    )
-                )
-                basis = "sdk-text-view"
-            report = {
-                "version": 1,
-                "command": command,
-                "exit_code": result.get("exit_code"),
-                "cancelled": cancelled,
-                "truncated": truncated,
-                "stdio_complete": stdio_complete,
-                "stdio_drain_reason": drain_reason,
-                "retention_error": result.get("artifact_retention_error"),
-                "output_basis": basis,
-                "output_complete": bool(
-                    stdio_complete
-                    and drain_reason is None
-                    and (
-                        (basis == "sdk-retained-streams" and len(outputs) == 2)
-                        or (
-                            basis == "sdk-text-view"
-                            and len(outputs) == 1
-                            and not truncated
-                        )
-                    )
-                ),
-                "outputs": [ref.manifest_entry() for ref in outputs],
-            }
+            report = build_bash_verification_report(
+                command,
+                result,
+                blobs=self._blobs,
+                output_kind="coding-sdk-output",
+                output_source="coding-sdk:command-result",
+            )
             self._publish(_json_bytes(report), "report", operation, context)
         elif context.step_id == "validation":
             reports = tuple(
@@ -363,7 +246,9 @@ class CodingVerificationExecutor:
                 )
             report_ref = reports[0].blob
             report = _document(self._blobs.read_bytes(report_ref))
-            passed = _check_report(self._blobs, report)
+            passed = check_bash_verification_report(
+                self._blobs, report, bash_verification_output_refs(report)
+            )
             validation = {
                 "version": 1,
                 "report_sha256": report_ref.sha256,

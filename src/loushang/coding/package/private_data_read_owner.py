@@ -13,14 +13,11 @@ from loushang.coding.plugin_manager.lifecycle import (
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout as resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.harness.journal import JournalLoadPolicy
 from loushang.harness.package_product._private_data_custody import (
     assert_private_read_current,
+    assert_private_read_workspace,
+    prepare_posix_private_data_reader,
     private_data_read_fence,
-    private_read_state_identity,
-)
-from loushang.harness.plugin_management.assembly import (
-    bind_plugin_desired_state,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_reservation import (
@@ -33,7 +30,6 @@ from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
-from loushang.harness.workspace.paths import assert_workspace_directory_identity
 
 from .epoch_layout import (
     resolve_coding_package_epoch_layout,
@@ -68,8 +64,6 @@ from .private_data_restore_confirmation import (
 from .private_data_restore_journal import CodingArchPrivateDataRestoreEventV1
 from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
 
-_READ_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
-
 
 @dataclass(frozen=True, slots=True)
 class CodingArchPrivateDataReadOwner:
@@ -92,41 +86,28 @@ class CodingArchPrivateDataReadOwner:
         workspace: Path,
         workspace_identity: tuple[int, int],
     ) -> CodingArchPrivateDataReadOwner:
-        _assert_workspace(workspace, workspace_identity)
+        assert_private_read_workspace(workspace, workspace_identity, label="Coding Arch")
         if layout != resolve_coding_plugin_lifecycle_state_layout(workspace):
             raise ValueError("Coding Arch read Product scope changed")
         epoch_layout = resolve_coding_package_epoch_layout(layout)
-        epoch = PackageProductPosixFencedRuntimeOwner.open(
-            **epoch_layout.fenced_runtime_open_kwargs(), read_only=True
-        )
-        try:
-            _assert_workspace(workspace, workspace_identity)
-            state_root = epoch.control_root / "product-state"
-            state_identity = private_read_state_identity(
-                state_root, message="Coding Arch read Product state is unsafe"
-            )
-            binding = bind_plugin_desired_state(
-                state_root / "gc-reservations.jsonl",
-                state_root / "desired-state.jsonl",
-                load_policy=_READ_POLICY,
-            )
-            epoch.assert_current()
-            _assert_workspace(workspace, workspace_identity)
+        with prepare_posix_private_data_reader(
+            workspace,
+            workspace_identity,
+            **epoch_layout.fenced_runtime_open_kwargs(),
+            label="Coding Arch",
+        ) as authority:
             owner = cls(
                 layout=layout,
                 workspace=workspace,
                 workspace_identity=workspace_identity,
-                epoch_runtime=epoch,
-                state_root=state_root,
-                state_identity=state_identity,
-                gc_gate=binding.gc_reservations,
-                desired_state=binding.desired,
+                epoch_runtime=authority.epoch,
+                state_root=authority.state_root,
+                state_identity=authority.state_identity,
+                gc_gate=authority.gc_gate,
+                desired_state=authority.desired_state,
             )
             owner.assert_current()
             return owner
-        except BaseException:
-            epoch.close()
-            raise
 
     def close(self) -> None:
         self.epoch_runtime.close()
@@ -244,14 +225,6 @@ class CodingArchPrivateDataReadOwner:
             label="Coding Arch",
         ):
             yield
-
-
-def _assert_workspace(workspace: Path, identity: tuple[int, int]) -> None:
-    assert_workspace_directory_identity(
-        workspace,
-        identity,
-        changed=lambda: ValueError("Coding Arch read workspace changed"),
-    )
 
 
 __all__ = ["CodingArchPrivateDataReadOwner"]

@@ -53,7 +53,8 @@ def observe(kind, case, patch):
     trace = []
     active = set()
     visible_count = 0
-    name = code._NAME
+    owner_type = getattr(code, NAMES[kind])
+    name = owner_type._name
 
     def effect(label):
         trace.append(label)
@@ -138,7 +139,7 @@ def observe(kind, case, patch):
     patch.setattr(io.WindowsJournalFileIO, "validate_lock", validate)
     patch.setattr(io.WindowsJournalFileIO, "read", read)
     # Constructor input only: the native ports below never open this path.
-    owner = getattr(code, NAMES[kind])(Path.cwd() / "inert" / name, scope_id="scope")
+    owner = owner_type(Path.cwd() / "inert" / name, scope_id="scope")
     patch.setattr(owner, "_require_root", require_root)
     patch.setattr(owner, "_assert_visible_root", visible)
     patch.setattr(owner, "_decode", decode)

@@ -89,11 +89,11 @@ def test_G12_OPTIONAL_EDGE_keeps_apphost_core_and_facade_independent() -> None:
 def test_G12_CANONICAL_ROUTING_carries_and_fences_create_identity() -> None:
     contracts = _read(APPHOST / "contracts.py")
     router = _read(APPHOST / "router.py")
-    coding = _read(CODING_APPLICATION)
+    session_product = _read(APPHOST / "integrations/session_product.py")
     for field in ("requested_continuity_id", "requested_scope"):
         assert field in contracts
         assert field in router
-        assert field in coding
+        assert field in session_product
     create = next(
         node
         for node in ast.walk(ast.parse(router))

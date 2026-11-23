@@ -7,17 +7,15 @@ cleanup authority by itself.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+from functools import partial
 
 from loushang.harness.package_product._windows_worker_recovery import (
     review_windows_product_worker_no_effect_under_guard,
+    review_windows_product_worker_stage_offline,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
-    capture_windows_product_worker_stage,
-    is_attempt_id,
-    is_windows_product,
-    review_windows_product_worker_offline,
+    capture_windows_product_worker_reserved_stage,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -38,8 +36,6 @@ from .product_worker_windows_stage_retirement import (
     _inspect_retirement_attempt_ids_under_gc_guard,
 )
 from .product_worker_windows_stage_review import FileIdentity, _inspection
-
-_MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 
 _RESERVED_HISTORY_ERROR = "coding_worker_reserved_history_unverified"
 _UNLAUNCHED_HISTORY_ERROR = "coding_worker_unlaunched_history_unverified"
@@ -71,10 +67,6 @@ class CodingWindowsWorkerReservedNoEffectReviewV1(_WindowsReservedStageReviewMet
     executable_digest: str
     entrypoint: str
 
-    @classmethod
-    def _payload_maximum(cls) -> int:
-        return _MAX_PAYLOAD_BYTES
-
 
 def review_coding_windows_product_worker_reserved_no_effect(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
@@ -95,18 +87,14 @@ def review_coding_windows_product_worker_settled_unlaunched(
 def _review_no_effect(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str, settled: bool
 ) -> CodingWindowsWorkerReservedNoEffectReviewV1:
-    if not is_windows_product(product, "coding", os.name) or not is_attempt_id(
-        attempt_id
-    ):
-        role = "unlaunched" if settled else "reserved"
-        raise OSError(f"Windows Worker {role} review requires a Product owner")
-    return review_windows_product_worker_offline(
+    role = "unlaunched" if settled else "reserved"
+    return review_windows_product_worker_stage_offline(
         product,
-        active_error=lambda: CodingWindowsWorkerReservedReviewError(
-            "coding_worker_unlaunched_runtime_active"
-            if settled
-            else "coding_worker_reserved_runtime_active"
-        ),
+        product_id="coding",
+        attempt_id=attempt_id,
+        role=role,
+        error_type=CodingWindowsWorkerReservedReviewError,
+        error_prefix=f"coding_worker_{role}",
         review=lambda quiescence: _review_no_effect_under_gc_guard(
             product,
             attempt_id=attempt_id,
@@ -151,41 +139,12 @@ def _review_no_effect_under_gc_guard(
     )
 
 
-def _capture_reserved_stage(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    intent: CodingWindowsWorkerLaunchIntentV1,
-    native_revision: int | None,
-    lease_owner_revision: int,
-) -> CodingWindowsWorkerReservedNoEffectReviewV1:
-    if native_revision not in (1, 2):
-        raise CodingWindowsWorkerReservedReviewError(
-            "coding_worker_reserved_history_unverified"
-        )
-    return capture_windows_product_worker_stage(
-        product,
-        attempt_id=intent.attempt_id,
-        expected_stage=intent.stage_identity,
-        intent=intent,
-        inspection=_inspection(),
-        marker_name="worker-payload.json",
-        max_marker_bytes=1024,
-        max_payload_bytes=_MAX_PAYLOAD_BYTES,
-        error_type=CodingWindowsWorkerReservedReviewError,
-        error_prefix="coding_worker_reserved",
-        result_factory=lambda captured: CodingWindowsWorkerReservedNoEffectReviewV1(
-            attempt_id=intent.attempt_id,
-            intent_fingerprint=intent.fingerprint,
-            lease_owner_revision=lease_owner_revision,
-            native_revision=native_revision,
-            stage_identity=captured.stage_identity,
-            directory_identities=captured.directory_identities,
-            marker_identity=captured.marker_identity,
-            executable_identity=captured.executable_identity,
-            executable_digest=captured.executable_digest,
-            entrypoint=captured.entrypoint,
-        ),
-    )
+_capture_reserved_stage = partial(
+    capture_windows_product_worker_reserved_stage,
+    record_type=CodingWindowsWorkerReservedNoEffectReviewV1,
+    inspection=_inspection,
+    error_prefix="coding_worker_reserved",
+)
 
 
 __all__ = [

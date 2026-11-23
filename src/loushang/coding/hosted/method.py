@@ -11,7 +11,7 @@ from loushang.appserver.method_work import (
     MethodWorkObservationV1,
 )
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
-from loushang.appservice.execution_contract import ExecutionRequestV1, InterruptModeV1
+from loushang.appservice.execution_contract import ExecutionRequestV1
 from loushang.appservice.execution_registry import ExecutionLimitsV1
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 from loushang.coding.adapters.harnesswork import create_coding_work_runtime
@@ -30,6 +30,8 @@ from loushang.harnesswork.types import WorkRecordingPolicy
 
 
 class CodingHostedMethodSessionV1(CodingHostedExecutionSessionV1):
+    _legacy_turns = False
+
     def __init__(
         self, binding: CodingRealHostedSessionV1, method: CodingHostedMethodV1,
         *, owner: CodingHostedSessionBindingV1 | None = None,
@@ -52,11 +54,11 @@ class CodingHostedMethodSessionV1(CodingHostedExecutionSessionV1):
 
     @property
     def method_work_capability(self) -> MethodWorkCapabilityV1:
-        self._require_execution_open()
+        self._require_open()
         return replace(self._capability, accepting=self._latest is None or not self._latest.recording_unavailable)
 
     def start_execution(self, request: ExecutionRequestV1) -> None:
-        self._require_execution_open()
+        self._require_open()
         if self._latest is not None and self._latest.recording_unavailable:
             # An invalid confirmation view is not repaired by clearing an
             # active run. Keep reads/cleanup but retire this owner's admission.
@@ -71,25 +73,8 @@ class CodingHostedMethodSessionV1(CodingHostedExecutionSessionV1):
         self._guard.start(request, invocation)
         self._latest = invocation
 
-    async def start_turn(self, text: str) -> None:
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-
-    def steer_turn(self, text: str) -> None:
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-
-    def follow_up_turn(self, text: str) -> None:
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-
-    def interrupt_turn(self) -> bool:
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-
-    def interrupt_execution(self, execution_id: str, mode: InterruptModeV1) -> bool:
-        if mode is not InterruptModeV1.WHOLE_EXECUTION:
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return super().interrupt_execution(execution_id, mode)
-
     def query_method_work(self, execution_id: str) -> MethodWorkObservationV1:
-        self._require_execution_open()
+        self._require_open()
         assert self._work is not None
         runtime = self._work.work_runtime
         try:
@@ -107,15 +92,11 @@ class CodingHostedMethodSessionV1(CodingHostedExecutionSessionV1):
             return MethodWorkObservationV1("unknown")
         return observe_work_run(runtime, run, max_steps=self._method.max_steps)
 
-    async def _close_execution(self) -> None:
-        state = self._guard.state
-        if state is not None and not state.status.terminal:
-            self._guard.interrupt(state.execution_id, InterruptModeV1.WHOLE_EXECUTION)
-            await self._guard.retry_settlement(state.execution_id)
+    async def _dispose_execution_resources(self) -> None:
         if self._work is not None:
             await self._work.dispose()
-        # Retain everything until the actual Session/lease has closed successfully.
-        await super()._close_execution()
+
+    def _release_execution_resources(self) -> None:
         if self._latest is not None:
             # Guard retains its latest invocation after close. Disconnect the
             # owned Work graph, not just the outer reference to that invocation.

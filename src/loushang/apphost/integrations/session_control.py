@@ -8,18 +8,29 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
+from uuid import uuid4
 
 from loushang.ai.model import model_selection_ref, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.ai.types import AssistantMessage
 from loushang.apphost.application import _method_descriptor
-from loushang.apphost.contracts import SessionBindingKeyV1
+from loushang.apphost.contracts import (
+    SessionBindingKeyV1,
+    SessionCandidateMode,
+    SessionCandidateRefV1,
+    SessionDiscoveryScope,
+    SessionIdentityEnvelopeV1,
+    SessionIdentityProjectionV1,
+)
+from loushang.apphost.integrations._session_projection import (
+    _HostedApprovalPresentation as _HostedApprovalPresentation,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
+    AppFailureV1,
     AppServiceError,
     InteractionOutcomeV1,
     SessionEventKindV1,
@@ -27,6 +38,7 @@ from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionModelChoiceV1,
     SessionModelsV1,
+    SessionOpenSpecV1,
     SessionSnapshotV1,
     SessionSubmissionModeV1,
     SessionThinkingV1,
@@ -34,14 +46,32 @@ from loushang.appserver.protocol import (
     UserChoicePromptV1,
 )
 from loushang.appservice import HostedSessionEventListenerV1
-from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
-from loushang.appservice.execution_guard import ExecutionControlV1
+from loushang.appservice.execution_contract import (
+    ExecutionContentEventV1,
+    ExecutionObservationV1,
+    ExecutionOutcomeV1,
+    ExecutionRequestV1,
+    ExecutionSourceSnapshotV1,
+    ExecutionStateV1,
+    ExecutionStatusV1,
+    InterruptModeV1,
+)
+from loushang.appservice.execution_guard import ExecutionControlV1, ExecutionGuardV1
+from loushang.appservice.ports import (
+    HostedSessionResolutionErrorV1,
+    HostedSessionResolutionFailureV1,
+)
+from loushang.foundation._owned_tasks import (
+    _observe_task_result,
+    _task_failed_or_cancelled,
+)
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import (
     SessionControlPort,
     SessionOperationRuntime,
     SessionPromptRequest,
 )
+from loushang.harness.session._cleanup import SessionConstructionCleanup
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
     get_session_model_selection,
@@ -67,6 +97,8 @@ class _SnapshotProjection(Protocol):
     def records(self) -> tuple[TranscriptRecordV1, ...]: ...
     @property
     def user_choice(self) -> UserChoicePromptV1 | None: ...
+    @property
+    def truncated(self) -> bool: ...
 
 
 class _EventProjection(Protocol):
@@ -76,6 +108,8 @@ class _EventProjection(Protocol):
     def text(self) -> str | None: ...
     @property
     def interaction_id(self) -> str | None: ...
+    @property
+    def truncated(self) -> bool: ...
 
 
 SnapshotT = TypeVar("SnapshotT", bound=_SnapshotProjection)
@@ -93,6 +127,9 @@ class _HostedBinding(Protocol[SnapshotCo, EventCo]):
     def project_event(self, event: RuntimeEvent[object]) -> EventCo | None: ...
     async def respond_interaction(self, interaction_id: str, outcome: str) -> bool: ...
     async def close(self) -> None: ...
+
+
+_HostedBindingT = TypeVar("_HostedBindingT", bound=_HostedBinding[Any, Any])
 
 
 class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
@@ -385,6 +422,176 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
         _require_hosted_binding(binding, label=cls._product_label)
 
 
+class _ExecutionSessionServiceAdapter(_SessionServiceAdapter[SnapshotT, EventT]):
+    """Publish and settle the optional execution stream on one Hosted Session."""
+
+    _legacy_turns = True
+
+    if TYPE_CHECKING:
+        def start_execution(self, request: ExecutionRequestV1) -> None: ...
+
+    def __init__(
+        self,
+        binding: _HostedBinding[SnapshotT, EventT],
+        *,
+        execution_submission: bool = False,
+    ) -> None:
+        self._content: set[Callable[[ExecutionContentEventV1], None]] = set()
+        self._draft = ""
+        self._truncated = False
+        self._closing = False
+        self._execution_close_task: asyncio.Task[None] | None = None
+        super().__init__(binding, execution_submission=execution_submission)
+
+    def _start_execution_observation(self, source: _HostedBinding[SnapshotT, EventT]) -> None:
+        self._projection = source.project_snapshot()
+        self._guard = ExecutionGuardV1(source_cursor=self._complete_source)
+
+    @property
+    def execution_state(self) -> ExecutionStateV1 | None:
+        return self._guard.state
+
+    async def wait_execution(self, execution_id: str) -> ExecutionOutcomeV1:
+        return await self._guard.wait(execution_id)
+
+    def subscribe_execution_observation(
+        self, listener: Callable[[ExecutionObservationV1], None]
+    ) -> Callable[[], None]:
+        self._require_open()
+        return self._guard.subscribe_observation(listener)
+
+    def interrupt_execution(self, execution_id: str, mode: InterruptModeV1) -> bool:
+        if mode is not InterruptModeV1.WHOLE_EXECUTION:
+            self._require_legacy_turns()
+        self._require_open()
+        return self._guard.interrupt(execution_id, mode)
+
+    async def retry_execution_settlement(self, execution_id: str) -> None:
+        await self._guard.retry_settlement(execution_id)
+
+    async def start_turn(self, text: str) -> None:
+        self._require_legacy_turns()
+        execution_id = "legacy-" + uuid4().hex
+        self.start_execution(ExecutionRequestV1(execution_id, text))
+        outcome = await self.wait_execution(execution_id)
+        if isinstance(outcome.legacy_result, AppFailureV1):
+            raise AppServiceError(outcome.legacy_result.code)
+
+    def steer_turn(self, text: str) -> None:
+        self._require_legacy_turns()
+        super().steer_turn(text)
+
+    def follow_up_turn(self, text: str) -> None:
+        self._require_legacy_turns()
+        super().follow_up_turn(text)
+
+    def interrupt_turn(self) -> bool:
+        self._require_legacy_turns()
+        self._require_open()
+        state = self._guard.state
+        return state is not None and self._guard.interrupt(
+            state.execution_id, InterruptModeV1.LEGACY_TURN_ONLY
+        )
+
+    def _require_legacy_turns(self) -> None:
+        if not self._legacy_turns:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
+    async def snapshot_execution(self) -> ExecutionSourceSnapshotV1:
+        self._require_open()
+        projection, observation = self._projection, self._guard.observation
+        return ExecutionSourceSnapshotV1(
+            source=SessionSnapshotV1(
+                identity=self.identity,
+                title=projection.title,
+                cursor=self._cursor,
+                revision=projection.revision,
+                running=observation.status is ExecutionStatusV1.RUNNING,
+                records=projection.records,
+                user_choice=projection.user_choice,
+            ),
+            observation=observation,
+            draft=self._draft
+            if observation.status is ExecutionStatusV1.RUNNING
+            else "",
+            truncated=self._truncated or projection.truncated,
+        )
+
+    def subscribe_execution_content(
+        self, listener: Callable[[ExecutionContentEventV1], None]
+    ) -> Callable[[], None]:
+        self._require_open()
+        if not callable(listener):
+            raise TypeError("execution content listener must be callable")
+        self._content.add(listener)
+        return lambda: self._content.discard(listener)
+
+    def _observe_projection(
+        self, projection: EventT, event: SessionEventV1
+    ) -> None:
+        self._projection = self._binding.project_snapshot()
+        if event.kind is SessionEventKindV1.ASSISTANT_DELTA:
+            text = self._draft + (event.text or "")
+            self._truncated |= len(text) > 16_384 or projection.truncated
+            self._draft = text[:16_384]
+        elif event.kind in {
+            SessionEventKindV1.ASSISTANT_MESSAGE,
+            SessionEventKindV1.TURN_STARTED,
+            SessionEventKindV1.TURN_COMPLETED,
+            SessionEventKindV1.TURN_INTERRUPTED,
+        }:
+            self._draft = ""
+            self._truncated = False
+        observation = self._guard.observation
+        envelope = ExecutionContentEventV1(
+            event,
+            observation.execution_id
+            if observation.status is ExecutionStatusV1.RUNNING
+            else None,
+        )
+        for listener in tuple(self._content):
+            try:
+                listener(envelope)
+            except Exception:
+                self._content.discard(listener)
+
+    def _complete_source(self) -> int:
+        self._projection = self._binding.project_snapshot()
+        self._draft = ""
+        self._truncated = False
+        return self._cursor
+
+    async def close(self) -> None:
+        self._closing = True
+        task = self._execution_close_task
+        if task is None or _task_failed_or_cancelled(task):
+            task = asyncio.create_task(self._close_execution())
+            task.add_done_callback(_observe_task_result)
+            self._execution_close_task = task
+        await asyncio.shield(task)
+
+    async def _close_execution(self) -> None:
+        state = self._guard.state
+        if state is not None and not state.status.terminal:
+            self._guard.interrupt(state.execution_id, InterruptModeV1.WHOLE_EXECUTION)
+            await self._guard.retry_settlement(state.execution_id)
+        await self._dispose_execution_resources()
+        await super().close()
+        self._content.clear()
+        self._release_execution_resources()
+
+    async def _dispose_execution_resources(self) -> None:
+        """Close Product work after invocation settlement and before closing the Session."""
+
+    def _release_execution_resources(self) -> None:
+        """Drop retained Product work references after the Session closes successfully."""
+
+    def _require_open(self) -> None:
+        super()._require_open()
+        if self._closing:
+            raise RuntimeError(f"{self._product_id}_hosted_session_closed")
+
+
 def _require_hosted_binding(binding: object, *, label: str) -> None:
     for name in ("project_snapshot", "project_event"):
         if not callable(getattr(binding, name, None)):
@@ -413,6 +620,43 @@ def _require_hosted_binding(binding: object, *, label: str) -> None:
 
 
 __all__: list[str] = []
+
+
+def canonical_resume_reference(
+    request: SessionOpenSpecV1,
+    projections: tuple[SessionIdentityProjectionV1, ...],
+    *,
+    scope: SessionDiscoveryScope,
+    limit: int,
+    missing_is_authoritative: bool,
+    label: str,
+) -> SessionCandidateRefV1:
+    """Require a unique canonical candidate for the requested Session."""
+    if (
+        not isinstance(projections, tuple)
+        or len(projections) > limit
+        or any(type(item) is not SessionIdentityProjectionV1 for item in projections)
+    ):
+        raise ValueError(f"{label} hosted candidate catalog is invalid")
+    same_session = tuple(
+        item for item in projections
+        if item.scope is scope
+        and item.mode is SessionCandidateMode.CANONICAL
+        and type(item.envelope) is SessionIdentityEnvelopeV1
+        and item.envelope.session_id == request.session_id
+    )
+    if not same_session and missing_is_authoritative:
+        raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.MISSING)
+    if len(same_session) == 1:
+        [candidate] = same_session
+        envelope = candidate.envelope
+        assert type(envelope) is SessionIdentityEnvelopeV1
+        if (
+            envelope.product_id == request.product_id
+            and envelope.continuity_id == request.continuity_id
+        ):
+            return candidate.reference
+    raise ValueError(f"{label} hosted Session candidate is unavailable")
 
 
 def _validate_foreground_binding(
@@ -505,6 +749,13 @@ class _HostedAgentExecutionWork:
     _unsubscribe: Callable[[], None] | None
     _unbind_turn: Callable[[], None] | None
 
+    def __init__(self, cancel_requested: Callable[[], bool]) -> None:
+        self._cancel_requested = cancel_requested
+        self._interrupted = False
+        self._agent_outcome = None
+        self._unsubscribe = None
+        self._unbind_turn = None
+
     def _outcome_observer(self) -> Callable[[AgentEvent, AbortSignal], None]:
         def observe(event: AgentEvent, _signal: AbortSignal) -> None:
             if event["type"] == "agent_end":
@@ -518,10 +769,7 @@ class _HostedAgentExecutionWork:
     async def _execute_hosted_prompt(
         self, control: ExecutionControlV1
     ) -> ExecutionOutcomeV1:
-        self._unsubscribe = self.session.agent.subscribe(self._outcome_observer())
-        self._unbind_turn = control.bind_turn_interrupt(
-            lambda: self.session.abort() if self.session.is_streaming else False
-        )
+        self._bind_agent_turn(control, self.session)
         result = await self.session.execute_prompt(
             self.text, source="appservice", check_cancelled=self._checkpoint
         )
@@ -548,10 +796,7 @@ class _HostedAgentExecutionWork:
         attempt_id: str,
         input_record_id: str,
     ) -> ExecutionOutcomeV1:
-        self._unsubscribe = session.agent.subscribe(self._outcome_observer())
-        self._unbind_turn = control.bind_turn_interrupt(
-            lambda: session.abort() if session.is_streaming else False
-        )
+        self._bind_agent_turn(control, session)
         await session._run_published_resume_input(
             attempt_id=attempt_id,
             input_record_id=input_record_id,
@@ -560,11 +805,15 @@ class _HostedAgentExecutionWork:
             ExecutionStatusV1.FAILED, error_code="missing_agent_outcome"
         )
 
-    async def _settle_hosted_prompt(self) -> None:
-        await self.session.settle_execution(interrupted=self._interrupted)
-        self._retire_subscription()
+    def _bind_agent_turn(
+        self, control: ExecutionControlV1, session: AgentProductSession
+    ) -> None:
+        self._unsubscribe = session.agent.subscribe(self._outcome_observer())
+        self._unbind_turn = control.bind_turn_interrupt(
+            lambda: session.abort() if session.is_streaming else False
+        )
 
-    async def _settle_published_input(
+    async def _settle_session(
         self, session: AgentProductSession | None
     ) -> None:
         if session is not None:
@@ -592,6 +841,94 @@ class _HostedAgentExecutionWork:
         if self._cancel_requested():
             raise asyncio.CancelledError
 
+    def _agent_succeeded(self) -> bool:
+        return (
+            not self._cancel_requested()
+            and self._agent_outcome is not None
+            and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
+        )
+
+
+class _HostedPromptExecutionWork(_HostedAgentExecutionWork):
+    def __init__(
+        self,
+        session: AgentProductSession,
+        text: str,
+        cancel_requested: Callable[[], bool],
+        *,
+        start_title: Callable[[], None] | None = None,
+        wait_for_title: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        super().__init__(cancel_requested)
+        self.session = session
+        self.text = text
+        self._start_title = start_title
+        self._wait_for_title = wait_for_title
+
+    async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
+        try:
+            if self._wait_for_title is not None:
+                await self._wait_for_title()
+            self._checkpoint()
+            return await self._execute_hosted_prompt(control)
+        except asyncio.CancelledError:
+            self._interrupted = True
+            self._abort_hosted_prompt()
+            raise
+        finally:
+            self._clear_turn()
+
+    async def settle(self) -> None:
+        await self._settle_session(self.session)
+        if self._start_title is not None and self._agent_succeeded():
+            start_title, self._start_title = self._start_title, None
+            start_title()
+
+
+class _PublishedResumeInput(Protocol):
+    @property
+    def session(self) -> _ResumeContinuationSession[Any]: ...
+    @property
+    def attempt_id(self) -> str: ...
+    @property
+    def input_record_id(self) -> str: ...
+
+
+class _HostedResumeInputExecutionWork(_HostedAgentExecutionWork):
+    def __init__(
+        self,
+        cancel_requested: Callable[[], bool],
+        *,
+        activate: Callable[[], Awaitable[_PublishedResumeInput]],
+        on_success: Callable[[], None],
+    ) -> None:
+        super().__init__(cancel_requested)
+        self._activate = activate
+        self._on_success = on_success
+        self._session: _ResumeContinuationSession[Any] | None = None
+
+    async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
+        if self._cancel_requested():
+            return ExecutionOutcomeV1(ExecutionStatusV1.INTERRUPTED)
+        try:
+            activated = await self._activate()
+            self._session = activated.session
+            return await self._execute_published_input(
+                control, self._session, activated.attempt_id, activated.input_record_id
+            )
+        except asyncio.CancelledError:
+            self._interrupted = True
+            if self._session is not None:
+                self._session.abort()
+            raise
+        finally:
+            self._clear_turn()
+
+    async def settle(self) -> None:
+        await self._settle_session(self._session)
+        if self._agent_succeeded():
+            self._on_success()
+
 
 def _assistant_outcome(message: AssistantMessage) -> ExecutionOutcomeV1:
     if message.stop_reason == "aborted":
@@ -603,7 +940,7 @@ def _assistant_outcome(message: AssistantMessage) -> ExecutionOutcomeV1:
     return ExecutionOutcomeV1(ExecutionStatusV1.SUCCEEDED)
 
 
-class _DeferredSessionControl:
+class _DeferredSessionControl(Generic[_HostedBindingT]):
     """Keep one control identity across deferred subscription and activation."""
 
     def __init__(
@@ -618,6 +955,47 @@ class _DeferredSessionControl:
         self._closed = False
         self._closed_message = closed_message
         self._invalid_activation = invalid_activation
+        self._resume_handoff_failed = False
+        self._resume_handoff_cleanup: SessionConstructionCleanup | None = None
+        self.resume_binding: _HostedBindingT | None = None
+
+    @property
+    def resume_handoff_failed(self) -> bool:
+        return self._resume_handoff_failed
+
+    async def complete_resume_handoff(
+        self,
+        session: AgentProductSession,
+        *,
+        close_history: Callable[[], Awaitable[None]],
+        bind: Callable[[], _HostedBindingT],
+        committed_input_event: RuntimeEvent[object],
+    ) -> None:
+        """Deliver one prepared Session through the original deferred control."""
+        try:
+            await close_history()
+            binding = bind()
+            self.activate(cast(SessionControlPort, binding.control))
+        except BaseException as error:
+            self._resume_handoff_failed = True
+            self._resume_handoff_cleanup = SessionConstructionCleanup(session)
+            try:
+                await self.settle_resume_handoff()
+            except BaseException as cleanup_error:
+                with suppress(BaseException):
+                    BaseException.add_note(
+                        error, f"Hosted Resume Session cleanup also failed: {cleanup_error!r}"
+                    )
+            raise
+        self.resume_binding = binding
+        # The live binding owns the Session before readers observe the input.
+        await self.emit(committed_input_event)
+
+    async def settle_resume_handoff(self) -> None:
+        cleanup = self._resume_handoff_cleanup
+        if cleanup is not None:
+            await cleanup.retry_cleanup()
+            self._resume_handoff_cleanup = None
 
     @property
     def session_id(self) -> str:
@@ -709,74 +1087,3 @@ class _DeferredSessionControl:
         if self._delegate is None:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return self._delegate
-
-
-# Presentation aliases are independent of the existing approval broker authority.
-class _HostedApprovalPresentation:
-    _interactions: dict[str, str]
-    _approval_action: ClassVar[str]
-    _approval_limit: ClassVar[Callable[[], int]]
-    _approval_text_limit: ClassVar[Callable[[], int]]
-    _approval_id: ClassVar[Callable[[], str]]
-    _approval_publish_rollback: ClassVar[bool]
-
-    def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
-        raise NotImplementedError
-
-    async def _present_approval(self, request: dict[str, object]) -> None:
-        action_id = request.get("action_id")
-        if (
-            not isinstance(action_id, str)
-            or len(self._interactions) >= type(self)._approval_limit()
-        ):
-            raise RuntimeError("hosted_approval_unavailable")
-        text = "\n".join(
-            (
-                str(request.get("action", self._approval_action)),
-                str(request.get("risk", "")),
-                json.dumps(
-                    request.get("arguments", {}), ensure_ascii=False, sort_keys=True
-                ),
-            )
-        )
-        if len(text) > type(self)._approval_text_limit():
-            raise RuntimeError("hosted_approval_too_large")
-        interaction_id = type(self)._approval_id()
-        self._interactions[interaction_id] = action_id
-        if self._approval_publish_rollback:
-            try:
-                await self._publish_approval(interaction_id, text)
-            except BaseException:
-                self._interactions.pop(interaction_id, None)
-                raise
-        else:
-            await self._publish_approval(interaction_id, text)
-
-    async def _publish_approval(self, interaction_id: str, text: str) -> None:
-        # Resolve the real dispatcher only after inserting the original alias.
-        await self._approval_dispatcher()(
-            cast(
-                RuntimeEvent[object],
-                {
-                    "type": "tool_approval_requested",
-                    "hosted_presentation": True,
-                    "interaction_id": interaction_id,
-                    "text": text,
-                },
-            )
-        )
-
-    async def _dismiss_approval(self, action_id: str) -> None:
-        for interaction_id, pending in tuple(self._interactions.items()):
-            if pending == action_id:
-                self._interactions.pop(interaction_id, None)
-                await self._approval_dispatcher()(
-                    cast(
-                        RuntimeEvent[object],
-                        {
-                            "type": "tool_approval_resolved",
-                            "hosted_presentation": True,
-                            "interaction_id": interaction_id,
-                        },
-                    )
-                )

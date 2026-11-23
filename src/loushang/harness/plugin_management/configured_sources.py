@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -59,6 +60,39 @@ class ConfiguredPluginSourceProfile:
             raise ValueError("Configured Plugin Sources must be non-empty strings")
 
 
+def resolve_configured_plugin_local_path(
+    source: str,
+    cwd: str | Path,
+    *,
+    settings_manager: object | None = None,
+) -> Path:
+    """Resolve local input against its declaring settings layer or the workspace."""
+    path = Path(source).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    base = None
+    if settings_manager is not None:
+        # Session-relative paths are anchored at the workspace. Project and
+        # global paths use the root of the settings file that declared them.
+        for getter_name, base_name in (
+            ("get_session_settings", None),
+            ("get_project_settings", "project_base_dir"),
+            ("get_global_settings", "global_base_dir"),
+        ):
+            getter = getattr(settings_manager, getter_name, None)
+            patch = getter() if callable(getter) else None
+            if not isinstance(patch, Mapping):
+                continue
+            values = patch.get("plugin_sources")
+            if not isinstance(values, list | tuple) or source not in values:
+                continue
+            root = getattr(settings_manager, base_name, None) if base_name is not None else None
+            if root is not None:
+                base = Path(root).expanduser().resolve()
+            break
+    return ((base or Path(cwd)) / path).expanduser().resolve()
+
+
 def project_configured_plugin_sources(
     profile: ConfiguredPluginSourceProfile,
 ) -> PluginManagementSourceSnapshotV1:
@@ -73,10 +107,7 @@ def project_configured_plugin_sources(
         if remote:
             source = PluginSource(url=raw_source, kind="remote")
         else:
-            local_path = Path(raw_source).expanduser()
-            if not local_path.is_absolute():
-                local_path = profile.workspace_root / local_path
-            local_path = local_path.resolve(strict=False)
+            local_path = resolve_configured_plugin_local_path(raw_source, profile.workspace_root)
             source = PluginSource(path=local_path)
         inspection = authority.inspect(source)
         plugin = inspection.plugin

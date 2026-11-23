@@ -7,16 +7,14 @@ history and captures every direct member through Product-pinned handles.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+from functools import partial
 
 from loushang.harness.package_product._windows_worker_recovery import (
     review_windows_product_worker_partial_stage,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_partial_stage,
-    is_attempt_id,
-    is_windows_product,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -33,8 +31,6 @@ from .product_worker_windows_stage_retirement import (
 )
 from .product_worker_windows_stage_review import FileIdentity, _inspection
 
-_MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
-_MAX_DEPTH = 16
 _PARTIAL_DEBTS = (
     "payload_retained",
     "launch_intent_missing",
@@ -64,27 +60,15 @@ class CodingWindowsWorkerPartialStageReviewV1(_WindowsPartialStageReviewMethods)
     executable_identity: FileIdentity | None
     executable_digest: str | None
 
-    @classmethod
-    def _payload_maximum(cls) -> int:
-        return _MAX_PAYLOAD_BYTES
-
-    @classmethod
-    def _depth_maximum(cls) -> int:
-        return _MAX_DEPTH
-
 
 def review_coding_windows_product_worker_partial_stage(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWindowsWorkerPartialStageReviewV1:
     """Review a marker-absent stage under exclusive Package quiescence."""
 
-    if not is_windows_product(product, "coding", os.name) or not is_attempt_id(
-        attempt_id
-    ):
-        raise OSError("Windows Worker partial-stage review requires a Product owner")
-
     return review_windows_product_worker_partial_stage(
         product,
+        product_id="coding",
         attempt_id=attempt_id,
         record_type=CodingWindowsWorkerPartialStageReviewV1,
         inspect_inventory=_inspect_windows_worker_recovery_inventory_under_gc_guard,
@@ -95,33 +79,12 @@ def review_coding_windows_product_worker_partial_stage(
     )
 
 
-def _review_partial_tree(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    expected_stage: tuple[int, int] | None,
-    lease_owner_revision: int,
-) -> CodingWindowsWorkerPartialStageReviewV1:
-    return capture_windows_product_worker_partial_stage(
-        product,
-        attempt_id=attempt_id,
-        expected_stage=expected_stage,
-        inspection=_inspection(),
-        max_payload_bytes=_MAX_PAYLOAD_BYTES,
-        max_depth=_MAX_DEPTH,
-        marker_name="worker-payload.json",
-        error_type=CodingWindowsWorkerPartialStageReviewError,
-        error_prefix="coding_worker_partial_stage",
-        result_factory=lambda captured: CodingWindowsWorkerPartialStageReviewV1(
-            attempt_id=attempt_id,
-            lease_owner_revision=lease_owner_revision,
-            stage_identity=captured.stage_identity,
-            directory_identities=captured.directory_identities,
-            entrypoint=captured.entrypoint,
-            executable_identity=captured.executable_identity,
-            executable_digest=captured.executable_digest,
-        ),
-    )
+_review_partial_tree = partial(
+    capture_windows_product_worker_partial_stage,
+    record_type=CodingWindowsWorkerPartialStageReviewV1,
+    inspect=_inspection,
+    error_prefix="coding_worker_partial_stage",
+)
 
 
 __all__ = [

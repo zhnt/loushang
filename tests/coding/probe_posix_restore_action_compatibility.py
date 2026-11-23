@@ -13,6 +13,9 @@ import pytest
 
 import loushang.coding.package.private_data_restore as code
 import loushang.harness.plugin_management.private_data_backup as archive
+from loushang.harness.plugin_management.private_data_restore_journal import (
+    PrivateDataRestoreJournal,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 CASES = (
@@ -153,6 +156,8 @@ def observe(case, patch):
             return "restored"
 
     class Journal:
+        require_started = PrivateDataRestoreJournal.require_started
+
         def __init__(self, root):
             assert opened == {10, 20, 30}
             effect("journal_open")
@@ -239,12 +244,10 @@ def observe(case, patch):
         "CodingArchPrivateDataDeletionJournal",
         lambda *a: NS(current_start=lambda: None, events=lambda: ()),
     )
-    history = archive if hasattr(archive, "require_deleted_archive_receipt") else code
-    patch.setattr(history, "latest_deleted_target_receipt", lambda *a: deletion)
+    patch.setattr(archive, "latest_deleted_target_receipt", lambda *a: deletion)
     patch.setattr(code, "_backup_parent", lambda *a: base / "backups")
-    patch.setattr(code, "_read_manifest", lambda *a: (receipt, source))
+    patch.setattr(archive, "read_private_archive", lambda *a, **kw: (receipt, source))
     patch.setattr(code, "_private_io", io)
-    patch.setattr(code, "_open_private_path", io.open_path)
     if hasattr(code, "_open_private_dir"):
         patch.setattr(code, "_open_private_dir", io.open_directory)
     patch.setattr(archive, "verify_private_archive", verify_archive)
@@ -258,7 +261,6 @@ def observe(case, patch):
     if hasattr(code, "os"):
         patch.setattr(code, "os", native)
     patch.setattr(archive, "os", native)
-    patch.setattr(code, "closing_descriptor", closing)
     patch.setattr(archive, "closing_descriptor", closing)
     owner = object.__new__(code.CodingArchPrivateDataRestoreOwner)
     object.__setattr__(owner, "layout", NS(private_data_base=base))

@@ -116,6 +116,10 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         "PluginDeclarationCoordinator._read_and_decode_document",
     ): "plugin-declaration-coordinator",
     (
+        Path("src/loushang/harness/plugin_authoring/_offline_smoke.py"),
+        "capture_authoring_input",
+    ): "plugin-authoring-smoke-input",
+    (
         Path("src/loushang/harness/resources/plugins/_strict_json.py"),
         "StrictPluginJsonCodec.decode_bytes",
     ): "plugin-strict-json-codec",
@@ -189,6 +193,11 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "package-resource-mount",
 }
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
+    (
+        Path("src/loushang/harness/plugin_authoring/_offline_smoke.py"),
+        "capture_authoring_input",
+        "path_read",
+    ): 1,
     # Bounded capture uses the same original verified revision handle.
     (
         Path("src/loushang/harness/resources/packages/mounts.py"),
@@ -910,8 +919,15 @@ PLC9_CLOSURE_BOUNDARY_SINKS = (
         "ExactProductSourceFiles",
         {"path_read": 1},
     ),
+    (
+        "plugin_management/private_data_backup.py",
+        "PrivateArchiveManifestCodec.decode",
+        "PrivateArchiveManifestCodec",
+        {"json_decode": 1},
+    ),
 )
 PLC9_CLOSURE_BOUNDARY_OWNERS = {
+    "PrivateArchiveManifestCodec",
     "_WindowsInstallationRootLineage",
     "PrivatePosixTreeIO",
     "ExactProductSourceFiles",
@@ -3518,6 +3534,7 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         "package-resource-inventory",
         "package-resource-mount",
         "installed-python-distribution-evidence-resolver",
+        "plugin-authoring-smoke-input",
         "plugin-declaration-coordinator",
         "plugin-strict-json-codec",
         "verified-plugin-python-loader",

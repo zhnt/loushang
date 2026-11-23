@@ -18,6 +18,7 @@ from .private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
     CodingArchPrivateDataBackupExpiryPlanV1,
     CodingArchPrivateDataBackupExpiryReceiptV1,
+    require_expiry_acceptance,
 )
 from .private_data_windows_backup_expiry_journal import (
     CodingWindowsArchBackupExpiryJournal,
@@ -52,14 +53,7 @@ class CodingWindowsArchPrivateDataBackupExpiryOwner:
         plan: CodingArchPrivateDataBackupExpiryPlanV1,
         confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
     ) -> CodingArchPrivateDataBackupExpiryReceiptV1:
-        if (
-            not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1)
-            or not isinstance(
-                confirmation, CodingArchPrivateDataBackupExpiryConfirmationV1
-            )
-            or confirmation.plan_fingerprint != plan.fingerprint
-        ):
-            raise ValueError("Windows Coding Arch backup expiry acceptance is invalid")
+        require_expiry_acceptance(plan, confirmation, label="Windows Coding Arch")
         with CodingWindowsArchBackupExpiryJournal(
             self.layout, self.product
         ).transaction() as transaction:

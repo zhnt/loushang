@@ -8,7 +8,6 @@ from typing import ClassVar, Protocol
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_TOOL_RUNTIME_REQUIREMENT,
     CodingLspToolRuntimeCapabilityConsumer,
-    CodingLspToolRuntimePort,
 )
 from loushang.coding.lsp.tools import (
     DOCUMENT_OUTLINE_TOOL_NAME,
@@ -19,11 +18,10 @@ from loushang.coding.lsp.tools import (
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
 )
+from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.session.capability_composition_inputs import (
-    SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
-    SessionCapabilityOwnerGenerationBinding,
 )
 from loushang.harness.session.tool_owner_binding import (
     DeferredToolRegistrationSlot,
@@ -63,6 +61,7 @@ class CodingLspToolOwner(_ReservedToolPackOwner):
     _tool_names = _TOOL_NAMES
     _requirement = CODING_LSP_TOOL_RUNTIME_REQUIREMENT
     _label = "Coding LSP Tool"
+    _generation_family = staticmethod(lambda: CodingLspToolOwner)
     _disposal_error = staticmethod(
         lambda: CodingLspToolOwnerError(
             "Coding LSP Tool generation disposal remains incomplete.",
@@ -76,38 +75,14 @@ class CodingLspToolOwner(_ReservedToolPackOwner):
     scope_id: str
     _bound: bool = field(default=False, init=False, repr=False)
 
-    def bind(
-        self,
-        registration: CodingLspToolRegistrationPort,
-    ) -> SessionCapabilityOwnerGenerationBinding:
-        """Bind the exact live registration port once without staging early."""
-
-        return self._bind_reserved_pack(
-            registration,
-            definitions_from_captures=lambda captures: _tool_definitions(
-                self._runtime_from_captures(captures)
-            ),
-            generation_family=lambda: CodingLspToolOwner,
+    def _tool_definitions(
+        self, facets: CapabilityFacetSet
+    ) -> tuple[ToolDefinition, ...]:
+        runtime = CodingLspToolRuntimeCapabilityConsumer(facets).runtime
+        return (
+            create_document_outline_tool_definition(runtime),
+            create_inspect_symbol_tool_definition(runtime),
         )
-
-    def _runtime_from_captures(
-        self,
-        captures: tuple[SessionCapabilityConsumerCapture, ...],
-    ) -> CodingLspToolRuntimePort:
-        capture = self._checked_runtime_capture(captures)
-        return CodingLspToolRuntimeCapabilityConsumer(capture.facets).runtime
-
-
-def _tool_definitions(
-    runtime: CodingLspToolRuntimePort,
-) -> tuple[ToolDefinition, ...]:
-    definitions = (
-        create_document_outline_tool_definition(runtime),
-        create_inspect_symbol_tool_definition(runtime),
-    )
-    if tuple(item.name for item in definitions) != _TOOL_NAMES:
-        raise RuntimeError("Coding LSP Tool factories changed admitted identities")
-    return definitions
 
 
 __all__ = [

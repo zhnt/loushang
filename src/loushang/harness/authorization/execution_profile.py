@@ -12,12 +12,16 @@ conventions in section 7.0.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from loushang.harness.approval import ApprovalDecision
 from loushang.harness.policy import PolicyDecision
+
+if TYPE_CHECKING:
+    from loushang.harness.permissions import PermissionProfileSnapshot
 
 ExecutionNetworkAccess = Literal["denied", "restricted", "allowed"]
 
@@ -45,7 +49,7 @@ class EffectiveExecutionProfile:
         if self.network not in _NETWORK_RANK:
             raise ValueError(f"unsupported execution network access: {self.network!r}")
         if any(
-            not _covered(root, self.readable_roots)
+            not execution_path_is_covered(root, self.readable_roots)
             for root in self.writable_roots
         ):
             raise ValueError("writable roots must be covered by readable roots")
@@ -59,6 +63,39 @@ class ExecutionProfileProvider(Protocol):
     """Trusted owner selection for the next action, before authority is frozen."""
 
     def __call__(self) -> EffectiveExecutionProfile: ...
+
+
+class WorkspaceExecutionSelection:
+    """Select file and process authority within one immutable deployment ceiling."""
+
+    __slots__ = ()
+
+    workspace_root: Path
+    workspace_profile: EffectiveExecutionProfile
+    ceiling: EffectiveExecutionProfile
+    permission_snapshot: Callable[[], PermissionProfileSnapshot]
+
+    def __call__(self) -> EffectiveExecutionProfile:
+        return self._select(self.workspace_profile)
+
+    def for_workspace_operation(self) -> EffectiveExecutionProfile:
+        workspace_only = constrain_execution_profile(
+            self.workspace_profile,
+            EffectiveExecutionProfile(
+                readable_roots=(self.workspace_root,),
+                writable_roots=(self.workspace_root,),
+            ),
+        )
+        return self._select(workspace_only)
+
+    def _select(self, workspace_profile: EffectiveExecutionProfile) -> EffectiveExecutionProfile:
+        profile = self.permission_snapshot().effective_profile
+        selected = (
+            self.ceiling
+            if profile.workspace_access == "managed_ceiling"
+            else workspace_profile
+        )
+        return constrain_execution_profile(self.ceiling, selected)
 
 
 def select_execution_profile(
@@ -99,17 +136,17 @@ def execution_profile_expansion_codes(
             raise ValueError("execution scope comparison exceeds its root budget")
     if baseline is None:
         return ("execution.baseline_unknown",)
-    readable = tuple(root for root in current.readable_roots if not _covered(root, current.denied_roots))
-    writable = tuple(root for root in current.writable_roots if not _covered(root, current.denied_roots))
+    readable = tuple(root for root in current.readable_roots if not execution_path_is_covered(root, current.denied_roots))
+    writable = tuple(root for root in current.writable_roots if not execution_path_is_covered(root, current.denied_roots))
     codes: list[str] = []
-    if any(not _covered(root, baseline.readable_roots) for root in readable):
+    if any(not execution_path_is_covered(root, baseline.readable_roots) for root in readable):
         codes.append("execution.readable_expanded")
-    if any(not _covered(root, baseline.writable_roots) for root in writable):
+    if any(not execution_path_is_covered(root, baseline.writable_roots) for root in writable):
         codes.append("execution.writable_expanded")
     if _NETWORK_RANK[current.network] > _NETWORK_RANK[baseline.network]:
         codes.append("execution.network_expanded")
     if any(
-        not _covered(denied, current.denied_roots)
+        not execution_path_is_covered(denied, current.denied_roots)
         and any(denied == root or denied.is_relative_to(root) or root.is_relative_to(denied)
                 for root in (*readable, *writable))
         for denied in baseline.denied_roots
@@ -161,7 +198,7 @@ def constrain_execution_profile(
             ceiling.writable_roots,
             requested.writable_roots,
         )
-        if _covered(root, readable)
+        if execution_path_is_covered(root, readable)
     )
     denied = _deduplicate_roots((*ceiling.denied_roots, *requested.denied_roots))
     network = min(
@@ -216,10 +253,11 @@ def _intersect_roots(
                 candidate = ceiling_root
             else:
                 continue
-            if not _covered(candidate, tuple(intersections)):
+            if not execution_path_is_covered(candidate, tuple(intersections)):
                 intersections.append(candidate)
     return tuple(intersections)
 
 
-def _covered(path: Path, roots: tuple[Path, ...]) -> bool:
+def execution_path_is_covered(path: Path, roots: tuple[Path, ...]) -> bool:
+    """Check canonical path membership without granting or resolving authority."""
     return any(path == root or path.is_relative_to(root) for root in roots)

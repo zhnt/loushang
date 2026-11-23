@@ -178,6 +178,11 @@ class PrivateDataRestoreJournal(Generic[_EventT]):
         with journal_file_read_lock(self._path, "shared", create_lock=False):
             return self._load_unlocked()
 
+    def require_started(self, restore_id: str, *, error: str) -> None:
+        """Require prior publication intent while retaining read-only access."""
+        if not any(event.restore_id == restore_id for event in self.events()):
+            raise ValueError(error)
+
     def completed_for(self, restore_id: str) -> _EventT:
         """Find the exact completion while retaining the global unfinished barrier."""
         events = self.events()

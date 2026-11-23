@@ -17,6 +17,7 @@ from loushang.harness.authorization import (
     ExecutionProfileProvider,
     select_execution_profile,
 )
+from loushang.harness.authorization.execution_profile import execution_path_is_covered
 from loushang.harness.effects import (
     FilesystemEffect,
     NetworkEffect,
@@ -48,7 +49,11 @@ from loushang.harness.workspace.process.local import (
     ProcessContainmentPlan,
     ProcessContainmentPlanner,
 )
-from loushang.harness.workspace.process.types import ProcessHandle, ProcessLaunchRequest
+from loushang.harness.workspace.process.types import (
+    AuthorizedProcessLauncher,
+    ProcessHandle,
+    ProcessLaunchRequest,
+)
 
 _PROCESS_START_ACTION = "process.host.start"
 ProcessAuditSink = Callable[
@@ -91,6 +96,15 @@ class ProcessExecutionScope:
     @property
     def actor_id(self) -> str:
         return approval_actor_id(self.approval_resolver)
+
+
+class ProcessLauncherBinder(Protocol):
+    """Bind one authorized launcher to its admitted execution scope."""
+
+    def bind_process_launcher(
+        self,
+        scope: ProcessExecutionScope,
+    ) -> AuthorizedProcessLauncher: ...
 
 
 class HostedProcessContainmentPort(Protocol):
@@ -494,13 +508,11 @@ def _validate_process_cwd(
     if profile is None:
         return
     cwd = Path(request.cwd)
-    if any(cwd == root or cwd.is_relative_to(root) for root in profile.denied_roots):
+    if execution_path_is_covered(cwd, profile.denied_roots):
         raise ExecutionAuthorizationError(
             f"process cwd is denied by execution profile: {cwd}"
         )
-    if not any(
-        cwd == root or cwd.is_relative_to(root) for root in profile.readable_roots
-    ):
+    if not execution_path_is_covered(cwd, profile.readable_roots):
         raise ExecutionAuthorizationError(
             f"process cwd is outside the authorized readable roots: {cwd}"
         )

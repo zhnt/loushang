@@ -6,7 +6,6 @@ Publication and an eventual owner switch must provide separate authority.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 from loushang.harness.package_product._windows_worker_history import (
@@ -14,7 +13,6 @@ from loushang.harness.package_product._windows_worker_history import (
     read_current_windows_product_worker_checkpoint_under_guard,
     read_windows_product_worker_checkpoint,
 )
-from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -168,10 +166,9 @@ def read_coding_windows_worker_history_checkpoint(
 ) -> CodingWindowsWorkerHistoryCheckpointV1:
     """Reprove published checkpoint bytes against the current guarded Product."""
 
-    if not is_windows_product(product, "coding", os.name):
-        raise ValueError("Windows Worker checkpoint requires its Product")
     return read_windows_product_worker_checkpoint(
         product,
+        product_id="coding",
         record_type=CodingWindowsWorkerHistoryCheckpointV1,
         review_checkpoint=_current_checkpoint_under_guard,
         io=_receipt_io,
@@ -188,10 +185,9 @@ def publish_coding_windows_worker_history_checkpoint(
     when its full record still equals the freshly joined Product state.
     """
 
-    if not is_windows_product(product, "coding", os.name):
-        raise ValueError("Windows Worker checkpoint requires its Product")
     return publish_windows_product_worker_checkpoint(
         product,
+        product_id="coding",
         record_type=CodingWindowsWorkerHistoryCheckpointV1,
         review_checkpoint=_current_checkpoint_under_guard,
         io=_receipt_io,

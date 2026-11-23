@@ -7,15 +7,15 @@ record alone authorizes recovery cleanup or third-party Worker admission.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Literal
 
 from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
+    SORTED_UNICODE_JSONL_FORMAT as SORTED_UNICODE_JSONL_FORMAT,
+)
+from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
-    JournalFormatProfile,
     JournalRecordCodec,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -48,7 +48,6 @@ from .product_worker_activation_state_journal import (
 )
 
 _FILE_NAME = "worker-start-gates.jsonl"
-_FORMAT = replace(SORTED_UNICODE_JSONL_FORMAT, separators=(",", ":"))
 
 
 class CodingWorkerStartGateJournalError(RuntimeError):
@@ -71,21 +70,11 @@ class CodingWorkerStartGateRecordV1(_StartGateRecordMethods):
     record_digest: str
 
 
-def _decode(value: object) -> CodingWorkerStartGateRecordV1:
-    try:
-        return CodingWorkerStartGateRecordV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Worker start gate record is invalid",
-            code="coding_worker_start_gate_record_invalid",
-        ) from exc
-
-
-_CODEC: FunctionalJournalRecordCodec[CodingWorkerStartGateRecordV1] = (
-    FunctionalJournalRecordCodec(
-        encoder=CodingWorkerStartGateRecordV1.to_dict,
-        decoder=_decode,
-    )
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
+    encoder=CodingWorkerStartGateRecordV1.to_dict,
+    decoder=lambda value: CodingWorkerStartGateRecordV1.from_dict(value),
+    message="Worker start gate record is invalid",
+    code="coding_worker_start_gate_record_invalid",
 )
 
 
@@ -114,10 +103,6 @@ class CodingWorkerStartGateJournal(StartGateHistory[CodingWorkerStartGateRecordV
     @property
     def _record_type(self) -> type[CodingWorkerStartGateRecordV1]:
         return CodingWorkerStartGateRecordV1
-
-    @property
-    def _record_format(self) -> JournalFormatProfile:
-        return _FORMAT
 
     @property
     def _record_codec(self) -> JournalRecordCodec[CodingWorkerStartGateRecordV1]:

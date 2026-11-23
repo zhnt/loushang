@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Sequence
-from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, Protocol, cast
 
 if TYPE_CHECKING:
     from loushang.harness.capabilities.deferred_slot import (
@@ -20,7 +20,7 @@ from loushang.ai.api_registry import (
     APIRegistry,
     get_default_api_registry,
 )
-from loushang.ai.model import ModelSelection
+from loushang.ai.model import Capabilities, Model, ModelSelection
 from loushang.ai.options import CallOptions
 from loushang.ai.prepared_request import PreparedRequestLimits
 from loushang.ai.types import ImagePart
@@ -47,6 +47,8 @@ from loushang.harness.capabilities import (
     RuntimeProfileSlotExplanation,
     ScopedSourcePublicationReference,
     StagedResourceCompositionCandidate,
+    stage_resource_composition_candidate,
+    standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.component_host import (
     CapabilityComponentAdmissionStart,
@@ -133,6 +135,7 @@ from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     CancellationSignal,
     ResolvedRuntimeProfile,
+    RuntimeProfileResolver,
     SideQuestionAnswer,
     SideQuestionProvider,
     SideQuestionProviderFactory,
@@ -291,6 +294,64 @@ class FooterDataPort(Protocol):
 class _SessionBasePluginEvidence(_Closeable, Protocol):
     @property
     def management_lease(self) -> _Closeable | None: ...
+
+
+class _QueryOnlyFooter:
+    def set_extension_status(self, *_args: object) -> None:
+        pass
+
+    def set_available_provider_count(self, *_args: object) -> None:
+        pass
+
+    def dispose(self) -> None:
+        pass
+
+
+def _create_query_only_session(
+    manager: ProductTranscriptSession[Any, Any],
+    inputs: SessionCapabilityCompositionInputs,
+    *,
+    product_id: str,
+    failure: Callable[[str], RuntimeError],
+    error_prefix: str,
+) -> AgentProductSession:
+    """Bind the selected graph to a Session that cannot execute a model."""
+
+    async def refuse_model_execution(*_args: object, **_kwargs: object) -> NoReturn:
+        raise failure(error_prefix + "_model_execution_refused")
+
+    profile_plan = RuntimeProfileResolver().resolve(
+        standard_capability_composition_plan(product_id=product_id)
+    )
+    return AgentProductSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "Worker query",
+                "model": Model(
+                    id="worker-query-only",
+                    name="Worker Query",
+                    provider="local",
+                    endpoint="local",
+                    capabilities=Capabilities(
+                        input=("text",),
+                        context_window=128_000,
+                        max_tokens=4_096,
+                    ),
+                ),
+                "thinking_level": None,
+            }
+        ),
+        session_manager=manager,
+        capability_runtime=stage_resource_composition_candidate(profile_plan),
+        execute_compaction=refuse_model_execution,
+        execute_branch_summary=refuse_model_execution,
+        get_changelog=lambda cwd, args: (cwd, args),
+        copy_to_clipboard=lambda text: text,
+        retry_sleep=refuse_model_execution,
+        footer_data_provider=_QueryOnlyFooter(),
+        allowed_tool_names=[],
+        capability_composition_inputs=inputs,
+    )
 
 
 class AgentProductSession(AgentSessionAdapterMixin):
@@ -1965,24 +2026,16 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         if isinstance(request, SessionCapabilityWorkerComponentRequest):
                             continue
                         assert component_host is not None
-                        component_starts[id(request)] = component_host.begin_admission(
-                            request.resolved,
-                            owner_snapshot=request.owner_snapshot,
-                            trust_snapshot=request.trust_snapshot,
-                            decision_id=request.activation_decision_id,
+                        component_starts[id(request)] = request.begin_admission(
+                            component_host
                         )
                     for request in composition_inputs.component_requests:
                         if isinstance(request, SessionCapabilityWorkerComponentRequest):
                             continue
                         assert component_host is not None
                         prepared_components.append(
-                            component_host.prepare_component(
-                                request.resolved,
-                                package=request.package,
-                                owner_snapshot=request.owner_snapshot,
-                                trust_snapshot=request.trust_snapshot,
-                                decision_id=request.activation_decision_id,
-                                admission_start=component_starts[id(request)],
+                            request.prepare_component(
+                                component_host, component_starts[id(request)]
                             )
                         )
                 catalog_bootstrap = self._initial_resource_catalog_bootstrap

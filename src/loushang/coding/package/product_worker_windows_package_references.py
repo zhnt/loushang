@@ -6,7 +6,6 @@ switch journal ownership, or authorize deletion of retained source bytes.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 from loushang.harness.package_product._windows_worker_history import (
@@ -16,7 +15,6 @@ from loushang.harness.package_product._windows_worker_history import (
 from loushang.harness.package_product._windows_worker_references import (
     _WindowsPackageReferenceMethods,
 )
-from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -85,10 +83,9 @@ def review_coding_windows_worker_package_references(
 ) -> CodingWindowsWorkerPackageReferenceReviewV1:
     """Capture all preflight inputs while Package and Product guards stay held."""
 
-    if not is_windows_product(product, "coding", os.name):
-        raise ValueError("Windows Worker Package references require their Product")
     return review_windows_product_worker_package_references(
         product,
+        product_id="coding",
         review_under_guard=_review_coding_windows_worker_package_references_under_guard,
     )
 

@@ -14,7 +14,6 @@ from typing import Literal
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     FunctionalJournalRecordCodec,
-    JournalCodecError,
 )
 from loushang.harness.package_product._linux_worker_native_release import (
     _ProductRootedNativeApprovalRecords,
@@ -81,20 +80,13 @@ class CodingWorkerNativeApprovalDecisionV1(
     _approval_type = CodingWorkerNativeReleaseApprovalV1
 
 
-def _decode(value: object) -> CodingWorkerNativeApprovalDecisionV1:
-    try:
-        return CodingWorkerNativeApprovalDecisionV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Worker native approval decision record is invalid",
-            code="coding_worker_native_approval_record_invalid",
-        ) from exc
-
-
-_CODEC = FunctionalJournalRecordCodec(
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=CodingWorkerNativeApprovalDecisionV1.to_dict,
-    decoder=_decode,
+    decoder=lambda value: CodingWorkerNativeApprovalDecisionV1.from_dict(value),
+    message="Worker native approval decision record is invalid",
+    code="coding_worker_native_approval_record_invalid",
 )
+_decode = _CODEC.decoder
 
 
 def _decode_coding_worker_native_approval_history(

@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
-from argparse import ArgumentParser
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Never, TextIO
+from typing import TextIO
 
 from loushang.foundation.platform_paths import PlatformPaths
+from loushang.harness.cli.parser import (
+    CliCommandUsageError,
+    RaisingArgumentParser,
+    extract_root_command,
+    write_usage_error,
+)
 from loushang.harness.machine_resources import (
     MACHINE_RESOURCE_SCHEMA_VERSION,
     MachineResourceCleanRequest,
@@ -20,28 +25,16 @@ from loushang.harness.machine_resources import (
 )
 
 
-class MachineResourceCliUsageError(ValueError):
-    def __init__(self, message: str, *, usage: str) -> None:
-        super().__init__(message)
-        self.usage = usage
+class MachineResourceCliUsageError(CliCommandUsageError):
+    pass
 
 
-class _NoExitParser(ArgumentParser):
-    def error(self, message: str) -> Never:
-        raise MachineResourceCliUsageError(message, usage=self.format_usage())
+class _NoExitParser(RaisingArgumentParser):
+    usage_error_type = MachineResourceCliUsageError
 
 
 def extract_machine_resource_argv(argv: Sequence[str]) -> tuple[str, ...] | None:
-    """Extract ``storage`` while preserving a leading common ``--cwd``."""
-
-    values = list(argv)
-    if values and values[0] == "storage":
-        return tuple(values[1:])
-    if len(values) >= 3 and values[0] == "--cwd" and values[2] == "storage":
-        return ("--cwd", values[1], *values[3:])
-    if len(values) >= 2 and values[0].startswith("--cwd=") and values[1] == "storage":
-        return (values[0], *values[2:])
-    return None
+    return extract_root_command(argv, "storage")
 
 
 async def run_machine_resource_command(
@@ -58,9 +51,7 @@ async def run_machine_resource_command(
     try:
         namespace = parser.parse_args(list(argv))
     except MachineResourceCliUsageError as error:
-        stderr.write(error.usage)
-        stderr.write(f"Error: {error}\n")
-        return 2
+        return write_usage_error(stderr, error)
     if namespace.help or namespace.command is None:
         stdout.write(parser.format_help())
         return 0

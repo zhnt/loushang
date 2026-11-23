@@ -6,21 +6,16 @@ admission, Resource consumption, or executable authority.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from hashlib import sha256 as sha256
-from pathlib import Path
 
 from packaging.utils import InvalidWheelFilename as InvalidWheelFilename
 from packaging.utils import parse_wheel_filename as parse_wheel_filename
 from packaging.version import Version
 
-from loushang.harness.journal import (
-    FunctionalJournalRecordCodec,
-    JournalRecordCodec,
-)
 from loushang.harness.package_product._local_source_catalog import (
+    _DependencyWheelBindingMethods,
     _DependencyWheelSourceCatalog,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
@@ -34,16 +29,8 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageWheelVerificationError,
     inspect_package_wheel_bytes,
 )
-from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
-)
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWheelDependencyV1,
-    PackageProductLocalWorkerAdmissionV1,
-)
 
 _WHEEL_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.whl\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_WHEEL_BYTES = 2 * 1024 * 1024
 _MAX_WHEEL_FILENAME = 180
 _DIRECTORY = "dependencies"
@@ -77,7 +64,7 @@ def _wheel_identity(filename: str) -> tuple[str, str]:
 
 
 @dataclass(frozen=True, slots=True)
-class CodingExternalDependencyWheelBindingV1:
+class CodingExternalDependencyWheelBindingV1(_DependencyWheelBindingMethods):
     record_revision: int
     store_id: str
     namespace_id: str
@@ -89,102 +76,21 @@ class CodingExternalDependencyWheelBindingV1:
     artifact_digest: str
     record_id: str
 
-    def __post_init__(self) -> None:
-        project_name, version = _wheel_identity(self.wheel_filename)
-        if (
-            type(self.record_revision) is not int
-            or self.record_revision < 1
-            or not isinstance(self.store_id, str)
-            or not self.store_id
-            or not isinstance(self.namespace_id, str)
-            or _DIGEST.fullmatch(self.namespace_id) is None
-            or not isinstance(self.scope_id, str)
-            or not self.scope_id
-            or not isinstance(self.original_source, str)
-            or not Path(self.original_source).is_absolute()
-            or os.path.normpath(self.original_source) != self.original_source
-            or self.project_name != project_name
-            or self.version != version
-            or not isinstance(self.artifact_digest, str)
-            or _DIGEST.fullmatch(self.artifact_digest) is None
-            or not isinstance(self.record_id, str)
-            or _DIGEST.fullmatch(self.record_id) is None
-        ):
-            raise ValueError("Dependency Wheel binding is invalid")
-        if self.record_id != sha256(canonical_json_bytes(self._identity())).hexdigest():
-            raise ValueError("Dependency Wheel binding identity changed")
+    _binding_label = "Dependency Wheel"
 
-    @classmethod
-    def create(
-        cls,
-        *,
-        record_revision: int,
-        store_id: str,
-        namespace_id: str,
-        scope_id: str,
-        original_source: str,
-        wheel_filename: str,
-        artifact_digest: str,
-    ) -> CodingExternalDependencyWheelBindingV1:
-        project_name, version = _wheel_identity(wheel_filename)
-        fields = {
-            "recordRevision": record_revision,
-            "storeId": store_id,
-            "namespaceId": namespace_id,
-            "scopeId": scope_id,
-            "originalSource": original_source,
-            "wheelFilename": wheel_filename,
-            "projectName": project_name,
-            "version": version,
-            "artifactDigest": artifact_digest,
-        }
-        return cls(
-            record_revision=record_revision,
-            store_id=store_id,
-            namespace_id=namespace_id,
-            scope_id=scope_id,
-            original_source=original_source,
-            wheel_filename=wheel_filename,
-            project_name=project_name,
-            version=version,
-            artifact_digest=artifact_digest,
-            record_id=sha256(canonical_json_bytes(fields)).hexdigest(),
-        )
+    _dependency_directory = _DIRECTORY
 
-    def _identity(self) -> dict[str, object]:
-        return {
-            key: value for key, value in self.to_dict().items() if key != "recordId"
-        }
-
-    def to_dict(self) -> dict[str, object]:
-        return _BINDING_SCHEMA.encode(self)
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingExternalDependencyWheelBindingV1:
-        if type(value) is not dict or set(value) != _BINDING_SCHEMA.keys:
-            raise ValueError("Dependency Wheel binding record is invalid")
-        return _BINDING_SCHEMA.decode(cls, value)
-
-    def policy_dependency(
-        self, source_root: Path
-    ) -> PackageProductLocalWheelDependencyV1:
-        return PackageProductLocalWheelDependencyV1(
-            source_identity=str(source_root / _DIRECTORY / self.wheel_filename),
-            project_name=self.project_name,
-            version=self.version,
-            artifact_digest=self.artifact_digest,
-        )
+    @staticmethod
+    def _wheel_identity(wheel_filename: str) -> tuple[str, str]:
+        return _wheel_identity(wheel_filename)
 
 
-_BINDING_SCHEMA = RecordSchema.for_dataclass(
+CodingExternalDependencyWheelBindingV1._binding_schema = RecordSchema.for_dataclass(
     CodingExternalDependencyWheelBindingV1, lambda value: value
 )
 
 
-_CODEC = FunctionalJournalRecordCodec(
-    encoder=CodingExternalDependencyWheelBindingV1.to_dict,
-    decoder=CodingExternalDependencyWheelBindingV1.from_dict,
-)
+_CODEC = CodingExternalDependencyWheelBindingV1._record_codec()
 
 
 class CodingExternalDependencyWheelCatalog(
@@ -195,6 +101,8 @@ class CodingExternalDependencyWheelCatalog(
     _label = "Dependency Wheel"
     _path_label = "Dependency Wheel"
     _error_factory = CodingExternalDependencyWheelError
+    _codec = _CODEC
+    _create_binding = staticmethod(CodingExternalDependencyWheelBindingV1.create)
 
     _source_label = "Dependency Wheel"
     _product_id = "coding"
@@ -210,73 +118,6 @@ class CodingExternalDependencyWheelCatalog(
 
     def _verify_source_body(self, filename: str, body: bytes) -> None:
         _verify_wheel_body(filename, body)
-
-    def _new_record(
-        self,
-        source: Path,
-        digest: str,
-        revision: int,
-        *,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
-    ) -> CodingExternalDependencyWheelBindingV1:
-        return CodingExternalDependencyWheelBindingV1.create(
-            record_revision=revision,
-            store_id=self.store_id,
-            namespace_id=self.namespace_id,
-            scope_id=self.scope_id,
-            original_source=str(source),
-            wheel_filename=source.name,
-            artifact_digest=digest,
-        )
-
-    def _require_new_record(
-        self,
-        record: CodingExternalDependencyWheelBindingV1,
-        records: tuple[CodingExternalDependencyWheelBindingV1, ...],
-    ) -> None:
-        if any(
-            item.project_name == record.project_name
-            and Version(item.version) == Version(record.version)
-            for item in records
-        ):
-            raise CodingExternalDependencyWheelError(
-                "Dependency Wheel version is already bound"
-            )
-
-    def capture(
-        self,
-        source: Path,
-        *,
-        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-    ) -> CodingExternalDependencyWheelBindingV1:
-        if self._read_only:
-            raise CodingExternalDependencyWheelError("Read-only catalog cannot capture")
-        self._assert_epoch(epoch_runtime)
-        if (
-            not source.is_absolute()
-            or os.path.normpath(str(source)) != str(source)
-            or source.is_relative_to(self.source_root)
-        ):
-            raise CodingExternalDependencyWheelError(
-                "Dependency Wheel Source is invalid"
-            )
-        return self._capture_validated(source, epoch_runtime=epoch_runtime)
-
-    def _record_codec(
-        self,
-    ) -> JournalRecordCodec[CodingExternalDependencyWheelBindingV1]:
-        return _CODEC
-
-    def records(self) -> tuple[CodingExternalDependencyWheelBindingV1, ...]:
-        return super().records()
-
-    def read_records(self) -> tuple[CodingExternalDependencyWheelBindingV1, ...]:
-        return super().read_records()
-
-    def _record_key(
-        self, record: CodingExternalDependencyWheelBindingV1
-    ) -> tuple[str, Version]:
-        return record.project_name, Version(record.version)
 
 
 def _verify_wheel_body(filename: str, body: bytes) -> None:

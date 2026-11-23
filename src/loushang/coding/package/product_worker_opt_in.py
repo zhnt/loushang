@@ -6,16 +6,16 @@ selection, activation receipt, native launch, or Capability publication.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal
 
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
+    SORTED_UNICODE_JSONL_FORMAT as SORTED_UNICODE_JSONL_FORMAT,
+)
+from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
-    JournalFormatProfile,
     JournalRecordCodec,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
@@ -64,21 +64,11 @@ class CodingWorkerOptInDecisionV1(_OptInDecisionMethods):
     _opt_in_type = CodingWorkerOptInV1
 
 
-def _decode(value: object) -> CodingWorkerOptInDecisionV1:
-    try:
-        return CodingWorkerOptInDecisionV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Worker opt-in decision record is invalid",
-            code="coding_worker_opt_in_record_invalid",
-        ) from exc
-
-
-_CODEC: FunctionalJournalRecordCodec[CodingWorkerOptInDecisionV1] = (
-    FunctionalJournalRecordCodec(
-        encoder=CodingWorkerOptInDecisionV1.to_dict,
-        decoder=_decode,
-    )
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
+    encoder=CodingWorkerOptInDecisionV1.to_dict,
+    decoder=lambda value: CodingWorkerOptInDecisionV1.from_dict(value),
+    message="Coding Worker opt-in decision record is invalid",
+    code="coding_worker_opt_in_record_invalid",
 )
 
 
@@ -99,22 +89,9 @@ def _decode_coding_worker_opt_in_history(
     )
 
 
-def _fold_opt_in_events(
-    events: tuple[CodingWorkerOptInDecisionV1, ...],
-    *,
-    scope_id: str,
-    start_revision: int = 1,
-    initial_latest: Mapping[str, CodingWorkerOptInDecisionV1] | None = None,
-    initial_operations: frozenset[str] = frozenset(),
-) -> tuple[dict[str, CodingWorkerOptInDecisionV1], frozenset[str]]:
-    return fold_opt_in_events(
-        events,
-        scope_id=scope_id,
-        start_revision=start_revision,
-        initial_latest=initial_latest,
-        initial_operations=initial_operations,
-        error_type=CodingWorkerOptInJournalError,
-    )
+_fold_opt_in_events = partial(
+    fold_opt_in_events, error_type=CodingWorkerOptInJournalError
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,10 +136,6 @@ class CodingWorkerOptInJournal(
     @property
     def _record_codec(self) -> JournalRecordCodec[CodingWorkerOptInDecisionV1]:
         return _CODEC
-
-    @property
-    def _record_format(self) -> JournalFormatProfile:
-        return SORTED_UNICODE_JSONL_FORMAT
 
     def _max_history_bytes(self) -> int:
         return _MAX_SEGMENT_BYTES

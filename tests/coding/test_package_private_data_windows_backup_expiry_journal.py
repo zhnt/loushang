@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding.package.private_data_windows_backup_expiry_journal as journal
+import loushang.coding.package.private_data_windows_backup_expiry_preview as preview
 import loushang.harness.plugin_management._private_data_expiry_windows as core
 from loushang.coding.package.private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
@@ -20,6 +21,9 @@ from loushang.coding.package.private_data_backup_expiry_records import (
 from loushang.coding.package.private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
+)
+from loushang.coding.package.private_data_restore_records import (
+    CodingArchPrivateDataRestorePlanV1,
 )
 from loushang.coding.package.private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
@@ -142,10 +146,56 @@ def test_windows_expiry_confirm_and_start_are_replayable_under_product_gate(
         lambda self: None,
     )
     monkeypatch.setattr(
-        journal.CodingWindowsArchPrivateDataBackupExpiryPreview,
-        "_preview_locked",
-        lambda self, restore, key, backup_id, confirmation_id: plan,
+        preview, "coding_arch_installation_private_data_root", lambda *_: tmp_path
     )
+    manifest = SimpleNamespace(
+        receipt_id=plan.backup_receipt_id, source_target_id=plan.source_target_id
+    )
+    source = SimpleNamespace(target_id=plan.source_target_id)
+    monkeypatch.setattr(
+        preview, "_archive_io",
+        SimpleNamespace(read_expiry_manifest=lambda *args, **kwargs: (manifest, source)),
+    )
+    monkeypatch.setattr(preview, "capture_windows_arch_backup_archive", lambda *_: archive)
+    key = plan.installation_key
+    deletion = SimpleNamespace(
+        plan=SimpleNamespace(installation_key=key),
+        phase="completed",
+        target=source,
+        receipt=SimpleNamespace(disposition="deleted", receipt_id="delete:accepted"),
+    )
+    installation = SimpleNamespace(
+        latest_instance_revision_ref="installed",
+        selection=SimpleNamespace(desired_state="absent"),
+    )
+    desired = SimpleNamespace(
+        inventory_revision=plan.desired_inventory_revision, installation=lambda _: installation,
+    )
+
+    def verify_confirmation(restore_plan, confirmation_id):
+        # The proof replays the original restore revision while the expiry plan
+        # binds the current, newer inventory revision.
+        assert restore_plan.desired_inventory_revision == 2
+        assert restore_plan.deletion_receipt_id == deletion.receipt.receipt_id
+        assert confirmation_id == plan.confirmation_id
+        return SimpleNamespace(confirmation_id=confirmation_id)
+
+    restore = SimpleNamespace(
+        state_fd=5,
+        _require_active=lambda: None,
+        _label="Windows Coding Arch",
+        _desired_state=SimpleNamespace(snapshot=lambda: desired),
+        _deletion_history=lambda: (deletion,),
+        _backup_parent=lambda _: tmp_path,
+        _plan_type=CodingArchPrivateDataRestorePlanV1,
+        completed_plan_revision_for=lambda _: 2,
+        verify_confirmation=verify_confirmation,
+        _completed_restore=lambda _: (
+            SimpleNamespace(record_digest=plan.restore_completion_digest),
+            SimpleNamespace(target_id=plan.restored_target_id),
+        ),
+    )
+
     monkeypatch.setattr(core, "windows_listdir_at", lambda state_fd: tuple(saved))
     monkeypatch.setattr(
         type(journal.CodingWindowsArchBackupExpiryTransaction._receipt_io),
@@ -170,7 +220,7 @@ def test_windows_expiry_confirm_and_start_are_replayable_under_product_gate(
     transaction = journal.CodingWindowsArchBackupExpiryTransaction(
         SimpleNamespace(),  # type: ignore[arg-type]
         SimpleNamespace(state_root=tmp_path),  # type: ignore[arg-type]
-        SimpleNamespace(state_fd=5, _require_active=lambda: None),  # type: ignore[arg-type]
+        restore,  # type: ignore[arg-type]
     )
     assert (
         transaction.confirm(plan, actor_id="operator:test", policy_revision="test:1")

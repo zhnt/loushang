@@ -125,6 +125,18 @@ class CapabilityWorkerBindingV1:
     def fingerprint(self) -> str:
         return _digest("loushang.capability-worker-binding/v1", self.to_dict())
 
+    def _matches_launch_contribution(self, identity: WorkerLaunchIdentityV1) -> bool:
+        """Compare the deployed contribution before the host binds its owner."""
+        return (
+            self.plugin_id == identity.plugin_id
+            and self.contribution_id == identity.contribution_id
+            and self.product_id == identity.product_id
+            and self.scope_id == identity.scope_id
+            and self.authority.plugin_revision_digest == identity.plugin_revision_digest
+            and self.authority.declaration_fingerprint == identity.declaration_fingerprint
+            and self.authority.owner_generation == identity.owner_generation
+        )
+
     def to_dict(self) -> dict[str, object]:
         return {
             "allowedCapabilityIds": list(self.allowed_capability_ids),
@@ -313,16 +325,8 @@ class CapabilityQueryWorkerAdapter:
             raise TypeError("Capability Worker adapter requires an authority reader")
         identity = supervisor.identity
         if (
-            identity.plugin_id != binding.plugin_id
-            or identity.contribution_id != binding.contribution_id
-            or identity.product_id != binding.product_id
-            or identity.scope_id != binding.scope_id
-            or identity.owner_id != binding.owner_id
-            or identity.plugin_revision_digest
-            != binding.authority.plugin_revision_digest
-            or identity.declaration_fingerprint
-            != binding.authority.declaration_fingerprint
-            or identity.owner_generation != binding.authority.owner_generation
+            identity.owner_id != binding.owner_id
+            or not CapabilityWorkerBindingV1._matches_launch_contribution(binding, identity)
         ):
             raise CapabilityWorkerAdapterError(
                 "Capability Worker binding does not match the supervised identity",

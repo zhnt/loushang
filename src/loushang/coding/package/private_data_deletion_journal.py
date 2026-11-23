@@ -13,7 +13,6 @@ from pathlib import Path
 
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
@@ -53,19 +52,11 @@ def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:
 
 
 
-def _decode(value: object) -> CodingArchPrivateDataDeletionEventV1:
-    try:
-        return CodingArchPrivateDataDeletionEventV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Arch private-data deletion event is invalid",
-            code="coding_arch_private_data_deletion_record_invalid",
-        ) from exc
-
-
-_CODEC = FunctionalJournalRecordCodec(
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=CodingArchPrivateDataDeletionEventV1.to_dict,
-    decoder=_decode,
+    decoder=lambda value: CodingArchPrivateDataDeletionEventV1.from_dict(value),
+    message="Coding Arch private-data deletion event is invalid",
+    code="coding_arch_private_data_deletion_record_invalid",
 )
 
 

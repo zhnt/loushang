@@ -16,14 +16,16 @@ from loushang.coding.hosted._worker_canary import (
 from loushang.coding.package.worker_history_access import _CodingHistoryAccess
 from loushang.coding.session.manager import SessionManager
 from loushang.harness.journal import (
-    SORTED_UNICODE_JSONL_FORMAT,
+    SORTED_UNICODE_JSONL_FORMAT as SORTED_UNICODE_JSONL_FORMAT,
+)
+from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
-    JournalFormatProfile,
     JournalLoadPolicy,
     JournalRecordCodec,
 )
 from loushang.harness.package_product._worker_product_authority import (
+    ProductNativeClosureReadPort,
+    ProductSessionDiscoveryReadPort,
     _PosixWorkerProductReceiptAuthority,
     _ProductWorkerReceiptAuthority,
 )
@@ -39,9 +41,6 @@ from loushang.harness.package_product.product_worker_candidate import (
     ProductWorkerNativeClosureFacts,
     ProductWorkerOptInFacts,
     ProductWorkerSelectedPayloadFacts,
-)
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
@@ -62,11 +61,11 @@ from loushang.harness.worker.history._receipts import (
     _MAX_RECEIPTS,
     _ReceiptRecordMethods,
     decode_receipt_history,
+    is_receipt_fingerprint,
     parse_receipt_segment,
     receipt_line,
 )
 from loushang.harness.worker.product_activation import (
-    ActivationWitness,
     ProductWorkerActivationPolicyV1,
     ProductWorkerActivationReceiptV1,
 )
@@ -86,28 +85,15 @@ from .product_worker_policy import (
     derive_coding_selected_worker_policy,
 )
 
-_STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
-
-class CodingWorkerNativeClosureReadPort(Protocol):
+class CodingWorkerNativeClosureReadPort(ProductNativeClosureReadPort, Protocol):
     """Product-bound native facts; changes share the selection/GC gate."""
-
-    @property
-    def gc_gate(self) -> PluginPackageGcReservationJournal: ...
 
     def current_closure(self) -> CodingWorkerNativeClosureV1: ...
 
 
-class CodingWorkerSessionDiscoveryReadPort(Protocol):
+class CodingWorkerSessionDiscoveryReadPort(ProductSessionDiscoveryReadPort, Protocol):
     """Product-bound resumed Session discovery, rechecked for each witness."""
-
-    @property
-    def gc_gate(self) -> PluginPackageGcReservationJournal: ...
-
-    @property
-    def session_id(self) -> str: ...
-
-    def current_discovery(self) -> SessionDiscoveryMetadata: ...
 
 
 class CodingWorkerReceiptError(RuntimeError):
@@ -135,21 +121,11 @@ class CodingWorkerReceiptRecordV1(_ReceiptRecordMethods):
     record_version: int = 1
 
 
-def _decode(value: object) -> CodingWorkerReceiptRecordV1:
-    try:
-        return CodingWorkerReceiptRecordV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Worker receipt record is invalid",
-            code="coding_worker_receipt_record_invalid",
-        ) from exc
-
-
-_CODEC: FunctionalJournalRecordCodec[CodingWorkerReceiptRecordV1] = (
-    FunctionalJournalRecordCodec(
-        encoder=CodingWorkerReceiptRecordV1.to_dict,
-        decoder=_decode,
-    )
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
+    encoder=CodingWorkerReceiptRecordV1.to_dict,
+    decoder=lambda value: CodingWorkerReceiptRecordV1.from_dict(value),
+    message="Coding Worker receipt record is invalid",
+    code="coding_worker_receipt_record_invalid",
 )
 
 
@@ -172,10 +148,6 @@ class _CodingReceiptHistory(ReceiptHistory[CodingWorkerReceiptRecordV1]):
     def _record_codec(self) -> JournalRecordCodec[CodingWorkerReceiptRecordV1]:
         return _CODEC
 
-    @property
-    def _record_format(self) -> JournalFormatProfile:
-        return SORTED_UNICODE_JSONL_FORMAT
-
     def _max_history_records(self) -> int:
         return _MAX_RECEIPTS
 
@@ -190,6 +162,8 @@ class _CodingWorkerReceiptAuthority(
     _error_prefix = "coding_worker_"
     _product_id = "coding"
     _receipt_session_label = "Coding Session owner"
+    _receipt_session_type = staticmethod(lambda: SessionManager)
+    _receipt_discovery_type = staticmethod(lambda: CodingWorkerTranscriptDiscoveryReader)
     _receipt_manifest_max_files = 16
     _receipt_manifest_max_bytes = 16 * 1024 * 1024
     _max_files = 64
@@ -244,10 +218,6 @@ class CodingWorkerProductReceiptOwner(
     _native_error = CodingWorkerNativeClosureReadError
 
     _receipt_factory_label = "Coding Worker"
-    _receipt_session_type = staticmethod(lambda: SessionManager)
-    _receipt_discovery_type = staticmethod(
-        lambda: CodingWorkerTranscriptDiscoveryReader
-    )
     _receipt_opt_in_journal_type = staticmethod(lambda: CodingWorkerOptInJournal)
 
     _stale_derivation_errors = (
@@ -261,39 +231,7 @@ class CodingWorkerProductReceiptOwner(
     _receipt_history_initialize = _CodingReceiptHistory.__init__
     _receipt_history_access = staticmethod(_CodingHistoryAccess)
 
-    def __init__(
-        self,
-        *,
-        product_owner: PosixLocalWheelProductSessionOwner,
-        runtime: PackageProductRuntimeBindingV1,
-        selected: PackageProductSelectedPluginManifestV1,
-        opt_in_journal: CodingWorkerOptInJournal,
-        native_closure_reader: CodingWorkerNativeClosureReadPort,
-        session_discovery_reader: CodingWorkerSessionDiscoveryReadPort | None = None,
-    ) -> None:
-        _PosixWorkerProductReceiptAuthority._initialize_receipt_owner(
-            self,
-            product_owner=product_owner,
-            runtime=runtime,
-            selected=selected,
-            opt_in_journal=opt_in_journal,
-            native_closure_reader=native_closure_reader,
-            session_discovery_reader=session_discovery_reader,
-        )
-
-    def latch_kill_switch(self, *, expected_generation: int) -> int:
-        """Persist revocation before the coordinator retires future requests."""
-        return self._latch_kill_switch(
-            expected_generation=expected_generation,
-            invalid_generation_message="Coding Worker kill-switch generation is invalid",
-            revoke=lambda plugin_id, operation_id, decision: self._opt_in.change(
-                plugin_id=plugin_id,
-                operation_id=operation_id,
-                expected_generation=decision.generation,
-                action="revoke",
-                opt_in=None,
-            ),
-        )
+    __init__ = _PosixWorkerProductReceiptAuthority._initialize_receipt_owner
 
     def _history_for_product(
         self, product: PosixLocalWheelProductSessionOwner
@@ -308,11 +246,7 @@ def read_coding_product_worker_receipt_record(
 
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
         raise TypeError("Coding Worker Product owner is required")
-    if (
-        type(receipt_fingerprint) is not str
-        or len(receipt_fingerprint) != 64
-        or any(char not in "0123456789abcdef" for char in receipt_fingerprint)
-    ):
+    if not is_receipt_fingerprint(receipt_fingerprint):
         raise ValueError("Coding Worker receipt fingerprint is invalid")
     return _receipt_history_for_product(product).find_retained_record(
         receipt_fingerprint

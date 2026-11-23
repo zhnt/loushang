@@ -10,6 +10,8 @@ from ._ownership import (
     AcquisitionStack,
     CloseGroup,
     RetryableCloser,
+    _ClaimedCandidateView,
+    _OpenedCandidateView,
     bind_native_async,
     read_static_property,
 )
@@ -106,44 +108,26 @@ class _BoundOpened:
             raise SessionCandidateStaleError() from None
 
 
-class _ClaimedSnapshot:
+class _ClaimedSnapshot(_ClaimedCandidateView[object]):
     """Immutable borrow view supplied to an admitted Product callback."""
 
-    __slots__ = ("_opaque_binding", "_reference")
+    __slots__ = ()
 
     def __init__(self, value: _BoundClaimed) -> None:
-        self._reference = value.reference
-        self._opaque_binding = value.opaque_binding
-
-    @property
-    def reference(self) -> SessionCandidateRefV1:
-        return self._reference
-
-    @property
-    def opaque_binding(self) -> object:
-        return self._opaque_binding
+        super().__init__(value.reference, value.opaque_binding)
 
     async def close(self) -> None:
         # Borrowers cannot settle the owner's handle.
         raise CleanupIncompleteError()
 
 
-class _OpenedSnapshot:
+class _OpenedSnapshot(_OpenedCandidateView[object]):
     """Immutable borrowed view supplied to the admitted Product factory."""
 
-    __slots__ = ("_binding_key", "_opaque_binding")
+    __slots__ = ()
 
     def __init__(self, value: _BoundOpened) -> None:
-        self._binding_key = value.binding_key
-        self._opaque_binding = value.opaque_binding
-
-    @property
-    def binding_key(self) -> SessionBindingKeyV1:
-        return self._binding_key
-
-    @property
-    def opaque_binding(self) -> object:
-        return self._opaque_binding
+        super().__init__(value.binding_key, value.opaque_binding)
 
     async def close(self) -> None:
         raise CleanupIncompleteError()

@@ -15,11 +15,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover 
     _hold_windows_private_cutover_directory,
 )
 
+_LEGACY_DISABLE_SETTING = "disabled_plugins"
 _CONSUMPTION_BLOCKING_SOURCE_KEYS = frozenset(
     {"package_roots", "package_sources", "packages", "resource_roots"}
 )
 _SOURCE_KEYS = _CONSUMPTION_BLOCKING_SOURCE_KEYS | {
-    "disabled_plugins",
+    _LEGACY_DISABLE_SETTING,
     "plugin_sources",
 }
 _PROJECTION_NAME = "coding-source-configuration.json"

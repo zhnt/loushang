@@ -7,27 +7,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from loushang.coding.lsp.binding import CodingLspBinding
+from loushang.coding.lsp.binding import CodingLspBinding, _CodingLspQueries
 from loushang.coding.lsp.diagnostics import DiagnosticInboxSnapshot
 from loushang.coding.lsp.model import (
     CodeDiagnostic,
-    CodeQueryResult,
-    DocumentOutlineResult,
     LspServerDefinition,
 )
 from loushang.coding.lsp.ports import PathExists, WorkspaceTextReader
 from loushang.coding.lsp.status import LspSessionStatus
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
+from loushang.harness.tools.process_hosting import (
+    ProcessLauncherBinder as _ProcessLauncherBinder,
+)
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 
-class ProcessLauncherBinder(Protocol):
+class ProcessLauncherBinder(_ProcessLauncherBinder, Protocol):
     """Narrow Sandbox-runtime shape needed by Coding's composition root."""
-
-    def bind_process_launcher(
-        self,
-        scope: ProcessExecutionScope,
-    ) -> AuthorizedProcessLauncher: ...
 
 
 class CodingLspSessionAccess(Protocol):
@@ -44,50 +40,13 @@ class CodingLspSessionAccess(Protocol):
 
 
 @dataclass(slots=True)
-class CodingLspRuntime:
+class CodingLspRuntime(_CodingLspQueries):
     """Own the Product binding while exposing only its semantic query surface."""
 
     _binding: CodingLspBinding
 
-    async def inspect_symbol(
-        self,
-        *,
-        path: str,
-        line: int,
-        character: int,
-        query: str = "definition",
-        include_declaration: bool = True,
-        limit: int = 50,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> CodeQueryResult:
-        return await self._binding.inspect_symbol(
-            path=path,
-            line=line,
-            character=character,
-            query=query,
-            include_declaration=include_declaration,
-            limit=limit,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
-
-    async def document_outline(
-        self,
-        *,
-        path: str,
-        depth: int = 4,
-        limit: int = 200,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> DocumentOutlineResult:
-        return await self._binding.document_outline(
-            path=path,
-            depth=depth,
-            limit=limit,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
+    def _query_target(self) -> CodingLspBinding:
+        return self._binding
 
     def status(self) -> LspSessionStatus:
         return self._binding.status()

@@ -324,13 +324,16 @@ def test_windows_restore_replays_original_publication_after_unrelated_desired_ch
         stage_identity=(9, 10, stat.S_IFDIR | 0o700, 0, 1),
         parent_identity=(7, 8),
     )
+    deletion = SimpleNamespace(
+        plan=SimpleNamespace(installation_key=plan.installation_key),
+        phase="completed",
+        target=SimpleNamespace(target_id=plan.source_target_id),
+        receipt=SimpleNamespace(disposition="deleted", receipt_id=plan.deletion_receipt_id),
+    )
     monkeypatch.setattr(
         module,
         "CodingWindowsArchPrivateDataDeletionTransaction",
-        lambda *_args: SimpleNamespace(events=lambda: (), _close=lambda: None),
-    )
-    monkeypatch.setattr(
-        module, "_latest_deletion_receipt", lambda *_args: plan.deletion_receipt_id
+        lambda *_args: SimpleNamespace(events=lambda: (deletion,), _close=lambda: None),
     )
     monkeypatch.setattr(
         CodingWindowsArchPrivateDataRestoreTransaction,

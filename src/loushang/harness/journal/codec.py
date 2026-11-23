@@ -34,6 +34,25 @@ class FunctionalJournalRecordCodec(Generic[R]):
     encoder: Callable[[R], Mapping[str, object]]
     decoder: Callable[[Mapping[str, object]], R]
 
+    @classmethod
+    def with_decode_error(
+        cls,
+        *,
+        encoder: Callable[[R], Mapping[str, object]],
+        decoder: Callable[[Mapping[str, object]], R],
+        message: str,
+        code: str,
+    ) -> FunctionalJournalRecordCodec[R]:
+        """Keep the journal's error code and the schema failure that caused it."""
+
+        def decode(value: Mapping[str, object]) -> R:
+            try:
+                return decoder(value)
+            except (TypeError, ValueError) as exc:
+                raise JournalCodecError(message, code=code) from exc
+
+        return cls(encoder=encoder, decoder=decode)
+
     def encode_record(self, record: R) -> Mapping[str, object]:
         return self.encoder(record)
 

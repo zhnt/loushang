@@ -5,7 +5,6 @@ from typing import Any, TextIO
 
 from loushang.coding.adapters.harnesswork import create_coding_work_runtime
 from loushang.coding.interaction.model_selection import ensure_usable_session_model
-from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 from loushang.harnesstui.conversation.agent_binding import (
     run_agent_plain_prompt,
     run_agent_plain_prompt_plan,
@@ -44,6 +43,8 @@ async def run_prompt_command(
     dispose: bool = True,
 ) -> int:
     """Run one product prompt and render the stable coding transcript."""
+
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
     turn_work_runtime: SessionWorkRuntime | Callable[[], SessionWorkRuntime] | None = (
@@ -107,6 +108,8 @@ async def run_prompt_plan_command(
     dispose: bool = True,
 ) -> int:
     """Render and execute a fixed MethodPlan as one Work-owned run."""
+
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
 

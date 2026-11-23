@@ -33,6 +33,7 @@ from loushang.harness.session.composition_evidence import composition_receipt_ma
 from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_header,
 )
+from loushang.harness.transcript.profile import create_transcript_branch_repository
 from loushang.harness.transcript.session_catalog import (
     capture_transcript_history_snapshot,
 )
@@ -142,12 +143,8 @@ def read_coding_resume_snapshot(
         )
     )
     header_preview = inspect_coding_resume_header(header)
-    repository = ConversationRepository.create(
-        header=header,
-        records=records,
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        leaf_id=selected_leaf_id,
+    repository = create_transcript_branch_repository(
+        header=header, records=records, leaf_id=selected_leaf_id, mode="strict",
     )
     startup = historical_startup_composition_record(records)
     composition = header_preview.composition

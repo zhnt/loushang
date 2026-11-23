@@ -28,9 +28,11 @@ from .test_repository_goal import digest, implementation_adapter, model, task_pa
 
 
 @pytest.fixture(autouse=True)
-def cleanup_adapter():
+def cleanup_adapter(monkeypatch):
     from loushang.ai.api_registry import get_default_api_registry
 
+    # Keep synthetic verifier subprocesses independent of installed pytest plugins.
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     yield
     get_default_api_registry().unregister_api_adapters("repository-goal-offline")
 
@@ -115,6 +117,26 @@ async def application(launch, config, adapter):
     except BaseException:
         await app.close()
         raise
+
+
+async def interrupt_during_review(client, control, handle, entered):
+    review_started = asyncio.create_task(entered.wait())
+    settled = asyncio.create_task(client.wait(control, handle))
+    try:
+        ready, _ = await asyncio.wait(
+            (review_started, settled), return_when=asyncio.FIRST_COMPLETED
+        )
+        if settled in ready:
+            result = settled.result()
+            pytest.fail(
+                f"Goal settled before review entry: {result.observation.reason_code}"
+            )
+        await client.interrupt(control, handle)
+        return await settled
+    finally:
+        review_started.cancel()
+        settled.cancel()
+        await asyncio.gather(review_started, settled, return_exceptions=True)
 
 
 @pytest.mark.parametrize("inspect_first", [False, True])
@@ -343,9 +365,9 @@ def test_cancelled_reviewer_late_return_is_discarded(tmp_path):
         try:
             client = scope.goal_client
             submitted = await client.start(control, client.service_instance_id, "one")
-            await asyncio.wait_for(entered.wait(), 20)
-            await client.interrupt(control, submitted.handle)
-            result = await client.wait(control, submitted.handle)
+            result = await interrupt_during_review(
+                client, control, submitted.handle, entered
+            )
             assert result.execution.state.status is not ExecutionStatusV1.SUCCEEDED
             assert len(result.observation.batches) == 3
             assert calls == 1
@@ -572,9 +594,9 @@ def test_cancellation_during_original_review_work(tmp_path, monkeypatch):
             submitted = await client.start(
                 control, client.service_instance_id, "cancel-review"
             )
-            await asyncio.wait_for(entered.wait(), 20)
-            await client.interrupt(control, submitted.handle)
-            result = await client.wait(control, submitted.handle)
+            result = await interrupt_during_review(
+                client, control, submitted.handle, entered
+            )
             assert result.execution.state.status is not ExecutionStatusV1.SUCCEEDED
             assert result.observation.status != "completed"
             assert len(result.observation.batches) == 4

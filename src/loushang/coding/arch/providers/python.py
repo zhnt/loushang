@@ -84,134 +84,24 @@ class PythonImportGraphProvider:
         resolved_root = root.resolve()
         if not resolved_root.is_dir():
             raise ValueError(f"import graph root is not a directory: {root}")
-        prefix = _normalize_package_prefix(resolved_root, package_prefix)
-        discovery_diagnostics: list[ArchitectureDiagnostic] = []
-        module_index: list[tuple[str, str | None]] = []
-        sources_by_module: dict[str, _PythonSourceFile] = {}
-
-        for path in _iter_python_files(resolved_root, excludes):
-            relative_path = path.relative_to(resolved_root).as_posix()
-            module = _module_name(relative_path, prefix)
-            module_index.append((relative_path, module))
-            if module is None:
-                discovery_diagnostics.append(
-                    ArchitectureDiagnostic(
-                        code="invalid_python_module_path",
-                        message="Python source path cannot be represented as a module name.",
-                        path=relative_path,
-                    )
-                )
-                continue
-            candidate = _PythonSourceFile(
-                path=path,
-                relative_path=relative_path,
-                module=module,
-                is_package=path.name == "__init__.py",
-            )
-            existing = sources_by_module.get(module)
-            if existing is not None:
-                discovery_diagnostics.append(
-                    _duplicate_module_diagnostic(existing, candidate)
-                )
-                continue
-            sources_by_module[module] = candidate
-
-        normalized_module_index = tuple(sorted(module_index))
-        namespace = ImportFactCacheNamespace(
-            root_id=import_cache_root_id(resolved_root),
+        if package_prefix is None and (resolved_root / "__init__.py").is_file():
+            package_prefix = resolved_root.name
+        scan = _PythonImportScan(
+            resolved_root,
+            _iter_python_files(resolved_root, excludes),
             language=self.language,
-            provider_version=PYTHON_IMPORT_PROVIDER_VERSION,
-            package_prefix=prefix,
+            prefix=_normalize_package_prefix(package_prefix),
+            cache=cache,
+            refresh_cache=refresh_cache,
         )
-        cached_snapshot = cache.load(namespace) if cache is not None else None
-        cache_error = cache.last_error if cache is not None else None
-        cached_entries = (
-            {}
-            if refresh_cache
-            or cached_snapshot is None
-            or cached_snapshot.module_index != normalized_module_index
-            else cached_snapshot.entry_map()
-        )
-        invalidated = (
-            len(cached_snapshot.entries)
-            if cached_snapshot is not None and not cached_entries
-            else 0
-        )
-
-        module_names = frozenset(sources_by_module)
-        current_entries: dict[str, CachedImportFile] = {}
-        hits = 0
-        misses = 0
-        for module in sorted(sources_by_module):
-            source_file = sources_by_module[module]
+        for source in scan.sources:
             try:
-                content = source_file.path.read_bytes()
+                content = source.path.read_bytes()
             except OSError as exc:
-                misses += 1
-                discovery_diagnostics.append(
-                    ArchitectureDiagnostic(
-                        code="unreadable_python_source",
-                        message=str(exc),
-                        severity="error",
-                        path=source_file.relative_path,
-                    )
-                )
-                continue
-            fingerprint = fingerprint_source(content)
-            cached = cached_entries.get(source_file.relative_path)
-            if cached is not None and _cached_entry_matches(
-                cached,
-                source_file=source_file,
-                fingerprint=fingerprint,
-            ):
-                entry = cached
-                hits += 1
+                scan.record_read_error(source, exc)
             else:
-                if cached is not None:
-                    invalidated += 1
-                entry = _analyze_python_file(
-                    source_file,
-                    content=content,
-                    fingerprint=fingerprint,
-                    module_names=module_names,
-                )
-                misses += 1
-            current_entries[source_file.relative_path] = entry
-
-        if cache is not None:
-            cache.replace(
-                ImportFactCacheSnapshot(
-                    namespace=namespace,
-                    module_index=normalized_module_index,
-                    entries=tuple(sorted(current_entries.items())),
-                )
-            )
-            cache_error = cache.last_error or cache_error
-
-        modules: list[ImportModuleFact] = []
-        dependencies: list[ImportDependencyFact] = []
-        diagnostics = discovery_diagnostics
-        for entry in current_entries.values():
-            if entry.module is not None:
-                modules.append(entry.module)
-            dependencies.extend(entry.dependencies)
-            diagnostics.extend(entry.diagnostics)
-
-        return ImportProviderScan(
-            language=self.language,
-            modules=tuple(sorted(modules, key=lambda item: item.module)),
-            dependencies=tuple(sorted(dependencies, key=_dependency_sort_key)),
-            package_prefix=prefix,
-            diagnostics=tuple(sorted(diagnostics, key=_diagnostic_sort_key)),
-            cache_stats=ImportCacheStats(
-                enabled=cache is not None,
-                hits=hits,
-                misses=misses,
-                invalidated=invalidated,
-                entries=len(current_entries) if cache is not None else 0,
-                error=cache_error,
-            ),
-        )
+                scan.record_content(source, content)
+        return scan.finish()
 
 
 class WorkspacePythonReadPort(Protocol):
@@ -253,14 +143,11 @@ async def scan_python_workspace(
         raise ValueError(f"import graph root is not a directory: {root}")
     raw_paths = await resolve_operation(search.walk_files(resolved_root))
     raise_if_tool_aborted(signal)
-    try:
-        source_paths = _workspace_python_files(
-            resolved_root,
-            raw_paths,
-            excludes=excludes,
-        )
-    except TypeError:
-        raise
+    source_paths = _workspace_python_files(
+        resolved_root,
+        raw_paths,
+        excludes=excludes,
+    )
     if not source_paths:
         raise ValueError(f"no import graph provider supports root: {root}")
     prefix = await _normalize_workspace_package_prefix(
@@ -269,142 +156,169 @@ async def scan_python_workspace(
         read=read,
     )
     raise_if_tool_aborted(signal)
-    discovery_diagnostics: list[ArchitectureDiagnostic] = []
-    module_index: list[tuple[str, str | None]] = []
-    sources_by_module: dict[str, _PythonSourceFile] = {}
-
-    for path in source_paths:
-        raise_if_tool_aborted(signal)
-        relative_path = path.relative_to(resolved_root).as_posix()
-        module = _module_name(relative_path, prefix)
-        module_index.append((relative_path, module))
-        if module is None:
-            discovery_diagnostics.append(
-                ArchitectureDiagnostic(
-                    code="invalid_python_module_path",
-                    message=(
-                        "Python source path cannot be represented as a module name."
-                    ),
-                    path=relative_path,
-                )
-            )
-            continue
-        candidate = _PythonSourceFile(
-            path=path,
-            relative_path=relative_path,
-            module=module,
-            is_package=path.name == "__init__.py",
-        )
-        existing = sources_by_module.get(module)
-        if existing is not None:
-            discovery_diagnostics.append(
-                _duplicate_module_diagnostic(existing, candidate)
-            )
-            continue
-        sources_by_module[module] = candidate
-
-    normalized_module_index = tuple(sorted(module_index))
-    namespace = ImportFactCacheNamespace(
-        root_id=import_cache_root_id(resolved_root),
+    scan = _PythonImportScan(
+        resolved_root,
+        source_paths,
         language="python",
-        provider_version=PYTHON_IMPORT_PROVIDER_VERSION,
-        package_prefix=prefix,
+        prefix=prefix,
+        cache=cache,
+        refresh_cache=refresh_cache,
+        signal=signal,
     )
-    cached_snapshot = cache.load(namespace) if cache is not None else None
-    cache_error = cache.last_error if cache is not None else None
-    cached_entries = (
-        {}
-        if refresh_cache
-        or cached_snapshot is None
-        or cached_snapshot.module_index != normalized_module_index
-        else cached_snapshot.entry_map()
-    )
-    invalidated = (
-        len(cached_snapshot.entries)
-        if cached_snapshot is not None and not cached_entries
-        else 0
-    )
-
-    module_names = frozenset(sources_by_module)
-    current_entries: dict[str, CachedImportFile] = {}
-    hits = 0
-    misses = 0
-    for module in sorted(sources_by_module):
+    for source in scan.sources:
         raise_if_tool_aborted(signal)
-        source_file = sources_by_module[module]
         try:
-            content = await resolve_operation(read.read_bytes(source_file.path))
+            content = await resolve_operation(read.read_bytes(source.path))
             raise_if_tool_aborted(signal)
             if not isinstance(content, bytes):
                 raise TypeError("workspace read facet must return bytes")
         except OSError as exc:
-            misses += 1
-            discovery_diagnostics.append(
-                ArchitectureDiagnostic(
-                    code="unreadable_python_source",
-                    message=str(exc),
-                    severity="error",
-                    path=source_file.relative_path,
-                )
-            )
-            continue
-        fingerprint = fingerprint_source(content)
-        cached = cached_entries.get(source_file.relative_path)
-        if cached is not None and _cached_entry_matches(
-            cached,
-            source_file=source_file,
-            fingerprint=fingerprint,
-        ):
-            entry = cached
-            hits += 1
+            scan.record_read_error(source, exc)
         else:
-            if cached is not None:
-                invalidated += 1
-            entry = _analyze_python_file(
-                source_file,
-                content=content,
-                fingerprint=fingerprint,
-                module_names=module_names,
-            )
-            misses += 1
-        current_entries[source_file.relative_path] = entry
+            scan.record_content(source, content)
+    return scan.finish()
 
-    if cache is not None:
-        raise_if_tool_aborted(signal)
-        cache.replace(
-            ImportFactCacheSnapshot(
-                namespace=namespace,
-                module_index=normalized_module_index,
-                entries=tuple(sorted(current_entries.items())),
+
+class _PythonImportScan:
+    """Index sources, reuse Python facts, and publish one complete scan."""
+
+    def __init__(
+        self,
+        root: Path,
+        paths: Iterable[Path],
+        *,
+        language: str,
+        prefix: str | None,
+        cache: ImportFactCache | None,
+        refresh_cache: bool,
+        signal: object | None = None,
+    ) -> None:
+        self._cache = cache
+        self._signal = signal
+        self._diagnostics: list[ArchitectureDiagnostic] = []
+        module_index: list[tuple[str, str | None]] = []
+        sources_by_module: dict[str, _PythonSourceFile] = {}
+        for path in paths:
+            raise_if_tool_aborted(signal)
+            relative_path = path.relative_to(root).as_posix()
+            module = _module_name(relative_path, prefix)
+            module_index.append((relative_path, module))
+            if module is None:
+                self._diagnostics.append(
+                    ArchitectureDiagnostic(
+                        code="invalid_python_module_path",
+                        message="Python source path cannot be represented as a module name.",
+                        path=relative_path,
+                    )
+                )
+                continue
+            candidate = _PythonSourceFile(
+                path, relative_path, module, path.name == "__init__.py"
+            )
+            existing = sources_by_module.get(module)
+            if existing is not None:
+                self._diagnostics.append(
+                    _duplicate_module_diagnostic(existing, candidate)
+                )
+            else:
+                sources_by_module[module] = candidate
+
+        self.sources = tuple(
+            sources_by_module[module] for module in sorted(sources_by_module)
+        )
+        self._module_names = frozenset(sources_by_module)
+        self._module_index = tuple(sorted(module_index))
+        self._namespace = ImportFactCacheNamespace(
+            root_id=import_cache_root_id(root),
+            language=language,
+            provider_version=PYTHON_IMPORT_PROVIDER_VERSION,
+            package_prefix=prefix,
+        )
+        previous = cache.load(self._namespace) if cache is not None else None
+        self._cache_error = cache.last_error if cache is not None else None
+        self._cached_entries = (
+            {}
+            if refresh_cache
+            or previous is None
+            or previous.module_index != self._module_index
+            else previous.entry_map()
+        )
+        self._invalidated = (
+            len(previous.entries)
+            if previous is not None and not self._cached_entries
+            else 0
+        )
+        self._entries: dict[str, CachedImportFile] = {}
+        self._hits = 0
+        self._misses = 0
+
+    def record_read_error(self, source: _PythonSourceFile, error: OSError) -> None:
+        self._misses += 1
+        self._diagnostics.append(
+            ArchitectureDiagnostic(
+                code="unreadable_python_source",
+                message=str(error),
+                severity="error",
+                path=source.relative_path,
             )
         )
-        raise_if_tool_aborted(signal)
-        cache_error = cache.last_error or cache_error
 
-    modules: list[ImportModuleFact] = []
-    dependencies: list[ImportDependencyFact] = []
-    diagnostics = discovery_diagnostics
-    for entry in current_entries.values():
-        if entry.module is not None:
-            modules.append(entry.module)
-        dependencies.extend(entry.dependencies)
-        diagnostics.extend(entry.diagnostics)
+    def record_content(self, source: _PythonSourceFile, content: bytes) -> None:
+        fingerprint = fingerprint_source(content)
+        cached = self._cached_entries.get(source.relative_path)
+        if cached is not None and _cached_entry_matches(
+            cached, source_file=source, fingerprint=fingerprint
+        ):
+            entry = cached
+            self._hits += 1
+        else:
+            if cached is not None:
+                self._invalidated += 1
+            entry = _analyze_python_file(
+                source,
+                content=content,
+                fingerprint=fingerprint,
+                module_names=self._module_names,
+            )
+            self._misses += 1
+        self._entries[source.relative_path] = entry
 
-    return ImportProviderScan(
-        language="python",
-        modules=tuple(sorted(modules, key=lambda item: item.module)),
-        dependencies=tuple(sorted(dependencies, key=_dependency_sort_key)),
-        package_prefix=prefix,
-        diagnostics=tuple(sorted(diagnostics, key=_diagnostic_sort_key)),
-        cache_stats=ImportCacheStats(
-            enabled=cache is not None,
-            hits=hits,
-            misses=misses,
-            invalidated=invalidated,
-            entries=len(current_entries) if cache is not None else 0,
-            error=cache_error,
-        ),
-    )
+    def finish(self) -> ImportProviderScan:
+        if self._cache is not None:
+            raise_if_tool_aborted(self._signal)
+            self._cache.replace(
+                ImportFactCacheSnapshot(
+                    namespace=self._namespace,
+                    module_index=self._module_index,
+                    entries=tuple(sorted(self._entries.items())),
+                )
+            )
+            raise_if_tool_aborted(self._signal)
+            self._cache_error = self._cache.last_error or self._cache_error
+
+        modules: list[ImportModuleFact] = []
+        dependencies: list[ImportDependencyFact] = []
+        for entry in self._entries.values():
+            if entry.module is not None:
+                modules.append(entry.module)
+            dependencies.extend(entry.dependencies)
+            self._diagnostics.extend(entry.diagnostics)
+
+        return ImportProviderScan(
+            language=self._namespace.language,
+            modules=tuple(sorted(modules, key=lambda item: item.module)),
+            dependencies=tuple(sorted(dependencies, key=_dependency_sort_key)),
+            package_prefix=self._namespace.package_prefix,
+            diagnostics=tuple(sorted(self._diagnostics, key=_diagnostic_sort_key)),
+            cache_stats=ImportCacheStats(
+                enabled=self._cache is not None,
+                hits=self._hits,
+                misses=self._misses,
+                invalidated=self._invalidated,
+                entries=len(self._entries) if self._cache is not None else 0,
+                error=self._cache_error,
+            ),
+        )
 
 
 def _analyze_python_file(
@@ -744,14 +658,7 @@ async def _normalize_workspace_package_prefix(
         if not isinstance(is_package, bool):
             raise TypeError("workspace read facet must return bool for is_file")
         value = root.name if is_package else None
-    if value is None:
-        return None
-    normalized = value.strip().strip(".")
-    if not normalized:
-        return None
-    if any(not part.isidentifier() for part in normalized.split(".")):
-        raise ValueError(f"invalid Python package prefix: {value!r}")
-    return normalized
+    return _normalize_package_prefix(value)
 
 
 def _iter_python_files(root: Path, excludes: tuple[str, ...]):
@@ -790,9 +697,7 @@ def _matches_exclude(relative: str, excludes: tuple[str, ...]) -> bool:
     )
 
 
-def _normalize_package_prefix(root: Path, value: str | None) -> str | None:
-    if value is None:
-        value = root.name if (root / "__init__.py").is_file() else None
+def _normalize_package_prefix(value: str | None) -> str | None:
     if value is None:
         return None
     normalized = value.strip().strip(".")

@@ -20,18 +20,6 @@ from loushang.harness.package_product._selected_plugin_revisions import (
     ProductSelectedRevisionPolicy,
     open_selected_resolution,
 )
-from loushang.harness.package_product._selected_plugin_revisions import (
-    _host_distribution_lock as _core_host_distribution_lock,
-)
-from loushang.harness.package_product._selected_plugin_revisions import (
-    _validate_builtin_selection as _core_validate_builtin_selection,
-)
-from loushang.harness.package_product._selected_plugin_revisions import (
-    _validate_external_data_selection as _core_validate_external_data_selection,
-)
-from loushang.harness.package_product.product_local_wheel_runtime import (
-    PackageProductSelectedPluginManifestV1,
-)
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
@@ -39,11 +27,12 @@ from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source 
     InstalledProductWheelSpec,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
-from loushang.harness.resources.plugins.dependencies import (
-    PluginDependencyClosureLock,
-)
 
-from .legacy_data_trust import EXTERNAL_DATA_TRUST_CLASSES, permits_external_data_owner
+from .legacy_data_trust import (
+    EXTERNAL_DATA_RESOURCE_OWNERS,
+    EXTERNAL_DATA_TRUST_CLASSES,
+    permits_external_data_owner,
+)
 
 _MAX_FILES = 64
 _MAX_BYTES = 1024 * 1024
@@ -78,6 +67,10 @@ def open_coding_product_capability_resolution(
     to a Wheel identical to the installed first-party package.
     """
 
+    return _open_selected_resolution(runtime, _checked_capability_plugin_ids(plugin_ids))
+
+
+def _checked_capability_plugin_ids(plugin_ids: tuple[str, ...]) -> tuple[str, ...]:
     if (
         not isinstance(plugin_ids, tuple)
         or not plugin_ids
@@ -87,7 +80,7 @@ def open_coding_product_capability_resolution(
     specs = ordered_coding_capability_plugin_specs(plugin_ids)
     if len(specs) != len(plugin_ids):
         raise ValueError("Coding Product Capability selection is invalid")
-    return _open_selected_resolution(runtime, tuple(spec.plugin_id for spec in specs))
+    return tuple(spec.plugin_id for spec in specs)
 
 
 def open_coding_product_builtin_resolution(
@@ -101,35 +94,18 @@ def open_coding_product_builtin_resolution(
 ) -> PluginRuntimeResolution:
     """Reopen first-party and admitted data-only roots from one Product binding."""
 
-    if (
-        not isinstance(capability_plugin_ids, tuple)
-        or not capability_plugin_ids
-        or len(capability_plugin_ids) != len(set(capability_plugin_ids))
-    ):
-        raise ValueError("Coding Product Capability selection is invalid")
-    specs = ordered_coding_capability_plugin_specs(capability_plugin_ids)
-    if len(specs) != len(capability_plugin_ids):
-        raise ValueError("Coding Product Capability selection is invalid")
-
+    capability_ids = _checked_capability_plugin_ids(capability_plugin_ids)
     if (
         not isinstance(external_data_plugin_ids, tuple)
         or tuple(sorted(set(external_data_plugin_ids))) != external_data_plugin_ids
         or set(external_data_plugin_ids)
-        & {"coding.base", *(spec.plugin_id for spec in specs)}
+        & {"coding.base", *capability_ids}
         or external_data_plugin_ids != runtime.selected_external_data_plugin_ids()
     ):
         raise ValueError("Coding external data selection changed")
     return _open_selected_resolution(
         runtime,
-        tuple(
-            sorted(
-                (
-                    "coding.base",
-                    *(spec.plugin_id for spec in specs),
-                    *external_data_plugin_ids,
-                )
-            )
-        ),
+        tuple(sorted(("coding.base", *capability_ids, *external_data_plugin_ids))),
         external_data_plugin_ids=frozenset(external_data_plugin_ids),
     )
 
@@ -146,26 +122,6 @@ def _open_selected_resolution(
         plugin_ids,
         external_data_plugin_ids=external_data_plugin_ids,
     )
-
-
-def _validate_builtin_selection(
-    selected: PackageProductSelectedPluginManifestV1, plugin_id: str
-) -> None:
-    return _core_validate_builtin_selection(_revision_policy(), selected, plugin_id)
-
-
-def _validate_external_data_selection(
-    selected: PackageProductSelectedPluginManifestV1, plugin_id: str
-) -> None:
-    return _core_validate_external_data_selection(
-        _revision_policy(), selected, plugin_id
-    )
-
-
-def _host_distribution_lock(
-    plugin_id: str, content_digest: str
-) -> PluginDependencyClosureLock:
-    return _core_host_distribution_lock(_revision_policy(), plugin_id, content_digest)
 
 
 __all__ = [
@@ -210,7 +166,5 @@ def _revision_policy() -> ProductSelectedRevisionPolicy:
         handle_type=_ProductSelectedRevisionHandle,
         external_trust_classes=EXTERNAL_DATA_TRUST_CLASSES,
         permits_external_owner=permits_external_data_owner,
-        external_resource_owners=frozenset(
-            {"resources.skill", "resources.prompt", "resources.theme"}
-        ),
+        external_resource_owners=EXTERNAL_DATA_RESOURCE_OWNERS,
     )

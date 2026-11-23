@@ -4,23 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import json
-from argparse import ArgumentParser
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
-from typing import Literal, Never, Protocol, TextIO, cast
+from typing import Literal, Protocol, TextIO, cast
+
+from loushang.harness.cli.parser import (
+    CliCommandUsageError,
+    RaisingArgumentParser,
+    extract_root_command,
+    write_usage_error,
+)
 
 AppHostCanaryCliOperation = Literal["status", "run", "rollback", "enable"]
 
 
-class AppHostCanaryCliUsageError(ValueError):
-    def __init__(self, message: str, *, usage: str) -> None:
-        super().__init__(message)
-        self.usage = usage
+class AppHostCanaryCliUsageError(CliCommandUsageError):
+    pass
 
 
-class _NoExitParser(ArgumentParser):
-    def error(self, message: str) -> Never:
-        raise AppHostCanaryCliUsageError(message, usage=self.format_usage())
+class _NoExitParser(RaisingArgumentParser):
+    usage_error_type = AppHostCanaryCliUsageError
 
 
 class AppHostCanaryCliResult(Protocol):
@@ -34,16 +37,7 @@ AppHostCanaryCliRunner = Callable[..., Awaitable[AppHostCanaryCliResult]]
 
 
 def extract_apphost_argv(argv: Sequence[str]) -> tuple[str, ...] | None:
-    """Extract only the installed root CLI's exact ``apphost`` family."""
-
-    values = list(argv)
-    if values and values[0] == "apphost":
-        return tuple(values[1:])
-    if len(values) >= 3 and values[0] == "--cwd" and values[2] == "apphost":
-        return ("--cwd", values[1], *values[3:])
-    if len(values) >= 2 and values[0].startswith("--cwd=") and values[1] == "apphost":
-        return (values[0], *values[2:])
-    return None
+    return extract_root_command(argv, "apphost")
 
 
 async def run_coding_apphost_command(
@@ -60,9 +54,7 @@ async def run_coding_apphost_command(
     try:
         namespace = parser.parse_args(list(argv))
     except AppHostCanaryCliUsageError as error:
-        stderr.write(error.usage)
-        stderr.write(f"Error: {error}\n")
-        return 2
+        return write_usage_error(stderr, error)
     if namespace.help or namespace.family is None or namespace.operation is None:
         stdout.write(parser.format_help())
         return 0

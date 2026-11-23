@@ -321,6 +321,27 @@ class OwnerContributionPolicy:
             cast(tuple[CapabilityRequirementBinding, ...], bindings),
         )
 
+    def covers_direct_session(
+        self,
+        *,
+        owner_id: str,
+        contribution_kind: OwnerContributionKind,
+        product_id: str,
+        trust_classes: set[str],
+        collection_ids: set[str],
+    ) -> bool:
+        """Check an exact direct, sealed Session contribution boundary."""
+        return (
+            self.owner_id == owner_id
+            and self.contribution_kind == contribution_kind
+            and self.product_id == product_id
+            and set(self.allowed_source_trust_classes) == trust_classes
+            and set(self.allowed_collection_ids) == collection_ids
+            and self.allowed_requirement_bindings == ("direct",)
+            and self.consumer_scope == "session"
+            and self.consumer_refresh_boundary == "sealed"
+        )
+
 
 @dataclass(frozen=True, slots=True, init=False)
 class OwnerContributionSnapshot:
@@ -465,6 +486,33 @@ class OwnerContributionAuthority:
         if not isinstance(policy, OwnerContributionPolicy):
             raise TypeError("Owner contribution authority requires a policy")
         self._policy = policy
+
+    @classmethod
+    def for_direct_session(
+        cls,
+        *,
+        owner_id: str,
+        contribution_kind: OwnerContributionKind,
+        product_id: str,
+        policy_revision: str,
+        trust_classes: tuple[str, ...],
+        collection_ids: tuple[str, ...],
+    ) -> OwnerContributionAuthority:
+        """Create an owner for an explicitly selected sealed Session contribution."""
+        return cls(
+            OwnerContributionPolicy(
+                owner_id=owner_id,
+                contribution_kind=contribution_kind,
+                product_id=product_id,
+                policy_revision=policy_revision,
+                revocation_epoch=0,
+                allowed_source_trust_classes=trust_classes,
+                allowed_collection_ids=collection_ids,
+                allowed_requirement_bindings=("direct",),
+                consumer_scope="session",
+                consumer_refresh_boundary="sealed",
+            )
+        )
 
     @property
     def policy(self) -> OwnerContributionPolicy:

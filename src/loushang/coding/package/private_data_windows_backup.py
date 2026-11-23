@@ -38,7 +38,7 @@ from .installation_private_data import (
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
     _backup_retention_revision,
-    _WindowsArchBackupCodec,
+    backup_manifest_codec,
     backup_parent,
     make_backup_receipt,
 )
@@ -52,7 +52,7 @@ from .product_backup_types import require_coding_arch_backup_writer
 
 _archive_io = WindowsPrivateArchiveIO(
     _native_io,
-    _WindowsArchBackupCodec(),
+    backup_manifest_codec(windows=True),
     lambda path, expected: _capture_windows_target_snapshot(
         path, expected_root=expected
     ),
@@ -160,9 +160,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
                 allowed_tombstone=tombstone,
                 pending_backup_id=pending,
             ),
-            revision_for=lambda status, receipt_id, receipts, trust: (
-                _backup_retention_revision(status, receipt_id, receipts, trust)
-            ),
+            revision_for=_backup_retention_revision,
             revision_prefix="coding-arch-backup:",
             label="Windows Coding Arch",
         )

@@ -281,12 +281,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package/product_worker_start_gate_base_v2.py": {
         "loushang.harness.worker.history._start_gate"
     },
-    CODING_ROOT / 'package/worker_preparation_inputs.py': {
-        "loushang.harness.worker._ordinary_prepare",
-        'loushang.harness.worker.capability_query',
-        'loushang.harness.worker.contracts',
-        'loushang.harness.worker.product_activation',
-    },
     CODING_ROOT / 'package/product_worker_windows_checkpoint.py': {
         'loushang.harness.worker.history._base_codec',
         'loushang.harness.worker.history._windows_checkpoint',
@@ -538,20 +532,21 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
 
 def test_c54_default_is_current_and_selection_is_exact() -> None:
     binding = _function_source(CANARY, "bind_coding_product_worker_canary")
-    selected = _function_source(CANARY, "_validate_selected_components")
+    selected = _function_source(CANARY_LIFECYCLE, "_bind_selected_worker_components")
     assert "policy: ProductWorkerActivationPolicyV1 | None = None" in binding
     assert 'code="coding_worker_product_missing"' in binding
     assert "policy.product_id != CODING_PRODUCT_ID" in binding
     assert "policy.enabled" in binding
     assert "receipt.policy != policy" in binding
-    assert "CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID" in selected
-    assert "ProductWorkerActivationCoordinator(" in binding
-    assert "_bind_posix_static_contained_product_worker_profile(" in binding
-    assert binding.index(
+    assert "posix_profile_id=CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID" in binding
+    assert "policy.native_profile_id not in (posix_profile_id, windows_profile_id)" in selected
+    assert "ProductWorkerActivationCoordinator(" in selected
+    assert "_bind_posix_static_contained_product_worker_profile(" in selected
+    assert selected.index(
         "_bind_posix_static_contained_product_worker_profile("
-    ) < binding.index("ProductWorkerActivationCoordinator(")
-    assert 'WorkerHostingActivationV1(owner="hosting")' in binding
-    assert "HostingManagedWorkerSessionAdapter(" in binding
+    ) < selected.index("ProductWorkerActivationCoordinator(")
+    assert 'WorkerHostingActivationV1(owner="hosting")' in selected
+    assert "HostingManagedWorkerSessionAdapter(" in selected
     assert "os.environ" not in binding
 
 

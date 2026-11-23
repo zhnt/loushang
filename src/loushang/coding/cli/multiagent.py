@@ -33,6 +33,7 @@ from loushang.harness.cli.multiagent import (
     write_multiagent_recipe_catalog,
     write_multiagent_recipe_result,
 )
+from loushang.harness.cli.parser import write_usage_error
 from loushang.harness.environment import resolve_platform_paths
 from loushang.harness.machine_resources import prepare_private_directory_chain
 from loushang.harness.multiagent import (
@@ -69,9 +70,7 @@ async def run_coding_multiagent_command(
     try:
         command = parse_multiagent_command(argv)
     except MultiAgentCliUsageError as error:
-        stderr.write(error.usage)
-        stderr.write(f"Error: {error}\n")
-        return 2
+        return write_usage_error(stderr, error)
 
     if isinstance(command, MultiAgentRecipesCommand):
         if command.help:

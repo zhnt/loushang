@@ -125,6 +125,34 @@ def worker_identity_from_receipt(
     )
 
 
+def require_current_pending_launch(
+    pending: _PendingPayload,
+    *,
+    pending_type: type[_PendingPayload],
+    receipt: ProductWorkerActivationReceiptV1,
+    owner_id: str,
+    attempt_id: str,
+    supervisor_epoch: int,
+    supervisor: Callable[[], WorkerSupervisorJournal],
+    error_type: type[RuntimeError],
+    error_prefix: str,
+) -> None:
+    if (
+        type(pending) is not pending_type
+        or pending.receipt_fingerprint != receipt.fingerprint
+        or pending.identity
+        != worker_identity_from_receipt(
+            receipt=receipt,
+            owner_id=owner_id,
+            attempt_id=attempt_id,
+            supervisor_epoch=supervisor_epoch,
+            session_nonce=pending.identity.session_nonce,
+        )
+        or supervisor().next_supervisor_epoch(pending.identity) != supervisor_epoch
+    ):
+        raise error_type(f"{error_prefix}_pending_launch_changed")
+
+
 @contextmanager
 def materialize_selected_payload(
     storage: PayloadStorage,
@@ -294,23 +322,18 @@ def bind_selected_payload_request(
         ):
             raise storage.error_type(f"{error_prefix}_binding_mismatch")
         payload_lease.runtime.verify()
-        if pending_launch is not None and (
-            type(pending_launch) is not pending_type
-            or pending_launch.receipt_fingerprint != receipt.fingerprint
-            or pending_launch.identity
-            != worker_identity_from_receipt(
+        if pending_launch is not None:
+            require_current_pending_launch(
+                pending_launch,
+                pending_type=pending_type,
                 receipt=receipt,
                 owner_id=owner_id,
                 attempt_id=payload_lease.attempt_id,
                 supervisor_epoch=supervisor_epoch,
-                session_nonce=pending_launch.identity.session_nonce,
+                supervisor=supervisor,
+                error_type=storage.error_type,
+                error_prefix=error_prefix,
             )
-            or (
-                supervisor().next_supervisor_epoch(pending_launch.identity)
-                != supervisor_epoch
-            )
-        ):
-            raise storage.error_type(f"{error_prefix}_pending_launch_changed")
 
     def validate_current() -> None:
         try:

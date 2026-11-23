@@ -2,24 +2,19 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 
 from .epoch_layout import CodingLifecyclePreBMembersV1, CodingPackagePreBStoreMembersV1
+from .source_snapshot import _LEGACY_DISABLE_SETTING, _source_projection
 
 CodingLegacyWorkspaceKindV1 = Literal[
     "fresh", "disabled_only", "configured_source", "legacy_state"
 ]
 CodingSourceScopeV1 = Literal["global", "project"]
-_SCOPES: tuple[CodingSourceScopeV1, ...] = ("global", "project")
 _SOURCE_KEYS = frozenset(
     {"package_roots", "package_sources", "packages", "plugin_sources"}
 )
-_PROJECTION_KEYS = frozenset({"disabled_plugins", *_SOURCE_KEYS, "resource_roots"})
-_PACKAGE_FILTER_KEYS = frozenset({"extensions", "skills", "prompts", "themes"})
-_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,96 +92,16 @@ def classify_coding_legacy_source_configuration(
 ) -> CodingLegacySourceConfigurationV1:
     """Validate the frozen settings projection without reading mutable state."""
 
-    if not isinstance(source_projection, dict) or set(source_projection) != {
-        "productId",
-        "projectionVersion",
-        "scopes",
-    }:
-        raise ValueError("Coding Source projection is invalid")
-    if (
-        source_projection["productId"] != "coding"
-        or type(source_projection["projectionVersion"]) is not int
-        or source_projection["projectionVersion"] != 1
-    ):
-        raise ValueError("Coding Source projection version is unsupported")
-    scopes = source_projection["scopes"]
-    if not isinstance(scopes, dict) or set(scopes) != set(_SCOPES):
-        raise ValueError("Coding Source projection scopes are invalid")
-
-    disabled: list[CodingScopedLegacyDisableV1] = []
-    sources: list[str] = []
-    for scope in _SCOPES:
-        layer = scopes[scope]
-        if not isinstance(layer, dict) or set(layer) != {
-            "present",
-            "rawSha256",
-            "settingsPath",
-            "sourcePatch",
-        }:
-            raise ValueError("Coding Source projection layer is invalid")
-        present, digest, path, patch = (
-            layer["present"],
-            layer["rawSha256"],
-            layer["settingsPath"],
-            layer["sourcePatch"],
-        )
-        if (
-            type(present) is not bool
-            or (
-                present
-                and (not isinstance(digest, str) or not _SHA256.fullmatch(digest))
-            )
-            or (not present and digest is not None)
-            or not isinstance(path, str)
-            or not Path(path).is_absolute()
-            or ".." in Path(path).parts
-            or not isinstance(patch, dict)
-            or not set(patch) <= _PROJECTION_KEYS
-            or (not present and patch)
-            or ("packages" in patch and "package_sources" in patch)
-        ):
-            raise ValueError("Coding Source projection layer is invalid")
-        for key, value in patch.items():
-            if not isinstance(value, list):
-                raise ValueError("Coding legacy Source setting is invalid")
-            if key == "disabled_plugins":
-                if any(not isinstance(item, str) or not item for item in value):
-                    raise ValueError("Coding legacy disabled Plugin is invalid")
-                if len(value) != len(set(value)):
-                    raise ValueError("Coding legacy disabled Plugin is duplicated")
-                disabled.extend(
-                    CodingScopedLegacyDisableV1(scope, item) for item in value
-                )
-            elif key in {"packages", "package_sources"}:
-                if any(not _valid_package_source(item) for item in value):
-                    raise ValueError("Coding legacy Package Source is invalid")
-            elif any(not isinstance(item, str) or not item for item in value):
-                raise ValueError("Coding legacy Source setting is invalid")
-            if key in _SOURCE_KEYS and value:
-                sources.append(f"{scope}:{key}")
-
-    return CodingLegacySourceConfigurationV1(
-        disabled_plugins=tuple(disabled),
-        configured_source_keys=tuple(sources),
+    disabled, sources = _source_projection.classify(
+        source_projection,
+        disabled_setting=_LEGACY_DISABLE_SETTING,
+        configured_source_keys=_SOURCE_KEYS,
     )
-
-
-def _valid_package_source(value: object) -> bool:
-    if isinstance(value, str):
-        return bool(value)
-    if not isinstance(value, dict) or not set(value) <= {
-        "source",
-        *_PACKAGE_FILTER_KEYS,
-    }:
-        return False
-    source = value.get("source")
-    if not isinstance(source, str) or not source:
-        return False
-    return all(
-        isinstance(items, list)
-        and all(isinstance(item, str) and item for item in items)
-        for key, items in value.items()
-        if key in _PACKAGE_FILTER_KEYS
+    return CodingLegacySourceConfigurationV1(
+        disabled_plugins=tuple(
+            CodingScopedLegacyDisableV1(scope, plugin_id) for scope, plugin_id in disabled
+        ),
+        configured_source_keys=sources,
     )
 
 

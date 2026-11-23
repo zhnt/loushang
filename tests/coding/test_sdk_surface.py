@@ -83,14 +83,16 @@ elif {first!r} == 'concurrent-bootstrap':
         start.wait()
         value = getattr(coding, name)
         owner = sys.modules['loushang.coding.bootstrap']
-        return (name, value, owner, owner._SESSION_MANAGER_PLUGIN_OWNER_LOCK,
+        managed = sys.modules['loushang.coding.composition.managed_plugin_preparation']
+        return (name, value, owner, managed._SESSION_MANAGER_PLUGIN_OWNER_LOCK,
                 owner._CODING_PLUGIN_HOST_BOOT_ID)
     with ThreadPoolExecutor(max_workers=len(names)) as pool:
         resolved = list(pool.map(resolve, names))
     owner = sys.modules['loushang.coding.bootstrap']
+    managed = sys.modules['loushang.coding.composition.managed_plugin_preparation']
     for name, value, module, lock, boot_id in resolved:
         assert module is owner and value is getattr(owner, name)
-        assert lock is owner._SESSION_MANAGER_PLUGIN_OWNER_LOCK
+        assert lock is managed._SESSION_MANAGER_PLUGIN_OWNER_LOCK
         assert boot_id is owner._CODING_PLUGIN_HOST_BOOT_ID
 else:
     importlib.import_module({first!r})
@@ -488,23 +490,23 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
 
 
 def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics(
-    tmp_path,
+    standalone_workspace,
     monkeypatch,
 ) -> None:
     import loushang.coding as coding
     from loushang.coding.session import AgentSession
     from loushang.harness.diagnostics import DiagnosticsQuery
 
-    project_root = tmp_path / "project"
-    import_dir = tmp_path / "imports" / "sessions"
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform-home"))
+    project_root = standalone_workspace / "project"
+    import_dir = standalone_workspace / "imports" / "sessions"
+    monkeypatch.setenv("LOUSHANG_HOME", str(standalone_workspace / "platform-home"))
     project_root.mkdir()
     import_dir.mkdir(parents=True)
 
     async def scenario() -> None:
         services = coding.create_services()
         session_manager = await coding.SessionManager.new(
-            session_dir=tmp_path / "direct" / "sessions",
+            session_dir=standalone_workspace / "direct" / "sessions",
             cwd=str(project_root),
             persist=True,
         )
@@ -530,7 +532,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
             ] == []
 
             direct_manager = await coding.SessionManager.new(
-                session_dir=tmp_path / "direct" / "sessions",
+                session_dir=standalone_workspace / "direct" / "sessions",
                 cwd=str(project_root),
                 persist=True,
             )
@@ -548,10 +550,10 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
 
             agent_services = coding.create_agent_session_services(
                 cwd=project_root,
-                global_settings_path=tmp_path / "global-settings.json",
+                global_settings_path=standalone_workspace / "global-settings.json",
             )
             services_manager = await coding.SessionManager.new(
-                session_dir=tmp_path / "direct" / "sessions",
+                session_dir=standalone_workspace / "direct" / "sessions",
                 cwd=str(project_root),
                 persist=True,
             )
@@ -583,7 +585,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
                 for definition in all_defs.values()
             )
 
-            runtime_data = tmp_path / "runtime"
+            runtime_data = standalone_workspace / "runtime"
             runtime_data.mkdir(mode=0o700)
             runtime = coding.create_agent_session_runtime(
                 session_dir=runtime_data / "sessions",

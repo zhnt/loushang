@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.hosted._worker_canary as canary_module
+import loushang.harness.worker._product_attempt_lifecycle as canary_lifecycle
 from loushang.coding.hosted._worker_canary import (
     CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
     CodingProductWorkerCanaryError,
@@ -863,7 +863,7 @@ def test_product_closes_bound_native_profile_when_start_decision_rejects(
         request=context.request,
     )
     monkeypatch.setattr(
-        canary_module,
+        canary_lifecycle,
         "_bind_posix_static_contained_product_worker_profile",
         lambda **facts: profile,
     )
@@ -957,7 +957,7 @@ def test_windows_product_dispatch_admits_cleanup_v2_without_linux_arguments(
         return profile
 
     monkeypatch.setattr(
-        canary_module,
+        canary_lifecycle,
         "_bind_windows_lpac_contained_product_worker_profile",
         bind_windows,
     )

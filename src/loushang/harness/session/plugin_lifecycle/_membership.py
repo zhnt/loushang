@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 from collections.abc import Callable, Iterator
@@ -33,7 +34,6 @@ from loushang.harness.plugin_management.retirement import PluginRetirementIntent
 from loushang.harness.plugin_management.security_acceptance import (
     PluginInstanceSecurityRetirementJournal,
 )
-from loushang.harness.resources.plugins import PluginInstanceRevisionRef
 from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 from loushang.harness.session._plugin_retirement import (
     OwnerRetirementReportPolicy,
@@ -150,6 +150,8 @@ def _holder_nonempty(value: str, *, name: str) -> str:
 
 class _LifecycleRoots(Protocol):
     @property
+    def root(self) -> Path: ...
+    @property
     def scope_id(self) -> str: ...
     @property
     def coordination_lock(self) -> Path: ...
@@ -157,40 +159,78 @@ class _LifecycleRoots(Protocol):
     def retirement_intents(self) -> Path: ...
 
 
-class _HolderEvidence(Protocol):
-    @property
-    def startup_id(self) -> str: ...
-
-
 RootsT = TypeVar("RootsT", bound=_LifecycleRoots)
 LeaseT = TypeVar("LeaseT", bound=_SessionOwnerLease)
 
 
 @dataclass(frozen=True, slots=True)
-class _MembershipPolicy(Generic[RootsT]):
+class _MembershipPolicy:
     product_label: str
     identity_prefix: str
     error_code_prefix: str
     make_error: Callable[[str, str], RuntimeError]
-    family_release: Callable[
-        [PluginInstanceLeaseFamilyV1], PluginInstanceLeaseFamilyReleaseV1
-    ]
-    orphan_release: Callable[
-        [PluginInstanceLeaseFamilyV1, str], PluginInstanceLeaseFamilyReleaseV1
-    ]
-    activation_identity: Callable[
-        [PluginInstallationKeyV1, PluginInstanceRevisionRef], str
-    ]
-    lease_identity: Callable[
-        [PluginInstallationKeyV1, PluginInstanceRevisionRef, str, str, Owners], str
-    ]
-    normalize_owners: Callable[[Owners], Owners]
-    holder_reference: Callable[[str, str, Owners, str], str]
-    holder_evidence: Callable[[str], _HolderEvidence | None]
-    startup_path: Callable[[RootsT, str], Path]
-    owner_path: Callable[[RootsT, str], Path]
+    holder_prefix: str
+    startup_namespace: bytes
+    session_owner_namespace: bytes
     startup_policy: _legacy_runtime._LegacyStartupPolicy
     retirement_policy: OwnerRetirementReportPolicy
+
+    def family_release(
+        self, family: PluginInstanceLeaseFamilyV1
+    ) -> PluginInstanceLeaseFamilyReleaseV1:
+        identity = f"{self.identity_prefix}-plugin-release:{family.family_id}"
+        return _family_release_record(family, identity, family.holder_reference)
+
+    def release_for_process_exit(
+        self, family: PluginInstanceLeaseFamilyV1, startup_id: str, reference: str
+    ) -> PluginInstanceLeaseFamilyReleaseV1:
+        identity = _identity_digest((family.family_id, startup_id))
+        return _family_release_record(
+            family, f"{self.identity_prefix}-plugin-orphan-release:{identity}", reference
+        )
+
+    def startup_path(self, roots: _LifecycleRoots, startup_id: str) -> Path:
+        startup_id = _holder_nonempty(startup_id, name="Startup id")
+        return _lease_path(
+            roots.root / "process-startups", self.startup_namespace, startup_id
+        )
+
+    def owner_path(self, roots: _LifecycleRoots, session_id: str) -> Path:
+        session_id = _holder_nonempty(session_id, name="Session id")
+        return _lease_path(
+            roots.root / "session-owners", self.session_owner_namespace, session_id
+        )
+
+    def holder_evidence(self, reference: str) -> tuple[str, Owners] | None:
+        try:
+            return decode_holder_evidence(
+                reference, prefix=self.holder_prefix, product_label=self.product_label
+            )
+        except (TypeError, ValueError) as exc:
+            raise self.make_error(
+                f"{self.product_label} Session family owner evidence is invalid",
+                f"{self.error_code_prefix}_session_owner_evidence_invalid",
+            ) from exc
+
+
+def _lease_path(directory: Path, namespace: bytes, identifier: str) -> Path:
+    identity = hashlib.sha256(namespace + identifier.encode("utf-8")).hexdigest()
+    return (directory / f"{identity}.lease").resolve()
+
+
+def _identity_digest(fields: tuple[object, ...]) -> str:
+    return hashlib.sha256(repr(fields).encode("utf-8")).hexdigest()
+
+
+def _family_release_record(
+    family: PluginInstanceLeaseFamilyV1, identity: str, reference: str
+) -> PluginInstanceLeaseFamilyReleaseV1:
+    return PluginInstanceLeaseFamilyReleaseV1(
+        family_id=family.family_id,
+        operation_id=identity,
+        idempotency_key=identity,
+        release_reference=reference,
+    )
 
 
 class _StartupLeaseState(Protocol):
@@ -209,7 +249,7 @@ class _PluginSessionLifecycle(Generic[RootsT, EventT, FamilyT, LeaseT]):
     security: PluginInstanceSecurityRetirementJournal
     owner_evidence: _OwnerGenerationEvidenceLedger[EventT, FamilyT]
     _owns_process_startup_lease: bool
-    _membership_policy: _MembershipPolicy[RootsT]
+    _membership_policy: _MembershipPolicy
     _owner_lease_type: type[LeaseT]
     _settled_host_policy: _SettledHostRetirementPolicy
 
@@ -289,32 +329,32 @@ class _PluginSessionLifecycle(Generic[RootsT, EventT, FamilyT, LeaseT]):
             if family.lease_kind != "session_membership":
                 continue
             evidence = policy.holder_evidence(family.holder_reference)
+            if evidence is None:
+                continue
+            startup_id, _ = evidence
             if (
-                evidence is None
-                or evidence.startup_id == self.startup_id
+                startup_id == self.startup_id
                 or not _legacy_runtime._startup_lease_is_inactive(
-                    policy.startup_path(self.layout, evidence.startup_id),
+                    policy.startup_path(self.layout, startup_id),
                     policy=policy.startup_policy,
                 )
             ):
                 continue
             [member] = family.members
+            exit_reference = (
+                f"{policy.identity_prefix}-session-process-exit-confirmed:"
+                f"{startup_id}:{family.family_id}"
+            )
             owner_evidence = self.owner_evidence.family(family.family_id)
             if owner_evidence is not None and not owner_evidence.retired:
                 self.owner_evidence.retire(
                     family_id=family.family_id,
                     instance_revision_ref=member.instance_revision_ref,
                     receipts=owner_evidence.receipts,
-                    outcome_reference=(
-                        f"{policy.identity_prefix}-session-process-exit-confirmed:"
-                        f"{evidence.startup_id}:{family.family_id}"
-                    ),
+                    outcome_reference=exit_reference,
                 )
             self.instances.release_family(
-                policy.orphan_release(
-                    family,
-                    evidence.startup_id,
-                )
+                policy.release_for_process_exit(family, startup_id, exit_reference)
             )
 
     def release_session_family_and_reconcile(
@@ -440,7 +480,7 @@ class _PluginSessionLifecycle(Generic[RootsT, EventT, FamilyT, LeaseT]):
                     f"{policy.error_code_prefix}_not_enabled",
                 )
             instance = self.instances.snapshot().instance(ref)
-            activation_identity = policy.activation_identity(key, ref)
+            activation_identity = _identity_digest((key, ref))
             if instance is None:
                 instance = self.instances.activate_current(
                     key,
@@ -456,19 +496,24 @@ class _PluginSessionLifecycle(Generic[RootsT, EventT, FamilyT, LeaseT]):
                     "Selected Plugin Instance is not ACTIVE",
                     f"{policy.error_code_prefix}_instance_not_active",
                 )
-            owners = policy.normalize_owners(owner_contributions)
-            identity = policy.lease_identity(
-                key,
-                ref,
-                session_id,
-                lease_attempt_id,
-                owners,
+            owners = normalize_owner_contributions(
+                owner_contributions, product_label=policy.product_label
             )
-            holder_reference = policy.holder_reference(
+            identity = _identity_digest(
+                (
+                    key,
+                    ref,
+                    _holder_nonempty(session_id, name="Session id"),
+                    _holder_nonempty(lease_attempt_id, name="Lease attempt id"),
+                    owners,
+                )
+            )
+            holder_reference = encode_holder_reference(
                 session_id,
                 lease_attempt_id,
                 owners,
                 self.startup_id,
+                prefix=policy.holder_prefix,
             )
             family = self.instances.acquire_current_family(
                 (key,),

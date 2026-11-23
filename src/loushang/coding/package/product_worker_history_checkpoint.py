@@ -146,40 +146,35 @@ def publish_coding_product_worker_history_checkpoint(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerHistoryCheckpointV1:
     """Publish a closed Product snapshot under runtime and GC writer custody."""
-    if (
-        type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-        or type(attempt_id) is not str
-        or (_ATTEMPT.fullmatch(attempt_id) is None)
-    ):
-        raise ValueError("Coding Worker checkpoint requires one exact attempt")
-    return cast(
-        "CodingWorkerHistoryCheckpointV1",
-        publish_product_worker_history_checkpoint(
-            _history_proof_bindings(),
-            product,
-            attempt_id=attempt_id,
-            closure_error=lambda: CodingWorkerHistoryCheckpointError(
-                "coding_worker_checkpoint_closure_unproven"
-            ),
-        ),
-    )
+    return _write_checkpoint(product, attempt_id=attempt_id, repair=False)
 
 
 def repair_coding_product_worker_history_checkpoint_append(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerHistoryCheckpointV1:
     """Commit one complete interrupted append only if its Product inputs still match."""
+    return _write_checkpoint(product, attempt_id=attempt_id, repair=True)
+
+
+def _write_checkpoint(
+    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str, repair: bool
+) -> CodingWorkerHistoryCheckpointV1:
     if (
         type(product) is not PosixLocalWheelProductSessionOwner
         or product.policy.product_id != "coding"
         or type(attempt_id) is not str
         or (_ATTEMPT.fullmatch(attempt_id) is None)
     ):
-        raise ValueError("Coding Worker checkpoint repair requires one exact attempt")
+        action_label = "checkpoint repair" if repair else "checkpoint"
+        raise ValueError(f"Coding Worker {action_label} requires one exact attempt")
+    write = (
+        repair_product_worker_history_checkpoint_append
+        if repair
+        else publish_product_worker_history_checkpoint
+    )
     return cast(
         "CodingWorkerHistoryCheckpointV1",
-        repair_product_worker_history_checkpoint_append(
+        write(
             _history_proof_bindings(),
             product,
             attempt_id=attempt_id,

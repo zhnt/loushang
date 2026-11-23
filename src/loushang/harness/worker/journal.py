@@ -185,19 +185,11 @@ def _encode_record(record: WorkerAttemptRecordV1) -> dict[str, object]:
     return record.to_dict()
 
 
-def _decode_record(value: object) -> WorkerAttemptRecordV1:
-    try:
-        return WorkerAttemptRecordV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Worker attempt journal record is invalid",
-            code="invalid_worker_attempt_record",
-        ) from exc
-
-
-WORKER_ATTEMPT_JOURNAL_CODEC = FunctionalJournalRecordCodec(
+WORKER_ATTEMPT_JOURNAL_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=_encode_record,
-    decoder=_decode_record,
+    decoder=lambda value: WorkerAttemptRecordV1.from_dict(value),
+    message="Worker attempt journal record is invalid",
+    code="invalid_worker_attempt_record",
 )
 
 

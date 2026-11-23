@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from threading import Lock
-from typing import Literal, Protocol, TypeAlias, cast, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, cast, runtime_checkable
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCapabilityConsumerRequirementEntry,
@@ -47,7 +47,15 @@ from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
     RegistrationOwner,
+    RegistrationScope,
+    registration_scope_retirement_receipt,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.capabilities.component_host import (
+        CapabilityComponentAdmissionStart,
+        CapabilityComponentHost,
+    )
 
 SessionCompositionChange = Literal["no_change", "restart_required"]
 
@@ -112,6 +120,30 @@ class SessionCapabilityComponentRequest:
     @property
     def capability_id(self) -> str:
         return self.resolved.capability_id
+
+    def begin_admission(
+        self, host: CapabilityComponentHost
+    ) -> CapabilityComponentAdmissionStart:
+        return host.begin_admission(
+            self.resolved,
+            owner_snapshot=self.owner_snapshot,
+            trust_snapshot=self.trust_snapshot,
+            decision_id=self.activation_decision_id,
+        )
+
+    def prepare_component(
+        self,
+        host: CapabilityComponentHost,
+        admission_start: CapabilityComponentAdmissionStart,
+    ) -> PreparedSessionCapabilityComponent:
+        return host.prepare_component(
+            self.resolved,
+            package=self.package,
+            owner_snapshot=self.owner_snapshot,
+            trust_snapshot=self.trust_snapshot,
+            decision_id=self.activation_decision_id,
+            admission_start=admission_start,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -708,6 +740,79 @@ class SessionCapabilityOwnerGenerationBinding:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class RegistrationScopeGeneration:
+    """Staged registrations and any revocable operations they expose."""
+
+    scope: RegistrationScope = field(repr=False)
+    family: object = field(repr=False)
+    invalidate: Callable[[], None] | None = field(default=None, repr=False)
+
+
+def bind_owner_registration_scope(
+    admission: OwnerContributionAdmissionRecord,
+    authority_gate: SessionCapabilityOwnerAuthorityGate,
+    *,
+    stage: Callable[
+        [tuple[SessionCapabilityConsumerCapture, ...]], RegistrationScopeGeneration
+    ],
+    generation_family: object,
+    label: str,
+    disposal_error: Callable[[], Exception],
+    retirement_contribution_id: Callable[[], str] | None = None,
+    inactive_retirement_message: str | None = None,
+    disposal_label: str | None = None,
+) -> SessionCapabilityOwnerGenerationBinding:
+    """Use the same Graph lifecycle for admitted Tool and Command scopes."""
+
+    def require_generation(
+        value: object, *, error_label: str = label
+    ) -> RegistrationScopeGeneration:
+        if (
+            not isinstance(value, RegistrationScopeGeneration)
+            or value.family is not generation_family
+        ):
+            raise TypeError(f"{error_label} owner received a foreign generation")
+        return value
+
+    async def dispose(value: object) -> None:
+        generation = require_generation(value, error_label=disposal_label or label)
+        if generation.invalidate is not None:
+            generation.invalidate()
+        if (await generation.scope.dispose()).has_failures:
+            raise disposal_error()
+
+    def retirement_receipt(value: object) -> OwnerGenerationRetirementReceipt:
+        scope = require_generation(value).scope
+        if inactive_retirement_message is not None and scope.state not in {
+            "open",
+            "committed",
+        }:
+            raise RuntimeError(inactive_retirement_message)
+        contribution_id = (
+            retirement_contribution_id()
+            if retirement_contribution_id is not None
+            else admission.contribution_id
+        )
+        return registration_scope_retirement_receipt(
+            scope, contribution_ids=(contribution_id,), allow_open=True
+        )
+
+    return SessionCapabilityOwnerGenerationBinding(
+        owner_id=admission.owner_id,
+        contribution_kind=admission.contribution_kind,
+        plugin_id=admission.plugin_id,
+        contribution_id=admission.contribution_id,
+        admission_fingerprint=admission.fingerprint,
+        authority_gate=authority_gate,
+        stage=stage,
+        dispose=dispose,
+        retirement_receipt=retirement_receipt,
+        commit=lambda value: require_generation(value).scope.commit(),
+        rollback_commit=lambda value: require_generation(value).scope.rollback_commit(),
+    )
+
+
 @dataclass(slots=True)
 class StagedSessionCapabilityOwnerGeneration:
     binding: SessionCapabilityOwnerGenerationBinding
@@ -804,6 +909,23 @@ class StagedSessionCapabilityOwnerGeneration:
         self.committed = False
         self.commit_started = False
         self.disposed = True
+
+
+def capture_owner_generation_receipts(
+    generations: tuple[StagedSessionCapabilityOwnerGeneration, ...],
+    plugin_id: str,
+    *,
+    prepared: bool,
+) -> list[OwnerGenerationRetirementReceipt]:
+    return [
+        (
+            generation.capture_prepared_retirement_receipt()
+            if prepared
+            else generation.capture_retirement_receipt()
+        )
+        for generation in generations
+        if generation.binding.plugin_id == plugin_id
+    ]
 
 
 class SessionCapabilityOwnerGenerationStagingError(RuntimeError):
