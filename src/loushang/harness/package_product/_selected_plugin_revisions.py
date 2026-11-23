@@ -35,6 +35,8 @@ from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source 
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
 from loushang.harness.resources.plugins.declarations import (
+    PluginContributionReservation,
+    PluginDeclaration,
     admits_single_data_resource,
 )
 from loushang.harness.resources.plugins.dependencies import (
@@ -50,6 +52,7 @@ from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     VerifiedRevisionHandle,
 )
+from loushang.harness.resources.plugins.selection import PluginSourceTrustSnapshotV1
 from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
     PluginManifest,
@@ -240,7 +243,14 @@ def open_selected_resolution(
                 max_total_bytes=policy.maximum_bytes(),
             )
             if plugin_id in external_data_plugin_ids:
-                _validate_external_data_selection(policy, selected, plugin_id)
+                capture_external_data_declaration(
+                    selected,
+                    trust_classes=policy.external_trust_classes,
+                    resource_owners=policy.external_resource_owners,
+                    permits_owner=policy.permits_external_owner,
+                    invalid=f"{policy.product_label} external data selection is not admissible",
+                    expected_selection=(policy.product_id, plugin_id),
+                )
             else:
                 _validate_builtin_selection(policy, selected, plugin_id)
             handle = policy.handle_type(runtime, selected)
@@ -378,31 +388,51 @@ def _validate_builtin_selection(
         )
 
 
-def _validate_external_data_selection(
-    policy: ProductSelectedRevisionPolicy,
+def capture_external_data_declaration(
     selected: PackageProductSelectedPluginManifestV1,
-    plugin_id: str,
-) -> None:
-    manifest = selected.verified_manifest()
+    *,
+    trust_classes: frozenset[str],
+    resource_owners: frozenset[str],
+    permits_owner: Callable[[str, str], bool],
+    invalid: str,
+    expected_selection: tuple[str, str] | None = None,
+    standalone: bool = False,
+) -> tuple[PluginContributionReservation, PluginDeclaration]:
+    """Read the single declaration allowed by the Product's data Source policy."""
+    manifest = selected.verified_manifest() if expected_selection is not None else None
     trust = selected.source_trust_snapshot
     pairs = selected.verified_data_only_declarations()
     if (
-        selected.snapshot.installation_key.product_id != policy.product_id
-        or manifest.name != plugin_id
+        (
+            expected_selection is not None
+            and (
+                selected.snapshot.installation_key.product_id != expected_selection[0]
+                or manifest is None
+                or manifest.name != expected_selection[1]
+            )
+        )
         or trust is None
-        or (not trust.trusted)
-        or (trust.plugin_id != plugin_id)
+        or (standalone and not isinstance(trust, PluginSourceTrustSnapshotV1))
+        or not trust.trusted
+        or (expected_selection is not None and trust.plugin_id != expected_selection[1])
         or not admits_single_data_resource(
             pairs,
             trust.source_trust_class,
-            trust_classes=policy.external_trust_classes,
-            resource_owners=policy.external_resource_owners,
-            permits_owner=policy.permits_external_owner,
+            trust_classes=trust_classes,
+            resource_owners=resource_owners,
+            permits_owner=permits_owner,
+        )
+        or (
+            standalone
+            and (
+                selected.snapshot.installation_key.plugin_id != selected.manifest.name
+                or selected.snapshot.instance_revision_ref.plugin_id != selected.manifest.name
+            )
         )
     ):
-        raise ValueError(
-            f"{policy.product_label} external data selection is not admissible"
-        )
+        raise ValueError(invalid)
+    (declaration,) = pairs
+    return declaration
 
 
 def _host_distribution_lock(

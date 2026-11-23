@@ -26,6 +26,9 @@ EXTERNAL_DATA_TRUST_CLASSES_ORDERED = (
     "legacy-local-reacquired-theme",
 )
 EXTERNAL_DATA_TRUST_CLASSES = frozenset(EXTERNAL_DATA_TRUST_CLASSES_ORDERED)
+EXTERNAL_DATA_RESOURCE_OWNERS = frozenset(
+    {"resources.skill", "resources.prompt", "resources.theme"}
+)
 
 
 def permits_external_data_owner(trust_class: str, owner: str) -> bool:

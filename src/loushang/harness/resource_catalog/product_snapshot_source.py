@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Literal, NoReturn
+from typing import TYPE_CHECKING, Literal, NoReturn, Protocol
 
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
+    OwnerContributionAuthority,
     ResourceContributionSpec,
 )
 from loushang.harness.resources._catalog_package_source import (
@@ -46,9 +47,13 @@ from loushang.harness.resources.types import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harness.capabilities.consumer_requirements import (
+        ProductCompositionCompilation,
+    )
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
+    from loushang.harness.resources.plugins.selection import PluginSelectionPlanV2
 
 
 class ProductSnapshotResourceSourceError(RuntimeError):
@@ -178,22 +183,92 @@ def capture_selected_resource_bodies(
         yield admission, locator, body
 
 
+class _CapturedProductResourceBody(Protocol):
+    @property
+    def admission_fingerprint(self) -> str: ...
+
+    @property
+    def contribution_id(self) -> str: ...
+
+    @property
+    def logical_path(self) -> str: ...
+
+    @property
+    def body(self) -> bytes: ...
+
+
+def validate_product_resource_compilation(
+    plan: PluginSelectionPlanV2,
+    composition: ProductCompositionCompilation,
+    authorities: Iterable[OwnerContributionAuthority],
+    *,
+    base_plugin_id: str,
+    selected_base: PackageProductSelectedPluginManifestV1,
+    selected_capabilities: tuple[PackageProductSelectedPluginManifestV1, ...],
+    selected_resources: tuple[PackageProductSelectedPluginManifestV1, ...],
+    bodies: tuple[_CapturedProductResourceBody, ...],
+    changed_authority: str,
+) -> None:
+    """Join the compiled Catalog proof to its exact plan and selected Store."""
+    context = composition.authority_context
+    if (
+        plan.context.product_id != context.product_id
+        or plan.context.scope_id != context.scope_id
+        or plan.context.policy_revision != context.product_policy_revision
+        or tuple(owner.snapshot() for owner in authorities) != context.owner_snapshots
+    ):
+        raise ValueError(changed_authority)
+    expected = {
+        item.fingerprint: item.contribution_id
+        for item in composition.resource_admissions
+    }
+    actual = {item.admission_fingerprint: item.contribution_id for item in bodies}
+    if actual != expected or len(actual) != len(bodies):
+        raise ValueError("Product Resource bodies changed owner admissions")
+    selected_additions = (*selected_capabilities, *selected_resources)
+    selected_ids = sorted(item.verified_manifest().name for item in selected_additions)
+    if selected_ids != [
+        plugin_id for plugin_id in plan.selected_plugin_ids if plugin_id != base_plugin_id
+    ]:
+        raise ValueError("Product manifests changed the selected plan")
+    instance_refs = {item.plugin_id: item for item in plan.context.instance_revision_refs}
+    trust = {item.plugin_id: item for item in plan.source_trust_snapshots}
+    if any(
+        item.snapshot.instance_revision_ref != instance_refs.get(item.manifest.name)
+        or item.source_trust_snapshot != trust.get(item.manifest.name)
+        for item in selected_additions
+    ):
+        raise ValueError("Product manifests changed B selection facts")
+    project_selected_resource_inputs(
+        composition.resource_admissions,
+        (selected_base, *selected_resources),
+        bodies,
+        verify_bodies=True,
+    )
+
+
 def project_selected_resource_inputs(
     admissions: tuple[OwnerContributionAdmissionRecord, ...],
     selected: tuple[PackageProductSelectedPluginManifestV1, ...],
-    body_paths: Mapping[str, str],
+    bodies: tuple[_CapturedProductResourceBody, ...],
     *,
-    expected_bodies: Mapping[str, bytes] | None = None,
+    verify_bodies: bool = False,
 ) -> tuple[ProductSelectedResourceInput, ...]:
+    """Bind each admitted Resource to the current proof of its captured bytes."""
+    by_admission = {item.admission_fingerprint: item for item in bodies}
+    if len(by_admission) != len(bodies):
+        raise ValueError("Product data Resource body identity is duplicated")
     by_id = {item.manifest.name: item for item in selected}
     inputs = []
     for admission in admissions:
+        manifest = by_id[admission.plugin_id]
+        compiled = by_admission[admission.fingerprint]
         item = ProductSelectedResourceInput(
             admission=admission,
-            selected_manifest=by_id[admission.plugin_id],
-            relative_path=body_paths[admission.fingerprint],
+            selected_manifest=manifest,
+            relative_path=compiled.logical_path,
         )
-        if expected_bodies is not None and item.body != expected_bodies[admission.fingerprint]:
+        if verify_bodies and item.body != compiled.body:
             raise ValueError("Product Resource body changed selected Store bytes")
         inputs.append(item)
     return tuple(inputs)

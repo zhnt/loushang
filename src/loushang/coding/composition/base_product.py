@@ -24,6 +24,7 @@ from loushang.coding.composition.base_plugin import (
     prepare_coding_base_product_plan as prepare_coding_base_product_plan,
 )
 from loushang.coding.composition.sets import CodingCompositionSetPlan
+from loushang.coding.package.legacy_data_trust import EXTERNAL_DATA_RESOURCE_OWNERS
 from loushang.coding.package.legacy_data_trust import (
     EXTERNAL_DATA_TRUST_CLASSES as EXTERNAL_DATA_TRUST_CLASSES,
 )
@@ -52,16 +53,19 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
 )
 from loushang.harness.environment import HostEnvironment
+from loushang.harness.package_product._selected_plugin_revisions import (
+    capture_external_data_declaration,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resource_catalog.product_snapshot_source import (
     ProductSelectedResourceInput,
     capture_selected_resource_bodies,
     project_selected_resource_inputs,
+    validate_product_resource_compilation,
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
     PluginDeclaration,
-    admits_single_data_resource,
 )
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef as PluginContributionRef,
@@ -104,11 +108,6 @@ if TYPE_CHECKING:
     )
 
 
-_EXTERNAL_RESOURCE_OWNERS = frozenset(
-    {"resources.skill", "resources.prompt", "resources.theme"}
-)
-
-
 @dataclass(frozen=True, slots=True)
 class CodingBaseProductResourceBody:
     admission_fingerprint: str
@@ -146,56 +145,16 @@ class CodingBaseProductCompilation:
     ] = field(default=(), repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        context = self.product_composition.authority_context
-        if (
-            self.plan.context.product_id != context.product_id
-            or self.plan.context.scope_id != context.scope_id
-            or self.plan.context.policy_revision != context.product_policy_revision
-            or tuple(item.authority.snapshot() for item in self.owner_bindings)
-            != context.owner_snapshots
-        ):
-            raise ValueError("Product Coding base changed owner authority facts")
-        expected = {
-            item.fingerprint: item.contribution_id
-            for item in self.product_composition.resource_admissions
-        }
-        actual = {
-            item.admission_fingerprint: item.contribution_id
-            for item in self.resource_bodies
-        }
-        if actual != expected or len(actual) != len(self.resource_bodies):
-            raise ValueError("Product Resource bodies changed owner admissions")
-        capability_ids = tuple(
-            item.verified_manifest().name
-            for item in (
-                *self.selected_capability_manifests,
-                *self.selected_external_data_manifests,
-            )
-        )
-        if tuple(sorted(capability_ids)) != tuple(
-            plugin_id
-            for plugin_id in self.plan.selected_plugin_ids
-            if plugin_id != "coding.base"
-        ):
-            raise ValueError("Product manifests changed the selected plan")
-        instance_refs = {
-            item.plugin_id: item for item in self.plan.context.instance_revision_refs
-        }
-        trust = {item.plugin_id: item for item in self.plan.source_trust_snapshots}
-        if any(
-            selected.snapshot.instance_revision_ref
-            != instance_refs.get(selected.manifest.name)
-            or selected.source_trust_snapshot != trust.get(selected.manifest.name)
-            for selected in (
-                *self.selected_capability_manifests,
-                *self.selected_external_data_manifests,
-            )
-        ):
-            raise ValueError("Product manifests changed B selection facts")
-        self._project_resource_inputs(
-            expected_bodies={
-                item.admission_fingerprint: item.body for item in self.resource_bodies
-            }
+        validate_product_resource_compilation(
+            self.plan,
+            self.product_composition,
+            (binding.authority for binding in self.owner_bindings),
+            base_plugin_id=CODING_BASE_PLUGIN_ID,
+            selected_base=self.selected_manifest,
+            selected_capabilities=self.selected_capability_manifests,
+            selected_resources=self.selected_external_data_manifests,
+            bodies=self.resource_bodies,
+            changed_authority="Product Coding base changed owner authority facts",
         )
 
     def read_resource_body(
@@ -218,16 +177,10 @@ class CodingBaseProductCompilation:
     def product_resource_inputs(self) -> tuple[ProductSelectedResourceInput, ...]:
         """Pair captured bytes with their exact Product owner admissions."""
 
-        return self._project_resource_inputs()
-
-    def _project_resource_inputs(
-        self, *, expected_bodies: Mapping[str, bytes] | None = None
-    ) -> tuple[ProductSelectedResourceInput, ...]:
         return project_selected_resource_inputs(
             self.product_composition.resource_admissions,
             (self.selected_manifest, *self.selected_external_data_manifests),
-            {item.admission_fingerprint: item.logical_path for item in self.resource_bodies},
-            expected_bodies=expected_bodies,
+            self.resource_bodies,
         )
 
     def build_owners(
@@ -416,29 +369,14 @@ def _capture_external_resource_declarations(
     )
     captured: list[SelectedProductDataDeclaration] = []
     for item in selected:
-        trust = item.source_trust_snapshot
-        declarations = item.verified_data_only_declarations()
-        if (
-            trust is None
-            or (standalone and not isinstance(trust, PluginSourceTrustSnapshotV1))
-            or not trust.trusted
-            or not admits_single_data_resource(
-                declarations,
-                trust.source_trust_class,
-                trust_classes=EXTERNAL_DATA_TRUST_CLASSES,
-                resource_owners=_EXTERNAL_RESOURCE_OWNERS,
-                permits_owner=permits_external_data_owner,
-            )
-            or (
-                standalone
-                and (
-                    item.snapshot.installation_key.plugin_id != item.manifest.name
-                    or item.snapshot.instance_revision_ref.plugin_id != item.manifest.name
-                )
-            )
-        ):
-            raise ValueError(invalid)
-        ((reservation, declaration),) = declarations
+        reservation, declaration = capture_external_data_declaration(
+            item,
+            trust_classes=EXTERNAL_DATA_TRUST_CLASSES,
+            resource_owners=EXTERNAL_DATA_RESOURCE_OWNERS,
+            permits_owner=permits_external_data_owner,
+            invalid=invalid,
+            standalone=standalone,
+        )
         captured.append((item, reservation, declaration))
     return tuple(captured)
 

@@ -101,11 +101,10 @@ class CodingExternalDataProductCompilation:
     resource_bodies: tuple[CodingBaseProductResourceBody, ...]
 
     def product_resource_inputs(self) -> tuple[ProductSelectedResourceInput, ...]:
-        body_paths = {item.admission_fingerprint: item.logical_path for item in self.resource_bodies}
-        if len(body_paths) != len(self.resource_bodies):
-            raise ValueError("Product data Resource body identity is duplicated")
         return project_selected_resource_inputs(
-            self.product_composition.resource_admissions, self.selected_manifests, body_paths
+            self.product_composition.resource_admissions,
+            self.selected_manifests,
+            self.resource_bodies,
         )
 
     def assert_current(self, runtime: PackageProductRuntimeBindingV1) -> None:

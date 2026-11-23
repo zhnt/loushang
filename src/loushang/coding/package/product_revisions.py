@@ -28,7 +28,11 @@ from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source 
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
 
-from .legacy_data_trust import EXTERNAL_DATA_TRUST_CLASSES, permits_external_data_owner
+from .legacy_data_trust import (
+    EXTERNAL_DATA_RESOURCE_OWNERS,
+    EXTERNAL_DATA_TRUST_CLASSES,
+    permits_external_data_owner,
+)
 
 _MAX_FILES = 64
 _MAX_BYTES = 1024 * 1024
@@ -162,7 +166,5 @@ def _revision_policy() -> ProductSelectedRevisionPolicy:
         handle_type=_ProductSelectedRevisionHandle,
         external_trust_classes=EXTERNAL_DATA_TRUST_CLASSES,
         permits_external_owner=permits_external_data_owner,
-        external_resource_owners=frozenset(
-            {"resources.skill", "resources.prompt", "resources.theme"}
-        ),
+        external_resource_owners=EXTERNAL_DATA_RESOURCE_OWNERS,
     )
