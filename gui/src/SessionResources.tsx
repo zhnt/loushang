@@ -1,5 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { UiIcon } from "./UiIcon";
 import type { HarnessClientUiPort } from "./client/model";
@@ -17,7 +17,7 @@ export function AttachmentImage({ blob, label }: { blob: Blob; label: string }) 
 
   if (!url) return null;
   return <>
-    <button type="button" className="attachment-thumb" aria-label={t("attachments.preview", { name: label })}
+    <button type="button" className="attachment-thumb" aria-label={t("attachments.preview", { name: label })} data-tooltip={label}
       onClick={() => dialog.current?.showModal()}>
       <img src={url} alt={label} width={64} height={64} />
     </button>
@@ -32,18 +32,21 @@ export function AttachmentImage({ blob, label }: { blob: Blob; label: string }) 
   </>;
 }
 
-export function AttachmentLabel({ label, folder, title = label }: { label: string; folder?: boolean; title?: string }) {
-  return <span className="attachment-label" data-tooltip={title}>
+export function AttachmentLabel({ label, folder }: { label: string; folder?: boolean }) {
+  return <span className="attachment-label" data-tooltip={label}>
     {folder ? <UiIcon name="folder" /> : null}
     <span>{label}</span>
   </span>;
 }
 
-export function AttachmentText(props: { blob: Blob; label: string }) {
+type AttachmentTextProps = { blob: Blob; label: string; children?: ReactNode };
+
+export function AttachmentText({ blob, label, children = <span>{label}</span> }: AttachmentTextProps) {
+  const props = { blob, label, children };
   return isTauri() ? <DesktopTextAttachment {...props} /> : <WebTextAttachment {...props} />;
 }
 
-function DesktopTextAttachment({ blob, label }: { blob: Blob; label: string }) {
+function DesktopTextAttachment({ blob, label, children }: AttachmentTextProps) {
   const { t } = useTranslation("session");
   const [failed, setFailed] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -62,12 +65,12 @@ function DesktopTextAttachment({ blob, label }: { blob: Blob; label: string }) {
   return <>
     <button type="button" className="attachment-label" data-tooltip={label}
       aria-label={t("attachments.open", { name: label })} disabled={opening}
-      onClick={() => { void open(); }}><span>{label}</span></button>
+      onClick={() => { void open(); }}>{children}</button>
     {failed ? <span role="status">{t("attachments.openFailed")}</span> : null}
   </>;
 }
 
-function WebTextAttachment({ blob, label }: { blob: Blob; label: string }) {
+function WebTextAttachment({ blob, label, children }: AttachmentTextProps) {
   const { t } = useTranslation("session");
   const dialog = useRef<HTMLDialogElement>(null);
   const [preview, setPreview] = useState("");
@@ -80,7 +83,7 @@ function WebTextAttachment({ blob, label }: { blob: Blob; label: string }) {
   }, [blob]);
   return <>
     <button type="button" className="attachment-label" data-tooltip={label}
-      aria-label={t("attachments.preview", { name: label })} onClick={() => dialog.current?.showModal()}><span>{label}</span></button>
+      aria-label={t("attachments.preview", { name: label })} onClick={() => dialog.current?.showModal()}>{children}</button>
     <dialog ref={dialog} className="frame-dialog" aria-label={label}>
       <div className="settings-header">
         <h2>{label}</h2>

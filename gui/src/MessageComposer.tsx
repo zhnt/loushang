@@ -3,12 +3,10 @@ import { useTranslation } from "react-i18next";
 
 import { useContextMenu } from "./ContextMenu";
 import { AttachmentImage, AttachmentLabel, AttachmentText } from "./SessionResources";
-import { workspaceName } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { attachmentTypes, maxAttachments, supportedAttachment, supportedImage, type AttachmentDraft, type DirectoryPicker } from "./client/sessionResources";
 
 interface ComposerProps {
-  readonly hostReferences?: boolean;
   readonly attachmentScope?: string;
   readonly pickClientDirectory?: DirectoryPicker;
   readonly revokeClientDirectory?: (id: string) => Promise<boolean>;
@@ -34,13 +32,11 @@ function resizeEditor(input: HTMLTextAreaElement) {
 }
 
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
-  buttonDisabled, fixture, goalAction, model, notice, submitLabel, images = [], onImagesChange, hostReferences, attachmentScope, pickClientDirectory, revokeClientDirectory }: ComposerProps) {
+  buttonDisabled, fixture, goalAction, model, notice, submitLabel, images = [], onImagesChange, attachmentScope, pickClientDirectory, revokeClientDirectory }: ComposerProps) {
   const { t } = useTranslation("session");
   const editor = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const menu = useContextMenu();
-  const hostPathDialog = useRef<HTMLDialogElement>(null);
-  const [hostPath, setHostPath] = useState("");
   const chooser = useRef<HTMLInputElement>(null);
   const [attachmentError, setAttachmentError] = useState(false);
   const canAttach = Boolean(onImagesChange && !disabled);
@@ -52,7 +48,6 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
     attachmentTarget.current = { scope: attachmentScope, images, change: onImagesChange, enabled: canAttach };
   }, [attachmentScope, images, onImagesChange, canAttach]);
   useLayoutEffect(() => {
-    if (hostPathDialog.current?.open) hostPathDialog.current.close();
     setClientDirectoryError(false);
   }, [attachmentScope]);
   useLayoutEffect(() => () => {
@@ -117,8 +112,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
   }, []);
-  return (<>
-    <form className="composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}
+  return <form className="composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}
       onDragOver={(event) => {
         if (canAttach && event.dataTransfer.types.includes("Files")) event.preventDefault();
       }}
@@ -129,16 +123,15 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
       }}>
       {images.length ? <div className="attachment-list">
         {images.map((file, index) => {
-          const image = !("grantId" in file) && !("hostPath" in file) && supportedImage(file);
-          const name = "hostPath" in file ? workspaceName(file.hostPath) : file.name;
-          const key = "grantId" in file ? file.grantId : "hostPath" in file ? file.hostPath : name;
-          return <div className={image ? undefined : "attachment-item"} key={JSON.stringify([key, index])}>
-            {"grantId" in file ? <AttachmentLabel label={file.name} folder />
-              : "hostPath" in file ? <AttachmentLabel label={name} title={file.hostPath} />
-              : image ? <AttachmentImage blob={file} label={name || t("attachments.image")} />
-              : <AttachmentText blob={file} label={name || t("attachments.file")} />}
-            <button type="button" className="icon-button" disabled={!canAttach}
-              aria-label={t("attachments.remove", { name: name || t(image ? "attachments.image" : "attachments.file") })}
+          const image = !("grantId" in file) && supportedImage(file);
+          const name = file.name || t(image ? "attachments.image" : "attachments.file");
+          const key = "grantId" in file ? file.grantId : file.name;
+          return <div className="composer-attachment" key={JSON.stringify([key, index])}>
+            {"grantId" in file ? <AttachmentLabel label={name} folder />
+              : image ? <AttachmentImage blob={file} label={name} />
+              : <AttachmentText blob={file} label={name}><UiIcon name="file" /><span>{name}</span></AttachmentText>}
+            <button type="button" className="icon-close attachment-remove" disabled={!canAttach}
+              aria-label={t("attachments.remove", { name })}
               onClick={() => {
                 setAttachmentError(false);
                 if ("grantId" in file) void revokeClientDirectory?.(file.grantId).catch(() => {});
@@ -190,7 +183,6 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
               ...(canAttach ? [{ label: t("attachments.addGroup"), items: [
                 { label: t("attachments.addFile"), icon: "paperclip" as const, run: () => chooser.current?.click() },
                 ...(pickClientDirectory ? [{ label: t("attachments.addFolder"), icon: "folder-closed" as const, run: attachClientDirectory }] : []),
-                ...(hostReferences ? [{ label: t("attachments.referenceHostPath"), icon: "host" as const, run: () => hostPathDialog.current?.showModal() }] : []),
               ] }] : []),
               ...(goalAction ? [{ label: t("attachments.modeGroup"), items: [{ ...goalAction, icon: "goal" as const }] }] : []),
             ], true)}><UiIcon name="plus" /></button>
@@ -206,27 +198,5 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
             : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 18V6m-5 5 5-5 5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
         </button>
       </div>
-    </form>
-    {hostReferences ? <dialog ref={hostPathDialog} className="frame-dialog" aria-label={t("attachments.referenceHostPath")}>
-      <div className="settings-header">
-        <h2>{t("attachments.referenceHostPath")}</h2>
-        <button type="button" className="icon-close" aria-label={t("attachments.close")}
-          onClick={() => hostPathDialog.current?.close()}><UiIcon name="close" /></button>
-      </div>
-      <form className="local-host-card" onSubmit={(event) => {
-        event.preventDefault();
-        const value = hostPath.trim();
-        if (!value || !canAttach) return;
-        const full = images.length >= maxAttachments;
-        setAttachmentError(full);
-        if (!full) onImagesChange?.([...images, { hostPath: value }]);
-        setHostPath("");
-        hostPathDialog.current?.close();
-      }}>
-        <label>{t("attachments.hostPath")}<input required maxLength={4096} value={hostPath}
-          onChange={(event) => setHostPath(event.currentTarget.value)} /></label>
-        <div className="local-host-actions"><button disabled={!hostPath.trim()}>{t("attachments.reference")}</button></div>
-      </form>
-    </dialog> : null}
-  </>);
+    </form>;
 }

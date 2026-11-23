@@ -1,12 +1,11 @@
 import type { ResourceRefV1, ResourceV1, SessionResourceQueryV1, SessionResourceResultV1 } from "../../contracts/generated/bridge";
 import type { HarnessClientUiPort } from "./model";
 
-export type HostPathDraft = { readonly hostPath: string };
 export interface ClientDirectoryDraft {
   readonly grantId: string;
   readonly name: string;
 }
-export type AttachmentDraft = File | HostPathDraft | ClientDirectoryDraft;
+export type AttachmentDraft = File | ClientDirectoryDraft;
 export type DirectoryPicker = (labels: { title: string; accept: string; cancel: string }) => Promise<ClientDirectoryDraft | null>;
 
 export const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
@@ -59,15 +58,6 @@ export async function uploadAttachments(client: HarnessClientUiPort, sessionId: 
       const result = await client.referenceClientDirectory?.(sessionId, file.grantId);
       const resource = result?.resources[0];
       if (!resource || resource.source !== "client_reference" || resource.kind !== "directory" || !/^[a-f0-9]{64}$/.test(resource.id)) {
-        throw new Error("resource_unavailable");
-      }
-      if (!refs.some((ref) => ref.id === resource.id)) refs.push({ id: resource.id, sha256: resource.id });
-      continue;
-    }
-    if ("hostPath" in file) {
-      const result = await client.sessionResource(sessionId, query("reference", { path: file.hostPath }));
-      const resource = result.resources[0];
-      if (!resource || resource.source !== "host_reference" || !/^[a-f0-9]{64}$/.test(resource.id)) {
         throw new Error("resource_unavailable");
       }
       if (!refs.some((ref) => ref.id === resource.id)) refs.push({ id: resource.id, sha256: resource.id });

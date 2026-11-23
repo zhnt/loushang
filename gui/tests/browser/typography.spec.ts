@@ -189,6 +189,33 @@ for (const sample of [
       await expect(goal).toBeFocused();
       await page.keyboard.press("Enter");
       await expect(page.locator(".interactive-goal")).toBeInViewport();
+
+      await page.locator(".composer input[type=file]").setInputFiles([
+        { name: "tauri.conf.json", mimeType: "text/plain", buffer: Buffer.from("{}") },
+        { name: "preview.png", mimeType: "image/png", buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jCx0AAAAASUVORK5CYII=", "base64",
+        ) },
+      ]);
+      await actions.click();
+      await page.getByRole("menuitem", { name: sample.locale === "zh-CN" ? "文件夹" : "Folder", exact: true }).click();
+      const tiles = page.locator(".composer-attachment");
+      await expect(tiles).toHaveCount(3);
+      const boxes = await tiles.evaluateAll((items) => items.map((item) => {
+        const { width, height, y } = item.getBoundingClientRect();
+        return { width, height, y };
+      }));
+      expect(boxes).toEqual(Array(3).fill({ width: 64, height: 64, y: boxes[0].y }));
+      const remove = tiles.first().locator(".attachment-remove");
+      await expect(remove).toHaveCSS("opacity", "0");
+      await tiles.first().hover();
+      await expect(remove).toHaveCSS("opacity", "1");
+      const tileBox = (await tiles.first().boundingBox())!;
+      const removeBox = (await remove.boundingBox())!;
+      expect(removeBox.x).toBeGreaterThan(tileBox.x + tileBox.width / 2);
+      expect(removeBox.y).toBeLessThan(tileBox.y + tileBox.height / 2);
+      await page.locator(".composer .attachment-list").screenshot({ path: info.outputPath("draft-attachments.png") });
+      await remove.click();
+      await expect(tiles).toHaveCount(2);
     } finally {
       await context.close();
     }

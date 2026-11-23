@@ -833,3 +833,24 @@ summary.inspection-file-row:focus-visible,
 .attachment-thumb { display: inline-flex; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .attachment-thumb img { object-fit: contain; }
 .attachment-preview { display: block; max-width: 100%; max-height: 65vh; margin: 0 auto; }
+.composer-attachment { position: relative; inline-size: 64px; max-inline-size: 100%; }
+.composer-attachment > :is(.attachment-thumb, .attachment-label) {
+  display: flex; inline-size: 100%; aspect-ratio: 1; border-radius: 6px; background: var(--panel);
+}
+.composer-attachment > .attachment-thumb img { width: 100%; height: 100%; }
+.composer-attachment > .attachment-label {
+  flex-direction: column; justify-content: center; gap: 4px; padding: 6px;
+  font-size: var(--font-size-caption); line-height: var(--line-height-caption); font-weight: var(--font-weight-normal);
+}
+.composer-attachment > .attachment-label > .ui-icon { inline-size: 20px; block-size: 20px; }
+.composer-attachment > .attachment-label > span { max-inline-size: 100%; }
+.desktop-shell .composer-attachment > .attachment-remove {
+  position: absolute; inset-block-start: 2px; inset-inline-end: 2px;
+  inline-size: 22px; block-size: 22px; border: 1px solid var(--line); background: var(--paper);
+  opacity: 0; pointer-events: none;
+}
+.composer-attachment > .attachment-remove > .ui-icon { inline-size: 14px; block-size: 14px; }
+.desktop-shell .composer-attachment:is(:hover, :has(:focus-visible)) > .attachment-remove:enabled { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .desktop-shell .composer-attachment > .attachment-remove:enabled { opacity: 1; pointer-events: auto; }
+}
