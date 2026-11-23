@@ -512,7 +512,7 @@ def test_deferred_lsp_child_graph_selects_after_demand_and_retires(
                 tool_mode="on_demand",
                 clock=lambda: now,
             )
-            return assembled.capability_assembly
+            return assembled.capability_assembly, check_selection
 
         slot = DeferredCapabilitySlot(
             DeferredCapabilityDeclaration(
@@ -526,7 +526,6 @@ def test_deferred_lsp_child_graph_selects_after_demand_and_retires(
                 workspace_binding=workspace_binding,
                 registration=registration,
                 assembly_factory=assemble,
-                current_selection_check=check_selection,
             ),
         )
         assert owners == []
@@ -585,7 +584,7 @@ def test_deferred_lsp_child_graph_rolls_back_failed_tool_staging(
                 tool_mode="on_demand",
                 clock=lambda: 2_500,
             )
-            return assembled.capability_assembly
+            return assembled.capability_assembly, None
 
         candidate = CodingDeferredLspGeneration(
             session_id="session-fail",
