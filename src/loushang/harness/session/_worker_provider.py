@@ -655,82 +655,102 @@ class _PendingWorkerHost(Protocol):
 
 
 _ResumeSettlementT = TypeVar("_ResumeSettlementT")
+_PendingLaunchT = TypeVar("_PendingLaunchT", bound=_PendingPayload)
 
 
-def _prepare_pending_worker_session_inputs(
-    *,
-    resolved_providers: ResolvedCapabilityProviderSet,
-    provider_owner: CapabilityProviderOwnerAuthority,
-    receipt_owner: object,
-    receipt: ProductWorkerActivationReceiptV1,
-    pending_launch: _PendingPayload,
-    evaluated_at: int,
-    clock: Callable[[], int],
-    base_policy_binding: _BasePolicyGuard,
-    resume_parent_context: ResumeEffectParentContextV1 | None,
-    resume_settlement: _ResumeSettlementT,
+@dataclass(frozen=True, slots=True)
+class _PendingWorkerSessionInputs(
+    Generic[_ReceiptOwnerT, _PendingLaunchT, _BasePolicyT, _ResumeSettlementT]
+):
+    """Admit Product-selected Worker inputs before deferred native preparation."""
+
+    definition: CapabilityDefinition
+    expected_provider_owner: Callable[[], CapabilityProviderOwnerAuthority]
+    base_policy_type: type[_BasePolicyT]
+    receipt_owner_type: type[_ReceiptOwnerT]
+    pending_launch_type: type[_PendingLaunchT]
     resume_matches: Callable[
         [
             ProductWorkerActivationReceiptV1,
             ResumeEffectParentContextV1 | None,
-            _ResumeSettlementT,
+            _ResumeSettlementT | None,
         ],
         bool,
-    ],
-    definition: CapabilityDefinition,
-    expected_provider_owner: Callable[[], CapabilityProviderOwnerAuthority],
-    base_policy_type: type[_BasePolicyGuard],
-    host_type: Callable[..., _PendingWorkerHost],
-    prepare_session_inputs: Callable[..., SessionCapabilityCompositionInputs],
-    policy: PendingWorkerSessionPolicy,
-    require_bound_receipt_owner: bool = False,
-) -> SessionCapabilityCompositionInputs:
-    """Join the receipt, owner and Resume facts before deferred native preparation."""
-    if (
-        not resume_matches(receipt, resume_parent_context, resume_settlement)
-        or pending_launch.receipt_fingerprint != receipt.fingerprint
-        or not isinstance(base_policy_binding, base_policy_type)
-        or (
-            require_bound_receipt_owner
-            and getattr(base_policy_binding, "receipt_owner") is not receipt_owner
+    ]
+    host_type: Callable[..., _PendingWorkerHost]
+    prepare_session_inputs: Callable[..., SessionCapabilityCompositionInputs]
+    policy: PendingWorkerSessionPolicy
+    require_bound_receipt_owner: bool = False
+
+    def prepare(
+        self,
+        *,
+        resolved_providers: ResolvedCapabilityProviderSet,
+        provider_owner: CapabilityProviderOwnerAuthority,
+        receipt_owner: _ReceiptOwnerT,
+        receipt: ProductWorkerActivationReceiptV1,
+        pending_launch: _PendingLaunchT,
+        evaluated_at: int,
+        clock: Callable[[], int],
+        base_policy_binding: _BasePolicyT,
+        resume_parent_context: ResumeEffectParentContextV1 | None = None,
+        resume_settlement: _ResumeSettlementT | None = None,
+    ) -> SessionCapabilityCompositionInputs:
+        # A bound receipt owner requires the exact nominal types.
+        if self.require_bound_receipt_owner:
+            if (
+                type(receipt_owner) is not self.receipt_owner_type
+                or type(pending_launch) is not self.pending_launch_type
+            ):
+                raise self.policy.failure("selection_invalid")
+        elif not isinstance(pending_launch, self.pending_launch_type):
+            raise self.policy.failure("selection_invalid")
+        if (
+            not self.resume_matches(receipt, resume_parent_context, resume_settlement)
+            or pending_launch.receipt_fingerprint != receipt.fingerprint
+            or not isinstance(base_policy_binding, self.base_policy_type)
+            or (
+                self.require_bound_receipt_owner
+                and getattr(base_policy_binding, "receipt_owner") is not receipt_owner
+            )
+            or len(resolved_providers.entries) != 1
+            or resolved_providers.entries[0].capability_id
+            != self.definition.capability_id
+            or resolved_providers.entries[0].definition != self.definition
+            or provider_owner.policy != self.expected_provider_owner().policy
+        ):
+            raise self.policy.failure("selection_invalid")
+        base_policy_binding.assert_current()
+        identity = pending_launch.identity
+        binding = _selected_query_worker_binding(identity, receipt, provider_owner)
+        admission = _admission_for_worker(binding, identity)
+        host = self.host_type(
+            resolved_providers=resolved_providers,
+            provider_owner=provider_owner,
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            pending_launch=pending_launch,
+            expected_admission=admission,
+            binding=binding,
+            base_policy_binding=base_policy_binding,
+            clock=clock,
+            resume_parent_context=resume_parent_context,
+            resume_settlement=resume_settlement,
         )
-        or len(resolved_providers.entries) != 1
-        or resolved_providers.entries[0].capability_id != definition.capability_id
-        or resolved_providers.entries[0].definition != definition
-        or provider_owner.policy != expected_provider_owner().policy
-    ):
-        raise policy.failure("selection_invalid")
-    base_policy_binding.assert_current()
-    identity = pending_launch.identity
-    binding = _selected_query_worker_binding(identity, receipt, provider_owner)
-    admission = _admission_for_worker(binding, identity)
-    host = host_type(
-        resolved_providers=resolved_providers,
-        provider_owner=provider_owner,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        pending_launch=pending_launch,
-        expected_admission=admission,
-        binding=binding,
-        base_policy_binding=base_policy_binding,
-        clock=clock,
-        resume_parent_context=resume_parent_context,
-        resume_settlement=resume_settlement,
-    )
-    return prepare_session_inputs(
-        resolved_providers=resolved_providers,
-        provider_owner=provider_owner,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        capability_authority=None,
-        adapter=None,
-        worker_admission=admission,
-        evaluated_at=evaluated_at,
-        clock=clock,
-        release_attempt=None,
-        base_policy_binding=base_policy_binding,
-        deferred_prepare=host.prepare,
-    )
+        return self.prepare_session_inputs(
+            resolved_providers=resolved_providers,
+            provider_owner=provider_owner,
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            capability_authority=None,
+            adapter=None,
+            worker_admission=admission,
+            evaluated_at=evaluated_at,
+            clock=clock,
+            release_attempt=None,
+            base_policy_binding=base_policy_binding,
+            deferred_prepare=host.prepare,
+        )
 
 
 def _prepare_worker_session_inputs(
