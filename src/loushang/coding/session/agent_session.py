@@ -959,14 +959,6 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             )
         return await super().execute_command_async(invocation_name, args)
 
-    async def emit_product_tool_audit_event(
-        self,
-        event: Mapping[str, object],
-    ) -> None:
-        """Route a Product-owned runtime action through the session event stream."""
-
-        await self._dispatch_event(dict(event))
-
     def _prepare_resource_refresh(self) -> None:
         capability_plugins = self._coding_capability_plugin_assembly
         if capability_plugins is not None:
@@ -976,20 +968,10 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             ) in capability_plugins.evaluate_management_changes().items():
                 if capability_change.disposition != "restart_required":
                     continue
-                self._record_runtime_diagnostic(
-                    DiagnosticDraft(
-                        code="coding_capability_management_restart_required",
-                        message=(
-                            f"{plugin_id} management state changed; the active "
-                            "Session retains its pinned generation and must restart."
-                        ),
-                        details={
-                            "pluginId": plugin_id,
-                            **capability_change.diagnostic_details(),
-                        },
-                    ),
-                    source="session",
-                    level="error",
+                self._record_management_restart(
+                    plugin_id,
+                    "coding_capability_management_restart_required",
+                    {"pluginId": plugin_id, **capability_change.diagnostic_details()},
                 )
                 raise CodingCapabilityPluginCompositionError(
                     "Active Coding Session requires restart after Capability "
@@ -1000,23 +982,32 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         if base_plugin is not None:
             change = base_plugin.evaluate_management_change()
             if change is not None and change.disposition == "restart_required":
-                self._record_runtime_diagnostic(
-                    DiagnosticDraft(
-                        code="coding_base_management_restart_required",
-                        message=(
-                            "coding.base management state changed; the active "
-                            "Session retains its pinned generation and must restart."
-                        ),
-                        details=change.diagnostic_details(),
-                    ),
-                    source="session",
-                    level="error",
+                self._record_management_restart(
+                    "coding.base",
+                    "coding_base_management_restart_required",
+                    change.diagnostic_details(),
                 )
                 raise CodingBasePluginAssemblyError(
                     "Active Coding Session requires restart after coding.base change",
                     code="coding_base_management_restart_required",
                 )
         super()._prepare_resource_refresh()
+
+    def _record_management_restart(
+        self, plugin_id: str, code: str, details: dict[str, object]
+    ) -> None:
+        self._record_runtime_diagnostic(
+            DiagnosticDraft(
+                code=code,
+                message=(
+                    f"{plugin_id} management state changed; the active "
+                    "Session retains its pinned generation and must restart."
+                ),
+                details=details,
+            ),
+            source="session",
+            level="error",
+        )
 
     def _require_current_coding_runtime_selection(self) -> None:
         runtime_selection.require_current_selection(self, self._current_selection_failure)
