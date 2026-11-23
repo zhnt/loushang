@@ -10,6 +10,7 @@ interface Props {
   session: SessionSnapshot;
   instanceId: string;
   epoch: string | null;
+  needsProjectFolder: boolean;
   enabled: boolean;
   scopeKey: string | null;
   setBusyScope: Dispatch<SetStateAction<string | null>>;
@@ -22,7 +23,7 @@ function commandActive(view?: InteractiveGoalViewV1 | null): boolean {
   return view?.command?.status === "running" || view?.command?.status === "settling";
 }
 
-export function InteractiveGoal({ client, session, instanceId, epoch, enabled, scopeKey, setBusyScope, reviewDiff }: Props) {
+export function InteractiveGoal({ client, session, instanceId, epoch, needsProjectFolder, enabled, scopeKey, setBusyScope, reviewDiff }: Props) {
   const { t } = useTranslation("panels");
   const [target, setTarget] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -132,7 +133,8 @@ export function InteractiveGoal({ client, session, instanceId, epoch, enabled, s
     && view?.status === "active" && view.revision === 1 && !view.executionUnresolved && !command && !unconfirmed;
   const note = creating ? t("interactiveGoal.creating")
     : created ? t("interactiveGoal.created")
-    : availability === "not_ready" || availability === "creating" || availability === "historical" || availability === "cleanup_pending"
+    : availability === "not_ready" ? t(needsProjectFolder ? "interactiveGoal.workspace_required" : "interactiveGoal.not_ready")
+    : availability === "creating" || availability === "historical" || availability === "cleanup_pending"
       ? t(`interactiveGoal.${availability}`)
       : view === null || !scope ? t("interactiveGoal.unavailable")
       : view === undefined ? t("interactiveGoal.loading") : null;

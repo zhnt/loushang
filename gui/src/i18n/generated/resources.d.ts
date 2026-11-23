@@ -209,10 +209,11 @@ export default interface Resources {
       "create": "Create goal",
       "created": "Goal created. Execution has not started.",
       "creating": "Creating goal…",
+      "draft_not_ready": "Send a message in this project before checking goal status.",
       "epoch": "Epoch",
       "historical": "This session has a read-only goal history.",
       "loading": "Checking goal status…",
-      "not_ready": "Send an ordinary message to prepare the Coding tools before creating a goal.",
+      "not_ready": "This session is not ready for a development goal. Check that the project folder and development tools are available, then check goal status again.",
       "open": "Create development goal",
       "recovery": {
         "active": "Active when last recorded",
@@ -253,7 +254,8 @@ export default interface Resources {
       "target": "Goal target",
       "title": "Development goal",
       "unavailable": "Goal status is unavailable.",
-      "unknown": "Goal creation is not yet confirmed."
+      "unknown": "Goal creation is not yet confirmed.",
+      "workspace_required": "Development goals need a project folder. Open or start a chat in a project with a linked folder."
     },
     "layout": {
       "sidebarWidth": "Sidebar width",

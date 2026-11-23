@@ -729,7 +729,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(add.getByRole("menuitem", { name: "File or image" })).toBeVisible();
     expect(add.getByRole("menuitem", { name: "Folder" })).toBeVisible();
     fireEvent.click(within(screen.getByRole("group", { name: "Mode" })).getByRole("menuitem", { name: "Goal" }));
-    expect(screen.getByText("Send an ordinary message to prepare the Coding tools before creating a goal.")).toBeVisible();
+    expect(screen.getByText(/Development goals need a project folder/)).toBeVisible();
     fireEvent.click(actions);
     fireEvent.click(screen.getByRole("menuitem", { name: "Folder" }));
     expect(await screen.findByText("shared-source")).toBeVisible();
@@ -861,10 +861,10 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(defaultModels).toHaveBeenCalledWith(null);
     expect(defaultModels).toHaveBeenCalledWith(null, defaultModel.id);
     await clickGoalAction();
-    expect(screen.getByText(/Send an ordinary message/)).toBeVisible();
+    expect(screen.getByText(/Development goals need a project folder/)).toBeVisible();
     expect(createChat).not.toHaveBeenCalled();
     await clickGoalAction();
-    expect(screen.getByText(/Send an ordinary message/)).not.toBeVisible();
+    expect(screen.getByText(/Development goals need a project folder/)).not.toBeVisible();
     fireEvent.click(picker);
     fireEvent.click(screen.getByRole("menuitemradio", { name: /test · second/ }));
     await waitFor(() => expect(picker).toHaveTextContent("test · second"));
@@ -1399,6 +1399,37 @@ describe("Hosted Goal start", () => {
 });
 
 describe("Interactive development goal", () => {
+  it("explains the project folder requirement after a successful temporary chat", async () => {
+    const snapshot = projectNativeInitialSnapshot(liveSnapshot());
+    const session = { ...snapshot.sessions[0], status: "idle" as const, supportsInteractiveGoal: true as const };
+    const interactiveGoalStatus = vi.fn<NonNullable<HarnessClientUiPort["interactiveGoalStatus"]>>()
+      .mockResolvedValue({
+        availability: "not_ready", goalId: null, status: null, revision: null, epoch: null, executionUnresolved: null,
+      });
+    const client: HarnessClientUiPort = {
+      snapshot: async () => ({ ...snapshot, sessions: [session] }),
+      subscribe: () => () => {},
+      interactiveGoalStatus,
+      createInteractiveGoal: async () => null,
+      submitText: async ({ submissionId }) => ({ submissionId, accepted: false }),
+      interrupt: async () => ({ accepted: false }),
+    };
+    render(<HarnessGui client={client}
+      managedHostConnection={{ status: "running", serviceInstanceId: "service-1" }}
+      projectNavigation={{
+        hostKey: "local", directory: { projects: [], temporarySessions: [] }, available: true,
+        pending: false, error: false, folderInput: false, selection: { workspace: "@temporary", id: session.id },
+        openFolder: () => {}, closeFolder: () => {}, register: async () => false,
+        createChat: async () => null, togglePin: () => {}, select: () => {},
+      }} />);
+    await clickGoalAction();
+    const goal = within(await screen.findByRole("region", { name: "Development goal" }));
+    expect(await goal.findByText(/Development goals need a project folder/)).toBeVisible();
+    fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
+    await waitFor(() => expect(interactiveGoalStatus).toHaveBeenCalledTimes(2));
+    expect(goal.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
+  });
+
   it("waits for capability and readiness, then reconciles a lost receipt by Goal status", async () => {
     const seed = await createMockAppClient().snapshot();
     const session = { ...seed.sessions[0], status: "idle" as const, execution: null };
@@ -1443,7 +1474,7 @@ describe("Interactive development goal", () => {
     const goal = within(await screen.findByRole("region", { name: "Development goal" }));
     expect(within(screen.getByRole("complementary", { name: "Work Dock" }))
       .getByRole("button", { name: "Execution" })).toHaveAttribute("aria-pressed", "true");
-    expect(await goal.findByText(/Send an ordinary message/)).toBeVisible();
+    expect(await goal.findByText(/This session is not ready for a development goal/)).toBeVisible();
     expect(goal.queryByRole("button", { name: "Create development goal" })).not.toBeInTheDocument();
     fireEvent.click(goal.getByRole("button", { name: "Check goal status" }));
     fireEvent.click(await goal.findByRole("button", { name: "Create development goal" }));
