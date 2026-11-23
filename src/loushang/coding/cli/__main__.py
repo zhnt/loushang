@@ -59,29 +59,16 @@ async def _run_entry(argv: list[str] | tuple[str, ...]) -> int:
             return await run_screen_first_cli(
                 raw_argv, project_root=Path.cwd().resolve(), cwd=None
             )
-        from loushang.coding.cli.apphost import (
-            extract_apphost_argv,
-            run_coding_apphost_command,
+        from loushang.coding.cli.startup_route import (
+            early_screen_project_root,
+            run_early_apphost_command,
         )
 
-        apphost_argv = extract_apphost_argv(raw_argv)
-        if apphost_argv is not None:
-            from loushang.coding.cli.args import (
-                package_mutation_option_requested,
-                plugin_management_option_requested,
-                removed_legacy_resource_option,
-            )
-
-            if (
-                removed_legacy_resource_option(raw_argv) is None
-                and not package_mutation_option_requested(raw_argv)
-                and not plugin_management_option_requested(raw_argv)
-            ):
-                return await run_coding_apphost_command(
-                    apphost_argv, stdout=sys.stdout, stderr=sys.stderr
-                )
-        from loushang.coding.cli.startup_route import early_screen_project_root
-
+        apphost_status = await run_early_apphost_command(
+            raw_argv, stdout=sys.stdout, stderr=sys.stderr
+        )
+        if apphost_status is not None:
+            return apphost_status
         project_root = early_screen_project_root(
             raw_argv, stdin=sys.stdin, stdout=sys.stdout
         )
