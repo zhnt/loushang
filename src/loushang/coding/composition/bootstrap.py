@@ -187,9 +187,6 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.package_product._application_runtime import handoff_product_open
-from loushang.harness.package_product._selected_plugin_revisions import (
-    capture_selected_manifests,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductRuntimeFactory,
@@ -1186,7 +1183,7 @@ def _create_agent_session(
         resolved_cwd: Path,
         product_runtime: PackageProductRuntimeBindingV1,
     ) -> ResourceBundle:
-        if not product_base_requested or initial_catalog.authority.base is not None:
+        if not product_base_requested or initial_catalog.base is not None:
             raise RuntimeError("Coding Product base Catalog was already prepared")
         initial_catalog.require_unprepared("Coding Product base cannot mix Catalog routes")
         _reject_peer_coding_exact_tools(
@@ -1286,13 +1283,10 @@ def _create_agent_session(
     ) -> AgentSession:
         nonlocal constructed_session
         resource_catalog_adapter = initial_catalog.take_adapter()
-        catalog_authority = initial_catalog.authority
-        product_base_compilation = catalog_authority.base
-        product_base_runtime = catalog_authority.runtime
-        product_base_disabled_selection = catalog_authority.disabled_base
-        product_capability_desired_selections = catalog_authority.capability_selections
-        product_external_data_compilation = catalog_authority.external
-        catalog_authority.require_current()
+        catalog_selection = initial_catalog.selection
+        product_base_compilation = initial_catalog.base
+        product_base_runtime = catalog_selection.runtime
+        catalog_selection.require_current(product_label="Coding")
 
         prepare_resource_catalog_refresh = partial(
             initial_catalog.prepare_refresh,
@@ -1456,33 +1450,15 @@ def _create_agent_session(
                 coding_base_plugin_assembly=coding_base_plugin_assembly,
                 coding_base_plugin_session_assembly=(base_plugin_session_assembly),
                 coding_base_product_session_assembly=(product_base_session_assembly),
-                coding_external_data_product_compilation=(
-                    product_external_data_compilation
-                ),
+                coding_external_data_product_compilation=initial_catalog.external,
                 coding_selected_capability_manifests=(
-                    capture_selected_manifests(
-                        product_base_runtime.capture_selected_plugin_manifest_for,
-                        (
-                            selection.installation_key.plugin_id
-                            for selection in product_capability_desired_selections
-                            if selection.desired_state == "installed_enabled"
-                        ),
+                    catalog_selection.capture_capabilities_without_base(
                         max_files=_CATALOG_MANIFEST_MAX_FILES,
                         max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
                     )
-                    if product_base_compilation is None
-                    and product_base_runtime is not None
-                    else ()
                 ),
-                coding_base_product_runtime_binding=(product_base_runtime),
-                coding_product_desired_selections=(
-                    *(
-                        (product_base_disabled_selection,)
-                        if product_base_disabled_selection is not None
-                        else ()
-                    ),
-                    *product_capability_desired_selections,
-                ),
+                coding_base_product_runtime_binding=product_base_runtime,
+                coding_product_desired_selections=catalog_selection.desired,
                 coding_product_workspace_witness=product_workspace_witness,
                 coding_plugin_clock=coding_plugin_clock,
                 delegated_execution_profile=delegated_execution_profile,
@@ -1708,8 +1684,8 @@ def _create_agent_session(
                     host_environment=session_host_environment,
                     selected_exact_tool_names=(
                         *(
-                            initial_catalog.authority.base.tool_names
-                            if initial_catalog.authority.base is not None
+                            initial_catalog.base.tool_names
+                            if initial_catalog.base is not None
                             else coding_base_plugin_assembly.tool_names
                             if coding_base_plugin_assembly is not None
                             else ()
