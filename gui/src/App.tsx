@@ -974,13 +974,14 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     }
   }
 
+  const draftDirectories = projectNavigation?.clientDirectories ?? client;
   const composer = draft ? {
     text: draftPending ? "" : draft.text,
     onChange: draftCreation.change,
     images: draft.images,
     attachmentScope: draft.id,
-    pickClientDirectory: client.pickClientDirectory,
-    revokeClientDirectory: client.revokeClientDirectory,
+    pickClientDirectory: draftDirectories.pickClientDirectory,
+    revokeClientDirectory: draftDirectories.revokeClientDirectory,
     hostReferences: Boolean(draft.target.workspace),
     onImagesChange: (projectNavigation || client.sessionResource) && !draftPending && draft.status !== "firstSubmissionUnknown"
       ? draftCreation.changeImages : undefined,

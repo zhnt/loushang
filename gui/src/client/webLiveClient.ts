@@ -16,6 +16,24 @@ export interface WebLiveClient extends HarnessClientUiPort {
   suspend(): Promise<() => void>;
 }
 
+export function clientDirectoryControls(connectionId?: string) {
+  if (!isTauri() || !connectionId || connectionId === "local"
+    || !["linux", "windows", "macos"].includes(platform())) return undefined;
+
+  const pickClientDirectory: DirectoryPicker = async (labels) => {
+    const value = await invoke<{ id: string; name: string } | null>("pick_client_directory", { connectionId, ...labels });
+    if (value && (!/^[a-f0-9]{32}$/.test(value.id) || !value.name)) throw new Error("resource_unavailable");
+    return value ? { grantId: value.id, name: value.name } satisfies ClientDirectoryDraft : null;
+  };
+  return {
+    pickClientDirectory,
+    async revokeClientDirectory(id: string) {
+      const value = await webRequest<{ removed: boolean }>({ operation: "revoke-client-directory", id }, connectionId);
+      return value.removed;
+    },
+  };
+}
+
 export function createWebLiveClient(workspace: string, connectionId?: string): WebLiveClient {
   const listeners = new Set<(snapshot: ClientSnapshot) => void>();
   const connections = new Set<(state: "disconnected" | "resync-required") => void>();
@@ -99,13 +117,7 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
     return result;
   }
 
-  const allowClientDirectories = isTauri() && Boolean(connectionId && connectionId !== "local")
-    && ["linux", "windows", "macos"].includes(platform());
-  const pickClientDirectory: DirectoryPicker = async (labels) => {
-    const value = await invoke<{ id: string; name: string } | null>("pick_client_directory", { connectionId, ...labels });
-    if (value && (!/^[a-f0-9]{32}$/.test(value.id) || !value.name)) throw new Error("resource_unavailable");
-    return value ? { grantId: value.id, name: value.name } satisfies ClientDirectoryDraft : null;
-  };
+  const clientDirectories = clientDirectoryControls(connectionId);
   const pageHidden = () => { void close(); };
   return {
     snapshot: refresh,
@@ -212,14 +224,10 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
         return unknown;
       }
     },
-    ...(allowClientDirectories ? {
-      pickClientDirectory,
+    ...(clientDirectories ? {
+      ...clientDirectories,
       async referenceClientDirectory(sessionId: string, grantId: string) {
         return resourceResult(await call("client-directory-reference", { sessionId, grantId }));
-      },
-      async revokeClientDirectory(id: string) {
-        const value = await webRequest<{ removed: boolean }>({ operation: "revoke-client-directory", id }, connectionId);
-        return value.removed;
       },
     } : {}),
     async sessionResource(sessionId, query) {
