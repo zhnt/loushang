@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, cast
 from loushang.ai.model import normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
+from loushang.apphost.integrations._canonical_transcript_catalog import (
+    session_identity_matches_open,
+)
 from loushang.apphost.integrations.session_control import (
     _ExecutionSessionServiceAdapter,
 )
@@ -65,7 +68,6 @@ def _admit_execution_projection(
     """
     from .application import (
         CodingAppHostHostedSessionResolverV1,
-        _identity_matches_open,
         _LeasedCodingHostedBinding,
     )
 
@@ -82,7 +84,7 @@ def _admit_execution_projection(
             or not resolver.admits(request)
             or owner.identity != replace(original, scope=request.scope,
                                         scope_fingerprint=request.scope_fingerprint)
-            or not _identity_matches_open(request, owner.identity)
+            or not session_identity_matches_open(request, owner.identity)
             or owner._execution_projection is not None or owner._close_task is not None):
         raise ValueError("invalid managed execution projection")
     owner._execution_projection = (

@@ -8,8 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
+from loushang.apphost._ownership import _settle_owned_closes
 from loushang.apphost.application import _method_descriptor
 from loushang.apphost.contracts import (
     AppHostSessionLeaseV1,
@@ -17,9 +21,11 @@ from loushang.apphost.contracts import (
     ProductProfileBindingV1,
     ScopedProductRuntimeV1,
     SessionBindingKeyV1,
+    SessionCreateRequestV1,
+    SessionIdentityCatalogPortV1,
 )
 from loushang.apphost.runtime import AppHostRuntimeV1, _BoundProfileView
-from loushang.appserver.protocol import SessionIdentityV1
+from loushang.appserver.protocol import SessionIdentityV1, SessionOpenSpecV1
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.runtime import await_owned_task
 from loushang.harness.runtime._owned_tasks import (
@@ -28,6 +34,11 @@ from loushang.harness.runtime._owned_tasks import (
 )
 from loushang.harness.session import SessionControlPort
 
+from ._canonical_transcript_catalog import (
+    _WorkspaceTranscriptCatalogMethods,
+    canonical_discovery_scope,
+    session_identity_matches_open,
+)
 from .session_control import (
     EventT,
     SnapshotT,
@@ -35,6 +46,7 @@ from .session_control import (
     _HostedBinding,
     _SnapshotProjection,
     _validate_foreground_binding,
+    canonical_resume_reference,
 )
 
 BindingT = TypeVar(
@@ -95,6 +107,23 @@ class _LeasedForegroundBindingMethods(Generic[SnapshotT, EventT]):
     _runtime: AppHostRuntimeV1
     _runtime_closed: bool
 
+    def __init__(
+        self,
+        *,
+        runtime: AppHostRuntimeV1,
+        lease: AppHostSessionLeaseV1,
+        binding: _HostedBinding[SnapshotT, EventT],
+        identity: SessionIdentityV1 | None = None,
+    ) -> None:
+        self._runtime = runtime
+        self._lease = lease
+        self._binding = binding
+        self._identity = identity
+        self._lease_closed = False
+        self._runtime_closed = False
+        self._close_lock = asyncio.Lock()
+        self._close_task = None
+
     @property
     def identity(self) -> SessionIdentityV1:
         return self._binding.identity if self._identity is None else self._identity
@@ -128,6 +157,116 @@ class _LeasedForegroundBindingMethods(Generic[SnapshotT, EventT]):
         if not self._runtime_closed:
             await self._runtime.close_session(self._lease.binding_key)
             self._runtime_closed = True
+
+
+async def attach_canonical_foreground_session(
+    runtime: AppHostRuntimeV1,
+    request: SessionOpenSpecV1,
+    *,
+    sessions: SessionIdentityCatalogPortV1,
+    workspace_catalog: _WorkspaceTranscriptCatalogMethods[Any] | None,
+    profile_id: str,
+    operation_id_factory: Callable[[], str],
+    limit: int,
+    missing_is_authoritative: bool,
+    label: str,
+) -> AppHostSessionLeaseV1:
+    """Attach through the canonical candidate route after Product scope admission."""
+    if request.session_id is None:
+        operation_id = operation_id_factory()
+        return await runtime.attach_create(
+            SessionCreateRequestV1(
+                product_id=request.product_id,
+                creator_scope_id=request.scope_fingerprint,
+                operation_id=operation_id,
+                requested_continuity_id=request.continuity_id,
+                requested_scope=canonical_discovery_scope(request.scope),
+            ),
+            profile_id=profile_id,
+        )
+    scope = canonical_discovery_scope(request.scope)
+    if workspace_catalog is None:
+        projections = await sessions.list_identities((scope,), limit=limit)
+    else:
+        projections = await workspace_catalog.workspace_identities(
+            request.scope_fingerprint,
+            scope,
+            limit=limit,
+        )
+    reference = canonical_resume_reference(
+        request,
+        projections,
+        scope=scope,
+        limit=limit,
+        missing_is_authoritative=missing_is_authoritative,
+        label=label,
+    )
+    return await runtime.attach_resume(
+        product_id=request.product_id,
+        reference=reference,
+        profile_id=profile_id,
+    )
+
+
+LeasedBindingT = TypeVar(
+    "LeasedBindingT", bound=_LeasedForegroundBindingMethods[Any, Any]
+)
+
+
+@asynccontextmanager
+async def bind_foreground_session_lease(
+    runtime: AppHostRuntimeV1,
+    lease: AppHostSessionLeaseV1,
+    request: SessionOpenSpecV1,
+    *,
+    owner_type: type[LeasedBindingT],
+    managed_selection: bool,
+    after_cleanup: Callable[[], None],
+    cleanup_error: str,
+    label: str,
+) -> AsyncIterator[LeasedBindingT]:
+    """Validate and transfer one lease or settle both owners on failed delivery."""
+    owner: LeasedBindingT | None = None
+    try:
+        binding = lease.profile_binding
+        _validate_foreground_binding(binding, lease.binding_key, label=label)
+        binding = cast(_HostedBinding[Any, Any], binding)
+        original = binding.identity
+        identity = None
+        if managed_selection:
+            if (
+                original.product_id != request.product_id
+                or original.continuity_id != request.continuity_id
+                or (
+                    request.session_id is not None
+                    and original.session_id != request.session_id
+                )
+            ):
+                raise ValueError("managed canonical identity mismatch")
+            # AppHost keeps the canonical identity and projects only the admitted scope.
+            identity = replace(
+                original,
+                scope=request.scope,
+                scope_fingerprint=request.scope_fingerprint,
+            )
+        owner = owner_type(
+            runtime=runtime, lease=lease, binding=binding, identity=identity
+        )
+        if not session_identity_matches_open(request, owner.identity):
+            raise ValueError(f"{label} hosted binding identity mismatch")
+        yield owner
+    except BaseException:
+        if owner is None:
+            await _settle_owned_closes(
+                lambda: lease.close(),
+                lambda: runtime.close_session(lease.binding_key),
+                failure=RuntimeError(cleanup_error),
+                join_owned=await_owned_task,
+            )
+        else:
+            await owner.close()
+        after_cleanup()
+        raise
 
 
 class _ForegroundSessionOwner(Generic[BindingT]):

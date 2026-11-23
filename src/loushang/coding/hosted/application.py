@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from secrets import token_hex
 from typing import Protocol, cast
 
@@ -26,8 +25,6 @@ from loushang.apphost import (
     ProfileLeaseV1,
     ProfileRegistrationV1,
     SessionBindingKeyV1,
-    SessionCreateRequestV1,
-    SessionDiscoveryScope,
     SessionIdentityCatalogPortV1,
 )
 from loushang.apphost import (
@@ -38,7 +35,6 @@ from loushang.apphost import (
 )
 from loushang.apphost._ownership import (
     _construct_product_apphost,
-    _settle_owned_closes,
 )
 from loushang.apphost.application import (
     HostedApplicationActivationV1,
@@ -47,22 +43,19 @@ from loushang.apphost.application import (
     _method_descriptor,
     create_hosted_application_runtime,
 )
-from loushang.apphost.integrations._canonical_transcript_catalog import (
-    session_identity_matches_open as _identity_matches_open,
-)
 from loushang.apphost.integrations.session_control import (
     _validate_foreground_binding,
-    canonical_resume_reference,
 )
 from loushang.apphost.integrations.session_product import (
     _BorrowedProfileLease,
     _ForegroundProductFactory,
     _LeasedForegroundBindingMethods,
+    attach_canonical_foreground_session,
+    bind_foreground_session_lease,
 )
 from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionOpenSpecV1,
-    SessionScopeV1,
 )
 from loushang.appservice import HostedSessionPortV1
 from loushang.appservice.discovery_ports import (
@@ -287,15 +280,9 @@ class _LeasedCodingHostedBinding(
         binding: CodingHostedSessionBindingV1,
         identity: SessionIdentityV1 | None = None,
     ) -> None:
-        self._runtime = runtime
-        self._lease = lease
-        self._binding = binding
-        self._identity = identity
+        super().__init__(runtime=runtime, lease=lease, binding=binding, identity=identity)
         self._execution_projection: tuple[object, ...] | None = None
-        self._lease_closed = False
-        self._runtime_closed = False
-        self._close_lock = asyncio.Lock()
-        self._close_task: asyncio.Task[None] | None = None
+
 
 class CodingAppHostHostedSessionResolverV1:
     """Resolve G11 Session requests exclusively through canonical AppHost routes."""
@@ -358,10 +345,19 @@ class CodingAppHostHostedSessionResolverV1:
                 raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
             self._method_used = True
         try:
-            lease = (
-                await self._attach_create(request)
-                if request.session_id is None
-                else await self._attach_resume(request)
+            from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
+
+            sessions = self._sessions
+            lease = await attach_canonical_foreground_session(
+                self._runtime,
+                request,
+                sessions=sessions,
+                workspace_catalog=sessions if type(sessions) is CodingWorkspaceCatalog else None,
+                profile_id=self._profile_id,
+                operation_id_factory=self._operation_id,
+                limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
+                missing_is_authoritative=self._scopes is not None,
+                label="Coding",
             )
         except BaseException:
             self._method_used = False
@@ -373,28 +369,17 @@ class CodingAppHostHostedSessionResolverV1:
             # Detach only this rejected lease; never close the original owner.
             await lease.close()
             raise ValueError("Coding Session already has an execution owner")
-        wrapper: _LeasedCodingHostedBinding | None = None
-        try:
-            binding = lease.profile_binding
-            _validate_hosted_binding(binding, lease.binding_key)
-            identity = cast(CodingHostedSessionBindingV1, binding).identity
-            if self._managed_selection:
-                if (identity.product_id != request.product_id
-                        or identity.continuity_id != request.continuity_id
-                        or (request.session_id is not None and identity.session_id != request.session_id)):
-                    raise ValueError("managed canonical identity mismatch")
-                # Only the lease's wire view changes. Catalog admission already
-                # validated selection scope; Product/runtime/writer identities
-                # and the original header remain canonical.
-                identity = replace(identity, scope=request.scope, scope_fingerprint=request.scope_fingerprint)
-            wrapper = _LeasedCodingHostedBinding(
-                runtime=self._runtime,
-                lease=lease,
-                binding=cast(CodingHostedSessionBindingV1, binding),
-                identity=identity if self._managed_selection else None,
-            )
-            if not _identity_matches_open(request, wrapper.identity):
-                raise ValueError("Coding hosted binding identity mismatch")
+        async with bind_foreground_session_lease(
+            self._runtime,
+            lease,
+            request,
+            owner_type=_LeasedCodingHostedBinding,
+            managed_selection=self._managed_selection,
+            after_cleanup=self._reset_method_attempt,
+            cleanup_error="coding_foreground_cleanup_incomplete",
+            label="Coding",
+        ) as wrapper:
+            binding = cast(CodingHostedSessionBindingV1, wrapper._binding)
             if self._goal is not None:
                 from loushang.coding.hosted.goal import CodingHostedGoalSessionV1
 
@@ -417,65 +402,9 @@ class CodingAppHostHostedSessionResolverV1:
                     _admit_execution_projection(wrapper, self, request)
                 return create_leased_coding_execution_session(binding, wrapper)
             return CodingHostedSessionV1(wrapper)
-        except BaseException:
-            if wrapper is not None:
-                await wrapper.close()
-            else:
-                runtime = self._runtime
-                await _settle_owned_closes(
-                    lambda: lease.close(),
-                    lambda: runtime.close_session(lease.binding_key),
-                    failure=RuntimeError("coding_foreground_cleanup_incomplete"),
-                    join_owned=await_owned_task,
-                )
-            self._method_used = False
-            raise
 
-    async def _attach_create(
-        self,
-        request: SessionOpenSpecV1,
-    ) -> AppHostSessionLeaseV1:
-        operation_id = self._operation_id()
-        return await self._runtime.attach_create(
-            SessionCreateRequestV1(
-                product_id=CODING_PRODUCT_ID,
-                creator_scope_id=request.scope_fingerprint,
-                operation_id=operation_id,
-                requested_continuity_id=request.continuity_id,
-                requested_scope=_apphost_scope(request.scope),
-            ),
-            profile_id=self._profile_id,
-        )
-
-    async def _attach_resume(
-        self,
-        request: SessionOpenSpecV1,
-    ) -> AppHostSessionLeaseV1:
-        scope = _apphost_scope(request.scope)
-        from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
-
-        catalog = self._sessions
-        if type(catalog) is CodingWorkspaceCatalog:
-            projections = await catalog.workspace_identities(
-                request.scope_fingerprint, scope, limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
-            )
-        else:
-            projections = await catalog.list_identities(
-                (scope,), limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
-            )
-        reference = canonical_resume_reference(
-            request,
-            projections,
-            scope=scope,
-            limit=CODING_HOSTED_APPLICATION_MAX_CANDIDATES,
-            missing_is_authoritative=self._scopes is not None,
-            label="Coding",
-        )
-        return await self._runtime.attach_resume(
-            product_id=CODING_PRODUCT_ID,
-            reference=reference,
-            profile_id=self._profile_id,
-        )
+    def _reset_method_attempt(self) -> None:
+        self._method_used = False
 
 
 async def create_coding_foreground_hosted_application(
@@ -619,14 +548,6 @@ def _require_managed_selection(
         HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint) for scope in sessions.scopes
     ):
         raise ValueError("managed selection requires the exact owned canonical catalog and scopes")
-
-
-def _apphost_scope(scope: SessionScopeV1) -> SessionDiscoveryScope:
-    return (
-        SessionDiscoveryScope.CURRENT_DIRECTORY
-        if scope is SessionScopeV1.CWD
-        else SessionDiscoveryScope.USER_GLOBAL_CANONICAL
-    )
 
 
 def _require_async_method(value: object, name: str) -> None:
