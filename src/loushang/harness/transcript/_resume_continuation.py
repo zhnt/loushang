@@ -12,15 +12,20 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
+from pathlib import Path
 from typing import ClassVar, Generic, Literal, NamedTuple, Protocol, Self, TypeVar
 
 from loushang.ai.types import UserMessage
 from loushang.foundation.json import JSONValue, require_json_mapping
-from loushang.harness.conversation import ConversationRecord, StoreCommitOutcomeUnknown
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationRecord,
+    StoreCommitOutcomeUnknown,
+)
+from loushang.harness.journal._owned_io import settled_io
 
 from ._resume_records import _HistoricalBinding, select_input_record
 from .committer import CommitResult, PrebuiltUserMessageLookupResult
-from .lifecycle import AgentTranscriptLifecycleContext
 from .product_session import BindingInputT, ProductBindingT, ProductTranscriptSession
 from .session_factory import AgentTranscriptSessionFactory
 from .types import AgentTranscriptRecord, ExtensionData
@@ -59,11 +64,37 @@ class _ResumePlanRead(Protocol):
     @property
     def ancestry_digest(self) -> str | None: ...
 
+    @property
+    def status(self) -> str: ...
+
+    @property
+    def workspace_root(self) -> str: ...
+
+
+class _ResumeHistoryHeader(Protocol):
+    @property
+    def header(self) -> ConversationHeader: ...
+
+
+class _ResumeWriterHistory(Protocol):
+    @property
+    def header_preview(self) -> _ResumeHistoryHeader: ...
+
+    @property
+    def records(self) -> tuple[AgentTranscriptRecord, ...]: ...
+
+    @property
+    def selected_leaf_id(self) -> str | None: ...
+
+    @property
+    def selected_records(self) -> tuple[AgentTranscriptRecord, ...]: ...
+
 
 IntentT = TypeVar("IntentT", bound=_ResumeIntentRead)
 IntentCo = TypeVar("IntentCo", bound=_ResumeIntentRead, covariant=True)
 BindingT = TypeVar("BindingT")
 PlanT = TypeVar("PlanT", bound=_ResumePlanRead)
+WriterHistoryT = TypeVar("WriterHistoryT", bound=_ResumeWriterHistory)
 
 
 class _ResumeProjection(Protocol[IntentCo]):
@@ -207,6 +238,7 @@ class _ResumeContinuationTranscript(
     _resume_history: _ResumeHistory[IntentT]
     _resume_recovery_error: ClassVar[type[RuntimeError]]
     _resume_label: ClassVar[str]
+    _resume_writer_capabilities: ClassVar[frozenset[str]] = frozenset()
 
     _resume_first_input: _ResumePendingInput[IntentT, BindingT] | None = None
     _resume_runtime_publication_pending: bool = False
@@ -229,19 +261,62 @@ class _ResumeContinuationTranscript(
         raise NotImplementedError("The Product must classify neutral records")
 
     @classmethod
-    async def _restore_verified_resume_writer(
+    def _require_resume_writer_capabilities(
+        cls, required_writer_capabilities: frozenset[str]
+    ) -> None:
+        """Negotiate wire support without acquiring or reading a source."""
+        if type(required_writer_capabilities) is not frozenset or any(
+            type(item) is not str for item in required_writer_capabilities
+        ):
+            raise TypeError("Resume Writer capabilities require exact strings")
+        if not required_writer_capabilities <= cls._resume_writer_capabilities:
+            raise cls._resume_recovery_error("writer.resume_protocol_unsupported")
+
+    @classmethod
+    async def _load_verified_resume_writer(
         cls,
-        factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT],
-        context: AgentTranscriptLifecycleContext,
-        binding: BindingInputT,
+        session_file: str | Path,
         *,
         plan: PlanT,
-        records: tuple[AgentTranscriptRecord, ...],
-        selected_leaf_id: str | None,
-        selected_records: tuple[AgentTranscriptRecord, ...],
+        plan_type: type[PlanT],
+        required_writer_capabilities: frozenset[str],
+        factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT] | None,
+        require_plan_inputs: Callable[[], None],
+        read_history: Callable[[Path], WriterHistoryT],
+        require_plan_source: Callable[[WriterHistoryT], None],
+        rebuild_plan: Callable[[WriterHistoryT], PlanT],
+        validate_historical_header: Callable[
+            [ConversationHeader, BindingInputT, bool], None
+        ],
         stale_error: type[ValueError],
     ) -> Self:
-        """Check the acquired Writer's branch before the factory hands it off."""
+        """Acquire the original Writer only after matching its read-only evidence."""
+        cls._require_resume_writer_capabilities(required_writer_capabilities)
+        if factory is None:
+            factory = cls._factory_for_persistence(True)
+        label = f"{cls._resume_label} Writer"
+        if not isinstance(factory, AgentTranscriptSessionFactory):
+            raise TypeError(f"{label} factory is invalid")
+        if not factory.owns_persistent_sessions:
+            raise ValueError(f"{label} requires its application-owned factory")
+        if not isinstance(plan, plan_type) or plan.status != "needs_final_validation":
+            raise ValueError(f"{label} requires an available activation Plan")
+        require_plan_inputs()
+        context = factory._discover_owned_context(session_file)
+        history = await settled_io(read_history, context.session_file)
+        require_plan_source(history)
+        if (
+            context.header != history.header_preview.header
+            or context.cwd != plan.workspace_root
+            or rebuild_plan(history) != plan
+        ):
+            raise stale_error(f"{label} Plan differs from current history")
+
+        binding = factory._resolve_binding_input(True)
+        validate_historical_header(context.header, binding, False)
+        records = history.records
+        selected_leaf_id = history.selected_leaf_id
+        selected_records = history.selected_records
 
         def prepare(writer: Self) -> None:
             writer._resume_runtime_publication_pending = True

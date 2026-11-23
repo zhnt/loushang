@@ -30,9 +30,8 @@ from loushang.coding.resume.composition_comparison import (
 from loushang.coding.resume.history import CodingResumeHistoryPreview
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.session._resume_continuation import (
-    activation_plan_fingerprint,
     checked_activation_plan_owner_refs,
-    require_activation_plan_source,
+    project_activation_plan_identity,
     require_activation_plan_workspace_root,
 )
 
@@ -150,42 +149,11 @@ def build_session_activation_plan(
     comparison = compare_coding_resume_composition(
         history, current_composition
     )
-    session_id = history.header_preview.header.conversation_id
-    require_activation_plan_source(history, session_id=session_id)
-    status: Literal["needs_final_validation", "unavailable"] = (
-        "unavailable"
-        if comparison.status == "unavailable"
-        else "needs_final_validation"
-    )
-    if status == "needs_final_validation":
-        projection = project_coding_activation_attempt_path_v2(
-            history.selected_records,
-            current_session_id=session_id,
-        )
-        if (
-            projection.ancestry_digest != history.selected_ancestry_digest
-            or projection.binding_status != history.binding_status
-            or projection.binding != history.binding
-            or projection.status != history.activation_status
-            or projection.attempt != history.pending_activation_attempt
-            or projection.record_id != history.pending_activation_record_id
-            or (
-                history.selected_records[-1].record_id
-                if history.selected_records
-                else None
-            )
-            != history.selected_leaf_id
-        ):
-            raise ValueError("activation Plan selected history facts differ")
-    identity = {
-        "schemaVersion": 1,
-        "sessionId": session_id,
-        "selectedLeafId": history.selected_leaf_id,
-        "sourceFingerprint": history.source_fingerprint,
-        "sourceContentDigest": history.source_content_digest,
-        "ancestryDigest": history.selected_ancestry_digest,
-        "workspaceRoot": str(workspace_root),
-        "composition": {
+    identity = project_activation_plan_identity(
+        history,
+        session_id=history.header_preview.header.conversation_id,
+        workspace_root=workspace_root,
+        comparison={
             "originSetId": comparison.origin.set_id if comparison.origin else None,
             "originFingerprint": (
                 comparison.origin.plan_fingerprint if comparison.origin else None
@@ -196,38 +164,18 @@ def build_session_activation_plan(
             "differenceCodes": list(comparison.difference_codes),
             "reasonCodes": list(comparison.reason_codes),
         },
-        "ownerSelections": [
-            {
-                "ownerId": item.owner_id,
-                "fingerprint": item.fingerprint,
-                "generation": item.generation,
-            }
-            for item in selections
-        ],
-        "ownerInputs": [
-            {"ownerId": item.owner_id, "fingerprint": item.fingerprint}
-            for item in inputs
-        ],
-        "status": status,
-    }
-    plan_id = activation_plan_fingerprint(
-        identity,
+        inputs=inputs,
+        selections=selections,
+        project_path=project_coding_activation_attempt_path_v2,
         digest_domain=_PLAN_DIGEST_DOMAIN,
-        name=_PLAN_LABEL,
+        label=_PLAN_LABEL,
         max_bytes=_ACTIVATION_PLAN_MAX_BYTES,
     )
     return SessionActivationPlanV1(
-        plan_id=plan_id,
-        session_id=session_id,
-        selected_leaf_id=history.selected_leaf_id,
-        source_fingerprint=history.source_fingerprint,
-        source_content_digest=history.source_content_digest,
-        ancestry_digest=history.selected_ancestry_digest,
-        workspace_root=str(workspace_root),
+        **identity,
         composition_comparison=comparison,
         owner_inputs=inputs,
         owner_selections=selections,
-        status=status,
     )
 
 

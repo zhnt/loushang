@@ -16,7 +16,17 @@ from dataclasses import replace
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, ClassVar, Generic, Protocol, Self, TypeVar, cast
+from typing import (
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    Self,
+    TypedDict,
+    TypeVar,
+    cast,
+)
 
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.types import ImagePart, UserMessage
@@ -28,8 +38,10 @@ from loushang.harness.authorization import (
 from loushang.harness.transcript._resume_continuation import (
     _ResumeContinuationTranscript,
     _ResumeIntentRead,
+    _ResumeProjector,
 )
 from loushang.harness.transcript._resume_records import canonical_binding_bytes
+from loushang.harness.transcript.types import AgentTranscriptRecord
 
 from .agent_product import AgentProductSession
 
@@ -37,10 +49,12 @@ IntentT = TypeVar("IntentT", bound=_ResumeIntentRead)
 IntentCo = TypeVar("IntentCo", bound=_ResumeIntentRead, covariant=True)
 
 
-
 class _ActivationOwnerRef(Protocol):
     @property
     def owner_id(self) -> str: ...
+
+    @property
+    def fingerprint(self) -> str: ...
 
 
 _RefT = TypeVar("_RefT", bound=_ActivationOwnerRef)
@@ -120,6 +134,113 @@ def activation_plan_fingerprint(
     if len(encoded) > max_bytes:
         raise ValueError("activation Plan exceeds its byte budget")
     return sha256(digest_domain + encoded).hexdigest()
+
+
+class _ActivationSelectionRef(_ActivationOwnerRef, Protocol):
+    @property
+    def generation(self) -> str: ...
+
+
+class _ActivationPlanHistory(_ActivationPlanSource, Protocol):
+    @property
+    def selected_records(self) -> tuple[AgentTranscriptRecord, ...]: ...
+
+    @property
+    def binding_status(self) -> str: ...
+
+    @property
+    def binding(self) -> object: ...
+
+    @property
+    def activation_status(self) -> str: ...
+
+    @property
+    def pending_activation_attempt(self) -> object: ...
+
+    @property
+    def pending_activation_record_id(self) -> str | None: ...
+
+
+class _ActivationPlanIdentity(TypedDict):
+    plan_id: str
+    session_id: str
+    selected_leaf_id: str | None
+    source_fingerprint: str
+    source_content_digest: str
+    ancestry_digest: str | None
+    workspace_root: str
+    status: Literal["needs_final_validation", "unavailable"]
+
+
+def project_activation_plan_identity(
+    history: _ActivationPlanHistory,
+    *,
+    session_id: str,
+    workspace_root: Path,
+    comparison: dict[str, object],
+    inputs: Sequence[_ActivationOwnerRef],
+    selections: Sequence[_ActivationSelectionRef],
+    project_path: _ResumeProjector[_ResumeIntentRead],
+    digest_domain: bytes,
+    label: str,
+    max_bytes: int,
+) -> _ActivationPlanIdentity:
+    """Authenticate the selected path and fingerprint the bounded Plan envelope."""
+    require_activation_plan_source(history, session_id=session_id)
+    unavailable = comparison["status"] == "unavailable"
+    status: Literal["needs_final_validation", "unavailable"] = (
+        "unavailable" if unavailable else "needs_final_validation"
+    )
+    if not unavailable:
+        selected = history.selected_records
+        projection = project_path(selected, current_session_id=session_id)
+        if (
+            projection.ancestry_digest != history.selected_ancestry_digest
+            or projection.binding_status != history.binding_status
+            or projection.binding != history.binding
+            or projection.status != history.activation_status
+            or projection.attempt != history.pending_activation_attempt
+            or projection.record_id != history.pending_activation_record_id
+            or (selected[-1].record_id if selected else None)
+            != history.selected_leaf_id
+        ):
+            raise ValueError("activation Plan selected history facts differ")
+
+    document = {
+        "schemaVersion": 1,
+        "sessionId": session_id,
+        "selectedLeafId": history.selected_leaf_id,
+        "sourceFingerprint": history.source_fingerprint,
+        "sourceContentDigest": history.source_content_digest,
+        "ancestryDigest": history.selected_ancestry_digest,
+        "workspaceRoot": str(workspace_root),
+        "composition": comparison,
+        "ownerSelections": [
+            {
+                "ownerId": item.owner_id,
+                "fingerprint": item.fingerprint,
+                "generation": item.generation,
+            }
+            for item in selections
+        ],
+        "ownerInputs": [
+            {"ownerId": item.owner_id, "fingerprint": item.fingerprint}
+            for item in inputs
+        ],
+        "status": status,
+    }
+    return _ActivationPlanIdentity(
+        plan_id=activation_plan_fingerprint(
+            document, digest_domain=digest_domain, name=label, max_bytes=max_bytes
+        ),
+        session_id=session_id,
+        selected_leaf_id=history.selected_leaf_id,
+        source_fingerprint=history.source_fingerprint,
+        source_content_digest=history.source_content_digest,
+        ancestry_digest=history.selected_ancestry_digest,
+        workspace_root=str(workspace_root),
+        status=status,
+    )
 
 
 def resume_execution_scope(

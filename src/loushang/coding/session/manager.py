@@ -77,7 +77,6 @@ from loushang.harness.conversation import (
     ConversationHeader,
     ConversationRecord,
 )
-from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import (
     SIDE_QUESTION_PROVIDER_SLOT,
     ResolvedRuntimeProfile,
@@ -112,7 +111,6 @@ from loushang.harness.transcript.product_session import (
 from loushang.harness.transcript.session_factory import SessionFileFactory
 from loushang.harness.transcript.types import ExtensionData
 
-_RESUME_WRITER_LABEL = "Coding Resume Writer"
 _RESUME_WRITER_CAPABILITIES = frozenset({"coding.resume-continuation/v2"})
 
 
@@ -319,6 +317,7 @@ class SessionManager(
     _resume_history = _CodingResumeHistory()
     _resume_recovery_error = CodingResumeRecoveryRequired
     _resume_label = "Coding Resume"
+    _resume_writer_capabilities = _RESUME_WRITER_CAPABILITIES
 
     def _require_ordinary_input_policy(self, message: object) -> None:
         if (
@@ -332,19 +331,6 @@ class SessionManager(
                 "Coding Session composition startup is not prepared; "
                 "prepare the Session before committing input"
             )
-
-    @classmethod
-    def _require_resume_writer_capabilities(
-        cls, required_writer_capabilities: frozenset[str]
-    ) -> None:
-        """Negotiate Transcript wire support without acquiring or reading a source."""
-
-        if type(required_writer_capabilities) is not frozenset or any(
-            type(item) is not str for item in required_writer_capabilities
-        ):
-            raise TypeError("Resume Writer capabilities require exact strings")
-        if not required_writer_capabilities <= _RESUME_WRITER_CAPABILITIES:
-            raise CodingResumeRecoveryRequired("writer.resume_protocol_unsupported")
 
     @classmethod
     async def _load_resume_writer(
@@ -367,34 +353,25 @@ class SessionManager(
         The activation coordinator must still admit owners and publish Runtime.
         """
 
-        cls._require_resume_writer_capabilities(required_writer_capabilities)
-        factory = _factory
-        if factory is None:
-            factory = cls._factory_for_persistence(True)
-        label = _RESUME_WRITER_LABEL
-        if not isinstance(factory, AgentTranscriptSessionFactory):
-            raise TypeError(f"{label} factory is invalid")
-        if not factory.owns_persistent_sessions:
-            raise ValueError(f"{label} requires its application-owned factory")
-        if (
-            not isinstance(plan, SessionActivationPlanV1)
-            or plan.status != "needs_final_validation"
-        ):
-            raise ValueError(f"{label} requires an available activation Plan")
-        require_current_resume_plan_inputs(plan, current_owner_inputs)
-        context = factory._discover_owned_context(session_file)
-        history = await settled_io(
-            read_coding_resume_snapshot,
-            context.session_file,
-            max_bytes=MAX_CODING_RESUME_HISTORY_BYTES,
-            selected_leaf_id=plan.selected_leaf_id,
-            expected_source_fingerprint=plan.source_fingerprint,
-        )
-        require_current_resume_plan_source(plan, history)
-        if (
-            context.header != history.header_preview.header
-            or context.cwd != plan.workspace_root
-            or build_session_activation_plan(
+        return await cls._load_verified_resume_writer(
+            session_file,
+            plan=plan,
+            plan_type=SessionActivationPlanV1,
+            required_writer_capabilities=required_writer_capabilities,
+            factory=_factory,
+            require_plan_inputs=lambda: require_current_resume_plan_inputs(
+                plan, current_owner_inputs
+            ),
+            read_history=lambda path: read_coding_resume_snapshot(
+                path,
+                max_bytes=MAX_CODING_RESUME_HISTORY_BYTES,
+                selected_leaf_id=plan.selected_leaf_id,
+                expected_source_fingerprint=plan.source_fingerprint,
+            ),
+            require_plan_source=lambda history: require_current_resume_plan_source(
+                plan, history
+            ),
+            rebuild_plan=lambda history: build_session_activation_plan(
                 history,
                 resolve_coding_composition_set(
                     plan.composition_comparison.candidate_set_id
@@ -402,22 +379,8 @@ class SessionManager(
                 workspace_root=Path(plan.workspace_root),
                 owner_inputs=plan.owner_inputs,
                 owner_selections=plan.owner_selections,
-            )
-            != plan
-        ):
-            raise ResumePlanStaleError(f"{label} Plan differs from current history")
-        binding = factory._resolve_binding_input(True)
-        # Historical identity must still match. Epoch equality belongs to the new binding.
-        _validate_coding_restored_header(context.header, binding, False)
-
-        return await cls._restore_verified_resume_writer(
-            factory,
-            context,
-            binding,
-            plan=plan,
-            records=history.records,
-            selected_leaf_id=history.selected_leaf_id,
-            selected_records=history.selected_records,
+            ),
+            validate_historical_header=_validate_coding_restored_header,
             stale_error=ResumePlanStaleError,
         )
 
