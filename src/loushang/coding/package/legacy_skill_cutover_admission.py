@@ -12,6 +12,9 @@ from loushang.harness.package_product._legacy_data_admission import (
     LegacyDataSnapshotAdmission,
     verify_legacy_data_wheels,
 )
+from loushang.harness.package_product._legacy_runtime import (
+    guard_legacy_snapshot_admission,
+)
 from loushang.harness.plugin_authoring.resource_item import (
     _inspect_legacy_local_data_wheel,
 )
@@ -129,7 +132,11 @@ def admit_coding_single_legacy_skill_snapshot(
         raise ValueError("Coding legacy Plugin identity is required")
     if resource_kind not in _RESOURCE_REFUSAL_CODES:
         raise ValueError("Unsupported legacy Resource type")
-    try:
+    with guard_legacy_snapshot_admission(
+        "Coding legacy data snapshot cannot be admitted before first fence",
+        code=_RESOURCE_REFUSAL_CODES[resource_kind],
+        extra_errors=(KeyError, zipfile.BadZipFile),
+    ):
         evidence = _data_snapshot_admission(lifecycle).before_fence(
             prepared.owner,
             snapshot,
@@ -148,13 +155,6 @@ def admit_coding_single_legacy_skill_snapshot(
             required_kind=resource_kind,
             result_factory=_new_wheel_candidate,
         )
-    except PackagePosixEpochCutoverError:
-        raise
-    except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile) as exc:
-        raise PackagePosixEpochCutoverError(
-            "Coding legacy data snapshot cannot be admitted before first fence",
-            code=_RESOURCE_REFUSAL_CODES[resource_kind],
-        ) from exc
 
 
 def require_coding_fenced_single_legacy_skill_snapshot(

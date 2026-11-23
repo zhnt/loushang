@@ -16,6 +16,7 @@ from loushang.harness.package_product._legacy_removed_review import (
     LegacyRemovalSnapshot,
 )
 from loushang.harness.package_product._legacy_runtime import (
+    guard_legacy_snapshot_admission,
     legacy_review_fence_identity,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
@@ -165,7 +166,10 @@ def admit_coding_removed_local_snapshot(
 ) -> None:
     """Check the entire old removal set before the first irreversible fence."""
 
-    try:
+    with guard_legacy_snapshot_admission(
+        "Coding removed local snapshot cannot be admitted before first fence",
+        code="coding_legacy_removed_snapshot_refused",
+    ):
         classification = prepared.legacy_classification
         capture = LegacyRemovalSnapshot.before_fence(
             prepared.owner,
@@ -183,13 +187,6 @@ def admit_coding_removed_local_snapshot(
                 "Old removal preparation requires no active local Installation"
             )
         _require_supported_disabled_plugins(classification.disabled_plugins, facts)
-    except PackagePosixEpochCutoverError:
-        raise
-    except (OSError, ValueError, TypeError) as exc:
-        raise PackagePosixEpochCutoverError(
-            "Coding removed local snapshot cannot be admitted before first fence",
-            code="coding_legacy_removed_snapshot_refused",
-        ) from exc
 
 
 def review_coding_first_b_removed_local(

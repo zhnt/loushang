@@ -96,6 +96,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 
 from ._application_runtime import (
     FencedOrdinaryProductApplication,
+    handoff_product_open,
     hold_accepted_product_adoption,
 )
 from ._legacy_inventory import (
@@ -187,6 +188,20 @@ class _FirstAcceptanceReview(Protocol):
 
 
 _FirstReviewT = TypeVar("_FirstReviewT", bound=_FirstAcceptanceReview)
+_ReviewResultT = TypeVar("_ReviewResultT", bound=_FirstAcceptanceReview, covariant=True)
+_ReviewLayoutT = TypeVar("_ReviewLayoutT", contravariant=True)
+_ReviewRuntimeT = TypeVar("_ReviewRuntimeT", bound=_FencedRuntime, contravariant=True)
+
+
+class _ReadFirstReview(Protocol[_ReviewLayoutT, _ReviewRuntimeT, _ReviewResultT]):
+    def __call__(
+        self, layout: _ReviewLayoutT, runtime: _ReviewRuntimeT, /, *,
+        settings_manager: SettingsManager,
+    ) -> _ReviewResultT: ...
+
+
+_AcceptanceLayoutT = TypeVar("_AcceptanceLayoutT")
+_AcceptanceRuntimeT = TypeVar("_AcceptanceRuntimeT", bound=_FencedRuntime)
 
 
 class _FirstAcceptanceRecord(Generic[_FirstReviewT]):
@@ -332,7 +347,9 @@ class LegacyLocalAcceptanceRecord(_FirstAcceptanceRecord[_LocalReviewT]):
 
 
 @dataclass(frozen=True)
-class _FirstAcceptanceJournal(Generic[_FirstReviewT, RecordT]):
+class _FirstAcceptanceJournal(
+    Generic[_AcceptanceLayoutT, _AcceptanceRuntimeT, _FirstReviewT, RecordT]
+):
     """One frozen first-adoption receipt, committed before any Desired mutation.
 
     Products supply the authenticated record and original diagnostic profile.
@@ -351,6 +368,8 @@ class _FirstAcceptanceJournal(Generic[_FirstReviewT, RecordT]):
     changed_review: str
     accept_conflict: str
     read_conflict: str
+    review: _ReadFirstReview[_AcceptanceLayoutT, _AcceptanceRuntimeT, _FirstReviewT]
+    resolve_epoch: Callable[[_AcceptanceLayoutT], _LegacyEpoch]
     windows_receipts: WindowsPrivateReceiptIO | None = None
     windows_untouched_message: str = ""
     postcheck: Literal["separate", "combined"] = "separate"
@@ -360,27 +379,27 @@ class _FirstAcceptanceJournal(Generic[_FirstReviewT, RecordT]):
 
     def accept_review(
         self,
-        runtime: _FencedRuntime,
+        layout: _AcceptanceLayoutT,
+        runtime: _AcceptanceRuntimeT,
         *,
+        settings_manager: SettingsManager,
         accepted_review_id: str,
-        review: Callable[[], _FirstReviewT],
-        expected_store_id: Callable[[], str],
     ) -> RecordT:
-        authenticated = review()
+        authenticated = self.review(layout, runtime, settings_manager=settings_manager)
         if accepted_review_id != authenticated.review_id:
             raise self.error_type(self.changed_review)
         proposed = self.create(authenticated)
-        self._require_store(runtime, expected_store_id())
+        self._require_store(runtime, self.resolve_epoch(layout).store_id)
         return self.accept(runtime, proposed)
 
     def read_acceptance(
         self,
-        runtime: _FencedRuntime,
+        layout: _AcceptanceLayoutT,
+        runtime: _AcceptanceRuntimeT,
         *,
-        expected_store_id: str,
-        review: Callable[[], _FirstReviewT],
+        settings_manager: SettingsManager,
     ) -> RecordT | None:
-        self._require_store(runtime, expected_store_id)
+        self._require_store(runtime, self.resolve_epoch(layout).store_id)
         if self.check_epoch_before_read:
             runtime.assert_current()
         path = runtime.control_root / "product-state" / self.filename
@@ -395,7 +414,7 @@ class _FirstAcceptanceJournal(Generic[_FirstReviewT, RecordT]):
             if self.check_epoch_before_read:
                 runtime.assert_current()
             return None
-        current_review = review()
+        current_review = self.review(layout, runtime, settings_manager=settings_manager)
         if len(records) != 1 or records[0] != self.create(current_review):
             raise self.error_type(self.read_conflict)
         runtime.assert_current()
@@ -989,7 +1008,7 @@ def verify_accepted_legacy_wheel(
     *,
     desired_state: str,
     inspected_kind: str,
-    error_type: type[Exception],
+    error_type: Callable[[str], Exception],
 ) -> None:
     """Prove that the live artifact still matches the approved selection."""
     review = accepted.review
@@ -1381,7 +1400,7 @@ _ReplayLayoutT = TypeVar("_ReplayLayoutT")
 
 def replay_posix_legacy_product_cutover(
     layout: _ReplayLayoutT,
-    settings: SettingsManager,
+    open_settings: Callable[[], SettingsManager],
     *,
     roots: FencedRuntimeOpenKwargs,
     workspace: Path,
@@ -1401,14 +1420,24 @@ def replay_posix_legacy_product_cutover(
     default_local_kind: _LegacyResourceKind,
     removals_pending: str,
     sources_pending: str,
+    before_local_adoption: bool = False,
 ) -> None:
     """Close the read-only inventory before replaying any accepted changes."""
     read_disabled, replay_disabled = disabled
     read_builtin, replay_builtin = builtin
     read_removed, replay_removed = removed
-    with PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=True) as owner:
+    owner = PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=True)
+    with handoff_product_open(owner, cleanup_note="Legacy Product replay epoch cleanup also failed"):
+        settings = open_settings()
+    with owner:
         inventory = inventory_query(layout, owner)().inventory
-        local_ids = tuple(binding.plugin_id for binding, _, _ in inventory.active_local)
+        pending_removals = bool(inventory.unselected_source_identities)
+        if before_local_adoption and not pending_removals:
+            return
+        # A local adoption only settles the removals that precede its own receipt.
+        local_ids = () if before_local_adoption else tuple(
+            binding.plugin_id for binding, _, _ in inventory.active_local
+        )
         accepted_kinds = {
             plugin_id: accepted.resource_kind
             for plugin_id in local_ids
@@ -1420,17 +1449,18 @@ def replay_posix_legacy_product_cutover(
             is not None
         }
         disabled_acceptance = builtin_acceptance = None
-        if not local_ids:
+        if not local_ids and not before_local_adoption:
             disabled_acceptance = read_disabled(layout, owner, settings_manager=settings)
             builtin_acceptance = read_builtin(layout, owner, settings_manager=settings)
         removed_acceptance = read_removed(layout, owner, settings_manager=settings)
+        if before_local_adoption and removed_acceptance is None:
+            raise ValueError(removals_pending)
 
     replay_options = dict(
         workspace=workspace,
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
-    pending_removals = bool(inventory.unselected_source_identities)
     if pending_removals and removed_acceptance is None:
         raise RuntimeError(removals_pending)
     if removed_acceptance is not None and (pending_removals or not local_ids):

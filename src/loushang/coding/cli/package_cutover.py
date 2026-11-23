@@ -23,9 +23,6 @@ from loushang.coding.package.epoch_layout import (
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
 )
-from loushang.coding.package.legacy_builtin_acceptance import (
-    read_coding_first_b_builtin_only_acceptance,
-)
 from loushang.coding.package.legacy_builtin_adoption import (
     adopt_coding_first_b_builtin_only,
 )
@@ -33,26 +30,12 @@ from loushang.coding.package.legacy_builtin_review import (
     admit_coding_builtin_only_snapshot,
     review_coding_first_b_builtin_only,
 )
-from loushang.coding.package.legacy_disabled_acceptance import (
-    read_coding_first_b_disabled_only_acceptance,
-)
 from loushang.coding.package.legacy_disabled_review import (
     review_coding_first_b_disabled_only,
 )
-from loushang.coding.package.legacy_installation_inventory import (
-    _legacy_inventory_query,
-)
-from loushang.coding.package.legacy_local_acceptance import (
-    reopen_coding_legacy_installed_local_acceptance,
-)
 from loushang.coding.package.legacy_local_adoption import (
     adopt_coding_legacy_local_data_review,
-)
-from loushang.coding.package.legacy_local_adoption_read import (
-    coding_legacy_local_data_adoption_settled,
-)
-from loushang.coding.package.legacy_removed_acceptance import (
-    read_coding_first_b_removed_local_acceptance,
+    replay_coding_posix_legacy_product_cutover,
 )
 from loushang.coding.package.legacy_removed_adoption import (
     adopt_coding_first_b_removed_local,
@@ -93,9 +76,6 @@ from loushang.harness.cli.package_lifecycle import (
     write_package_operator_result,
 )
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.package_product._legacy_local_migration import (
-    replay_posix_legacy_product_cutover,
-)
 from loushang.harness.package_product._legacy_runtime import (
     inspect_fresh_product_epoch,
     legacy_product_fence_exists,
@@ -429,33 +409,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 windows_candidate=True,
             )
         elif has_fence:
-            replay_posix_legacy_product_cutover(
+            replay_coding_posix_legacy_product_cutover(
                 lifecycle,
-                settings,
+                lambda: settings,
                 roots=epoch.fenced_runtime_open_kwargs(),
                 workspace=workspace,
                 runtime_version=runtime_version,
                 runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                inventory_query=_legacy_inventory_query,
-                read_local_acceptance=reopen_coding_legacy_installed_local_acceptance,
-                local_adoption_settled=coding_legacy_local_data_adoption_settled,
-                policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-                disabled=(
-                    read_coding_first_b_disabled_only_acceptance,
-                    bootstrap_coding_accepted_disabled_only_product_plugins,
-                ),
-                builtin=(
-                    read_coding_first_b_builtin_only_acceptance,
-                    adopt_coding_first_b_builtin_only,
-                ),
-                removed=(
-                    read_coding_first_b_removed_local_acceptance,
-                    adopt_coding_first_b_removed_local,
-                ),
-                bootstrap=bootstrap_coding_builtin_product_plugins,
-                default_local_kind="skill",
-                removals_pending="Coding old local removals need explicit adoption or retry",
-                sources_pending="Coding old local Skills need explicit adoption or retry",
             )
         else:
             cutover = cutover_and_bootstrap_coding_package_product(

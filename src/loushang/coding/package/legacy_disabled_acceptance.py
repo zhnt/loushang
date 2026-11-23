@@ -61,6 +61,8 @@ class CodingLegacyDisabledOnlyAcceptanceV1(
 
 
 _acceptance_journal = _FirstAcceptanceJournal(
+    review=review_coding_first_b_disabled_only,
+    resolve_epoch=resolve_coding_package_epoch_layout,
     filename="legacy-disabled-acceptance.jsonl",
     codec=CodingLegacyDisabledOnlyAcceptanceV1._record_codec(),
     error_type=CodingLegacyDisabledOnlyAcceptanceError,
@@ -86,12 +88,10 @@ def accept_coding_first_b_disabled_only(
     """Persist exactly one operator-selected review before any Desired mutation."""
 
     return _acceptance_journal.accept_review(
+        lifecycle,
         epoch_runtime,
+        settings_manager=settings_manager,
         accepted_review_id=accepted_review_id,
-        review=lambda: review_coding_first_b_disabled_only(
-            lifecycle, epoch_runtime, settings_manager=settings_manager
-        ),
-        expected_store_id=lambda: resolve_coding_package_epoch_layout(lifecycle).store_id,
     )
 
 
@@ -104,11 +104,7 @@ def read_coding_first_b_disabled_only_acceptance(
     """Read a committed acceptance without creating or repairing Product state."""
 
     return _acceptance_journal.read_acceptance(
-        epoch_runtime,
-        expected_store_id=resolve_coding_package_epoch_layout(lifecycle).store_id,
-        review=lambda: review_coding_first_b_disabled_only(
-            lifecycle, epoch_runtime, settings_manager=settings_manager
-        ),
+        lifecycle, epoch_runtime, settings_manager=settings_manager
     )
 
 

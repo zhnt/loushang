@@ -83,6 +83,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    _LegacyLocalWheelFields,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
     PackageProductLocalWheelDependencyV1,
@@ -93,7 +96,11 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
+from ._legacy_runtime import _LegacyEpoch, matches_epoch_layout
+
 if TYPE_CHECKING:
+    from ._application_runtime import FencedSourceCatalogRoots
+    from ._legacy_inventory import _BindingHead
     from ._legacy_local_migration import _AcceptedSource
 
 
@@ -138,20 +145,9 @@ class _LegacyRecord(_CatalogRecord, Protocol):
     def _matches_approval(self, accepted: _AcceptedSource) -> bool: ...
 
 
-class _LegacyCandidate(Protocol):
-    @property
-    def wheel_bytes(self) -> bytes: ...
-
-    @property
-    def filename(self) -> str: ...
-
-    @property
-    def artifact_digest(self) -> str: ...
-
-
 CatalogRecordT = TypeVar("CatalogRecordT", bound=_CatalogRecord)
 LegacyRecordT = TypeVar("LegacyRecordT", bound=_LegacyRecord)
-LegacyCandidateT = TypeVar("LegacyCandidateT", bound=_LegacyCandidate)
+LegacyCandidateT = TypeVar("LegacyCandidateT", bound=_LegacyLocalWheelFields)
 LegacyAcceptanceT = TypeVar("LegacyAcceptanceT", bound="_AcceptedSource")
 
 
@@ -884,6 +880,28 @@ class _PosixWorkerSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
 class _DataWheelSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
     _record_type: type[PluginRecordT]
     _error_factory: type[Exception]
+    _product_journal_name: str
+
+    @classmethod
+    def for_roots(cls, roots: FencedSourceCatalogRoots, *, read_only: bool = False) -> Self:
+        return cls(
+            roots.state_root / cls._product_journal_name,
+            **roots.identity,
+            read_only=read_only,
+        )
+
+    def project_policy_group(
+        self, policy: PackageProductLocalWheelPolicy, *, trust_class: str
+    ) -> tuple[
+        tuple[PackageProductLocalWheelBindingV1, ...],
+        tuple[PackageProductLocalWheelBindingV1, ...],
+    ]:
+        """Capture the journal bindings used to decide whether to retain the Product."""
+        return project_local_source_policy_group(
+            policy,
+            (record.policy_binding(self.source_root) for record in self.records()),
+            trust_classes=frozenset({trust_class}),
+        )
 
     def _admit_capture_source(self, source: Path) -> bool:
         return (
@@ -1372,6 +1390,7 @@ class _LegacyLocalSourceCatalog(
     scope_id: str
     policy_revision: str
     _product_id: str
+    _product_journal_name: str
     _candidate_type: type[LegacyCandidateT]
     _new_binding: Callable[..., LegacyRecordT]
     _max_wheel_bytes: Callable[[], int]
@@ -1405,6 +1424,80 @@ class _LegacyLocalSourceCatalog(
         self._acceptance_reader = acceptance_reader
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
+
+    @classmethod
+    def for_roots(
+        cls,
+        roots: FencedSourceCatalogRoots,
+        *,
+        policy_revision: str,
+        acceptance_reader: Callable[[str], LegacyAcceptanceT | None] | None = None,
+    ) -> Self:
+        return cls(
+            roots.state_root / cls._product_journal_name,
+            **roots.identity,
+            policy_revision=policy_revision,
+            acceptance_reader=acceptance_reader,
+        )
+
+    @classmethod
+    def publish_from_accepted_review(
+        cls,
+        candidate: LegacyCandidateT,
+        *,
+        accepted: LegacyAcceptanceT,
+        binding: _BindingHead,
+        desired_state: str,
+        inspected_kind: str,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+        resolve_epoch: Callable[[], _LegacyEpoch],
+        scope_id: str,
+        policy_revision: str,
+        acceptance_reader: Callable[[str], LegacyAcceptanceT | None],
+    ) -> LegacyRecordT:
+        """Bind the accepted bytes to the admitted epoch and publish the binding."""
+        from ._legacy_local_migration import verify_accepted_legacy_wheel
+
+        verify_accepted_legacy_wheel(
+            accepted,
+            binding,
+            candidate,
+            desired_state=desired_state,
+            inspected_kind=inspected_kind,
+            error_type=cls._error_factory,
+        )
+        epoch = resolve_epoch()
+        review = accepted.review
+        switch = epoch_runtime.cutover_result.switch_receipt
+        if (
+            switch is None
+            or not matches_epoch_layout(epoch_runtime, epoch)
+            or switch.namespace_id != review.namespace_id
+            or scope_id != review.scope_id
+            or policy_revision != review.policy_revision
+        ):
+            raise cls._error_factory("Legacy local Source Product authority changed")
+        epoch_runtime.assert_current()
+        source_root = epoch_runtime.prepare_product_source_root()
+        state_root = epoch_runtime.prepare_product_state_root()
+        catalog = cls(
+            state_root / cls._product_journal_name,
+            source_root=source_root,
+            store_id=epoch.store_id,
+            namespace_id=switch.namespace_id,
+            scope_id=scope_id,
+            policy_revision=policy_revision,
+            acceptance_reader=acceptance_reader,
+        )
+        return catalog.publish_accepted_candidate(
+            candidate,
+            epoch_runtime=epoch_runtime,
+            legacy_source_identity=review.legacy_source_identity,
+            legacy_binding_digest=review.legacy_binding_digest,
+            dependency_lock_digest=review.dependency_lock_digest,
+            approval_id=accepted.acceptance_id,
+            resource_kind=cast(Literal["skill", "prompt", "theme"], accepted.resource_kind),
+        )
 
     def _require_accepted_binding(self, record: LegacyRecordT) -> None:
         if self._acceptance_reader is None:
@@ -1602,6 +1695,19 @@ class _LegacyLocalSourceCatalog(
     ) -> PackageProductLocalWheelPolicy:
         """Build the same policy from strict, non-repairing Source evidence."""
         return self._extend_policy(base, self.read_records())
+
+    def project_policy_group(
+        self, policy: PackageProductLocalWheelPolicy, *, trust_classes: frozenset[str]
+    ) -> tuple[
+        tuple[PackageProductLocalWheelBindingV1, ...],
+        tuple[PackageProductLocalWheelBindingV1, ...],
+    ]:
+        """Observe migrated bindings without allowing catalog repair."""
+        return project_local_source_policy_group(
+            policy,
+            (record.to_policy_binding(self.source_root) for record in self.read_records()),
+            trust_classes=trust_classes,
+        )
 
     def _extend_policy(
         self, base: PackageProductLocalWheelPolicy, records: tuple[LegacyRecordT, ...]

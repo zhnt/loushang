@@ -34,6 +34,7 @@ from .legacy_local_acceptance import CodingLegacyLocalAcceptanceV1
 from .legacy_local_wheel import CodingLegacyLocalWheelCandidateV1
 
 _MAX_WHEEL_BYTES = 2 * 1024 * 1024
+_BINDINGS_JOURNAL = "legacy-local-bindings.jsonl"
 _BUILTIN_PLUGIN_IDS = frozenset(
     {"coding.base", "coding.lsp.default", "coding.arch.default"}
 )
@@ -90,6 +91,7 @@ class CodingLegacyLocalBindingCatalog(
 
     _label = "Legacy Product"
     _product_id = "coding"
+    _product_journal_name = _BINDINGS_JOURNAL
     _error_factory = staticmethod(CodingLegacyBindingError)
     _candidate_type = CodingLegacyLocalWheelCandidateV1
     _new_binding = staticmethod(CodingLegacyLocalBindingV1.create)
