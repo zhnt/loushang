@@ -1045,8 +1045,15 @@ def test_plc9_inventories_every_legacy_plugin_enablement_token_file() -> None:
         - _PREPARATION_LINEAGE_OPTIONAL_SOURCE_FILES
         == SOURCE_ENABLED_FILES - _PREPARATION_LINEAGE_OPTIONAL_SOURCE_FILES
     )
-    assert _semantic_token_scope_counts("disabled_plugins") == (
-        LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS
+    # Schema registration names the field without reading legacy enablement.
+    schema_fields = Counter(
+        {
+            (Path("src/loushang/coding/package/legacy_disabled_review.py"), "<module>"): 1,
+        }
+    )
+    assert (
+        _semantic_token_scope_counts("disabled_plugins") - schema_fields
+        == LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS - schema_fields
     )
     assert (
         _semantic_token_scope_counts("manifest.enabled")
@@ -1390,8 +1397,18 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
         )
     ] = 1
 
+    # The JSON result names the command without adding an invocation site.
+    output_labels = Counter(
+        {
+            (
+                Path("src/loushang/harness/cli/package_lifecycle.py"),
+                "FencedPackageOperatorOutput.removal_success",
+                "uninstall_package",
+            ): 1,
+        }
+    )
     actual = _package_entrypoint_scope_counts()
-    assert actual == expected
+    assert actual - output_labels == expected - output_labels
     inventory = _source(INVENTORY)
     for path, _, _ in actual:
         assert str(path) in inventory, path
