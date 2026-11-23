@@ -12,7 +12,6 @@ from loushang.harness.package_product._legacy_inventory import (
     LegacyBuiltinReviewRecord,
     classify_legacy_builtin_snapshot,
     legacy_review_scalar_schema,
-    read_legacy_builtin_admission,
 )
 from loushang.harness.package_product._legacy_runtime import (
     legacy_review_fence_identity,
@@ -28,14 +27,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .legacy_classification import CodingScopedLegacyDisableV1
-from .legacy_desired_evidence import CodingLegacyDesiredError
 from .legacy_desired_evidence import (
     parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
 )
 from .legacy_installation_inventory import (
+    _BUILTINS,
     CodingLegacyBuiltinIntentV1,
     CodingLegacyInstallationInventoryV1,
-    CodingLegacyInventoryError,
+    _legacy_inventory_reader,
     _project_inventory_facts,
 )
 from .legacy_installation_inventory import (
@@ -44,7 +43,6 @@ from .legacy_installation_inventory import (
 from .legacy_installation_inventory import (
     read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
 )
-from .legacy_instance_evidence import _management_capture_paths
 from .legacy_operation_evidence import CodingLegacyOperationEvidenceError
 from .legacy_operation_evidence import (
     classify_coding_legacy_management_members as classify_coding_legacy_management_members,
@@ -65,7 +63,6 @@ from .legacy_source_evidence import (
 from .pre_b_snapshot import CodingPreBSnapshotPreparation
 from .source_snapshot import _PROJECTION_NAME
 
-_BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 _REMOVABLE = _BUILTINS
 _EXPECTED = {
     "binding_history": (),
@@ -158,20 +155,11 @@ def admit_coding_builtin_only_snapshot(
             raise CodingLegacyBuiltinOnlyReviewError(
                 "Coding old snapshot is not builtin-only"
             )
-        inventory, digest = read_legacy_builtin_admission(
+        inventory, digest = _legacy_inventory_reader(lifecycle).read_builtin_admission(
             prepared.owner,
             snapshot,
             expected=_EXPECTED,
-            desired_path=lifecycle.desired_state,
-            management_paths=_management_capture_paths(lifecycle),
-            product_id="coding",
-            scope_id=lifecycle.scope_id,
-            builtin_ids=_BUILTINS,
             review_error=CodingLegacyBuiltinOnlyReviewError,
-            inventory_error=CodingLegacyInventoryError,
-            desired_error=CodingLegacyDesiredError,
-            operation_error=CodingLegacyOperationEvidenceError,
-            label="Coding",
         )
         _require_builtin_only_inventory(
             _project_inventory_facts(inventory, desired_journal_digest=digest)

@@ -181,6 +181,13 @@ class _LegacyFirstSnapshot:
         self.runtime.assert_current()
         return raw
 
+    def assert_snapshot_current(self, snapshot_receipt_id: str) -> None:
+        """Verify the original receipt and entire bundle without reopening a member."""
+        _, evidence = self._open()
+        if evidence.snapshot.receipt_id != snapshot_receipt_id:
+            raise self.error_type(f"{self.label} snapshot is unavailable")
+        self.runtime.assert_current()
+
     def list_members(self, *, domain: str) -> tuple[str, ...]:
         snapshots, evidence = self._open()
         members = snapshots.list_domain_members(

@@ -33,7 +33,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 
 from .legacy_classification import CodingScopedLegacyDisableV1
 from .legacy_configured_source import _index_configured_sources
-from .legacy_desired_evidence import CodingLegacyDesiredError
 from .legacy_desired_evidence import (
     parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
 )
@@ -41,8 +40,8 @@ from .legacy_installation_inventory import (
     _BUILTINS,
     _MAX_REMOVAL_BINDINGS,
     CodingLegacyBuiltinIntentV1,
-    CodingLegacyInventoryError,
     CodingLegacyRemovedLocalInstallationV1,
+    _legacy_inventory_reader,
 )
 from .legacy_installation_inventory import (
     classify_coding_legacy_installations as classify_coding_legacy_installations,
@@ -51,16 +50,9 @@ from .legacy_installation_inventory import (
     classify_coding_legacy_removed_local_installations as classify_coding_legacy_removed_local_installations,
 )
 from .legacy_instance_evidence import (
-    CodingLegacyInstanceEvidenceError,
-    _management_capture_paths,
-)
-from .legacy_instance_evidence import (
     parse_coding_legacy_retired_instance_capture as parse_coding_legacy_retired_instance_capture,
 )
-from .legacy_lock_evidence import (
-    CodingLegacyLocalBindingEvidenceV1,
-    CodingLegacyLockError,
-)
+from .legacy_lock_evidence import CodingLegacyLocalBindingEvidenceV1
 from .legacy_lock_evidence import (
     parse_coding_legacy_local_binding_heads as parse_coding_legacy_local_binding_heads,
 )
@@ -89,9 +81,7 @@ from .legacy_source_evidence import (
 from .pre_b_snapshot import CodingPreBSnapshotPreparation
 from .source_snapshot import _PROJECTION_NAME
 
-_REMOVABLE_BUILTINS = frozenset(
-    {"coding.base", "coding.lsp.default", "coding.arch.default"}
-)
+_REMOVABLE_BUILTINS = _BUILTINS
 
 
 class CodingLegacyRemovedReviewError(ValueError):
@@ -287,16 +277,8 @@ def _prove_removal(
     capture: LegacyRemovalSnapshot, lifecycle: CodingPluginLifecycleStateLayout
 ) -> LegacyRemovalFacts:
     return capture.prove(
-        desired_path=lifecycle.desired_state,
-        management_paths=_management_capture_paths(lifecycle),
-        product_id="coding",
-        scope_id=lifecycle.scope_id,
-        builtin_ids=_BUILTINS,
+        inventory_reader=_legacy_inventory_reader(lifecycle),
         maximum_bindings=_MAX_REMOVAL_BINDINGS,
-        inventory_error=CodingLegacyInventoryError,
-        lock_error=CodingLegacyLockError,
-        desired_error=CodingLegacyDesiredError,
-        instance_error=CodingLegacyInstanceEvidenceError,
     )
 
 

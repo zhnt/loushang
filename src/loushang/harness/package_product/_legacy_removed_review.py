@@ -2,35 +2,31 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Set
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
-from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, Self, cast
 
 from loushang.harness.package_product._legacy_binding_evidence import (
     LEGACY_BINDING_CAPTURE_MAX_BYTES,
     LegacyLocalBindingEvidence,
-    decode_legacy_local_binding_heads,
 )
 from loushang.harness.package_product._legacy_inventory import (
     LEGACY_REVIEW_DIGEST,
     LEGACY_REVIEW_ID,
     LegacyInventoryFacts,
+    LegacyInventoryReader,
     LegacyRemovedBinding,
     LegacyReviewWireSelections,
     _LegacyBuiltinIntent,
     _LegacyFencedReviewRecord,
-    classify_legacy_installations,
     prove_removed_legacy_bindings,
     valid_legacy_disable_selections,
 )
 from loushang.harness.package_product._legacy_management_evidence import (
     LEGACY_DESIRED_CAPTURE_MAX_BYTES,
     LEGACY_MANAGEMENT_CAPTURE_MAX_BYTES,
-    LegacyManagementCapturePaths,
     classify_management_members,
-    decode_legacy_desired_evidence,
     read_settled_management_history,
     require_empty_lock_markers,
 )
@@ -491,16 +487,8 @@ class LegacyRemovalSnapshot:
     def prove(
         self,
         *,
-        desired_path: Path,
-        management_paths: LegacyManagementCapturePaths,
-        product_id: str,
-        scope_id: str,
-        builtin_ids: Set[str],
+        inventory_reader: LegacyInventoryReader,
         maximum_bindings: int,
-        inventory_error: type[ValueError],
-        lock_error: type[ValueError],
-        desired_error: type[ValueError],
-        instance_error: type[ValueError],
     ) -> LegacyRemovalFacts:
         read = self._read_member
         lock_max = LEGACY_BINDING_CAPTURE_MAX_BYTES
@@ -518,26 +506,13 @@ class LegacyRemovalSnapshot:
         )
         if lock_raw is None or desired_raw is None:
             raise self._review_error("Old removal evidence is missing")
-        bindings = decode_legacy_local_binding_heads(
-            lock_raw,
-            maximum_bytes=lock_max,
-            error_type=lock_error,
-            label=f"{self._label} legacy",
-        )
-        desired, desired_digest, transitions = decode_legacy_desired_evidence(
-            desired_raw,
-            path=desired_path,
-            product_id=product_id,
-            scope_id=scope_id,
-            maximum_bytes=desired_max,
-            error_type=desired_error,
-            label=f"{self._label} legacy",
-        )
+        bindings = inventory_reader.decode_binding_heads(lock_raw)
+        desired, desired_digest, transitions = inventory_reader.decode_desired(desired_raw)
 
         def check_management_history() -> str | None:
             return read_settled_management_history(
                 read,
-                paths=management_paths,
+                paths=inventory_reader.management_paths,
                 instance_members=self._instance_members,
                 desired_snapshot=desired,
                 desired_transitions=transitions,
@@ -549,7 +524,7 @@ class LegacyRemovalSnapshot:
                 ),
                 operation_error=self._operation_error,
                 operation_label=f"{self._label} old",
-                instance_error=instance_error,
+                instance_error=inventory_reader.instance_error,
                 operation_maximum_bytes=None
                 if defaults
                 else LEGACY_MANAGEMENT_CAPTURE_MAX_BYTES,
@@ -559,25 +534,15 @@ class LegacyRemovalSnapshot:
         operation_digest = (
             check_management_history() if self.has_operations and not defaults else None
         )
-        if not isinstance(scope_id, str) or not scope_id.startswith("workspace:"):
-            raise ValueError(f"{self._label} legacy workspace scope is invalid")
-        inventory = classify_legacy_installations(
-            bindings,
-            desired,
-            product_id=product_id,
-            scope_id=scope_id,
-            builtin_ids=builtin_ids,
-            error_type=inventory_error,
-            label=f"{self._label} legacy",
-        )
+        inventory = inventory_reader.classify(bindings, desired)
         removed = prove_removed_legacy_bindings(
             bindings,
             transitions,
             unselected_source_identities=inventory.unselected_source_identities,
             removed_plugin_ids=inventory.removed_plugin_ids,
-            builtin_ids=builtin_ids,
+            builtin_ids=inventory_reader.builtin_ids,
             maximum_bindings=maximum_bindings,
-            error_type=inventory_error,
+            error_type=inventory_reader.inventory_error,
             label=f"{self._label} old local removal",
         )
         if self.has_operations and defaults:
