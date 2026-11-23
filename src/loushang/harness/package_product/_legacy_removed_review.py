@@ -20,10 +20,8 @@ from loushang.harness.package_product._legacy_inventory import (
     LegacyRemovedBinding,
     LegacyReviewWireSelections,
     _LegacyBuiltinIntent,
-    _LegacyScopedDisable,
+    _LegacyFencedReviewRecord,
     classify_legacy_installations,
-    legacy_record_digest,
-    legacy_review_selection_wire,
     prove_removed_legacy_bindings,
     valid_legacy_disable_selections,
 )
@@ -174,35 +172,28 @@ class LegacyRemovalEntryRecord:
         )
 
 
-class LegacyRemovalReviewRecord:
+class LegacyRemovalReviewRecord(_LegacyFencedReviewRecord):
     """Validate and encode an inert review of the authenticated removal facts."""
 
     __slots__ = ()
     _error_type: ClassVar[type[ValueError]]
     _entry_type: ClassVar[type[LegacyRemovalEntryRecord]]
-    _disable_type: ClassVar[type[_LegacyScopedDisable]]
     _builtin_intent_type: ClassVar[type[_LegacyBuiltinIntent]]
     _builtin_ids: ClassVar[frozenset[str]]
     _removable_builtin_ids: ClassVar[frozenset[str]]
     _maximum_entries: ClassVar[int]
+    _schema = _REVIEW_SCHEMA
 
     if TYPE_CHECKING:
-        store_id: str
-        namespace_id: str
-        scope_id: str
-        first_fence_id: str
-        snapshot_receipt_id: str
         source_projection_digest: str
         lockfile_digest: str
         desired_journal_digest: str
-        disabled_plugins: tuple[_LegacyScopedDisable, ...]
         builtin_intent: tuple[_LegacyBuiltinIntent, ...]
         removed_builtin_ids: tuple[str, ...]
         removed_local: tuple[LegacyRemovalEntryRecord, ...]
         review_version: int
         operation_journal_digest: str | None
         retained_store_roots: tuple[str, ...]
-        review_id: str
 
     def __post_init__(self) -> None:
         digests = (
@@ -298,32 +289,21 @@ class LegacyRemovalReviewRecord:
             )
         ):
             raise self._error_type("Old local removal review is invalid")
-        object.__setattr__(self, "review_id", legacy_record_digest(self._identity()))
+        self._seal_review(self._identity())
 
     def _identity(self) -> dict[str, object]:
-        identity = {
-            **_REVIEW_SCHEMA.encode(self),
-            **legacy_review_selection_wire(
-                self.disabled_plugins,
-                self.builtin_intent,
-                self.removed_builtin_ids,
-                include_empty=True,
-            ),
-            "removedLocal": [item.to_dict() for item in self.removed_local],
-            "reviewVersion": self.review_version,
-        }
+        identity = self._selection_identity(self.builtin_intent, self.removed_builtin_ids)
+        identity["removedLocal"] = [item.to_dict() for item in self.removed_local]
+        identity["reviewVersion"] = self.review_version
         if self.operation_journal_digest is not None:
             identity["operationJournalDigest"] = self.operation_journal_digest
         if self.retained_store_roots:
             identity["retainedStoreRoots"] = list(self.retained_store_roots)
         return identity
 
-    def to_dict(self) -> dict[str, object]:
-        return {**self._identity(), "reviewId": self.review_id}
-
     @classmethod
     def from_dict(cls, value: object) -> Self:
-        expected = _REVIEW_SCHEMA.keys | {
+        expected = cls._schema.keys | {
             "reviewId",
             "removedLocal",
             "reviewVersion",
@@ -368,7 +348,7 @@ class LegacyRemovalReviewRecord:
         create: Callable[..., Self] = cls
         try:
             review = create(
-                **_REVIEW_SCHEMA.decode(dict, value),
+                **cls._schema.decode(dict, value),
                 **selections.decode(cls._disable_type, cls._builtin_intent_type),
                 removed_local=tuple(
                     cls._entry_type.from_dict(item) for item in removed_local

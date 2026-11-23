@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path as Path
@@ -10,13 +9,10 @@ from pathlib import Path as Path
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_inventory import (
-    LegacyReviewWireSelections,
+    LegacyBuiltinReviewRecord,
     classify_legacy_builtin_snapshot,
-    legacy_record_digest,
     legacy_review_scalar_schema,
-    legacy_review_selection_wire,
     read_legacy_builtin_admission,
-    valid_legacy_builtin_intent,
 )
 from loushang.harness.package_product._legacy_runtime import (
     legacy_review_fence_identity,
@@ -85,7 +81,7 @@ class CodingLegacyBuiltinOnlyReviewError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
-class CodingLegacyBuiltinOnlyReviewV1:
+class CodingLegacyBuiltinOnlyReviewV1(LegacyBuiltinReviewRecord):
     store_id: str
     namespace_id: str
     scope_id: str
@@ -99,98 +95,11 @@ class CodingLegacyBuiltinOnlyReviewV1:
     review_version: int = 1
     review_id: str = field(init=False)
 
-    def __post_init__(self) -> None:
-        if (
-            type(self.store_id) is not str
-            or not self.store_id
-            or type(self.scope_id) is not str
-            or not self.scope_id.startswith("workspace:")
-            or type(self.review_version) is not int
-            or self.review_version != 1
-            or type(self.disabled_plugins) is not tuple
-            or type(self.builtin_intent) is not tuple
-            or type(self.removed_builtin_ids) is not tuple
-            or any(
-                not isinstance(value, str)
-                or len(value) != 64
-                or any(char not in "0123456789abcdef" for char in value)
-                for value in (
-                    self.namespace_id,
-                    self.first_fence_id,
-                    self.snapshot_receipt_id,
-                    self.source_projection_digest,
-                    self.desired_journal_digest,
-                )
-            )
-            or any(
-                not isinstance(item, CodingScopedLegacyDisableV1)
-                or item.scope not in ("global", "project")
-                or item.plugin_id not in _BUILTINS
-                for item in self.disabled_plugins
-            )
-            or len({(item.scope, item.plugin_id) for item in self.disabled_plugins})
-            != len(self.disabled_plugins)
-            or not valid_legacy_builtin_intent(
-                self.builtin_intent, _BUILTINS, intent_type=CodingLegacyBuiltinIntentV1
-            )
-            or self.removed_builtin_ids != tuple(sorted(set(self.removed_builtin_ids)))
-            or any(item not in _REMOVABLE for item in self.removed_builtin_ids)
-            or set(self.removed_builtin_ids).intersection(
-                item.plugin_id for item in self.builtin_intent
-            )
-            or not (self.builtin_intent or self.removed_builtin_ids)
-        ):
-            raise CodingLegacyBuiltinOnlyReviewError("Builtin-only review is invalid")
-        object.__setattr__(self, "review_id", legacy_record_digest(self._identity()))
-
-    def _identity(self) -> dict[str, object]:
-        return {
-            **_REVIEW_SCHEMA.encode(self),
-            **legacy_review_selection_wire(
-                self.disabled_plugins,
-                self.builtin_intent,
-                self.removed_builtin_ids,
-                include_empty=True,
-            ),
-            "reviewVersion": self.review_version,
-        }
-
-    def to_dict(self) -> dict[str, object]:
-        return {**self._identity(), "reviewId": self.review_id}
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingLegacyBuiltinOnlyReviewV1:
-        expected = _REVIEW_SCHEMA.keys | {
-            "reviewId",
-            "reviewVersion",
-            "removedBuiltinIds",
-            "builtinIntent",
-            "disabledPlugins",
-        }
-        if type(value) is not dict or set(value) != expected:
-            raise CodingLegacyBuiltinOnlyReviewError(
-                "Builtin-only review record is invalid"
-            )
-        error = CodingLegacyBuiltinOnlyReviewError("Builtin-only review entries are invalid")
-        selections = LegacyReviewWireSelections.read(
-            value, required=True, disabled_error=error, intent_error=error, removed_error=error,
-        )
-        create: Callable[..., CodingLegacyBuiltinOnlyReviewV1] = cls
-        try:
-            review = create(
-                **_REVIEW_SCHEMA.decode(dict, value),
-                **selections.decode(CodingScopedLegacyDisableV1, CodingLegacyBuiltinIntentV1),
-                review_version=value["reviewVersion"],
-            )
-        except (TypeError, ValueError, KeyError) as exc:
-            raise CodingLegacyBuiltinOnlyReviewError(
-                "Builtin-only review record is invalid"
-            ) from exc
-        if review.review_id != value["reviewId"]:
-            raise CodingLegacyBuiltinOnlyReviewError(
-                "Builtin-only review identity changed"
-            )
-        return review
+    _disable_type = CodingScopedLegacyDisableV1
+    _error_type = CodingLegacyBuiltinOnlyReviewError
+    _builtin_ids = _BUILTINS
+    _removable_builtin_ids = _REMOVABLE
+    _builtin_intent_type = CodingLegacyBuiltinIntentV1
 
     def removed_builtin_operation_id(self, plugin_id: str) -> str:
         if plugin_id not in self.removed_builtin_ids:
@@ -203,7 +112,7 @@ class CodingLegacyBuiltinOnlyReviewV1:
         )
 
 
-_REVIEW_SCHEMA = legacy_review_scalar_schema(
+CodingLegacyBuiltinOnlyReviewV1._schema = legacy_review_scalar_schema(
     CodingLegacyBuiltinOnlyReviewV1,
     "disabled_plugins",
     "builtin_intent",

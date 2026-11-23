@@ -19,17 +19,12 @@ from loushang.harness.package_product._legacy_inventory import (
     LegacyReviewWireSelections,
     _InstalledState,
     _LegacyBuiltinIntent,
-    _LegacyScopedDisable,
-    legacy_record_digest,
-    legacy_review_selection_wire,
+    _LegacyFencedReviewRecord,
     reacquire_legacy_inventory_source,
     valid_legacy_builtin_intent,
     valid_legacy_disable_selections,
 )
 from loushang.harness.package_product._legacy_runtime import _LegacyFirstSnapshot
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordSchema,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceReceiptV1,
 )
@@ -78,20 +73,16 @@ _OPTIONAL_LOCAL_REVIEW_WIRE_KEYS = {
 }
 
 
-class LegacyLocalReviewRecord:
+class LegacyLocalReviewRecord(_LegacyFencedReviewRecord):
     """Authenticate and encode one snapshot-bound review over Product data."""
 
     __slots__ = ()
     _review_label: ClassVar[str]
     _wheel_name: ClassVar[Pattern[str]]
     _builtin_ids: ClassVar[frozenset[str]]
-    _disable_type: ClassVar[type[_LegacyScopedDisable]]
     _builtin_intent_type: ClassVar[type[_LegacyBuiltinIntent]]
-    _schema: ClassVar[RecordSchema]
 
     if TYPE_CHECKING:
-        store_id: str
-        scope_id: str
         plugin_id: str
         desired_state: _InstalledState
         legacy_entry_count: int
@@ -99,11 +90,9 @@ class LegacyLocalReviewRecord:
         legacy_source_identity: str
         wheel_filename: str
         policy_revision: str
-        disabled_plugins: tuple[_LegacyScopedDisable, ...]
         builtin_intent: tuple[_LegacyBuiltinIntent, ...]
         removed_builtin_ids: tuple[str, ...]
         configured_plugin_source_scope: str | None
-        review_id: str
 
     def __post_init__(self) -> None:
         label = self._review_label
@@ -150,14 +139,13 @@ class LegacyLocalReviewRecord:
             raise ValueError(f"{label} removed builtin IDs are invalid")
         if self.configured_plugin_source_scope not in (None, "global", "project"):
             raise ValueError(f"{label} configured Source scope is invalid")
-        object.__setattr__(self, "review_id", legacy_record_digest(self._identity_dict()))
+        self._seal_review(self._identity_dict())
 
     def _identity_dict(self) -> dict[str, object]:
-        identity = self._schema.encode(self)
-        identity.update(legacy_review_selection_wire(
-            self.disabled_plugins, self.builtin_intent, self.removed_builtin_ids,
+        identity = self._selection_identity(
+            self.builtin_intent, self.removed_builtin_ids,
             include_empty=False,
-        ))
+        )
         if self.configured_plugin_source_scope is not None:
             identity["configuredPluginSourceScope"] = self.configured_plugin_source_scope
         return identity

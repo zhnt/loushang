@@ -1404,9 +1404,9 @@ The listed scopes track the corresponding Product settings references.
 | `src/loushang/coding/package/legacy_removed_adoption.py::adopt_coding_first_b_removed_local` | `src/loushang/coding/package/legacy_review.py::_reviewed_disabled_ids` | 1 shared |
 | `src/loushang/coding/package/legacy_classification.py::classify_coding_legacy_workspace` | `src/loushang/coding/package/legacy_classification.py::classify_coding_legacy_workspace` | 3 |
 | `src/loushang/coding/package/legacy_classification.py::classify_coding_legacy_source_configuration` | `src/loushang/coding/package/legacy_classification.py::classify_coding_legacy_source_configuration` | 2 |
-| `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.__post_init__` | `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.__post_init__` | 4 |
-| `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1.from_dict` | `src/loushang/harness/package_product/_legacy_inventory.py::LegacyReviewWireSelections.decode` | 1 shared |
-| `src/loushang/coding/package/legacy_disabled_review.py::CodingLegacyDisabledOnlyReviewV1.from_dict` | `src/loushang/coding/package/legacy_disabled_review.py::CodingLegacyDisabledOnlyReviewV1.from_dict` | 1 |
+| Builtin-only review validation in `src/loushang/coding/package/legacy_builtin_review.py::CodingLegacyBuiltinOnlyReviewV1` | `src/loushang/harness/package_product/_legacy_inventory.py::LegacyBuiltinReviewRecord.__post_init__` | 2 |
+| Builtin-only selection decoding | `src/loushang/harness/package_product/_legacy_inventory.py::LegacyReviewWireSelections.decode` | 1 shared |
+| Disabled-only review decoding in `src/loushang/coding/package/legacy_disabled_review.py::CodingLegacyDisabledOnlyReviewV1` | `src/loushang/harness/package_product/_legacy_inventory.py::LegacyDisabledReviewRecord.from_dict` | 1 |
 | `CodingLegacyLocalAcceptanceV1.create` in `src/loushang/coding/package/legacy_local_acceptance.py` | `src/loushang/coding/package/legacy_local_acceptance.py::CodingLegacyLocalAcceptanceV1._check_review` | 1 |
 | `CodingLegacyRemovedReviewV1.__post_init__` in `src/loushang/coding/package/legacy_removed_review.py` | `src/loushang/harness/package_product/_legacy_removed_review.py::LegacyRemovalReviewRecord.__post_init__` | 2 |
 | `CodingLegacyRemovedReviewV1.from_dict` in `src/loushang/coding/package/legacy_removed_review.py` | `src/loushang/harness/package_product/_legacy_inventory.py::LegacyReviewWireSelections.decode` | 1 shared |
@@ -1417,10 +1417,10 @@ The listed scopes track the corresponding Product settings references.
 
 Harness Package Product indexes the frozen configured local Sources using the
 Product's supplied settings keys in `_LegacySourceProjection.index_configured_local_sources`.
-It also validates and encodes the installed-local review and
-the three published acceptance versions. Coding retains its nominal records,
-built-in disable eligibility, and the evidence and operator choices supplied
-to the shared codec.
+It owns record validation and identity encoding for the installed-local,
+removed-local, builtin-only, and disabled-only reviews and the three published
+acceptance versions. Coding retains its nominal records, built-in disable
+eligibility, and the evidence and operator choices supplied to the shared codecs.
 
 Fresh-state ledger construction is now held by
 `src/loushang/harness/package_product/_application_runtime.py::open_fenced_product_management_state`.

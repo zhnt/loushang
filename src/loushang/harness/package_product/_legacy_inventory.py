@@ -9,7 +9,17 @@ from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Generic, Literal, NamedTuple, Protocol, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    NamedTuple,
+    Protocol,
+    Self,
+    TypeVar,
+)
 
 from loushang.harness.package_product._legacy_binding_evidence import (
     LEGACY_BINDING_CAPTURE_MAX_BYTES,
@@ -259,12 +269,15 @@ def legacy_review_selection_wire(
 
 
 def valid_legacy_disable_selections(
-    disables: Sequence[_LegacyScopedDisable], disable_type: type[_LegacyScopedDisable]
+    disables: Sequence[_LegacyScopedDisable],
+    disable_type: type[_LegacyScopedDisable],
+    *,
+    supported_id: Callable[[str], object] = LEGACY_REVIEW_ID.fullmatch,
 ) -> bool:
     return not any(
         not isinstance(item, disable_type)
         or item.scope not in ("global", "project")
-        or LEGACY_REVIEW_ID.fullmatch(item.plugin_id) is None
+        or not supported_id(item.plugin_id)
         for item in disables
     ) and len({(item.scope, item.plugin_id) for item in disables}) == len(disables)
 
@@ -283,6 +296,199 @@ def valid_legacy_builtin_intent(
     ) and tuple(item.plugin_id for item in intent) == tuple(
         sorted({item.plugin_id for item in intent})
     )
+
+
+class _LegacyFencedReviewRecord:
+    """Share the identity seal for the nominal first-fence review records."""
+
+    __slots__ = ()
+    _schema: ClassVar[RecordSchema]
+    _disable_type: ClassVar[type[_LegacyScopedDisable]]
+
+    if TYPE_CHECKING:
+        store_id: str
+        namespace_id: str
+        scope_id: str
+        first_fence_id: str
+        snapshot_receipt_id: str
+        disabled_plugins: tuple[_LegacyScopedDisable, ...]
+        review_id: str
+
+    def _seal_review(self, identity: dict[str, object]) -> None:
+        object.__setattr__(self, "review_id", legacy_record_digest(identity))
+
+    def _selection_identity(
+        self,
+        builtin_intent: Sequence[_LegacyBuiltinIntent],
+        removed_builtin_ids: Sequence[str],
+        *,
+        include_empty: bool = True,
+    ) -> dict[str, object]:
+        identity = self._schema.encode(self)
+        identity.update(
+            legacy_review_selection_wire(
+                self.disabled_plugins, builtin_intent, removed_builtin_ids,
+                include_empty=include_empty,
+            )
+        )
+        return identity
+
+    def _identity(self) -> dict[str, object]:
+        raise NotImplementedError
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity(), "reviewId": self.review_id}
+
+
+class LegacyDisabledReviewRecord(_LegacyFencedReviewRecord):
+    """Decode the historical settings-only review and verify its exact identity."""
+
+    __slots__ = ()
+    _review_label: ClassVar[str]
+
+    if TYPE_CHECKING:
+        review_version: int
+
+    def __post_init__(self) -> None:
+        if not self.disabled_plugins:
+            raise ValueError("Disabled-only review requires scoped disabled Plugins")
+        if self.review_version != 1:
+            raise ValueError("Unsupported disabled-only review version")
+        self._seal_review(self._identity_dict())
+
+    def _identity_dict(self) -> dict[str, object]:
+        return {
+            **self._schema.encode(self),
+            "disabledPlugins": legacy_disabled_plugins_wire(self.disabled_plugins),
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {"reviewId": self.review_id, **self._identity_dict()}
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        label = cls._review_label
+        if type(value) is not dict or set(value) != cls._schema.keys | {
+            "reviewId", "disabledPlugins",
+        }:
+            raise ValueError(f"{label} record is invalid")
+        disabled = read_legacy_disabled_plugins(
+            value["disabledPlugins"],
+            plugin_id_is_text=lambda item: isinstance(item, str) and bool(item),
+            error=ValueError(f"{label} entries are invalid"),
+        )
+        for name in (
+            "namespaceId", "firstFenceId", "snapshotReceiptId",
+            "sourceProjectionDigest", "reviewId",
+        ):
+            if not isinstance(value[name], str) or LEGACY_REVIEW_DIGEST.fullmatch(value[name]) is None:
+                raise ValueError(f"{label} digest is invalid")
+        for name in ("storeId", "scopeId"):
+            if not isinstance(value[name], str) or not value[name]:
+                raise ValueError(f"{label} authority is invalid")
+        if type(value["reviewVersion"]) is not int or value["reviewVersion"] != 1:
+            raise ValueError(f"{label} version is invalid")
+        if len({(item["scope"], item["pluginId"]) for item in disabled}) != len(disabled):
+            raise ValueError(f"{label} entries are duplicated")
+        scalar_fields: dict[str, object] = cls._schema.decode(dict, value)
+        del scalar_fields["review_version"]
+        create: Callable[..., Self] = cls
+        review = create(
+            **scalar_fields,
+            disabled_plugins=tuple(
+                cls._disable_type(item["scope"], item["pluginId"]) for item in disabled
+            ),
+        )
+        if review.review_id != value["reviewId"]:
+            raise ValueError(f"{label} identity changed")
+        return review
+
+
+class LegacyBuiltinReviewRecord(_LegacyFencedReviewRecord):
+    """Validate and encode historical builtin intent with Product-supplied IDs."""
+
+    __slots__ = ()
+    _error_type: ClassVar[type[ValueError]]
+    _builtin_ids: ClassVar[frozenset[str]]
+    _removable_builtin_ids: ClassVar[frozenset[str]]
+    _builtin_intent_type: ClassVar[type[_LegacyBuiltinIntent]]
+
+    if TYPE_CHECKING:
+        desired_journal_digest: str
+        source_projection_digest: str
+        builtin_intent: tuple[_LegacyBuiltinIntent, ...]
+        removed_builtin_ids: tuple[str, ...]
+        review_version: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.store_id) is not str
+            or not self.store_id
+            or type(self.scope_id) is not str
+            or not self.scope_id.startswith("workspace:")
+            or type(self.review_version) is not int
+            or self.review_version != 1
+            or type(self.disabled_plugins) is not tuple
+            or type(self.builtin_intent) is not tuple
+            or type(self.removed_builtin_ids) is not tuple
+            or any(
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(char not in "0123456789abcdef" for char in value)
+                for value in (
+                    self.namespace_id,
+                    self.first_fence_id,
+                    self.snapshot_receipt_id,
+                    self.source_projection_digest,
+                    self.desired_journal_digest,
+                )
+            )
+            or not valid_legacy_disable_selections(
+                self.disabled_plugins, self._disable_type,
+                supported_id=self._builtin_ids.__contains__,
+            )
+            or not valid_legacy_builtin_intent(
+                self.builtin_intent, self._builtin_ids, intent_type=self._builtin_intent_type
+            )
+            or self.removed_builtin_ids != tuple(sorted(set(self.removed_builtin_ids)))
+            or any(item not in self._removable_builtin_ids for item in self.removed_builtin_ids)
+            or set(self.removed_builtin_ids).intersection(
+                item.plugin_id for item in self.builtin_intent
+            )
+            or not (self.builtin_intent or self.removed_builtin_ids)
+        ):
+            raise self._error_type("Builtin-only review is invalid")
+        self._seal_review(self._identity())
+
+    def _identity(self) -> dict[str, object]:
+        identity = self._selection_identity(self.builtin_intent, self.removed_builtin_ids)
+        identity["reviewVersion"] = self.review_version
+        return identity
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        expected = cls._schema.keys | {
+            "reviewId", "reviewVersion", "removedBuiltinIds",
+            "builtinIntent", "disabledPlugins",
+        }
+        if type(value) is not dict or set(value) != expected:
+            raise cls._error_type("Builtin-only review record is invalid")
+        error = cls._error_type("Builtin-only review entries are invalid")
+        selections = LegacyReviewWireSelections.read(
+            value, required=True, disabled_error=error, intent_error=error, removed_error=error,
+        )
+        create: Callable[..., Self] = cls
+        try:
+            review = create(
+                **cls._schema.decode(dict, value),
+                **selections.decode(cls._disable_type, cls._builtin_intent_type),
+                review_version=value["reviewVersion"],
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            raise cls._error_type("Builtin-only review record is invalid") from exc
+        if review.review_id != value["reviewId"]:
+            raise cls._error_type("Builtin-only review identity changed")
+        return review
 
 
 def classify_legacy_builtin_snapshot(
