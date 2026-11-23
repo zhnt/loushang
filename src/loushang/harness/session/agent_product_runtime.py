@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
+from weakref import ref
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -54,7 +55,9 @@ from loushang.harness.transcript.session_catalog import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harness.resources.loader import ResourceLoader
     from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
+    from loushang.harness.transcript._resume_continuation import _ResumePlanRead
     from loushang.harness.transcript.session_factory import (
         AgentTranscriptSessionFactory,
     )
@@ -94,6 +97,55 @@ class _SessionPlanningSlot(Generic[PlanningT]):
             self._loop = loop
         elif self._loop is not loop:
             raise RuntimeError(f"{self._error_prefix}_loop_changed")
+
+    async def _start_validated_planning(
+        self,
+        build_baseline: Callable[[], _ResumePlanRead],
+        resource_loader: ResourceLoader,
+        *,
+        max_work_units: int,
+        time_budget_seconds: float,
+        work_factory: Callable[[], Coroutine[Any, Any, PlanningT]],
+    ) -> None:
+        """Validate the request before replacing or coalescing queued work."""
+        self._on_loop()
+        if self._closed:
+            raise RuntimeError(f"{self._error_prefix}_closed")
+        baseline = build_baseline()
+        if type(max_work_units) is not int or max_work_units < 1:
+            raise ValueError("invalid Resume planning work budget")
+        if (
+            type(time_budget_seconds) not in {int, float}
+            or not 0 < time_budget_seconds <= 60
+        ):
+            raise ValueError("invalid Resume planning time budget")
+        from loushang.harness.resources.loader import ResourceLoader
+
+        if not isinstance(resource_loader, ResourceLoader):
+            raise TypeError("Resume planning requires the original ResourceLoader")
+        await self._start_work(
+            (baseline.plan_id, ref(resource_loader), max_work_units, time_budget_seconds),
+            work_factory,
+        )
+
+    def _current_validated_plan(
+        self, require_current: Callable[[PlanningT], None], *,
+        stale_error: type[Exception],
+    ) -> PlanningT | None:
+        """Discard stale cache entries after their original owner rechecks."""
+        self._on_loop()
+        if self._closed:
+            return None
+        plan = self._plan
+        if plan is None:
+            return None
+        try:
+            require_current(plan)
+        except stale_error:
+            self._plan = None
+            self._key = None
+            return None
+        return plan
 
     async def _start_work(
         self,
