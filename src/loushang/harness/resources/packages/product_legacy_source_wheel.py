@@ -21,6 +21,10 @@ from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source 
 )
 from loushang.harness.resources.plugins.dependencies import PluginDependencyClosureLock
 
+LEGACY_SOURCE_WHEEL_FILENAME = re.compile(
+    r"loushang_legacy_[0-9a-f]{24}-1-py3-none-any\.whl\Z"
+)
+
 _LEGACY_SOURCE_MAX_ENTRIES = 128
 _LEGACY_SOURCE_MAX_FILES = 64
 _LEGACY_SOURCE_MAX_FILE_BYTES = 256 * 1024

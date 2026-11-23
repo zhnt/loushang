@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json as json
-import re
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING
@@ -24,6 +23,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
+)
+from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    LEGACY_SOURCE_WHEEL_FILENAME as _WHEEL_NAME,
 )
 
 from .legacy_classification import (
@@ -67,9 +69,6 @@ from .source_snapshot import _PROJECTION_NAME
 if TYPE_CHECKING:
     from .legacy_builtin_review import CodingLegacyBuiltinOnlyReviewV1
     from .legacy_removed_review import CodingLegacyRemovedReviewV1
-
-
-_WHEEL_NAME = re.compile(r"loushang_legacy_[0-9a-f]{24}-1-py3-none-any\.whl\Z")
 
 
 @dataclass(frozen=True, slots=True)

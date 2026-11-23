@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from contextlib import closing
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal, cast
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_local_migration import (
-    _LegacyLocalInstallation,
     _LegacyLocalInstallPolicy,
 )
 from loushang.harness.plugin_management.records import (
@@ -21,9 +20,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 
 from .legacy_data_trust import (
     trust_class_for_legacy_data_resource as trust_class_for_legacy_data_resource,
-)
-from .legacy_local_acceptance import (
-    CodingLegacyLocalAcceptanceV1,
 )
 from .legacy_local_acceptance import (
     reopen_coding_legacy_installed_local_acceptance as reopen_coding_legacy_installed_local_acceptance,
@@ -157,70 +153,37 @@ def _replay_accepted_installation(
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
-    with closing(application):
-        accepted = _reopen_acceptance(application, lifecycle, plugin_id)
-        if accepted is None or (
-            enable
-            and (
-                accepted.resource_kind != resource_kind
-                or accepted.review.desired_state != "installed_enabled"
-            )
-        ):
-            message = (
-                "Legacy local data Resource has no accepted enabled selection"
-                if enable
-                else "Legacy local Installation has no accepted review"
-            )
-            raise CodingLegacyLocalInstallationError(message)
-        installation = _LegacyLocalInstallation.from_accepted_source(
-            application.runtime_owner.product_owner,
-            accepted,
-            scope_id=lifecycle.scope_id,
+    result = _INSTALL_POLICY.replay(
+        application,
+        reopen_acceptance=partial(
+            reopen_coding_legacy_installed_local_acceptance,
+            lifecycle,
             plugin_id=plugin_id,
-            source_trust_class=trust_class_for_legacy_data_resource(accepted.resource_kind),
-            policy=_INSTALL_POLICY,
-        )
-        command_id, revision = (
-            installation.enable()
-            if enable
-            else installation.install(
-                allow_enabled=accepted.review.desired_state == "installed_enabled"
-            )
-        )
-        application.epoch_runtime.assert_current()
-        if enable:
-            return CodingLegacyLocalEnablementReceiptV1(
-                acceptance_id=accepted.acceptance_id,
-                install_operation_id=installation.install_operation_id,
-                install_command_id=command_id,
-                enable_operation_id=installation.enable_operation_id,
-                plugin_id=plugin_id,
-                package_revision=revision,
-            )
-        return CodingLegacyLocalInstallReceiptV1(
-            acceptance_id=accepted.acceptance_id,
-            operation_id=installation.install_operation_id,
-            desired_command_id=command_id,
-            plugin_id=plugin_id,
-            package_revision=revision,
-        )
-
-
-def _reopen_acceptance(
-    owner: CodingFencedProductApplicationOwner,
-    lifecycle: CodingPluginLifecycleStateLayout,
-    plugin_id: str,
-) -> CodingLegacyLocalAcceptanceV1 | None:
-    runtime = owner.epoch_runtime
-    if not isinstance(runtime, PackageProductPosixFencedRuntimeOwner):
-        raise CodingLegacyLocalInstallationError(
-            "Legacy local migration requires a POSIX Product epoch"
-        )
-    return reopen_coding_legacy_installed_local_acceptance(
-        lifecycle,
-        runtime,
+            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+        ),
+        scope_id=lifecycle.scope_id,
         plugin_id=plugin_id,
-        policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+        trust_class_for=lambda accepted: trust_class_for_legacy_data_resource(
+            accepted.resource_kind
+        ),
+        enable=enable,
+        resource_kind=resource_kind,
+    )
+    if enable:
+        return CodingLegacyLocalEnablementReceiptV1(
+            acceptance_id=result.acceptance_id,
+            install_operation_id=result.install_operation_id,
+            install_command_id=result.install_command_id,
+            enable_operation_id=result.enable_operation_id,
+            plugin_id=plugin_id,
+            package_revision=result.package_revision,
+        )
+    return CodingLegacyLocalInstallReceiptV1(
+        acceptance_id=result.acceptance_id,
+        operation_id=result.install_operation_id,
+        desired_command_id=result.install_command_id,
+        plugin_id=plugin_id,
+        package_revision=result.package_revision,
     )
 
 

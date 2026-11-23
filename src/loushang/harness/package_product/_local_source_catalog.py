@@ -15,7 +15,16 @@ from contextlib import suppress
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
-from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    Self,
+    TypeVar,
+    cast,
+)
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal import (
@@ -80,6 +89,8 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
+if TYPE_CHECKING:
+    from ._legacy_local_migration import _AcceptedSource
 
 class _CatalogRecord(Protocol):
     @property
@@ -120,6 +131,8 @@ class _LegacyRecord(_CatalogRecord, Protocol):
     ) -> PackageProductLocalWheelBindingV1: ...
 
 
+    def _matches_approval(self, accepted: _AcceptedSource) -> bool: ...
+
 class _LegacyCandidate(Protocol):
     @property
     def wheel_bytes(self) -> bytes: ...
@@ -134,6 +147,7 @@ class _LegacyCandidate(Protocol):
 CatalogRecordT = TypeVar("CatalogRecordT", bound=_CatalogRecord)
 LegacyRecordT = TypeVar("LegacyRecordT", bound=_LegacyRecord)
 LegacyCandidateT = TypeVar("LegacyCandidateT", bound=_LegacyCandidate)
+LegacyAcceptanceT = TypeVar("LegacyAcceptanceT", bound="_AcceptedSource")
 
 
 class _PluginSourceRecord(_SourceRecord, Protocol):
@@ -1017,7 +1031,8 @@ __all__: list[str] = []
 
 
 class _LegacyLocalSourceCatalog(
-    _SourceCatalogReadScopes[LegacyRecordT], Generic[LegacyRecordT, LegacyCandidateT]
+    _SourceCatalogReadScopes[LegacyRecordT],
+    Generic[LegacyRecordT, LegacyCandidateT, LegacyAcceptanceT],
 ):
     source_root: Path
     store_id: str
@@ -1033,6 +1048,42 @@ class _LegacyLocalSourceCatalog(
     _unlocked_durability: JournalDurabilityProfile
     _load_policy: JournalLoadPolicy
     _read_errors: tuple[type[BaseException], ...] = ()
+
+    _acceptance_type: type[LegacyAcceptanceT]
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        source_root: Path,
+        store_id: str,
+        namespace_id: str,
+        scope_id: str,
+        policy_revision: str,
+        acceptance_reader: Callable[[str], LegacyAcceptanceT | None] | None = None,
+    ) -> None:
+        if not isinstance(path, Path) or not path.is_absolute():
+            raise ValueError("Legacy binding catalog path is invalid")
+        self.path = path
+        self.source_root = source_root
+        self.store_id = store_id
+        self.namespace_id = namespace_id
+        self.scope_id = scope_id
+        self.policy_revision = policy_revision
+        self._acceptance_reader = acceptance_reader
+        self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
+        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+
+    def _require_accepted_binding(self, record: LegacyRecordT) -> None:
+        if self._acceptance_reader is None:
+            raise self._error_factory("Legacy Product binding has no acceptance owner")
+        accepted = self._acceptance_reader(record.plugin_id)
+        if not isinstance(accepted, self._acceptance_type):
+            raise self._error_factory("Legacy Product binding has no accepted review")
+        if not record._matches_approval(accepted):
+            raise self._error_factory(
+                "Legacy Product binding differs from accepted review"
+            )
 
     def publish_accepted_candidate(
         self,
@@ -1287,9 +1338,6 @@ class _LegacyLocalSourceCatalog(
             raise self._error_factory(
                 "Legacy Product binding catalog is corrupt"
             ) from exc
-
-    def _require_accepted_binding(self, record: LegacyRecordT) -> None:
-        raise NotImplementedError
 
     def _record_codec(self) -> JournalRecordCodec[LegacyRecordT]:
         raise NotImplementedError

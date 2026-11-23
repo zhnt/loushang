@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager as SettingsManager
+from loushang.harness.package_product._application_runtime import (
+    hold_accepted_product_adoption,
+)
 from loushang.harness.package_product._legacy_local_migration import (
     match_legacy_replay_source,
 )
@@ -152,11 +157,18 @@ def adopt_coding_legacy_local_data_review(
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
+    open_application = partial(
+        open_coding_fenced_product_application_owner,
+        lifecycle,
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
     )
-    admission_checked = False
-    try:
+
+    def accept_and_consume(
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> tuple[CodingLegacyLocalAcceptanceV1, bool]:
+        admission_checked = False
         acceptance = reopen_coding_legacy_installed_local_acceptance(
             lifecycle,
             epoch_runtime,
@@ -198,16 +210,17 @@ def adopt_coding_legacy_local_data_review(
                 project_settings_path=default_project_settings_path(workspace),
             ),
         )
-    finally:
-        epoch_runtime.close()
+        return acceptance, admission_checked
 
-    product_owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
+    open_epoch = partial(
+        PackageProductPosixFencedRuntimeOwner.open,
+        **epoch.fenced_runtime_open_kwargs(),
     )
-    try:
+    with hold_accepted_product_adoption(
+        open_epoch=open_epoch,
+        accept_review=accept_and_consume,
+        open_application=open_application,
+    ) as ((acceptance, admission_checked), product_owner):
         matches, bound = match_legacy_replay_source(
             product_owner.runtime_owner.product_owner.policy.bindings,
             acceptance,
@@ -217,13 +230,8 @@ def adopt_coding_legacy_local_data_review(
         )
         if not matches:
             raise RuntimeError("Coding legacy local Product Source binding changed")
-    finally:
-        product_owner.close()
     if bound is None:
-        epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs()
-        )
-        try:
+        with closing(open_epoch()) as epoch_runtime:
             if not admission_checked:
                 require_coding_fenced_single_legacy_data(
                     lifecycle,
@@ -237,8 +245,6 @@ def adopt_coding_legacy_local_data_review(
                 plugin_id=plugin_id,
                 policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
             )
-        finally:
-            epoch_runtime.close()
 
     installation = install_coding_accepted_legacy_local_plugin(
         lifecycle,
@@ -259,13 +265,7 @@ def adopt_coding_legacy_local_data_review(
         if acceptance.review.desired_state == "installed_enabled"
         else None
     )
-    product_owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
-    )
-    try:
+    with closing(open_application()) as product_owner:
         disabled_builtins = _reviewed_disabled_ids(acceptance.review)
         product = product_owner.runtime_owner.product_owner
         replay_reviewed_product_plugins(
@@ -278,8 +278,6 @@ def adopt_coding_legacy_local_data_review(
             policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             strict_history=False,
         )
-    finally:
-        product_owner.close()
     return CodingLegacyLocalSkillAdoptionV1(
         acceptance=acceptance,
         installation=installation,

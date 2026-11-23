@@ -12,11 +12,21 @@ import re
 import secrets
 import stat
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, closing, contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
+from typing import (
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    NamedTuple,
+    Protocol,
+    Self,
+    TypeVar,
+    cast,
+)
 
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -58,6 +68,9 @@ from loushang.harness.plugin_management.records import (
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
 )
@@ -68,6 +81,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_legacy_source_wheel import (
+    LEGACY_SOURCE_WHEEL_FILENAME,
     _LegacyLocalWheelFields,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
@@ -80,8 +94,15 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from ._legacy_inventory import _BindingHead, legacy_record_digest
+from ._application_runtime import FencedOrdinaryProductApplication
+from ._legacy_inventory import (
+    LEGACY_REVIEW_DIGEST,
+    LEGACY_REVIEW_ID,
+    _BindingHead,
+    legacy_record_digest,
+)
 from ._legacy_runtime import _FencedRuntime
+from ._local_source_catalog import wheel_source_binding_digest
 from ._plugin_bootstrap import (
     _PluginBootstrapPolicy,
     _product_plugin_runtime,
@@ -209,6 +230,25 @@ _LegacyResourceKind = Literal["skill", "prompt", "theme"]
 _RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
 
 
+def _legacy_resource_kind(
+    document: Mapping[str, object],
+    version: object,
+    *,
+    invalid_version: str,
+    invalid_kind: str,
+) -> _LegacyResourceKind:
+    if type(version) is not int:
+        raise ValueError(invalid_version)
+    if version == 1 and "resourceKind" not in document:
+        return "skill"
+    wire_kind = document.get("resourceKind")
+    if version == 2 and wire_kind == "prompt":
+        return "prompt"
+    if version == 3 and wire_kind == "theme":
+        return "theme"
+    raise ValueError(invalid_kind)
+
+
 class LegacyLocalAcceptanceRecord(_FirstAcceptanceRecord[_LocalReviewT]):
     """Keep the three local receipt versions with the shared first-fence codec."""
 
@@ -266,19 +306,11 @@ class LegacyLocalAcceptanceRecord(_FirstAcceptanceRecord[_LocalReviewT]):
         document = cls._envelope._document(value, optional=frozenset({"resourceKind"}))
 
         def propose(record_type: type[Self] = cls) -> Self:
-            version = document["acceptanceVersion"]
-            if type(version) is not int:
-                raise ValueError(cls._envelope.version_error)
-            wire_kind = document.get("resourceKind")
-            kind: _LegacyResourceKind
-            if version == 1 and "resourceKind" not in document:
-                kind = "skill"
-            elif version == 2 and wire_kind == "prompt":
-                kind = "prompt"
-            elif version == 3 and wire_kind == "theme":
-                kind = "theme"
-            else:
-                raise ValueError(f"Unsupported {cls._label} acceptance type")
+            kind = _legacy_resource_kind(
+                document, document["acceptanceVersion"],
+                invalid_version=cls._envelope.version_error,
+                invalid_kind=f"Unsupported {cls._label} acceptance type",
+            )
             review_type = cast(type[_LocalReviewT], cls._review_type)
             return record_type.create(review_type.from_dict(document["review"]), resource_kind=kind)
 
@@ -648,6 +680,15 @@ class _ConfiguredSource(Protocol):
 
 class _AcceptedReview(Protocol):
     @property
+    def namespace_id(self) -> str: ...
+
+    @property
+    def scope_id(self) -> str: ...
+
+    @property
+    def policy_revision(self) -> str: ...
+
+    @property
     def store_id(self) -> str: ...
 
     @property
@@ -689,6 +730,206 @@ class _AcceptedSource(Protocol):
 
     @property
     def resource_kind(self) -> str: ...
+
+
+class LegacyLocalBindingRecord:
+    """Validate and encode the exact binding produced by an accepted legacy review."""
+
+    __slots__ = ()
+    record_revision: int
+    store_id: str
+    namespace_id: str
+    scope_id: str
+    plugin_id: str
+    legacy_source_identity: str
+    legacy_binding_digest: str
+    source_content_digest: str
+    manifest_digest: str
+    dependency_lock_digest: str
+    wheel_filename: str
+    artifact_digest: str
+    requested_package: str
+    plugin_manifest_path: str
+    policy_revision: str
+    approval_id: str
+    record_id: str
+    record_version: int
+    resource_kind: _LegacyResourceKind
+    _binding_schema: ClassVar[RecordSchema]
+    _candidate_type: ClassVar[type[_LegacyLocalWheelFields]]
+    _reserved_plugin_ids: ClassVar[frozenset[str]]
+    _invalid_record: ClassVar[str]
+    _invalid_code: ClassVar[str]
+
+    @staticmethod
+    def _trust_class_for(resource_kind: _LegacyResourceKind) -> str:
+        raise NotImplementedError
+
+    def __post_init__(self) -> None:
+        if type(self.record_revision) is not int or self.record_revision < 1:
+            raise ValueError("Legacy Product binding revision is invalid")
+        for value, name in (
+            (self.store_id, "Store"),
+            (self.scope_id, "scope"),
+            (self.plugin_id, "Plugin"),
+            (self.policy_revision, "policy"),
+            (self.approval_id, "approval"),
+        ):
+            if not isinstance(value, str) or LEGACY_REVIEW_ID.fullmatch(value) is None:
+                raise ValueError(f"Legacy Product {name} identity is invalid")
+        if self.plugin_id in self._reserved_plugin_ids:
+            raise ValueError("Legacy Product binding cannot replace a builtin Plugin")
+        for value, name in (
+            (self.namespace_id, "namespace"),
+            (self.legacy_binding_digest, "old binding"),
+            (self.source_content_digest, "Source content"),
+            (self.manifest_digest, "manifest"),
+            (self.dependency_lock_digest, "dependency lock"),
+            (self.artifact_digest, "Wheel artifact"),
+            (self.record_id, "record"),
+        ):
+            if (
+                not isinstance(value, str)
+                or LEGACY_REVIEW_DIGEST.fullmatch(value) is None
+            ):
+                raise ValueError(f"Legacy Product {name} digest is invalid")
+        if (
+            not isinstance(self.legacy_source_identity, str)
+            or not self.legacy_source_identity.startswith("local:")
+            or len(self.legacy_source_identity) > 4096
+            or LEGACY_SOURCE_WHEEL_FILENAME.fullmatch(self.wheel_filename) is None
+            or type(self.record_version) is not int
+            or _RESOURCE_KIND_VERSION.get(self.resource_kind) != self.record_version
+        ):
+            raise ValueError("Legacy Product binding Source shape is invalid")
+        if not self._wheel_names_match():
+            raise ValueError("Legacy Product binding Wheel identity is inconsistent")
+        binding = self.to_policy_binding(Path("/"))
+        if binding.requested_package != self.requested_package:
+            raise ValueError("Legacy Product binding package is invalid")
+        if self.record_id != wheel_source_binding_digest(self.to_dict()):
+            raise ValueError("Legacy Product binding record identity is invalid")
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        record_revision: int,
+        store_id: str,
+        namespace_id: str,
+        scope_id: str,
+        legacy_source_identity: str,
+        legacy_binding_digest: str,
+        dependency_lock_digest: str,
+        policy_revision: str,
+        approval_id: str,
+        candidate: _LegacyLocalWheelFields,
+        resource_kind: _LegacyResourceKind = "skill",
+    ) -> Self:
+        if not isinstance(candidate, cls._candidate_type):
+            raise TypeError("Reacquired legacy Wheel candidate is required")
+        if legacy_source_identity != candidate.original_source_identity:
+            raise ValueError("Legacy Product original Source identity changed")
+        record_version = _RESOURCE_KIND_VERSION.get(resource_kind)
+        if record_version is None:
+            raise ValueError("Unsupported legacy Product Resource type")
+        values: dict[str, object] = {
+            "recordRevision": record_revision,
+            "storeId": store_id,
+            "namespaceId": namespace_id,
+            "scopeId": scope_id,
+            "pluginId": candidate.plugin_id,
+            "legacySourceIdentity": legacy_source_identity,
+            "legacyBindingDigest": legacy_binding_digest,
+            "sourceContentDigest": candidate.source_content_digest,
+            "manifestDigest": candidate.manifest_digest,
+            "dependencyLockDigest": dependency_lock_digest,
+            "wheelFilename": candidate.filename,
+            "artifactDigest": candidate.artifact_digest,
+            "requestedPackage": candidate.requested_package,
+            "pluginManifestPath": candidate.plugin_manifest_path,
+            "policyRevision": policy_revision,
+            "approvalId": approval_id,
+            "recordVersion": record_version,
+        }
+        if record_version >= 2:
+            values["resourceKind"] = resource_kind
+        values["recordId"] = wheel_source_binding_digest(values)
+        construct: Callable[..., Self] = cls
+        return construct(
+            **cls._binding_schema.decode(dict, values), resource_kind=resource_kind
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        record = self._binding_schema.encode(self)
+        if self.record_version >= 2:
+            record["resourceKind"] = self.resource_kind
+        return record
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        expected = cls._binding_schema.keys
+        if type(value) is not dict or set(value) not in (
+            expected,
+            expected | {"resourceKind"},
+        ):
+            raise JournalCodecError(cls._invalid_record, code=cls._invalid_code)
+        try:
+            kind = _legacy_resource_kind(
+                value,
+                value["recordVersion"],
+                invalid_version="Unsupported legacy Product binding version",
+                invalid_kind="Unsupported legacy Product binding type",
+            )
+            construct: Callable[..., Self] = cls
+            return construct(
+                **cls._binding_schema.decode(dict, value), resource_kind=kind
+            )
+        except (TypeError, ValueError) as exc:
+            raise JournalCodecError(
+                cls._invalid_record, code=cls._invalid_code
+            ) from exc
+
+    def to_policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
+        return PackageProductLocalWheelBindingV1(
+            source_identity=str(source_root / self.wheel_filename),
+            requested_package=self.requested_package,
+            plugin_id=self.plugin_id,
+            artifact_digest=self.artifact_digest,
+            plugin_manifest_path=self.plugin_manifest_path,
+            source_trust_class=self._trust_class_for(self.resource_kind),
+        )
+
+    @classmethod
+    def _record_codec(cls) -> FunctionalJournalRecordCodec[Self]:
+        return FunctionalJournalRecordCodec(encoder=cls.to_dict, decoder=cls.from_dict)
+
+    def _wheel_names_match(self) -> bool:
+        prefix = self.wheel_filename.removesuffix("-1-py3-none-any.whl")
+        return (
+            self.requested_package == f"{prefix.replace('_', '-')}==1"
+            and self.plugin_manifest_path == f"{prefix}/plugin.json"
+        )
+
+    def _matches_approval(self, accepted: _AcceptedSource) -> bool:
+        review = accepted.review
+        return (
+            self.approval_id == accepted.acceptance_id
+            and self.resource_kind == accepted.resource_kind
+            and self.store_id == review.store_id
+            and self.namespace_id == review.namespace_id
+            and self.scope_id == review.scope_id
+            and self.plugin_id == review.plugin_id
+            and self.legacy_source_identity == review.legacy_source_identity
+            and self.legacy_binding_digest == review.legacy_binding_digest
+            and self.source_content_digest == review.source_content_digest
+            and self.manifest_digest == review.manifest_digest
+            and self.dependency_lock_digest == review.dependency_lock_digest
+            and self.wheel_filename == review.wheel_filename
+            and self.artifact_digest == review.wheel_artifact_digest
+            and self._wheel_names_match()
+            and self.policy_revision == review.policy_revision
+        )
 
 
 def verify_accepted_legacy_wheel(
@@ -1077,6 +1318,17 @@ def match_legacy_replay_source(
     return True, candidate
 
 
+_AcceptedT = TypeVar("_AcceptedT", bound=_AcceptedSource)
+
+
+class _LegacyLocalInstallationResult(NamedTuple):
+    acceptance_id: str
+    install_operation_id: str
+    install_command_id: str
+    enable_operation_id: str
+    package_revision: PluginPackageRevisionRefV1
+
+
 @dataclass(frozen=True, slots=True)
 class _LegacyLocalInstallPolicy:
     product_id: str
@@ -1084,6 +1336,63 @@ class _LegacyLocalInstallPolicy:
     enable_prefix: str
     session_prefix: str
     error_type: type[Exception]
+
+    def replay(
+        self,
+        application: FencedOrdinaryProductApplication,
+        *,
+        reopen_acceptance: Callable[
+            [PackageProductPosixFencedRuntimeOwner], _AcceptedT | None
+        ],
+        scope_id: str,
+        plugin_id: str,
+        trust_class_for: Callable[[_AcceptedT], str],
+        enable: bool,
+        resource_kind: str | None,
+    ) -> _LegacyLocalInstallationResult:
+        """Hold the original epoch through acceptance, Desired replay and receipt."""
+        with closing(application):
+            epoch = application.epoch_runtime
+            if not isinstance(epoch, PackageProductPosixFencedRuntimeOwner):
+                raise self.error_type(
+                    "Legacy local migration requires a POSIX Product epoch"
+                )
+            accepted = reopen_acceptance(epoch)
+            if accepted is None or (
+                enable
+                and (
+                    accepted.resource_kind != resource_kind
+                    or accepted.review.desired_state != "installed_enabled"
+                )
+            ):
+                raise self.error_type(
+                    "Legacy local data Resource has no accepted enabled selection"
+                    if enable
+                    else "Legacy local Installation has no accepted review"
+                )
+            installation = _LegacyLocalInstallation.from_accepted_source(
+                application.runtime_owner.product_owner,
+                accepted,
+                scope_id=scope_id,
+                plugin_id=plugin_id,
+                source_trust_class=trust_class_for(accepted),
+                policy=self,
+            )
+            command_id, revision = (
+                installation.enable()
+                if enable
+                else installation.install(
+                    allow_enabled=accepted.review.desired_state == "installed_enabled"
+                )
+            )
+            epoch.assert_current()
+            return _LegacyLocalInstallationResult(
+                accepted.acceptance_id,
+                installation.install_operation_id,
+                command_id,
+                installation.enable_operation_id,
+                revision,
+            )
 
     def install_operation_id(self, store_id: str, acceptance_id: str) -> str:
         return self.install_prefix + self._operation_digest(store_id, acceptance_id)
