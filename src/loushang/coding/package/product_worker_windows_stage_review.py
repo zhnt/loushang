@@ -8,6 +8,7 @@ occurred, and it grants no filesystem mutation authority by itself.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 
 from loushang.foundation.windows_private_acl import (
     WindowsPrivateDirectoryAcl as WindowsPrivateDirectoryAcl,
@@ -17,7 +18,7 @@ from loushang.harness.package_product._windows_worker_recovery import (
     review_windows_product_worker_stage_offline,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
-    CapturedWindowsWorkerStage as _CapturedStageBytesV1,
+    CapturedWindowsWorkerStage as _CapturedStageBytesV1,  # noqa: F401
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_stage,
@@ -37,10 +38,6 @@ from .product_worker_windows_launch_intent import (
 from .product_worker_windows_recovery_inventory import (
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
 )
-
-_READ_CHUNK = 1024 * 1024
-_DIRECTORY_ATTRIBUTES = 0x00000010 | 0x00000020 | 0x00002000
-_FILE_ATTRIBUTES = 0x00000020 | 0x00000080 | 0x00002000
 
 FileIdentity = tuple[int, int, int, int, int]
 
@@ -111,33 +108,6 @@ def _review_complete_stage_under_gc_guard(
     )
 
 
-def _capture_stage_bytes(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    expected_stage: tuple[int, int],
-    intent: CodingWindowsWorkerLaunchIntentV1,
-) -> _CapturedStageBytesV1:
-    """Verify exact retained members without assuming a termination cause."""
-
-    if type(intent) is not CodingWindowsWorkerLaunchIntentV1:
-        raise CodingWindowsWorkerStageReviewError(
-            "coding_worker_stage_review_intent_invalid"
-        )
-
-    return capture_windows_product_worker_stage(
-        product,
-        attempt_id=attempt_id,
-        expected_stage=expected_stage,
-        intent=intent,
-        inspection=_inspection(),
-        max_payload_bytes=CodingWindowsWorkerStageReviewV1._payload_maximum(),
-        error_type=CodingWindowsWorkerStageReviewError,
-        error_prefix="coding_worker_stage_review",
-        result_factory=lambda captured: captured,
-    )
-
-
 __all__ = [
     "CodingWindowsWorkerStageReviewError",
     "CodingWindowsWorkerStageReviewV1",
@@ -151,10 +121,8 @@ def _inspection() -> WindowsStageInspection:
         CodingWindowsWorkerStageReviewError,
         "coding_worker_stage_review",
         CodingWindowsWorkerStageReviewV1._payload_maximum(),
-        _READ_CHUNK,
-        _DIRECTORY_ATTRIBUTES,
-        _FILE_ATTRIBUTES,
     )
 
 
+_capture_stage_bytes = partial(capture_windows_product_worker_stage, inspect=_inspection)
 CodingWindowsWorkerStageReviewV1._bind_record_schema()

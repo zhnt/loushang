@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +23,7 @@ from loushang.coding.package.product_worker_windows_stage_retirement import (
     CodingWindowsWorkerStageRetirementReceiptV1,
     _retirement_attempt_ids_from_names,
 )
+from loushang.harness.package_product import _windows_worker_retirement as owner
 
 
 def _history() -> tuple[
@@ -128,4 +132,57 @@ def test_completed_unlaunched_retirement_requires_exact_history(
         retirement._require_completed_unlaunched_retirement_under_gc_guard(
             None,
             attempt,  # type: ignore[arg-type]
+        )
+
+
+def test_unlaunched_retirement_replays_after_root_deletion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    intent, review, receipt, attempt = _history()
+    writes: list[Path] = []
+    removals: list[bool] = []
+    rechecks: list[bool] = []
+    product = SimpleNamespace(
+        state_root=tmp_path,
+        assert_root_gc_authority_current=lambda: rechecks.append(True),
+    )
+    records = retirement._records
+    start_path = records.start_path(product, review.attempt_id)
+    intent_path = records.root_intent_path(product, review.attempt_id)
+    receipt_path = records.receipt_path(product, review.attempt_id)
+    retained = {start_path: review.to_bytes(), intent_path: receipt.to_bytes()}
+
+    def publish(path: Path, raw: bytes, *, maximum_bytes: int) -> None:
+        assert len(raw) <= maximum_bytes
+        retained[path] = raw
+        writes.append(path)
+
+    operations = replace(
+        retirement._operations,
+        records=replace(records, read_bytes=lambda path, _limit: retained.get(path)),
+        io=SimpleNamespace(write_private_receipt=publish),
+        inspect_inventory=lambda _product: (attempt,),
+        read_intent=lambda *_: intent,
+        entry_product_id=None,
+    )
+    monkeypatch.setattr(
+        owner, "_bound_retirement_root", lambda *_a, **_k: nullcontext((None, 1))
+    )
+    monkeypatch.setattr(owner, "windows_worker_stage_exists", lambda *_: False)
+    monkeypatch.setattr(type(operations), "other_artifact", lambda *_: False)
+    monkeypatch.setattr(
+        type(operations), "remove_remaining", lambda *_: removals.append(True)
+    )
+
+    assert operations.retire(product, expected_review=review) == receipt
+    assert operations.retire(product, expected_review=review) == receipt
+    assert writes == [receipt_path]
+    assert removals == [True]
+    assert rechecks == [True]
+
+    with pytest.raises(
+        retirement.CodingWindowsWorkerUnlaunchedRetirementError, match="_intent_changed"
+    ):
+        replace(operations, read_intent=lambda *_: None).retire(
+            product, expected_review=review
         )

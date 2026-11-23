@@ -8,11 +8,13 @@ custody through replay, proof, exact member deletion and receipt publication.
 from __future__ import annotations
 
 import os
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Generic, Protocol, TypeVar, cast
+from typing import ClassVar, Generic, Protocol, TypeVar, cast
 
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
@@ -178,6 +180,32 @@ def _receipt_for_review(
         attempt_id=review.attempt_id,
         review_fingerprint=review.fingerprint,
         stage_identity=review.stage_identity[:2],
+    )
+
+
+def _require_empty_stage_delete_intent(
+    records: WindowsWorkerRetirementRecords[_ReviewRecordT, _ReceiptT],
+    io: WindowsPrivateReceiptIO,
+    product: WindowsLocalWheelProductSessionOwner,
+    stage: int | None,
+    attempt_id: str,
+    receipt: _ReceiptT,
+    error_prefix: str,
+    *,
+    intent_path: Path | None = None,
+    read_intent: Callable[[], _ReceiptT | None] | None = None,
+) -> None:
+    # The physical owner removes the directory only after this barrier returns.
+    if stage is None:
+        return
+    if windows_listdir_at(stage):
+        raise records.error_type(error_prefix + "_extra_member")
+    records.ensure_root_delete_intent(
+        receipt,
+        path=lambda: intent_path or records.root_intent_path(product, attempt_id),
+        read=read_intent or (lambda: records.read_root_intent(product, attempt_id)),
+        write=io.write_private_receipt,
+        changed_message=error_prefix + "_root_intent_changed",
     )
 
 
@@ -422,22 +450,16 @@ class WindowsProductWorkerCompleteStageRetirement(
         read_root_delete_intent: Callable[[], _ReceiptT | None] | None = None,
     ) -> None:
         with self.physical().complete(root, review, intent) as stage:
-            if stage is None:
-                return
-            if windows_listdir_at(stage):
-                raise self.records.error_type(self.error_prefix + "_extra_member")
-            read_intent = read_root_delete_intent or (
-                lambda: self.records.read_root_intent(product, review.attempt_id)
-            )
-            self.records.ensure_root_delete_intent(
+            _require_empty_stage_delete_intent(
+                self.records,
+                self.io,
+                product,
+                stage,
+                review.attempt_id,
                 receipt,
-                path=lambda: (
-                    root_delete_intent_path
-                    or self.records.root_intent_path(product, review.attempt_id)
-                ),
-                read=read_intent,
-                write=self.io.write_private_receipt,
-                changed_message=self.error_prefix + "_root_intent_changed",
+                self.error_prefix,
+                intent_path=root_delete_intent_path,
+                read_intent=read_root_delete_intent,
             )
 
     def attempt_ids_from_names(self, names: tuple[str, ...]) -> frozenset[str]:
@@ -520,32 +542,78 @@ _UNLAUNCHED_RETIRED_DEBTS = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
-    records: WindowsWorkerRetirementRecords[_PartialT, _ReceiptT]
+_NoEffectT = TypeVar(
+    "_NoEffectT",
+    bound=_WindowsPartialStageReviewMethods | _WindowsReservedStageReviewMethods,
+)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _NoEffectStageRetirement(Generic[_NoEffectT, _ReceiptT], ABC):
+    """Hold the retirement transaction for stages that never started an effect."""
+
+    records: WindowsWorkerRetirementRecords[_NoEffectT, _ReceiptT]
     io: WindowsPrivateReceiptIO
-    inspect_inventory: ReadWindowsRecoveryInventory[WindowsRecoveryAttemptV1]
-    capture_partial: _CapturePartialReview[_PartialT]
-    physical: Callable[[], WindowsStageRetirement]
     inspection: Callable[[], WindowsStageInspection]
     error_prefix: str
-
     entry_product_id: str | None = None
     entry_required_message: str = ""
+
+    required_native_revision: ClassVar[int | None] = None
+
+    def read_start(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> _NoEffectT | None:
+        return self.records.read_start(product, attempt_id)
+
+    def other_artifact(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> bool:
+        return has_other_windows_worker_retirement_artifact(
+            product, attempt_id, self.records.stem
+        )
+
+    @abstractmethod
+    def require_history(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        review: _NoEffectT,
+        *,
+        stage_present: bool,
+    ) -> None: ...
+
+    @abstractmethod
+    def _capture_current(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        review: _NoEffectT,
+        *,
+        lease_owner_revision: int,
+    ) -> _NoEffectT: ...
+
+    @abstractmethod
+    def _prepare_removal(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        root: int,
+        review: _NoEffectT,
+        receipt: _ReceiptT,
+    ) -> Callable[[], None]: ...
 
     def retire(
         self,
         product: WindowsLocalWheelProductSessionOwner,
         *,
-        expected_review: _PartialT,
+        expected_review: _NoEffectT,
     ) -> _ReceiptT:
-        "Delete only saved members after verifying no launch ever committed."
+        """Replay exact retirement under the offline lease and GC guard."""
         _require_retirement_entry(
             product,
             expected_review,
             product_id=self.entry_product_id,
             review_type=self.records.review_type,
             message=self.entry_required_message,
+            required_native_revision=self.required_native_revision,
         )
         with _bound_retirement_root(
             product,
@@ -554,32 +622,29 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
             active_message=self.error_prefix + "_runtime_active",
             root_changed=self.error_prefix + "_root_changed",
         ) as (quiescence, root):
-            start = self.records.read_start(product, expected_review.attempt_id)
-            completed = self.records.read_receipt(
-                product, expected_review.attempt_id
-            )
+            attempt_id = expected_review.attempt_id
+            start = self.read_start(product, attempt_id)
+            completed = self.records.read_receipt(product, attempt_id)
             if start is None:
-                if completed is not None:
-                    raise self.records.error_type(
-                        self.error_prefix + "_start_missing"
-                    )
+                if completed is not None or (
+                    self.required_native_revision is not None
+                    and self.records.read_root_intent(product, attempt_id) is not None
+                ):
+                    raise self.records.error_type(self.error_prefix + "_start_missing")
                 self.require_history(product, expected_review, stage_present=True)
-                current = self.capture_partial(
+                current = self._capture_current(
                     product,
-                    attempt_id=expected_review.attempt_id,
-                    expected_stage=expected_review.stage_identity[:2],
+                    expected_review,
                     lease_owner_revision=quiescence.owner_revision,
                 )
                 if current != expected_review:
-                    raise self.records.error_type(
-                        self.error_prefix + "_review_stale"
-                    )
+                    raise self.records.error_type(self.error_prefix + "_review_stale")
                 self.records.publish_start(
-                    self.records.start_path(product, expected_review.attempt_id),
+                    self.records.start_path(product, attempt_id),
                     expected_review,
                     write=self.io.write_private_receipt,
                 )
-                start = self.records.read_start(product, expected_review.attempt_id)
+                start = self.read_start(product, attempt_id)
             if start != expected_review:
                 raise self.records.error_type(self.error_prefix + "_review_stale")
             receipt = _receipt_for_review(self.records.receipt_type, start)
@@ -590,6 +655,7 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
                 )
             stage_present = windows_worker_stage_exists(root, start.attempt_id)
             self.require_history(product, start, stage_present=stage_present)
+            remove = self._prepare_removal(product, root, start, receipt)
             if completed is not None:
                 if completed != receipt or root_intent != receipt or stage_present:
                     raise self.records.error_type(
@@ -597,10 +663,8 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
                     )
                 return completed
             if not stage_present and root_intent is None:
-                raise self.records.error_type(
-                    self.error_prefix + "_stage_disappeared"
-                )
-            self.remove_remaining(product, root, start, receipt)
+                raise self.records.error_type(self.error_prefix + "_stage_disappeared")
+            remove()
             return _publish_retirement_completion(
                 self.records,
                 self.io,
@@ -612,6 +676,54 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
                 stage_retained=self.error_prefix + "_stage_retained",
                 publication_changed=self.error_prefix + "_publication_changed",
             )
+
+    def _completed_review(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> tuple[_NoEffectT, _ReceiptT]:
+        review = self.read_start(product, attempt_id)
+        completed = self.records.read_receipt(product, attempt_id)
+        root_intent = self.records.read_root_intent(product, attempt_id)
+        if (
+            review is None
+            or completed is None
+            or completed != root_intent
+            or completed.review_fingerprint != review.fingerprint
+            or completed.stage_identity != review.stage_identity[:2]
+        ):
+            raise self.records.error_type(self.error_prefix + "_history_unverified")
+        return review, completed
+
+
+@dataclass(frozen=True, slots=True)
+class WindowsProductWorkerPartialStageRetirement(
+    _NoEffectStageRetirement[_PartialT, _ReceiptT]
+):
+    inspect_inventory: ReadWindowsRecoveryInventory[WindowsRecoveryAttemptV1]
+    capture_partial: _CapturePartialReview[_PartialT]
+    physical: Callable[[], WindowsStageRetirement]
+
+    def _capture_current(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        review: _PartialT,
+        *,
+        lease_owner_revision: int,
+    ) -> _PartialT:
+        return self.capture_partial(
+            product,
+            attempt_id=review.attempt_id,
+            expected_stage=review.stage_identity[:2],
+            lease_owner_revision=lease_owner_revision,
+        )
+
+    def _prepare_removal(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        root: int,
+        review: _PartialT,
+        receipt: _ReceiptT,
+    ) -> Callable[[], None]:
+        return partial(self.remove_remaining, product, root, review, receipt)
 
     def require_history(
         self,
@@ -641,17 +753,9 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
         product: WindowsLocalWheelProductSessionOwner,
         attempt: WindowsRecoveryAttemptV1,
     ) -> None:
-        review = self.records.read_start(product, attempt.attempt_id)
-        completed = self.records.read_receipt(product, attempt.attempt_id)
-        root_intent = self.records.read_root_intent(product, attempt.attempt_id)
+        self._completed_review(product, attempt.attempt_id)
         if (
-            review is None
-            or completed is None
-            or root_intent is None
-            or (completed != root_intent)
-            or (completed.review_fingerprint != review.fingerprint)
-            or (completed.stage_identity != review.stage_identity[:2])
-            or (attempt.observed_debts != _PARTIAL_RETIRED_DEBTS)
+            attempt.observed_debts != _PARTIAL_RETIRED_DEBTS
             or self.other_artifact(product, attempt.attempt_id)
         ):
             raise self.records.error_type(self.error_prefix + "_history_unverified")
@@ -664,132 +768,48 @@ class WindowsProductWorkerPartialStageRetirement(Generic[_PartialT, _ReceiptT]):
         receipt: _ReceiptT,
     ) -> None:
         with PartialWindowsStageRetirement(
-            self.physical(), self.records.error_type, "coding_worker_partial_retirement"
+            self.physical(), self.records.error_type, self.error_prefix
         ).partial(root, review) as stage:
-            if stage is None:
-                return
-            if windows_listdir_at(stage):
-                raise self.records.error_type(self.error_prefix + "_extra_member")
-            self.records.ensure_root_delete_intent(
-                receipt,
-                path=lambda: self.records.root_intent_path(product, review.attempt_id),
-                read=lambda: self.records.read_root_intent(product, review.attempt_id),
-                write=self.io.write_private_receipt,
-                changed_message=self.error_prefix + "_root_intent_changed",
+            _require_empty_stage_delete_intent(
+                self.records, self.io, product, stage, review.attempt_id, receipt, self.error_prefix
             )
-
-    def other_artifact(
-        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-    ) -> bool:
-        return has_other_windows_worker_retirement_artifact(
-            product, attempt_id, "worker-partial-stage"
-        )
 
 
 @dataclass(frozen=True, slots=True)
 class WindowsProductWorkerUnlaunchedStageRetirement(
-    Generic[_ReservedT, _ReceiptT, _IntentT]
+    _NoEffectStageRetirement[_ReservedT, _ReceiptT],
+    Generic[_ReservedT, _ReceiptT, _IntentT],
 ):
-    records: WindowsWorkerRetirementRecords[_ReservedT, _ReceiptT]
-    io: WindowsPrivateReceiptIO
     inspect_inventory: ReadWindowsRecoveryInventory[WindowsRecoveryAttemptV1]
     read_intent: Callable[[WindowsLocalWheelProductSessionOwner, str], _IntentT | None]
     capture_reserved: _CaptureReservedReview[_IntentT, _ReservedT]
     physical: Callable[[], WindowsStageRetirement]
-    inspection: Callable[[], WindowsStageInspection]
-    error_prefix: str
 
-    entry_product_id: str | None = None
-    entry_required_message: str = ""
+    required_native_revision = 2
 
-    def retire(
+    def _capture_current(
         self,
         product: WindowsLocalWheelProductSessionOwner,
+        review: _ReservedT,
         *,
-        expected_review: _ReservedT,
-    ) -> _ReceiptT:
-        "Delete only the reviewed payload after proving no native or process effect."
-        _require_retirement_entry(
+        lease_owner_revision: int,
+    ) -> _ReservedT:
+        return self.capture_reserved(
             product,
-            expected_review,
-            product_id=self.entry_product_id,
-            review_type=self.records.review_type,
-            message=self.entry_required_message,
-            required_native_revision=2,
+            intent=self.require_intent(product, review),
+            native_revision=2,
+            lease_owner_revision=lease_owner_revision,
         )
-        with _bound_retirement_root(
-            product,
-            self.inspection,
-            error_type=self.records.error_type,
-            active_message=self.error_prefix + "_runtime_active",
-            root_changed=self.error_prefix + "_root_changed",
-        ) as (quiescence, root):
-            start = self.read_start(product, expected_review.attempt_id)
-            completed = self.records.read_receipt(
-                product, expected_review.attempt_id
-            )
-            if start is None:
-                if (
-                    completed is not None
-                    or self.records.read_root_intent(
-                        product, expected_review.attempt_id
-                    )
-                    is not None
-                ):
-                    raise self.records.error_type(
-                        self.error_prefix + "_start_missing"
-                    )
-                self.require_history(product, expected_review, stage_present=True)
-                intent = self.require_intent(product, expected_review)
-                current = self.capture_reserved(
-                    product,
-                    intent=intent,
-                    native_revision=2,
-                    lease_owner_revision=quiescence.owner_revision,
-                )
-                if current != expected_review:
-                    raise self.records.error_type(
-                        self.error_prefix + "_review_stale"
-                    )
-                self.records.publish_start(
-                    self.start_path(product, start_id=expected_review.attempt_id),
-                    expected_review,
-                    write=self.io.write_private_receipt,
-                )
-                start = self.read_start(product, expected_review.attempt_id)
-            if start != expected_review:
-                raise self.records.error_type(self.error_prefix + "_review_stale")
-            receipt = _receipt_for_review(self.records.receipt_type, start)
-            root_intent = self.records.read_root_intent(product, start.attempt_id)
-            if root_intent is not None and root_intent != receipt:
-                raise self.records.error_type(
-                    self.error_prefix + "_root_intent_changed"
-                )
-            stage_present = windows_worker_stage_exists(root, start.attempt_id)
-            self.require_history(product, start, stage_present=stage_present)
-            intent = self.require_intent(product, start)
-            if completed is not None:
-                if completed != receipt or root_intent != receipt or stage_present:
-                    raise self.records.error_type(
-                        self.error_prefix + "_completed_changed"
-                    )
-                return completed
-            if not stage_present and root_intent is None:
-                raise self.records.error_type(
-                    self.error_prefix + "_stage_disappeared"
-                )
-            self.remove_remaining(product, root, start, intent, receipt)
-            return _publish_retirement_completion(
-                self.records,
-                self.io,
-                product,
-                root,
-                start,
-                receipt,
-                stage_error=self.records.error_type,
-                stage_retained=self.error_prefix + "_stage_retained",
-                publication_changed=self.error_prefix + "_publication_changed",
-            )
+
+    def _prepare_removal(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        root: int,
+        review: _ReservedT,
+        receipt: _ReceiptT,
+    ) -> Callable[[], None]:
+        intent = self.require_intent(product, review)
+        return partial(self.remove_remaining, product, root, review, intent, receipt)
 
     def require_history(
         self,
@@ -832,18 +852,10 @@ class WindowsProductWorkerUnlaunchedStageRetirement(
         product: WindowsLocalWheelProductSessionOwner,
         attempt: WindowsRecoveryAttemptV1,
     ) -> None:
-        review = self.read_start(product, attempt.attempt_id)
-        completed = self.records.read_receipt(product, attempt.attempt_id)
-        root_intent = self.records.read_root_intent(product, attempt.attempt_id)
+        review, completed = self._completed_review(product, attempt.attempt_id)
         if (
-            review is None
-            or completed is None
-            or root_intent is None
-            or (completed != root_intent)
-            or (completed.review_fingerprint != review.fingerprint)
-            or (completed.stage_identity != review.stage_identity[:2])
-            or (attempt.observed_debts != _UNLAUNCHED_RETIRED_DEBTS)
-            or (not no_effect_history_matches(attempt, settled=True))
+            attempt.observed_debts != _UNLAUNCHED_RETIRED_DEBTS
+            or not no_effect_history_matches(attempt, settled=True)
             or self.other_artifact(product, attempt.attempt_id)
         ):
             raise self.records.error_type(self.error_prefix + "_history_unverified")
@@ -873,24 +885,9 @@ class WindowsProductWorkerUnlaunchedStageRetirement(
         receipt: _ReceiptT,
     ) -> None:
         with self.physical().complete(root, review, intent) as stage:
-            if stage is None:
-                return
-            if windows_listdir_at(stage):
-                raise self.records.error_type(self.error_prefix + "_extra_member")
-            self.records.ensure_root_delete_intent(
-                receipt,
-                path=lambda: self.records.root_intent_path(product, review.attempt_id),
-                read=lambda: self.records.read_root_intent(product, review.attempt_id),
-                write=self.io.write_private_receipt,
-                changed_message=self.error_prefix + "_root_intent_changed",
+            _require_empty_stage_delete_intent(
+                self.records, self.io, product, stage, review.attempt_id, receipt, self.error_prefix
             )
-
-    def other_artifact(
-        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
-    ) -> bool:
-        return has_other_windows_worker_retirement_artifact(
-            product, attempt_id, "worker-unlaunched-stage"
-        )
 
     def start_path(
         self, product: WindowsLocalWheelProductSessionOwner, *, start_id: str

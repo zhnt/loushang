@@ -1306,6 +1306,31 @@ def capture_windows_product_worker_stage(
     attempt_id: str,
     expected_stage: tuple[int, int],
     intent: _StageCaptureIntent,
+    inspect: Callable[[], WindowsStageInspection],
+) -> CapturedWindowsWorkerStage:
+    """Capture the live tree against the exact Product launch-intent type."""
+    inspection = inspect()
+    if type(intent) is not inspection.intent_type:
+        raise inspection.error_type(inspection.error_prefix + "_intent_invalid")
+    return _capture_windows_product_worker_stage(
+        product,
+        attempt_id=attempt_id,
+        expected_stage=expected_stage,
+        intent=intent,
+        inspection=inspection,
+        max_payload_bytes=inspection.max_payload_bytes,
+        error_type=inspection.error_type,
+        error_prefix=inspection.error_prefix,
+        result_factory=lambda captured: captured,
+    )
+
+
+def _capture_windows_product_worker_stage(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    expected_stage: tuple[int, int],
+    intent: _StageCaptureIntent,
     inspection: WindowsStageInspection,
     max_payload_bytes: int,
     error_type: type[Exception],
@@ -1532,7 +1557,7 @@ def capture_windows_product_worker_reserved_stage(
     if native_revision not in (1, 2):
         raise record_type._record_error(error_prefix + "_history_unverified")
     build = cast(Callable[..., _ReservedReviewT], record_type)
-    return capture_windows_product_worker_stage(
+    return _capture_windows_product_worker_stage(
         product,
         attempt_id=intent.attempt_id,
         expected_stage=intent.stage_identity,
