@@ -707,6 +707,22 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("textbox")).toHaveValue("Keep this draft");
   });
 
+  it("stages a remote desktop directory before the first Session is created", async () => {
+    const createChat = vi.fn(async () => null);
+    const pickClientDirectory = vi.fn(async () => ({ grantId: "a".repeat(32), name: "shared-source" }));
+    render(<HarnessGui client={null} managedHostConnection={{ status: "running", serviceInstanceId: "remote" }}
+      projectNavigation={{
+        hostKey: "office", directory: { projects: [], temporarySessions: [] }, available: true,
+        pending: false, error: false, folderInput: false, selection: null,
+        openFolder: () => {}, closeFolder: () => {}, register: async () => false,
+        createChat, togglePin: () => {}, select: () => {}, clientDirectories: { pickClientDirectory },
+      }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add images or files" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Share a local folder (read-only)" }));
+    expect(await screen.findByText("shared-source")).toBeVisible();
+    expect(createChat).not.toHaveBeenCalled();
+  });
+
   it("keeps unsent text separate by Host and project without creating a Session", async () => {
     const seed = await createMockAppClient().snapshot();
     const snapshot: ClientSnapshot = {

@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useContextMenu } from "./ContextMenu";
-import { AttachmentImage, AttachmentText } from "./SessionResources";
+import { AttachmentImage, AttachmentLabel, AttachmentText } from "./SessionResources";
+import { workspaceName } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
 import { attachmentTypes, maxAttachments, supportedAttachment, supportedImage, type AttachmentDraft, type DirectoryPicker } from "./client/sessionResources";
 
@@ -126,22 +127,26 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
         addImages([...event.dataTransfer.files]);
       }}>
       {images.length ? <div className="attachment-list">
-        {images.map((file, index) => <div key={JSON.stringify(["grantId" in file ? file.grantId : "hostPath" in file ? file.hostPath : file.name, index])}>
-          {"grantId" in file ? <span className="permission-label"><UiIcon name="folder" />{file.name}</span>
-            : "hostPath" in file ? <span className="permission-label" title={file.hostPath}>{file.hostPath}</span>
-            : supportedImage(file)
-            ? <AttachmentImage blob={file} label={file.name || t("attachments.image")} />
-            : <AttachmentText blob={file} label={file.name || t("attachments.file")} />}
-          <button type="button" className="icon-button" disabled={!canAttach}
-            aria-label={t("attachments.remove", { name: "hostPath" in file ? file.hostPath : file.name || t("attachments.image") })}
-            onClick={() => {
-              setAttachmentError(false);
-              if ("grantId" in file) void revokeClientDirectory?.(file.grantId).catch(() => {});
-              onImagesChange?.(images.filter((_, i) => i !== index));
-            }}>
-            <UiIcon name="close" />
-          </button>
-        </div>)}
+        {images.map((file, index) => {
+          const image = !("grantId" in file) && !("hostPath" in file) && supportedImage(file);
+          const name = "hostPath" in file ? workspaceName(file.hostPath) : file.name;
+          const key = "grantId" in file ? file.grantId : "hostPath" in file ? file.hostPath : name;
+          return <div className={image ? undefined : "attachment-item"} key={JSON.stringify([key, index])}>
+            {"grantId" in file ? <AttachmentLabel label={file.name} folder />
+              : "hostPath" in file ? <AttachmentLabel label={name} title={file.hostPath} />
+              : image ? <AttachmentImage blob={file} label={name || t("attachments.image")} />
+              : <AttachmentText blob={file} label={name || t("attachments.file")} />}
+            <button type="button" className="icon-button" disabled={!canAttach}
+              aria-label={t("attachments.remove", { name: name || t(image ? "attachments.image" : "attachments.file") })}
+              onClick={() => {
+                setAttachmentError(false);
+                if ("grantId" in file) void revokeClientDirectory?.(file.grantId).catch(() => {});
+                onImagesChange?.(images.filter((_, i) => i !== index));
+              }}>
+              <UiIcon name="close" />
+            </button>
+          </div>;
+        })}
       </div> : null}
       {attachmentError && onImagesChange ? <p role="alert">{t("attachments.invalid")}</p> : null}
       {clientDirectoryError ? <p role="alert">{t("attachments.unavailable")}</p> : null}

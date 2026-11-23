@@ -99,7 +99,42 @@ fn pick_windows_dialog(
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(target_os = "macos")]
+fn pick(
+    _window: &tauri::WebviewWindow,
+    title: &str,
+    accept: &str,
+    _cancel: &str,
+) -> Result<Option<String>, String> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSModalResponseCancel, NSModalResponseOK, NSOpenPanel};
+    use objc2_foundation::NSString;
+
+    let main_thread = MainThreadMarker::new().ok_or("folder_picker_unavailable")?;
+    let panel = NSOpenPanel::openPanel(main_thread);
+    panel.setCanChooseDirectories(true);
+    panel.setCanChooseFiles(false);
+    panel.setAllowsMultipleSelection(false);
+    panel.setResolvesAliases(false);
+    panel.setTitle(Some(&NSString::from_str(title)));
+    panel.setPrompt(Some(&NSString::from_str(accept)));
+
+    let response = panel.runModal();
+    if response == NSModalResponseCancel {
+        return Ok(None);
+    }
+    if response != NSModalResponseOK {
+        return Err("folder_picker_unavailable".to_owned());
+    }
+    panel
+        .URL()
+        .filter(|url| url.isFileURL())
+        .and_then(|url| url.path())
+        .map(|path| Some(path.to_string()))
+        .ok_or_else(|| "project_path_unavailable".to_owned())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
 fn pick(
     _window: &tauri::WebviewWindow,
     _title: &str,

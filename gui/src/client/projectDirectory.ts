@@ -1,4 +1,4 @@
-import type { DraftBinding, SessionModels } from "./model";
+import type { DraftBinding, HarnessClientUiPort, SessionModels } from "./model";
 
 export const TEMPORARY_WORKSPACE = "@temporary";
 
@@ -68,6 +68,7 @@ export interface ProjectNavigationProps {
 export interface ManagedProjectNavigation extends Omit<ProjectNavigationProps, "create" | "createDisabled"> {
   readonly inspectWorkspace?: (path: string, fingerprint: string, sessionId?: string) => Promise<import("../WorkspaceInspection").Inspection>;
   readonly openProjectPath?: (path: string, fingerprint: string, file?: string) => Promise<{ fileMissing: boolean }>;
+  readonly clientDirectories?: Pick<HarnessClientUiPort, "pickClientDirectory" | "revokeClientDirectory">;
   readonly draftModels?: (path: string | null, modelId?: string) => Promise<SessionModels>;
   readonly createChat: (path: string | null, continuityId: string, title: string) => Promise<DraftBinding | null>;
 }

@@ -7,7 +7,7 @@ import { nativeLiveAvailable, validateSessionModels } from "./client/nativeLiveC
 import type { ConnectionState, HarnessClientUiPort } from "./client/model";
 import { useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
-import { createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
+import { clientDirectoryControls, createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
 import { projectKey, TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
 import { TrayHostDialog } from "./TrayHostDialog";
@@ -466,6 +466,7 @@ export default function LocalHostGate() {
         return workspace.inspection;
       },
       openProjectPath: isTauri() && selectedId === "local" ? openLocalWorkspacePath : undefined,
+      clientDirectories: clientDirectoryControls(requestConnection),
       draftModels: async (path, modelId) => validateSessionModels(
         await webRequest({ operation: "workspace", action: "models", path, modelId }, connectionId.current),
       ),

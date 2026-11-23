@@ -21,7 +21,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async (name, callback) =
   return () => native.listeners.delete(name);
 }) }));
 vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: native.available }));
-vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.create }));
+vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.create, clientDirectoryControls: () => undefined }));
 vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header>, PanelIcon: () => null }));
 vi.mock("../src/App", async (importOriginal) => {
   const { HarnessGui } = await importOriginal<typeof import("../src/App")>();
