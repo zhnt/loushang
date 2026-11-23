@@ -15,7 +15,7 @@ vi.mock("../src/client/hostApi", () => ({
   webRequest: (request: any, id?: string) => backend.settings({ operation: "host/request", connectionId: id, request }),
 }));
 vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false }));
-vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: backend.create }));
+vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: backend.create, clientDirectoryControls: () => undefined }));
 vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, hostSettingsRequest, onConnectionChange, projectNavigation }: {
   projectNavigation: ProjectNavigationProps;
   client: { id: string } | null; hostSettings: ReactNode; hostSettingsRequest: number; onConnectionChange: (state: string) => void;
