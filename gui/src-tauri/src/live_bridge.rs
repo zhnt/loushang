@@ -4,7 +4,7 @@ use loushang_app_client::{
     definitive_create_rejection, AppClient, ConnectionOptions, ControlCommand, ControlResult,
     CreateSessionResult, InteractionOutcome, InteractiveGoalAction, InteractiveGoalCommand,
     InteractiveGoalReviewDecision, InteractiveGoalReviewSubmission, LiveEventRound,
-    LiveInitialSnapshot, ModelControlResult,
+    LiveInitialSnapshot, ModelControlResult, SessionOperationInput,
 };
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -358,6 +358,36 @@ pub(crate) async fn live_submit_text(
     })
     .await
     .map_err(|_| "live submit worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_session_operation(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: SessionOperationInput,
+) -> Result<serde_json::Value, String> {
+    let control = current_control(&state)?;
+    if control.service_instance_id != input.service_instance_id
+        || input.connection_epoch != control.connection_epoch.to_string()
+    {
+        return Err("instance_changed".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::SessionOperation {
+                session_id: input.session_id,
+                operation: input.operation,
+                reply,
+            })
+            .map_err(|_| "Session connection changed".to_owned())?;
+        receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "Session operation timed out".to_owned())?
+            .map_err(|_| "Session operation failed".to_owned())
+    })
+    .await
+    .map_err(|_| "Session operation worker failed".to_owned())?
 }
 
 #[tauri::command]

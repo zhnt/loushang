@@ -332,6 +332,7 @@ export interface HarnessClientUiPort {
   requestResync?(): Promise<void>;
   previewWorkspace?: ReadWorkspacePreview;
   locateWorkspace?: (scope: import("./workspacePreview").WorkspacePreviewScope) => Promise<string>;
+  sessionOperation?: import("./sessionOperations").SessionOperationPort;
   sessionResource?(sessionId: string, query: import("../../contracts/generated/bridge").SessionResourceQueryV1):
     Promise<import("../../contracts/generated/bridge").SessionResourceResultV1>;
   pickClientDirectory?: import("./sessionResources").DirectoryPicker;

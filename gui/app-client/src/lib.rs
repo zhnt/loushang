@@ -8,6 +8,6 @@ pub use app_client::{
     definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlAuthority,
     ControlCommand, ControlResult, CreateSessionResult, InteractionOutcome, InteractiveGoalAction,
     InteractiveGoalCommand, InteractiveGoalReviewDecision, InteractiveGoalReviewSubmission,
-    LiveEventRound, LiveInitialSnapshot, MemberEvents, ModelControlResult, WorkspaceInfo,
-    WorkspaceRequest, WorkspaceResult, WorkspaceScope,
+    LiveEventRound, LiveInitialSnapshot, MemberEvents, ModelControlResult, SessionOperationInput,
+    WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
 };

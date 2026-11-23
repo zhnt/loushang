@@ -29,6 +29,8 @@ import { readMarkdownPreferences } from "./markdown/preferences";
 import { ProjectNavigation } from "./ProjectNavigation";
 import { projectKey, TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectChat, type ProjectNavigationProps } from "./client/projectDirectory";
 import { UiIcon } from "./UiIcon";
+import { SessionControls, type SessionControlsPage } from "./SessionControls";
+import type { PendingSessionMutation } from "./client/sessionOperations";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { readLayoutPreferences, saveLayoutPreferences } from "./layoutPreferences";
 import { isTauri } from "@tauri-apps/api/core";
@@ -173,6 +175,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const { t: shellText } = useTranslation("shell");
   const [markdown, setMarkdown] = useState(readMarkdownPreferences);
   const settingsDialog = useRef<HTMLDialogElement>(null);
+  const sessionMutations = useRef(new Map<string, PendingSessionMutation>());
+  const [sessionControls, setSessionControls] = useState<{ scope: string; page: SessionControlsPage } | null>(null);
   function openSettings() {
     const dialog = settingsDialog.current;
     if (dialog && !dialog.open) dialog.showModal();
@@ -596,6 +600,13 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     || (state.remote.source.kind === "live" && connected)
   );
   const mutationsAllowed = controlsAllowed && !awaitingPublication && !modelPending;
+  const sessionControlSource = state.remote.source.kind === "live" && modelScope && controlsAllowed
+    ? state.remote.source : null;
+  const sessionControlKey = sessionControlSource && selected
+    ? JSON.stringify([selectionKey, sessionControlSource.serviceInstanceId, selected.id])
+    : null;
+  const openSessionControls = modelScope && sessionControls?.scope === modelScope
+    ? sessionControls : null;
   const goalStart = useGoalStart(client, selected, goalSource, mutationsAllowed && !goalBusy);
   const interruptAllowed = controlsAllowed && !goalBusy && !selected?.execution?.interruptRequested;
   const submitAllowed = mutationsAllowed && !goalBusy && !failure?.pending && (
@@ -1214,6 +1225,10 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     onClick={clearFailure}>{t("session:composer.dismissNotice")}</button> : null}
                 </div> : null}
                 <MessageComposer {...composer} title={conversationTitle} fixture={Boolean(fixture)}
+                  toolActions={sessionControlKey && modelScope && client.sessionOperation ? {
+                    tools: () => setSessionControls({ scope: modelScope, page: "tools" }),
+                    info: () => setSessionControls({ scope: modelScope, page: "info" }),
+                  } : undefined}
                   goalAction={goalPanelScope || draftGoalScope ? {
                     label: t("panels:interactiveGoal.shortcut"),
                     run: () => {
@@ -1242,6 +1257,16 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
             </div>
           ) : null}
         </section>
+        {openSessionControls && sessionControlSource && sessionControlKey && selected && client.sessionOperation
+          ? <SessionControls key={openSessionControls.scope} page={openSessionControls.page}
+            onClose={() => setSessionControls(null)}
+            request={client.sessionOperation}
+            scope={{ sessionId: selected.id, serviceInstanceId: sessionControlSource.serviceInstanceId,
+              connectionEpoch: sessionControlSource.connectionEpoch }}
+            pending={sessionMutations.current} pendingKey={sessionControlKey}
+            executionKey={JSON.stringify([selected.execution?.id, selected.execution?.status, selected.latestTerminalExecution?.id])}
+            canMutate={mutationsAllowed && !modelRunning} />
+          : null}
 
         {selected ? (
           <WorkDock key={JSON.stringify([selectionKey, selected.id])}

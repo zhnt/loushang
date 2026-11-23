@@ -197,6 +197,15 @@ def test_model_free_session_and_governed_tool_selection_in_hosted_tui(tmp_path):
                     assert session.get_active_tool_names() == ["two"]
                     assert '"allowed": false' in _screen(shell)
                     shell.handle(InputEvent(kind="key", key="esc"))
+                    tools = await client.read_session_command(
+                        control, "instance", SessionCommandInvocationV1("tools")
+                    )
+                    assert tools.data["active_tools"] == ["two"]
+                    assert {"name": "denied", "description": "denied",
+                            "active": False, "allowed": False} in tools.data["available_tools"]
+                    await _submit(shell, "/tools")
+                    assert '"active_tools"' in _screen(shell)
+                    shell.handle(InputEvent(kind="key", key="esc"))
                     await _submit(shell, "/tools on denied")
                     assert "command_invalid_arguments" in shell.notice
                     assert session.get_active_tool_names() == ["two"]
@@ -281,6 +290,10 @@ def test_hosted_compaction_survives_detach_and_same_id_never_replays(
                     control, "instance", SessionCommandInvocationV1("session")
                 )
                 assert view.data["session"]["is_compacting"] is True
+                inventory = await client.read_session_command(
+                    control, "instance", SessionCommandInvocationV1("tools")
+                )
+                assert isinstance(inventory.data["available_tools"], list)
                 await shell.close()
             await scope.close()
 

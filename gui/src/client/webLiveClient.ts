@@ -230,6 +230,9 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
         return resourceResult(await call("client-directory-reference", { sessionId, grantId }));
       },
     } : {}),
+    sessionOperation(scope, operation) {
+      return call("session-operation", { ...scope, operation });
+    },
     async sessionResource(sessionId, query) {
       return resourceResult(await call("resource", { sessionId, query }));
     },

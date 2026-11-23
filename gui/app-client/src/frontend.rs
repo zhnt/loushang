@@ -5,7 +5,8 @@ mod service;
 use crate::{
     definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlCommand,
     ControlResult, CreateSessionResult, InteractiveGoalCommand, InteractiveGoalReviewSubmission,
-    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
+    ModelControlResult, SessionOperationInput, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
+    WorkspaceScope,
 };
 use live_view::{Target, View, LEASE};
 use rusqlite::{params, Connection};
@@ -940,6 +941,20 @@ fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
     let session_id = field(input, "sessionId")?.to_owned();
     match action {
         "submit" | "find-submission" | "goal-start" => submission(view, action, session_id, input),
+        "session-operation" => {
+            let input: SessionOperationInput =
+                serde_json::from_value(input.clone()).map_err(|_| "invalid_request")?;
+            if input.connection_epoch != view.epoch.to_string() {
+                return Err("instance_changed".into());
+            }
+            view.control(Some(&input.service_instance_id), |reply| {
+                ControlCommand::SessionOperation {
+                    session_id,
+                    operation: input.operation,
+                    reply,
+                }
+            })
+        }
         "resource" => view.control(None, |reply| ControlCommand::Resource {
             session_id,
             query: input["query"].clone(),

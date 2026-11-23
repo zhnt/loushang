@@ -100,6 +100,20 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
         )
         return json.loads(result.stdout)
 
+    def operate(endpoint, path, address, action, **fields):
+        return live(endpoint, path, "session-operation", input={
+            **address, "operation": {"action": action, **fields},
+        })
+
+    def settle(endpoint, path, address, submission):
+        deadline = monotonic() + 5
+        while monotonic() < deadline:
+            receipt = operate(endpoint, path, address, "lookup", submissionId=submission)
+            if receipt and receipt["state"]["outcome"] is not None:
+                return receipt
+            sleep(.05)
+        pytest.fail(f"Session command did not settle: {submission}")
+
     host = manage({"action": "start"})
     assert host["state"] == "running", host
     env["LOUSHANG_APP_RECORD_ROOT"] = host["recordRoot"]
@@ -147,8 +161,13 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
                     reply = live(endpoint, path, "submit",
                                  input={**identity, "text": label})
                     assert reply["accepted"], reply
-                    assert live(endpoint, path, "find-submission",
-                                input=identity) == reply
+                    recovery_deadline = monotonic() + 5
+                    while True:
+                        recovered = live(endpoint, path, "find-submission", input=identity)
+                        if recovered == reply:
+                            break
+                        assert monotonic() < recovery_deadline, (recovered, reply)
+                        sleep(.05)
                     assert live(endpoint, path, "find-submission",
                                 input=stale) == unknown
                     executions[path][session] = reply["executionId"]
@@ -169,6 +188,12 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
                     for session in snapshot(endpoint, path)["sessions"]
                 }
                 assert observed == expected
+                attached = snapshot(endpoint, path)
+                for session in expected:
+                    assert operate(endpoint, path, {"sessionId": session,
+                                          "serviceInstanceId": attached["serviceInstanceId"],
+                                          "connectionEpoch": attached["connectionEpoch"]},
+                                   "compact", submissionId="gui-busy-compact") == {"error": "execution_busy"}
             (home / "release").touch()
             for path in workspaces:
                 while True:
@@ -183,6 +208,35 @@ def test_rust_web_reconnect_preserves_managed_executions(tmp_path):
                 assert len(effects) == 2
                 assert {row["marker"] for row in effects} == {path.name}
                 assert {row["cwd"] for row in effects} == {str(path)}
+                if path == workspaces[0]:
+                    first = snapshot(endpoint, path)
+                    session_a, session_b = [m["session"]["sessionId"] for m in first["muxSpace"]["members"]]
+                    address = {"sessionId": session_a, "serviceInstanceId": first["serviceInstanceId"],
+                               "connectionEpoch": first["connectionEpoch"]}
+                    sibling = {**address, "sessionId": session_b}
+                    response = operate(endpoint, path, address, "info")
+                    assert "data" in response, response
+                    info = response["data"]["session"]
+                    assert info["session_id"] == session_a
+                    before = operate(endpoint, path, address, "tools")["data"]
+                    tool = next(item for item in before["available_tools"] if item["name"] == "workspace_probe")
+                    assert tool["allowed"] and tool["active"] and tool["description"]
+                    with pytest.raises(AssertionError, match="instance_changed"):
+                        operate(endpoint, path, {**address, "connectionEpoch": "0"}, "tools")
+                    with pytest.raises(AssertionError, match="instance_changed"):
+                        operate(endpoint, path, {**address, "serviceInstanceId": "stale"}, "tools")
+                    disable = operate(endpoint, path, address, "setTool", submissionId="gui-disable",
+                                      name="workspace_probe", active=False)
+                    done = settle(endpoint, path, address, "gui-disable")
+                    assert done["state"]["executionId"] == disable["executionId"]
+                    assert done["state"]["status"] == "succeeded"
+                    assert done["data"]["command"] == "tools"
+                    assert "workspace_probe" not in operate(endpoint, path, address, "tools")["data"]["active_tools"]
+                    assert operate(endpoint, path, sibling, "lookup", submissionId="gui-disable") is None
+                    assert "workspace_probe" in operate(endpoint, path, sibling, "tools")["data"]["active_tools"]
+                    operate(endpoint, path, address, "resetTools", submissionId="gui-reset")
+                    assert settle(endpoint, path, address, "gui-reset")["state"]["status"] == "succeeded"
+                    assert operate(endpoint, path, address, "tools")["data"]["active_tools"] == before["active_tools"]
 
         assert manage({"action": "stop", "instanceId": host["instanceId"]}).get("cleanlyStopped")
         previous = host["serviceInstanceId"]
