@@ -45,13 +45,13 @@
     "SessionResourceQueryV1.total_bytes"
   ],
   "scope": "execution nested values plus attachment model shapes; not complete envelopes or auth",
-  "sourceDigest": "259eaf3a1c84cb43a624a6524880d53dc32e848bdc84f9139d6dd8e139052fe0",
+  "sourceDigest": "592f2e98d154a559d299da097df34c9b0fe637e5e8ba37de27377b8865f384e3",
   "sources": {
-    "src/loushang/appserver/execution/codec.py": "a75a34ef52587bc54651c9cb1366dcb4b050514505bd5a593a17e449227be259",
+    "src/loushang/appserver/execution/codec.py": "debfd09d43111adb84f12c795d3ce202c7db6ad8eeed2df9580b2a8d2b91e1d5",
     "src/loushang/appserver/execution/goal_codec.py": "8b6d7069b4545eefbcee860f9daf6f183cf4126c23b9edda5da6de5df2285598",
     "src/loushang/appserver/execution/goal_model.py": "00e66722106bcf9a7869e411fb59070e77bce5ff6f8101ce7f160038439bc988",
     "src/loushang/appserver/execution/model.py": "9bbe5e588809f82b652645e9ffa2ea0c636b17472c95a9fb46d2f730f228d326",
-    "src/loushang/appserver/execution/resources.py": "c08a080d39e5fd063e5b19fc87ef11b81592e42f52c7a1e7fcc061f3739a7034",
+    "src/loushang/appserver/execution/resources.py": "bb270d8bfa03fd49ea95eab40b30684ee4d88d0e61384b95ff5f69bedf39c185",
     "src/loushang/appserver/protocol/codec.py": "a2c5c8f16b6de4a67f2589c7c3a839566f0e63cc244dc5de6a1d4d7ee94cfd75",
     "src/loushang/appserver/protocol/errors.py": "19084c43b5fbeea67ecea58e310580c37b733364011e54570dd21f15fb00b0ee",
     "src/loushang/appserver/protocol/model.py": "904453e1b62ecce831a22cba4eacaa25cbd6cd5dd26e2328fdc06cbfd01d8af0",

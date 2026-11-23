@@ -3,11 +3,24 @@ import type { HarnessClientUiPort } from "./model";
 
 export const imageTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 const imageLimit = 4 * 1024 * 1024;
+const textLimit = 1024 * 1024;
+const textExtensions = [
+  ".txt", ".md", ".rst", ".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml", ".toml",
+  ".xml", ".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".py", ".rs", ".go",
+  ".c", ".h", ".cpp", ".java", ".sh", ".sql", ".log", ".ini", ".conf",
+];
+export const attachmentTypes = [...imageTypes, "text/plain", ...textExtensions];
 const chunkSize = 192 * 1024;
 export const maxAttachments = 4;
 
 export function supportedImage(file: File) {
   return imageTypes.includes(file.type) && file.size > 0 && file.size <= imageLimit;
+}
+
+export function supportedAttachment(file: File) {
+  if (supportedImage(file)) return true;
+  return file.size > 0 && file.size <= textLimit
+    && (file.type === "text/plain" || textExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)));
 }
 
 export function resourceResult(value: SessionResourceResultV1 & { error?: string }) {
@@ -29,19 +42,21 @@ function encode(bytes: Uint8Array) {
   return btoa(ascii);
 }
 
-export async function uploadImages(client: HarnessClientUiPort, sessionId: string, files: readonly File[]): Promise<ResourceRefV1[]> {
+export async function uploadAttachments(client: HarnessClientUiPort, sessionId: string, files: readonly File[]): Promise<ResourceRefV1[]> {
   const refs: ResourceRefV1[] = [];
   if (!files.length) return refs;
   if (!client.sessionResource || files.length > maxAttachments) throw new Error("resource_unavailable");
   for (const file of files) {
-    if (!supportedImage(file)) throw new Error("resource_unavailable");
+    if (!supportedAttachment(file)) throw new Error("resource_unavailable");
+    const image = supportedImage(file);
     const bytes = await file.arrayBuffer();
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
     const id = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
     if (refs.some((ref) => ref.id === id)) continue;
     for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
       const result = await client.sessionResource(sessionId, query("upload", {
-        resourceId: id, offset, totalBytes: bytes.byteLength, mediaType: file.type,
+        resourceId: id, offset, totalBytes: bytes.byteLength, mediaType: image ? file.type : "text/plain",
+        ...(image ? {} : { name: file.name }),
         data: encode(new Uint8Array(bytes, offset, Math.min(chunkSize, bytes.byteLength - offset))),
       }));
       if (result.resources.some((item) => item.id === id && item.sizeBytes === bytes.byteLength)) {
@@ -54,12 +69,12 @@ export async function uploadImages(client: HarnessClientUiPort, sessionId: strin
   return refs;
 }
 
-export async function listImages(client: HarnessClientUiPort, sessionId: string): Promise<readonly ResourceV1[]> {
+export async function listResources(client: HarnessClientUiPort, sessionId: string): Promise<readonly ResourceV1[]> {
   const result = await client.sessionResource?.(sessionId, query("list"));
   return result?.resources ?? [];
 }
 
-export async function readImage(client: HarnessClientUiPort, sessionId: string, id: string, signal: AbortSignal): Promise<Blob> {
+export async function readResource(client: HarnessClientUiPort, sessionId: string, id: string, signal: AbortSignal): Promise<{ blob: Blob; resource: ResourceV1 }> {
   if (!client.sessionResource) throw new Error("resource_unavailable");
   const parts: Uint8Array<ArrayBuffer>[] = [];
   let resource: ResourceV1 | undefined;
@@ -68,8 +83,10 @@ export async function readImage(client: HarnessClientUiPort, sessionId: string, 
     signal.throwIfAborted();
     const reply = await client.sessionResource(sessionId, query("read", { resourceId: id, offset }));
     const item = reply.resources[0];
-    if (!item || item.id !== id || item.kind !== "file" || item.source !== "managed" || !imageTypes.includes(item.mediaType)
-      || !Number.isInteger(item.sizeBytes) || item.sizeBytes > imageLimit || item.sizeBytes <= offset
+    if (!item || item.id !== id || item.kind !== "file" || item.source !== "managed"
+      || (!imageTypes.includes(item.mediaType) && item.mediaType !== "text/plain")
+      || !Number.isInteger(item.sizeBytes)
+      || item.sizeBytes > (item.mediaType === "text/plain" ? textLimit : imageLimit) || item.sizeBytes <= offset
       || (resource && (item.mediaType !== resource.mediaType || item.sizeBytes !== resource.sizeBytes))) {
       throw new Error("resource_unavailable");
     }
@@ -79,5 +96,5 @@ export async function readImage(client: HarnessClientUiPort, sessionId: string, 
     parts.push(bytes);
     offset += bytes.length;
   } while (offset < resource.sizeBytes);
-  return new Blob(parts, { type: resource.mediaType });
+  return { blob: new Blob(parts, { type: resource.mediaType }), resource };
 }

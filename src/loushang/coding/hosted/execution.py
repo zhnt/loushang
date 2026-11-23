@@ -199,9 +199,8 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
 
     def require_resource_input(self, refs: tuple[ResourceRefV1, ...]) -> None:
         model = self._product_binding.current_model
-        if not model or not model.supports_image_input:
+        if self._resources().images(refs) and (not model or not model.supports_image_input):
             raise AppServiceError(AppErrorCodeV1.IMAGE_INPUT_UNSUPPORTED)
-        self._resources().images(refs)
 
     def session_resource(self, query: SessionResourceQueryV1) -> SessionResourceResultV1:
         self._require_execution_open()
@@ -212,12 +211,14 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
         metadata = {
             SUBMISSION_ID: request.submission_id,
             SUBMISSION_DIGEST: ExecutionInputV1(request.text, request.resource_refs).digest(),
+            **self._resources().input_metadata(request.resource_refs),
         } if request.resource_refs and request.submission_id is not None else None
+        images = self._resources().images(request.resource_refs) if request.resource_refs else None
+        text = request.text if request.text or images else "Use the attached Session resources."
         self._guard.start(
             request,
             self._product_binding.create_execution_work(
-                request.text, lambda: self._guard.interrupt_requested,
-                self._resources().images(request.resource_refs) if request.resource_refs else None,
+                text, lambda: self._guard.interrupt_requested, images,
                 metadata
             ),
         )

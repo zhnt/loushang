@@ -104,6 +104,7 @@ from loushang.harness.approval.plugin_execution import (
 from loushang.harness.approval.plugin_execution import (
     PluginExecutionJournalError as PluginExecutionJournalError,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
@@ -269,6 +270,7 @@ async def prepare_coding_resume_continuation(
     tools: list[ToolDefinition] | None = None,
     output_capture_factory: ExecCaptureFactory | None = None,
     no_tools: NoToolsMode | bool | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     observe_input_identity: Callable[[CodingResumeInputLookupQueryV1], None]
@@ -470,6 +472,7 @@ async def prepare_coding_resume_continuation(
             tools=tools,
             output_capture_factory=output_capture_factory,
             no_tools=no_tools,
+            allowed_tool_names=allowed_tool_names,
             approval_resolver=approval_resolver,
             tool_policy_evaluator=tool_policy_evaluator,
             product_owner_selection=product_owner_selection,

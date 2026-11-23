@@ -295,15 +295,16 @@ export default interface Resources {
       "unavailable": "This request is unavailable."
     },
     "attachments": {
-      "add": "Add images",
+      "add": "Add images or files",
       "close": "Close preview",
-      "empty": "No images in this session.",
+      "empty": "No resources in this session.",
+      "file": "File",
       "image": "Image",
-      "invalid": "Choose up to four PNG, JPEG, WebP or GIF images, up to 4 MB each.",
+      "invalid": "Choose up to four attachments. Images can be up to 4 MB, and UTF-8 text or source files up to 1 MB.",
       "preview": "Preview {{name}}",
       "remove": "Remove {{name}}",
       "sessionResources": "Session resources",
-      "unavailable": "Image unavailable."
+      "unavailable": "Attachment unavailable."
     },
     "bridge": {
       "locked": "Native bridge locked",

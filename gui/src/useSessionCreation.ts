@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { uploadImages } from "./client/sessionResources";
+import { uploadAttachments } from "./client/sessionResources";
 import type { ClientSnapshot, DraftBinding, HarnessClientUiPort, SessionModels, SessionSnapshot, SubmitReceipt, ThinkingLevel } from "./client/model";
 
 export interface DraftTarget {
@@ -266,7 +266,7 @@ async function sendDraft(client: HarnessClientUiPort, sessionId: string, text: s
   const submissionId = `gui-${crypto.randomUUID()}`;
   let resourceRefs;
   try {
-    resourceRefs = files.length ? await uploadImages(client, sessionId, files) : [];
+    resourceRefs = files.length ? await uploadAttachments(client, sessionId, files) : [];
   } catch {
     return { accepted: false, reason: "resource_unavailable", submissionId };
   }

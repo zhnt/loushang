@@ -135,14 +135,15 @@
   "emptySession": "No Session is available.",
   "opening": "Opening {{appName}}…",
   "attachments": {
-    "add": "Add images",
+    "add": "Add images or files",
     "preview": "Preview {{name}}",
     "close": "Close preview",
     "remove": "Remove {{name}}",
     "image": "Image",
-    "invalid": "Choose up to four PNG, JPEG, WebP or GIF images, up to 4 MB each.",
+    "invalid": "Choose up to four attachments. Images can be up to 4 MB, and UTF-8 text or source files up to 1 MB.",
     "sessionResources": "Session resources",
-    "unavailable": "Image unavailable.",
-    "empty": "No images in this session."
+    "unavailable": "Attachment unavailable.",
+    "empty": "No resources in this session.",
+    "file": "File"
   }
 }

@@ -1,4 +1,4 @@
-"""Session-scoped access to images managed by the Coding hosted integration."""
+"""Session-scoped access to files managed by the Coding hosted integration."""
 
 from __future__ import annotations
 
@@ -16,11 +16,13 @@ from loushang.ai.types import ImagePart, UserMessage
 from loushang.appserver.execution.model import ResourceRefV1
 from loushang.appserver.execution.resources import (
     RESOURCE_CHUNK_BYTES,
+    TEXT_MEDIA_TYPE,
     ResourceV1,
     SessionResourceQueryV1,
     SessionResourceResultV1,
 )
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
+from loushang.foundation.json import JSONValue
 from loushang.harness.artifacts import (
     ArtifactStoreError,
     SessionBlobRef,
@@ -32,6 +34,7 @@ from loushang.harness.transcript.types import AgentTranscriptRecord, SessionImag
 _SOURCE = "managed-resource"
 SUBMISSION_ID = "hosted_resource_submission_id"
 SUBMISSION_DIGEST = "hosted_resource_submission_digest"
+_FILE_IDS = "hosted_resource_file_ids"
 
 
 @dataclass(slots=True)
@@ -39,6 +42,7 @@ class _Upload:
     file: BinaryIO
     size: int
     media_type: str
+    name: str | None
 
 
 def image_ids(message: object) -> tuple[str, ...]:
@@ -48,7 +52,16 @@ def image_ids(message: object) -> tuple[str, ...]:
 
 
 def _resource(blob: SessionBlobRef) -> ResourceV1:
-    return ResourceV1(blob.sha256, "file", "managed", blob.media_type, blob.size_bytes)
+    name = blob.logical_name.rsplit("/", 1)[-1] if blob.kind == "file" else None
+    return ResourceV1(blob.sha256, "file", "managed", blob.media_type, blob.size_bytes, name)
+
+
+def record_resource_ids(entry: AgentTranscriptRecord) -> tuple[str, ...]:
+    files = entry.metadata.get(_FILE_IDS)
+    return image_ids(entry.payload) + (
+        tuple(item for item in files if isinstance(item, str) and re.fullmatch(r"[a-f0-9]{64}", item))
+        if isinstance(files, list) else ()
+    )
 
 
 def _image_signature(data: bytes, mime: str) -> bool:
@@ -90,29 +103,63 @@ class HostedResourceAccess:
         store = SessionBlobStore(self._root, self._session_id)
         return store, {ref.sha256: ref for ref in store.records if ref.source == _SOURCE}
 
+    def _uploaded(self, refs: tuple[ResourceRefV1, ...]) -> tuple[SessionBlobStore, list[SessionBlobRef]]:
+        store, resources = self._manifest()
+        selected = []
+        for ref in refs:
+            blob = resources.get(ref.id)
+            if blob is None or blob.sha256 != ref.sha256:
+                raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)
+            selected.append(blob)
+        return store, selected
+
+    def input_metadata(self, refs: tuple[ResourceRefV1, ...]) -> dict[str, JSONValue]:
+        _, selected = self._uploaded(refs)
+        ids: list[JSONValue] = [blob.sha256 for blob in selected if blob.kind == "file"]
+        return {_FILE_IDS: ids} if ids else {}
+
     def images(self, refs: tuple[ResourceRefV1, ...]) -> list[ImagePart]:
         try:
-            store, resources = self._manifest()
+            store, selected = self._uploaded(refs)
             images = []
-            for ref in refs:
-                blob = resources.get(ref.id)
-                if blob is None or blob.sha256 != ref.sha256:
-                    raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)
+            for blob in selected:
+                content = store.read_bytes(blob)
+                if blob.kind != "image":
+                    continue
                 images.append(ImagePart(type="image", mime_type=blob.media_type,
-                                        data=base64.b64encode(store.read_bytes(blob)).decode("ascii")))
+                                        data=base64.b64encode(content).decode("ascii")))
             return images
+        except (ArtifactStoreError, OSError, ValueError) as exc:
+            raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from exc
+
+    def associated(self, *, kind: str | None = None) -> tuple[ResourceV1, ...]:
+        _, resources = self._manifest()
+        used = {id for entry in self._records() for id in record_resource_ids(entry)}
+        return tuple(_resource(blob) for id, blob in resources.items() if id in used
+                     and (kind is None or blob.kind == kind))
+
+    def read_text(self, id: str, *, offset: int = 0) -> dict[str, JSONValue]:
+        if type(offset) is not int or not 0 <= offset <= 2**20:
+            raise ValueError("invalid text offset")
+        try:
+            store, resources = self._manifest()
+            blob = resources.get(id)
+            if blob is None or blob.kind != "file" or not any(
+                id in record_resource_ids(entry) for entry in self._records()
+            ):
+                raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE)
+            text = store.read_bytes(blob).decode("utf-8-sig")
+            end = offset + 12000
+            return {"text": text[offset:end], "nextOffset": end if end < len(text) else None}
         except (ArtifactStoreError, OSError, ValueError) as exc:
             raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from exc
 
     def exchange(self, query: SessionResourceQueryV1) -> SessionResourceResultV1:
         try:
-            store, resources = self._manifest()
             if query.action == "list":
                 # The canonical transcript is authoritative, including messages outside the UI window.
-                used = {id for entry in self._records() for id in image_ids(entry.payload)}
-                return SessionResourceResultV1(tuple(
-                    _resource(ref) for id, ref in resources.items() if id in used
-                ))
+                return SessionResourceResultV1(self.associated())
+            store, resources = self._manifest()
             id = query.resource_id
             if id is None or re.fullmatch(r"[a-f0-9]{64}", id) is None:
                 raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST)
@@ -149,10 +196,10 @@ class HostedResourceAccess:
                 del self._uploads[id]
             if len(self._uploads) >= 4:
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-            item = _Upload(TemporaryFile(dir=self._root), query.total_bytes, query.media_type)
+            item = _Upload(TemporaryFile(dir=self._root), query.total_bytes, query.media_type, query.name)
             self._uploads[id] = item
         if (item is None or item.size != query.total_bytes or item.media_type != query.media_type
-                or item.file.tell() != query.offset):
+                or item.name != query.name or item.file.tell() != query.offset):
             raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST)
         try:
             item.file.write(chunk)
@@ -160,9 +207,21 @@ class HostedResourceAccess:
                 return SessionResourceResultV1()
             item.file.seek(0)
             data = item.file.read(item.size)
-            if sha256(data).hexdigest() != id or not _image_signature(data, item.media_type):
+            if sha256(data).hexdigest() != id:
                 raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST)
-            stored = store.put_bytes(data, logical_name=f"resources/{id}", kind="image",
+            if item.media_type == TEXT_MEDIA_TYPE:
+                if b"\x00" in data:
+                    raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST)
+                try:
+                    data.decode("utf-8-sig")
+                except UnicodeDecodeError as exc:
+                    raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST) from exc
+                kind, name = "file", f"resources/{id}/{item.name}"
+            elif _image_signature(data, item.media_type):
+                kind, name = "image", f"resources/{id}"
+            else:
+                raise AppServiceError(AppErrorCodeV1.INVALID_REQUEST)
+            stored = store.put_bytes(data, logical_name=name, kind=kind,
                                      media_type=item.media_type, source=_SOURCE)
             return SessionResourceResultV1((_resource(stored),))
         except BaseException:

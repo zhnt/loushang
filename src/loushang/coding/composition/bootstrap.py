@@ -838,6 +838,7 @@ def _create_agent_session(
         else default_lsp_environment()
     )
     explicit_lsp_definitions = tuple(lsp_definitions)
+    has_workspace_tools = session_manager._hosted_workspace is None or bool(session_manager._hosted_workspace.roots)
     lsp_enabled_for_session = (
         "coding.lsp.default" in requested_plugin_ids
         and (
@@ -845,11 +846,13 @@ def _create_agent_session(
             or resolved_invocation_profile.include_lsp_provider
         )
         and lsp_mode != "disabled"
+        and has_workspace_tools
         and session_no_tools_mode != "all"
     )
     arch_enabled_for_session = (
         "coding.arch.default" in requested_plugin_ids
         and arch_mode != "disabled"
+        and has_workspace_tools
         and session_no_tools_mode != "all"
     )
     historical_entries = session_manager.get_entries()
@@ -1953,6 +1956,7 @@ async def _create_resume_agent_session(
     output_capture_factory: ExecCaptureFactory | None = None,
     no_tools: NoToolsMode | bool | None = None,
     agent_factory: AgentFactory = Agent,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     product_owner_selection: CodingFencedProductApplicationSelection | None = None,
@@ -2010,6 +2014,7 @@ async def _create_resume_agent_session(
             stream_fn=stream_fn, thinking_level=thinking_level, tools=tools,
             output_capture_factory=output_capture_factory,
             no_tools=no_tools, agent_factory=agent_factory,
+            allowed_tool_names=allowed_tool_names,
             approval_resolver=approval_resolver, tool_policy_evaluator=tool_policy_evaluator,
             package_product_runtime_factory=selected_factory,
             worker_candidate_plugin_id=worker_candidate_plugin_id,

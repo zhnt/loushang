@@ -9,8 +9,8 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
-import { SessionImages, StoredImage } from "./SessionImages";
-import { uploadImages } from "./client/sessionResources";
+import { SessionResources, StoredResource } from "./SessionResources";
+import { uploadAttachments } from "./client/sessionResources";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { GoalProgress } from "./GoalProgress";
 import { InteractiveGoalRecovery } from "./InteractiveGoalRecovery";
@@ -671,7 +671,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     try {
       let resourceRefs;
       try {
-        resourceRefs = images.length ? await uploadImages(client, selected.id, images) : [];
+        resourceRefs = images.length ? await uploadAttachments(client, selected.id, images) : [];
       } catch {
         reportFailure({ key: "notice.resourceUnavailable" });
         return;
@@ -1033,7 +1033,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
           projectNavigation={navigation}
           projectTitles={{ ...knownTitles, ...liveTitles }}
           sessionResources={selected && connected && selectionReady && client.sessionResource
-            ? <SessionImages key={operationScope} client={client} sessionId={selected.id}
+            ? <SessionResources key={operationScope} client={client} sessionId={selected.id}
                 version={selected.messages.filter((message) => message.resourceIds?.length).slice(-1)[0]?.id ?? ""} />
             : null}
         />
@@ -1100,7 +1100,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                         </div>
                         {message.resourceIds?.length ? <div className="attachment-list">
                           {message.resourceIds.map((id, index) =>
-                            <StoredImage key={`${id}-${index}`} client={client} sessionId={selected.id} id={id} />)}
+                            <StoredResource key={`${id}-${index}`} client={client} sessionId={selected.id} id={id} />)}
                         </div> : null}
                         {message.role === "assistant" && message.content
                           ? <MessageMarkdown text={message.content} openFile={openWorkspacePath ? undefined : openFilePreview}

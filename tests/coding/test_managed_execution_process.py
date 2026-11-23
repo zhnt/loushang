@@ -311,6 +311,29 @@ def test_managed_image_upload_execution_and_transcript_restore(owners, tmp_path,
             with pytest.raises(AppServiceError) as unsupported:
                 await reopened.submit_execution(restored_control, new_instance, "unsupported", "", refs)
             assert unsupported.value.code is AppErrorCodeV1.IMAGE_INPUT_UNSUPPORTED
+            file_data = "attached source only\n".encode()
+            file_id = sha256(file_data).hexdigest()
+            file_ref = ResourceRefV1(file_id, file_id)
+            uploaded = await reopened.session_resource(restored_control, new_instance, SessionResourceQueryV1(
+                "upload", file_id, 0, len(file_data), "text/plain",
+                base64.b64encode(file_data).decode(), name="example.py",
+            ))
+            assert uploaded.resources[0].name == "example.py"
+            file_submission = await reopened.submit_execution(
+                restored_control, new_instance, "file-submission", f"read-session-file {file_id}", (file_ref,),
+            )
+            async with asyncio.timeout(20):
+                while True:
+                    result = await reopened.get_execution(restored_control, new_instance, file_submission.state.execution_id)
+                    if result.state.status.terminal:
+                        assert result.state.status.value == "succeeded", result
+                        break
+                    await asyncio.sleep(0.05)
+            updated = await reopened.snapshot_execution_session(restored_control, new_instance)
+            assert any(record.resource_ids == (file_id,) for record in updated.source.source.records)
+            assert any(json.loads(row["text"])["text"] == file_data.decode()
+                       for row in map(json.loads, (tmp_path / "execution-audit.jsonl").read_text().splitlines())
+                       if row["kind"] == "model_received_file")
             transcript = next((Path(namespace.platform_home) / "data/sessions").rglob("*.jsonl"))
             assert image64 not in transcript.read_text()
         finally:
