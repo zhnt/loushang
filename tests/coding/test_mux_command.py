@@ -99,6 +99,38 @@ def test_G16_COMMAND_attach_rejects_non_terminal_before_connection_io(tmp_path):
     assert not tuple(tmp_path.iterdir())
 
 
+def test_managed_attach_resolves_the_scope_of_an_empty_workspace_mux(tmp_path, monkeypatch):
+    import asyncio
+
+    from loushang.appserver.protocol import MuxSelectorV1, SessionScopeV1
+    from loushang.coding.cli import mux
+
+    class Connection:
+        scopes = ()
+
+        def __init__(self, *args, **kwargs):
+            self.client = self
+
+        async def read_mux(self, request):
+            assert request.selector.name == "selected-mux"
+            return SimpleNamespace(name="selected-mux", members=())
+
+        async def workspace(self, request):
+            assert request.action == "workspaces"
+            return SimpleNamespace(workspaces=(
+                SimpleNamespace(workspace={"muxName": "other-mux"}, scope=SessionScopeV1.CWD,
+                                scope_fingerprint="a" * 64),
+                SimpleNamespace(workspace={"muxName": "selected-mux"}, scope=SessionScopeV1.CWD,
+                                scope_fingerprint="b" * 64),
+            ))
+
+    monkeypatch.setattr(mux, "LocalConnectionDirectoryV1", lambda root: object())
+    monkeypatch.setattr(mux, "LocalAppClientConnectionV1", Connection)
+    command = mux._ClientCommand(tmp_path, "workspace", "attach", "selected-mux", None)
+    scopes = asyncio.run(command._attachment_scopes(MuxSelectorV1(name="selected-mux")))
+    assert scopes == ((SessionScopeV1.CWD, "b" * 64),)
+
+
 def test_G16_COMMAND_failed_shell_settlement_still_closes_connection(tmp_path, monkeypatch):
     import asyncio
 

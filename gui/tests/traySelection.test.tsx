@@ -5,6 +5,7 @@ import LocalHostGate from "../src/LocalHostGate";
 import { ProjectNavigation } from "../src/ProjectNavigation";
 import type { ProjectNavigationProps } from "../src/client/projectDirectory";
 const backend = vi.hoisted(() => ({ invoke: vi.fn(), settings: vi.fn(), create: vi.fn(), listeners: new Map<string, (event: any) => void>() }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main" }) }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: backend.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async (name: string, callback: (event: any) => void) => {
   backend.listeners.set(name, callback);

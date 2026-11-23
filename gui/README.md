@@ -138,8 +138,10 @@ shared configuration through the Host API. Files are stored in the Host machine'
 credentials and private AppHost records never enter the browser. Closing the
 server releases its connections without stopping managed Hosts.
 
-Set `web.manageLocal` to enable management for clients of this loopback
-listener. Enable it only for a trusted local machine.
+When the local management command is available, Web discovers and connects to
+the running default AppHost. In a source checkout, set `LOUSHANG_MUX` to the
+absolute path of the installed management command. Start, stop and restart
+require opting in with `web.manageLocal` for this loopback listener.
 
 Optional `host.json`:
 
@@ -265,6 +267,12 @@ and opens even when the selected endpoint is unavailable. The desktop uses the
 shared Rust AppClient for both local and tunneled AppServer connections.
 Use `lmux` to start or stop a local managed Host separately. Closing the GUI
 releases its client connection and leaves the Host running.
+
+Launching the desktop app again or choosing **Show window** in the tray brings
+an existing window forward. **File → New window** opens another window in the same desktop
+instance. The main window hides on close when the tray is available. Additional
+windows close independently. An explicit Mux launch uses its controller in the
+main window. New windows open the regular workspace interface.
 
 ### Connect Windows or Linux desktop to a Linux AppHost
 
@@ -529,13 +537,13 @@ Session selection history, retaining per-Session drafts and view state. A new
 selection after going back drops the forward history; missing Sessions are
 skipped and changing the client/service context resets the history.
 
-Desktop File/Edit/View/Help menus provide capability-gated new Session,
+Desktop File/Edit/View/Help menus provide new windows, capability-gated new Sessions,
 composer focus, window close, copy selection/select all, sidebar/environment
 visibility, keyboard help and an About dialog. Clipboard failures are reported
 without changing the selected text. Menu buttons support keyboard navigation,
 Escape and outside-click dismissal. File/Edit/View/Help entries are grouped
 with separators, shortcut hints and aligned checkmarks. Unimplemented actions
-(including new windows, project/folder opening, settings, edit history,
+(including project/folder opening, settings, edit history,
 terminal, tabs, zoom and external help) stay visibly disabled. Existing new
 Session, close/quit, work-panel toggle and history actions also support their
 advertised desktop shortcuts; shortcuts are not installed in the web shell.

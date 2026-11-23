@@ -152,7 +152,9 @@ class ManagedServiceStarterV1:
             linux.spawn()
 
     def _require_current(self, deadline: float) -> ManagedServiceStateV1:
-        observed = self._journal.read(deadline=deadline)
+        # A reader may hold the fence after this starter publishes its
+        # provisional claim. Wait for it rather than abandoning the spawn.
+        observed = self._journal.read(deadline=deadline, wait_for_lock=True)
         if (observed is None or observed.handoff.attempt_id != self._attempt
                 or self._state is not None and observed.handoff.instance != self._state.handoff.instance):
             raise ManagedStorageError("conflict")

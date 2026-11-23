@@ -49,7 +49,7 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
     try { await getCurrentWindow()[action](); setError(null); }
     catch { setError("actionFailed"); }
   }
-  async function invokeFrameAction(command: "quit_app" | "open_devtools") {
+  async function invokeFrameAction(command: "new_window" | "quit_app" | "open_devtools") {
     try { await invoke(command); setError(null); }
     catch { setError("actionFailed"); }
   }
@@ -59,6 +59,7 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
       <button className="frame-icon" aria-label={t("back")} data-tooltip={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
       <button className="frame-icon" aria-label={t("forward")} data-tooltip={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
       <FrameMenu {...actions} onBack={onBack} onForward={onForward}
+        onNewWindow={() => void invokeFrameAction("new_window")}
         onClose={() => void control("close")} onQuit={() => void invokeFrameAction("quit_app")}
         onOpenDevtools={() => void invokeFrameAction("open_devtools")} />
       <div className="window-drag-region" data-tauri-drag-region />

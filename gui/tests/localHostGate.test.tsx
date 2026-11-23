@@ -15,6 +15,7 @@ const native = vi.hoisted(() => ({
   invoke: vi.fn(), create: vi.fn(() => ({ suspend: async () => () => {} })), listeners: new Map<string, (value: any) => void>(),
   available: vi.fn(async () => false), realShell: false,
 }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main" }) }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: native.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async (name, callback) => {
   native.listeners.set(name, callback);
@@ -162,6 +163,25 @@ describe("local managed Host presentation", () => {
     render(<LocalHostGate />);
     expect(await screen.findByText("Fixture")).toBeVisible();
     expect(native.invoke.mock.calls.filter(([command]) => command === "client_settings")).toEqual([]);
+  });
+
+  it("waits for another client to finish starting the Host", async () => {
+    let checks = 0;
+    installMock(async (command, args) => {
+      if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
+      if (command === "sync_tray") return;
+      if (command === "environment") return { supported: true, workspace: "/workspace" };
+      if (args.request.action === "connect") {
+        return { state: ++checks === 1 ? "starting" : "running", errorCode: null, instanceId: "instance-1" };
+      }
+      return { state: "running", errorCode: null, instanceId: "instance-1" };
+    });
+    render(<LocalHostGate />);
+    const settings = openHostSettings();
+    expect(await settings.findByText("Host starting")).toBeVisible();
+    expect(await settings.findByText("Running", {}, { timeout: 3000 })).toBeVisible();
+    expect(countActions("connect")).toBeGreaterThanOrEqual(2);
+    expect(countActions("start")).toBe(0);
   });
 
   it("offers Start when the recorded Host has exited", async () => {

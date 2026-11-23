@@ -5,6 +5,7 @@ import zhWorkspace from "../i18n/locales/zh-CN/workspace.json";
 import { appName } from "../branding";
 import { useEffect, useRef } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 
 export type TrayAction = "enable" | "info" | "reconnect" | "start" | "stop" | "restart";
@@ -57,6 +58,10 @@ export function trayProjection(model: TrayModel, revision: number) {
     })),
   };
 }
+export function ownsSystemTray() {
+  return isTauri() && getCurrentWindow().label === "main";
+}
+
 let nextRevision = 0;
 let updates: Promise<unknown> = Promise.resolve();
 /** Serializes projections and ignores clicks from menus replaced during Host changes. */
@@ -66,7 +71,7 @@ export function useSystemTray(model: TrayModel, action: (hostId: string, action:
   const revision = useRef(0);
   const ready = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!ownsSystemTray()) return;
     let active = true;
     const release = listen<{ revision: number; hostId: string; action: TrayAction }>("gui://tray-host-action", ({ payload }) => {
       if (!active || payload.revision !== revision.current) return;
@@ -74,14 +79,14 @@ export function useSystemTray(model: TrayModel, action: (hostId: string, action:
       if (host && ["enable", "info", "reconnect", "start", "stop", "restart"].includes(payload.action) && availableTrayAction(host, payload.action)) {
         latest.current.action(payload.hostId, payload.action);
       }
-    });
+    }, { target: "main" });
     ready.current = release;
-    const errors = listen<string>("gui://tray-error", ({ payload }) => { if (active) latest.current.onError(payload); });
+    const errors = listen<string>("gui://tray-error", ({ payload }) => { if (active) latest.current.onError(payload); }, { target: "main" });
     return () => { active = false; void release.then((stop) => stop()); void errors.then((stop) => stop()); };
   }, []);
   const key = JSON.stringify(trayProjection(model, 0));
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!ownsSystemTray()) return;
     const current = ++nextRevision;
     revision.current = current;
     const projection = trayProjection(latest.current.model, current);

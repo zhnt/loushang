@@ -1,4 +1,4 @@
-//! Browser polling holds one AppClient attachment for the lifetime of the view.
+//! Shared AppClient attachment for active polling views of a workspace.
 use super::{options, Result, TIMEOUT};
 use crate::{
     read_stop::ReadStop, AppClient, AppTarget, ConnectionOptions, ControlCommand,
@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const LEASE: Duration = Duration::from_secs(8);
+pub(super) const LEASE: Duration = Duration::from_secs(8);
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Target {
@@ -49,6 +49,7 @@ pub(super) struct View {
     pub(super) target: Target,
     pub(super) credential_binding: [u8; 32],
     pub(super) path: String,
+    pub(super) mux: String,
     pub(super) epoch: u64,
     stop: ReadStop,
     worker: Option<JoinHandle<()>>,
@@ -75,6 +76,7 @@ impl View {
 
         let (worker_target, worker_stop, worker_latest, worker_seen) =
             (target.clone(), stop.clone(), latest.clone(), seen.clone());
+        let worker_mux = mux.clone();
         let worker = thread::Builder::new()
             .name("app-client-view".into())
             .spawn(move || {
@@ -82,7 +84,7 @@ impl View {
                 let connection = ConnectionOptions {
                     control_commands: Some(&receive),
                     stop: Some(worker_stop.clone()),
-                    ..options(worker_target.borrow(), &mux, workspace.as_ref())
+                    ..options(worker_target.borrow(), &worker_mux, workspace.as_ref())
                 };
                 let _ = client.run_stream(
                     connection,
@@ -111,6 +113,7 @@ impl View {
             target,
             credential_binding,
             path,
+            mux,
             epoch,
             stop,
             worker: Some(worker),

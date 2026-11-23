@@ -183,8 +183,11 @@ enum Publication {
 }
 
 #[tauri::command]
-pub(crate) fn live_connection_available(app: tauri::AppHandle) -> bool {
-    matches!(&app.state::<LiveLaunchState>().launch, Ok(Some(_)))
+pub(crate) fn live_connection_available(window: tauri::WebviewWindow) -> bool {
+    // The explicit Mux launch owns a single controller. Other windows use the
+    // normal workspace gateway instead of attaching the same Mux again.
+    window.label() == crate::windows::MAIN
+        && matches!(&window.state::<LiveLaunchState>().launch, Ok(Some(_)))
 }
 
 fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<LiveLaunch>, ()> {

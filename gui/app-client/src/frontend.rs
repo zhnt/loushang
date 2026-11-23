@@ -7,7 +7,7 @@ use crate::{
     ControlResult, CreateSessionResult, InteractiveGoalCommand, InteractiveGoalReviewSubmission,
     ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
 };
-use live_view::{Target, View};
+use live_view::{Target, View, LEASE};
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -16,7 +16,7 @@ use std::{
     num::NonZeroU16,
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -29,11 +29,23 @@ pub struct Backend {
     root: PathBuf,
     tunnel: Option<(PathBuf, NonZeroU16)>,
     requests: Arc<Mutex<()>>,
-    views: Arc<Mutex<HashMap<String, View>>>,
+    views: Arc<Mutex<HashMap<String, ViewRegistration>>>,
     next_view_epoch: Arc<Mutex<u64>>,
     manager: Option<PathBuf>,
+    allow_service_control: bool,
     managed_record: Arc<Mutex<Option<PathBuf>>>,
     client_directories: Arc<Mutex<client_directories::Grants>>,
+}
+
+struct ViewRegistration {
+    view: Arc<View>,
+    last_seen: Instant,
+}
+
+impl ViewRegistration {
+    fn active(&self) -> bool {
+        self.last_seen.elapsed() < LEASE && self.view.active()
+    }
 }
 
 impl Backend {
@@ -45,14 +57,22 @@ impl Backend {
             views: Arc::default(),
             next_view_epoch: Arc::default(),
             manager: None,
+            allow_service_control: false,
             managed_record: Arc::new(Mutex::new(None)),
             client_directories: Arc::default(),
         }
     }
 
-    pub fn with_service_management(mut self) -> Self {
+    pub fn with_service_discovery(mut self) -> Self {
         self.manager = service::executable();
         self
+    }
+
+    pub fn with_service_management(self) -> Self {
+        Self {
+            allow_service_control: true,
+            ..self.with_service_discovery()
+        }
     }
 
     pub fn through_tunnel(&self, root: PathBuf, port: NonZeroU16) -> Self {
@@ -63,6 +83,7 @@ impl Backend {
             views: self.views.clone(),
             next_view_epoch: self.next_view_epoch.clone(),
             manager: None,
+            allow_service_control: false,
             managed_record: Arc::new(Mutex::new(None)),
             client_directories: self.client_directories.clone(),
         }
@@ -135,7 +156,7 @@ impl Backend {
         match operation {
             "environment" => Ok(json!({
                 "supported": target.is_some() || manager.is_some(),
-                "manageable": manager.is_some(), "workspace": self.last_workspace()?,
+                "manageable": self.allow_service_control && manager.is_some(), "workspace": self.last_workspace()?,
             })),
             "manage" => status(target, field(request, "action")?),
             "workspace" => self.workspace(target.ok_or("not_connected")?, request),
@@ -167,11 +188,10 @@ impl Backend {
         let action = field(request, "action")?;
         let identity = Target::from(target);
         let mut views = self.views.lock().map_err(|_| "host_unavailable")?;
-        views.retain(|_, view| view.active());
-        if views
-            .get(id)
-            .is_some_and(|view| view.target != identity || view.path != path)
-        {
+        views.retain(|_, registration| registration.active());
+        if views.get(id).is_some_and(|registration| {
+            registration.view.target != identity || registration.view.path != path
+        }) {
             return Err("invalid_request".into());
         }
         if action == "close" {
@@ -182,26 +202,54 @@ impl Backend {
             if views.len() >= 16 {
                 return Err("connection_failed".into());
             }
-            let workspace = if path == TEMPORARY {
-                None
+            // A Mux has one controller. Windows/tabs at this endpoint keep
+            // separate view IDs and share the attachment until the last closes.
+            let shared = views
+                .values()
+                .map(|registration| &registration.view)
+                .find(|view| view.target == identity && view.path == path)
+                .cloned();
+            let view = if let Some(shared) = shared {
+                if AppClient::target_binding(target).ok() != Some(shared.credential_binding) {
+                    return Err("connection_failed".into());
+                }
+                shared
             } else {
-                Some(open_workspace(target, path)?)
+                let workspace = if path == TEMPORARY {
+                    None
+                } else {
+                    Some(open_workspace(target, path)?)
+                };
+                let mux = workspace
+                    .as_ref()
+                    .map_or_else(|| TEMPORARY_MUX.into(), workspace_mux_name);
+                let epoch = {
+                    let mut counter = self
+                        .next_view_epoch
+                        .lock()
+                        .map_err(|_| "host_unavailable")?;
+                    *counter = counter.checked_add(1).ok_or("host_unavailable")?;
+                    *counter
+                };
+                Arc::new(View::open(
+                    identity,
+                    path.to_owned(),
+                    workspace,
+                    mux,
+                    epoch,
+                )?)
             };
-            let mux = workspace
-                .as_ref()
-                .map_or_else(|| TEMPORARY_MUX.into(), workspace_mux_name);
-            let epoch = {
-                let mut counter = self
-                    .next_view_epoch
-                    .lock()
-                    .map_err(|_| "host_unavailable")?;
-                *counter = counter.checked_add(1).ok_or("host_unavailable")?;
-                *counter
-            };
-            let view = View::open(identity, path.to_owned(), workspace, mux, epoch)?;
-            views.insert(id.to_owned(), view);
+            views.insert(
+                id.to_owned(),
+                ViewRegistration {
+                    view,
+                    last_seen: Instant::now(),
+                },
+            );
         }
-        let view = views.get(id).ok_or("connection_failed")?;
+        let registration = views.get_mut(id).ok_or("connection_failed")?;
+        registration.last_seen = Instant::now();
+        let view = &registration.view;
         match action {
             "snapshot" => {
                 let snapshot = view.snapshot()?;
@@ -221,11 +269,27 @@ impl Backend {
         }
     }
 
+    fn attached_view(&self, target: AppTarget<'_>, mux: &str) -> Result<Option<Arc<View>>> {
+        let identity = Target::from(target);
+        let mut views = self.views.lock().map_err(|_| "host_unavailable")?;
+        views.retain(|_, registration| registration.active());
+        let view = views
+            .values()
+            .map(|registration| &registration.view)
+            .find(|view| view.target == identity && view.mux == mux);
+        if let Some(view) = view {
+            if AppClient::target_binding(target).ok() != Some(view.credential_binding) {
+                return Err("connection_failed".into());
+            }
+        }
+        Ok(view.cloned())
+    }
+
     fn manage_service(&self, manager: &std::path::Path, request: &Value) -> Result<Value> {
         let (action, instance) = match field(request, "action")? {
             "status" | "connect" => ("status", None),
-            "start" => ("start", None),
-            action @ ("stop" | "restart") => {
+            "start" if self.allow_service_control => ("start", None),
+            action @ ("stop" | "restart") if self.allow_service_control => {
                 let instance = field(request, "instanceId")?;
                 if instance.len() != 32
                     || !instance
@@ -236,9 +300,10 @@ impl Backend {
                 }
                 (action, Some(instance))
             }
+            "start" | "stop" | "restart" => return Err("service_managed_externally".into()),
             _ => return Err("invalid_request".into()),
         };
-        let error = |code: &str| json!({"state":"unknown", "errorCode":code, "manageable":true});
+        let error = |code: &str| json!({"state":"unknown", "errorCode":code, "manageable":self.allow_service_control});
         let reply = match service::invoke(manager, &self.root, action, instance) {
             Ok(reply) => reply,
             Err(code) => return Ok(error(code)),
@@ -254,7 +319,9 @@ impl Backend {
                 return Ok(error("management_unconfirmed"));
             }
             *self.managed_record.lock().map_err(|_| "host_unavailable")? = None;
-            return Ok(json!({"state":reply.state, "errorCode":null, "manageable":true}));
+            return Ok(
+                json!({"state":reply.state, "errorCode":null, "manageable":self.allow_service_control}),
+            );
         }
         let Some(root) = reply.record_root.filter(|path| path.is_absolute()) else {
             return Ok(error("management_unconfirmed"));
@@ -272,7 +339,7 @@ impl Backend {
         }
         *self.managed_record.lock().map_err(|_| "host_unavailable")? = Some(root);
         Ok(
-            json!({"state":"running", "errorCode":null, "manageable":true,
+            json!({"state":"running", "errorCode":null, "manageable":self.allow_service_control,
                   "instanceId":reply.instance_id, "serviceInstanceId":service_instance}),
         )
     }
@@ -298,8 +365,8 @@ impl Backend {
         let action = field(request, "action")?;
         let operation = match action {
             "navigation" => return self.navigation(target),
-            "create-chat" => return create_chat(target, request),
-            "delete-chat" => return delete_chat(target, request),
+            "create-chat" => return create_chat(self, target, request),
+            "delete-chat" => return delete_chat(self, target, request),
             "models" => {
                 let selector = optional_workspace_path(request)?;
                 let (workspace, path) = selector
@@ -746,7 +813,7 @@ fn control_on<T>(
         .map_err(|_| "connection_failed".into())
 }
 
-fn delete_chat(target: AppTarget<'_>, input: &Value) -> Result<Value> {
+fn delete_chat(backend: &Backend, target: AppTarget<'_>, input: &Value) -> Result<Value> {
     let path = field(input, "path")?;
     let session_id = field(input, "sessionId")?.to_owned();
     let mux_space_id = field(input, "scope")?
@@ -762,16 +829,21 @@ fn delete_chat(target: AppTarget<'_>, input: &Value) -> Result<Value> {
     } else {
         mux_name(path)
     };
-    let accepted = control_on(
-        options(target, &mux, None),
-        Some(instance),
-        &mut None,
-        |reply| ControlCommand::CloseSession {
-            mux_space_id,
-            session_id,
-            reply,
-        },
-    )?;
+    let build = |reply| ControlCommand::CloseSession {
+        mux_space_id,
+        session_id,
+        reply,
+    };
+    let accepted = if let Some(view) = backend.attached_view(target, &mux)? {
+        view.control(Some(instance), build)?
+    } else {
+        control_on(
+            options(target, &mux, None),
+            Some(instance),
+            &mut None,
+            build,
+        )?
+    };
     Ok(json!({"accepted": accepted}))
 }
 
@@ -826,7 +898,7 @@ fn optional_workspace_path(request: &Value) -> Result<Option<&str>> {
         .transpose()
 }
 
-fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
+fn create_chat(backend: &Backend, target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let title = request
         .get("title")
         .map(|value| value.as_str().ok_or("invalid_request"))
@@ -848,7 +920,12 @@ fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     };
     let path = workspace_path.unwrap_or(TEMPORARY);
     let mux = workspace_mux_name(&scope);
-    match control(options(target, &mux, Some(&scope)), command)? {
+    let result = if let Some(view) = backend.attached_view(target, &mux)? {
+        view.control(None, command)?
+    } else {
+        control(options(target, &mux, Some(&scope)), command)?
+    };
+    match result {
         CreateSessionResult::Accepted(session_id) => {
             Ok(json!({"workspace": path, "sessionId": session_id}))
         }
@@ -1084,6 +1161,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn discovery_only_rejects_service_lifecycle_actions() {
+        let backend = Backend::new(PathBuf::new());
+        let missing_command = std::path::Path::new("missing-acceptance-manager");
+        for action in ["start", "stop", "restart"] {
+            assert_eq!(
+                backend.manage_service(missing_command, &json!({"action": action})),
+                Err("service_managed_externally".into())
+            );
+        }
+    }
+
+    #[test]
     fn workspace_creation_checks_the_wire_shape_without_interpreting_host_paths() {
         for path in ["/home/project", r"C:\Work Space"] {
             assert_eq!(
@@ -1102,14 +1191,15 @@ mod tests {
     #[test]
     fn invalid_chat_titles_are_rejected_before_workspace_allocation() {
         let target = AppTarget::Local(std::path::Path::new("unconfigured"));
+        let backend = Backend::new(PathBuf::new());
         for title in ["   ".to_owned(), "a".repeat(257)] {
             assert_eq!(
-                create_chat(target, &json!({"title": title})),
+                create_chat(&backend, target, &json!({"title": title})),
                 Err("invalid_request".into())
             );
         }
         assert_eq!(
-            create_chat(target, &json!({"title": "a".repeat(256)})),
+            create_chat(&backend, target, &json!({"title": "a".repeat(256)})),
             Ok(json!({"accepted": false}))
         );
     }

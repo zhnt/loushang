@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
@@ -57,14 +58,13 @@ def test_concurrent_starts_reuse_the_authenticated_host(tmp_path):
     host = None
     try:
         assert call('status')['state'] == 'not_running'
-        host = call('start')
-        assert host['state'] == 'running', host
+        with ThreadPoolExecutor(max_workers=3) as callers:
+            starts = list(callers.map(lambda _: call('start'), range(3)))
+        host = starts[0]
+        assert all(item['state'] == 'running' for item in starts), starts
         assert host['pid'] != os.getpid()
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=2) as callers:
-            duplicates = list(callers.map(lambda _: call('start'), range(2)))
-        assert {item['pid'] for item in duplicates} == {host['pid']}
-        assert {item['serviceInstanceId'] for item in duplicates} == {host['serviceInstanceId']}
+        assert {item['pid'] for item in starts} == {host['pid']}
+        assert {item['serviceInstanceId'] for item in starts} == {host['serviceInstanceId']}
         assert call('start')['pid'] == host['pid']
         assert call('stop', allow_error=True, instance_id='0' * 32)['errorCode'] == 'instance_changed'
         record, = Path(host['recordRoot']).glob('*.json')
@@ -82,7 +82,8 @@ def test_concurrent_starts_reuse_the_authenticated_host(tmp_path):
             record.write_bytes(original)
         assert call('status')['pid'] == host['pid']
     finally:
-        if host and host.get('instanceId'):
+        host = host or call('status')
+        if host.get('instanceId'):
             stopped = call('stop', instance_id=host['instanceId'])
             assert stopped.get('cleanlyStopped'), stopped
 

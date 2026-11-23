@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from functools import partial
@@ -23,6 +24,8 @@ from loushang.coding.hosted.managed.process import (
     coding_managed_process_request,
 )
 from loushang.hosting.errors import HostingError
+
+_ADMISSION_CONTENTION = {"busy", "conflict", "invalid_record", "unavailable"}
 
 
 class ServiceControlError(RuntimeError):
@@ -63,16 +66,43 @@ async def _control(
         timeout += 15.0
     deadline = monotonic() + timeout
     defaults = resolve_managed_defaults()
-    return await _control_managed_service(
-        operation,
-        expected,
+    control = partial(
+        _control_managed_service,
         defaults=defaults,
         service_alias="coding",
         application_id=APPLICATION_ID,
         endpoint=ENDPOINT,
-        deadline=deadline,
         select_request_factory=lambda: request_factory or partial(
             coding_managed_process_request, executable=sys.executable, environment=os.environ,
         ),
         error_factory=lambda code: ServiceControlError(code),
     )
+
+    try:
+        return await control(operation, expected, deadline=deadline)
+    except ManagedStorageError as error:
+        if (operation != "start" or error.code not in _ADMISSION_CONTENTION
+                or getattr(error, "__notes__", ())):
+            raise
+
+        # A concurrent first use can encounter the winner's unpublished
+        # admission records. Observe the original service without replaying
+        # any creation or replacing an unverified instance.
+        # A winner can publish readiness just as this caller's budget expires.
+        observe_until = monotonic() + 2.0
+        while monotonic() < observe_until:
+            try:
+                observed = await control("status", None, deadline=observe_until)
+            except ManagedStorageError as observation:
+                if observation.code not in _ADMISSION_CONTENTION:
+                    raise
+            else:
+                state = observed["state"]
+                if state == "running":
+                    return observed
+                if state == "starting":
+                    observe_until = max(observe_until, deadline)
+                elif state not in {"not_running", "exited"}:
+                    break
+            await asyncio.sleep(0.05)
+        raise

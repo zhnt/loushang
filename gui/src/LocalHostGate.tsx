@@ -5,7 +5,7 @@ import App, { HarnessGui } from "./App";
 import { useOfflineAccount } from "./client/offlineAccount";
 import { nativeLiveAvailable, validateSessionModels } from "./client/nativeLiveClient";
 import type { ConnectionState, HarnessClientUiPort } from "./client/model";
-import { useSystemTray, type TrayConnection } from "./client/systemTray";
+import { ownsSystemTray, useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
 import { clientDirectoryControls, createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
@@ -360,6 +360,12 @@ export default function LocalHostGate() {
   }, []);
 
   useEffect(() => {
+    if (host.state !== "starting" || !supported) return;
+    const timer = window.setInterval(() => { void perform("connect"); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [host.state, supported]);
+
+  useEffect(() => {
     if (host.state !== "running" || !supported) return;
     const timer = window.setInterval(() => { void perform("status"); }, 5000);
     return () => window.clearInterval(timer);
@@ -375,7 +381,7 @@ export default function LocalHostGate() {
     : connection === "connected" ? "connected"
     : connection === "connecting" ? "connecting" : "disconnected";
   const trayHosts = useTrayHosts({
-    enabled: route === "web", selectedId, localName: i18n.t("shell:tray.localHost"),
+    enabled: route === "web" && ownsSystemTray(), selectedId, localName: i18n.t("shell:tray.localHost"),
     workspace, host, supported: supported === true, busy, connection: trayConnection,
     onSelect: (id) => activateHost(id),
     onManage: (action, _path, instanceId) => action === "connect" && connectionId.current

@@ -25,7 +25,7 @@ pub async fn serve(root: PathBuf, dist: Option<PathBuf>) -> Result<()> {
     let backend = if config.manage_local {
         backend.with_service_management()
     } else {
-        backend
+        backend.with_service_discovery()
     };
     let (stop, stopped) = watch::channel(false);
     let service = Arc::new(http::Service {

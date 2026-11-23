@@ -173,7 +173,7 @@ describe("desktop frame", () => {
 
   it("replaces native decorations and grants only scoped window commands", () => {
     expect(config.app.windows[0].decorations).toBe(false);
-    expect(capability.windows).toEqual(["main"]);
+    expect(capability.windows).toEqual(["main", "workspace-*"]);
     for (const action of ["minimize", "toggle-maximize", "close", "start-dragging"]) {
       expect(capability.permissions).toContain(`core:window:allow-${action}`);
     }
