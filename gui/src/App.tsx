@@ -985,7 +985,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     attachmentScope: draft.id,
     pickClientDirectory: draftDirectories.pickClientDirectory,
     revokeClientDirectory: draftDirectories.revokeClientDirectory,
-    hostReferences: Boolean(draft.target.workspace),
     onImagesChange: (projectNavigation || client.sessionResource) && !draftPending && draft.status !== "firstSubmissionUnknown"
       ? draftCreation.changeImages : undefined,
     onSubmit: submitDraft,
@@ -998,7 +997,6 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     attachmentScope: operationScope ?? undefined,
     pickClientDirectory: client.pickClientDirectory,
     revokeClientDirectory: client.revokeClientDirectory,
-    hostReferences: !fixture && !temporaryWorkspace && Boolean(workspacePath),
     onImagesChange: client.sessionResource && !controlPending && !failure?.pending ? changeSelectedImages : undefined,
     onChange: (value: string) => dispatch({ type: "draft.changed", sessionId: selected.id, value }),
     onSubmit: () => void submit(state.local.drafts[selected.id] ?? ""),
