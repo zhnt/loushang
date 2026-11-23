@@ -201,8 +201,6 @@ class _ProductSources:
         return self.catalog.project_management_source_snapshot(
             self.desired_state,
             owner_revision_prefix="coding-product-source:",
-            verify_record=self.catalog.verify_record,
-            verification_error=CodingExternalDataWheelError,
         )
 
 

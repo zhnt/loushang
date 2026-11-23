@@ -13,7 +13,6 @@ from hashlib import sha256 as sha256
 from pathlib import Path
 
 from loushang.harness.journal import (
-    FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalFileError,
 )
@@ -21,6 +20,7 @@ from loushang.harness.package_product._local_source_catalog import (
     _PluginWheelSourceCatalog,
     _WheelSourceBindingMethods,
     _WindowsWorkerSourceCatalog,
+    plugin_wheel_identity_fields,
     plugin_wheel_source_fields_match,
     project_plugin_wheel_binding,
 )
@@ -116,9 +116,6 @@ class CodingExternalWorkerWheelBindingV1(_WheelSourceBindingMethods):
         artifact_digest: str,
         admission: PackageProductLocalWorkerAdmissionV1,
     ) -> CodingExternalWorkerWheelBindingV1:
-        match = _WHEEL_NAME.fullmatch(wheel_filename)
-        if match is None:
-            raise ValueError("External Worker Wheel filename is unsupported")
         return cls._seal_binding(
             record_revision=record_revision,
             store_id=store_id,
@@ -126,15 +123,19 @@ class CodingExternalWorkerWheelBindingV1(_WheelSourceBindingMethods):
             scope_id=scope_id,
             original_source=original_source,
             wheel_filename=wheel_filename,
-            plugin_id=match["plugin"],
-            version=match["version"],
+            **plugin_wheel_identity_fields(
+                wheel_filename, _WHEEL_NAME, "External Worker Wheel"
+            ),
             artifact_digest=artifact_digest,
             admission=admission,
         )
 
     def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
         return project_plugin_wheel_binding(
-            self, source_root, trust_class="local-worker-candidate", admission=self.admission
+            self,
+            source_root,
+            trust_class="local-worker-candidate",
+            admission=self.admission,
         )
 
 
@@ -169,10 +170,7 @@ CodingExternalWorkerWheelBindingV1._binding_schema = RecordSchema.for_dataclass(
 )
 
 
-_CODEC = FunctionalJournalRecordCodec(
-    encoder=CodingExternalWorkerWheelBindingV1.to_dict,
-    decoder=CodingExternalWorkerWheelBindingV1.from_dict,
-)
+_CODEC = CodingExternalWorkerWheelBindingV1._record_codec()
 
 
 class CodingExternalWorkerWheelCatalog(

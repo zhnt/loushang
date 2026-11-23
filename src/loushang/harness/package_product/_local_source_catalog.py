@@ -26,10 +26,13 @@ from typing import (
     cast,
 )
 
+from packaging.version import Version
+
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
+    FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalDurabilityProfile,
     JournalFileError,
@@ -92,6 +95,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 if TYPE_CHECKING:
     from ._legacy_local_migration import _AcceptedSource
 
+
 class _CatalogRecord(Protocol):
     @property
     def record_revision(self) -> int: ...
@@ -130,8 +134,8 @@ class _LegacyRecord(_CatalogRecord, Protocol):
         self, source_root: Path
     ) -> PackageProductLocalWheelBindingV1: ...
 
-
     def _matches_approval(self, accepted: _AcceptedSource) -> bool: ...
+
 
 class _LegacyCandidate(Protocol):
     @property
@@ -164,24 +168,37 @@ class _PluginSourceRecord(_SourceRecord, Protocol):
 _SOURCE_RECORD_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
 
+def _source_binding_scope_matches(
+    record: _SourceRecord,
+    *,
+    require_strings: bool = False,
+) -> bool:
+    return (
+        type(record.record_revision) is int
+        and record.record_revision >= 1
+        and (not require_strings or isinstance(record.store_id, str))
+        and bool(record.store_id)
+        and (not require_strings or isinstance(record.namespace_id, str))
+        and _SOURCE_RECORD_DIGEST.fullmatch(record.namespace_id) is not None
+        and (not require_strings or isinstance(record.scope_id, str))
+        and bool(record.scope_id)
+        and (not require_strings or isinstance(record.original_source, str))
+        and Path(record.original_source).is_absolute()
+        and os.path.normpath(record.original_source) == record.original_source
+    )
+
+
 def plugin_wheel_source_fields_match(
     record: _PluginSourceRecord, match: re.Match[str] | None, *, maximum_filename: int
 ) -> bool:
     """Check shared identity and path fields of a controlled Plugin Wheel."""
-
-    return not (
-        type(record.record_revision) is not int
-        or record.record_revision < 1
-        or not record.store_id
-        or _SOURCE_RECORD_DIGEST.fullmatch(record.namespace_id) is None
-        or not record.scope_id
-        or not Path(record.original_source).is_absolute()
-        or os.path.normpath(record.original_source) != record.original_source
-        or match is None
-        or len(record.wheel_filename) > maximum_filename
-        or record.plugin_id != match["plugin"]
-        or record.version != match["version"]
-        or _SOURCE_RECORD_DIGEST.fullmatch(record.artifact_digest) is None
+    return (
+        _source_binding_scope_matches(record)
+        and match is not None
+        and len(record.wheel_filename) <= maximum_filename
+        and record.plugin_id == match["plugin"]
+        and record.version == match["version"]
+        and _SOURCE_RECORD_DIGEST.fullmatch(record.artifact_digest) is not None
     )
 
 
@@ -248,9 +265,98 @@ class _WheelSourceBindingMethods:
             raise ValueError(f"{cls._binding_label} binding record is invalid")
         return cls._binding_schema.decode(cls, value)
 
+    @classmethod
+    def _record_codec(cls) -> FunctionalJournalRecordCodec[Self]:
+        return FunctionalJournalRecordCodec(encoder=cls.to_dict, decoder=cls.from_dict)
+
     def _require_binding_identity(self) -> None:
         if self.record_id != wheel_source_binding_digest(self.to_dict()):
             raise ValueError(f"{self._binding_label} binding identity changed")
+
+
+class _ExternalWheelBindingMethods(_WheelSourceBindingMethods):
+    """Seal captured Wheel Source metadata before constructing its nominal receipt."""
+
+    __slots__ = ()
+    record_revision: int
+    store_id: str
+    namespace_id: str
+    scope_id: str
+    original_source: str
+    wheel_filename: str
+    artifact_digest: str
+
+    @classmethod
+    def _wheel_identity_fields(cls, wheel_filename: str) -> dict[str, str]:
+        raise NotImplementedError
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        record_revision: int,
+        store_id: str,
+        namespace_id: str,
+        scope_id: str,
+        original_source: str,
+        wheel_filename: str,
+        artifact_digest: str,
+    ) -> Self:
+        return cls._seal_binding(
+            **cls._wheel_identity_fields(wheel_filename),
+            record_revision=record_revision,
+            store_id=store_id,
+            namespace_id=namespace_id,
+            scope_id=scope_id,
+            original_source=original_source,
+            wheel_filename=wheel_filename,
+            artifact_digest=artifact_digest,
+        )
+
+
+class _DataWheelBindingMethods(_ExternalWheelBindingMethods):
+    """Use the controlled Plugin filename as the original binding identity."""
+
+    __slots__ = ()
+    plugin_id: str
+    version: str
+    _wheel_name: ClassVar[re.Pattern[str]]
+    _max_wheel_filename: ClassVar[int]
+    _data_trust_class: ClassVar[str]
+
+    @classmethod
+    def _wheel_identity_fields(cls, wheel_filename: str) -> dict[str, str]:
+        return plugin_wheel_identity_fields(
+            wheel_filename, cls._wheel_name, cls._binding_label
+        )
+
+    def __post_init__(self) -> None:
+        if (
+            not plugin_wheel_source_fields_match(
+                self,
+                self._wheel_name.fullmatch(self.wheel_filename),
+                maximum_filename=self._max_wheel_filename,
+            )
+            or _SOURCE_RECORD_DIGEST.fullmatch(self.record_id) is None
+        ):
+            raise ValueError(f"{self._binding_label} binding is invalid")
+        self._require_binding_identity()
+
+    def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
+        return project_plugin_wheel_binding(
+            self, source_root, trust_class=self._data_trust_class
+        )
+
+
+def plugin_wheel_identity_fields(
+    wheel_filename: str,
+    pattern: re.Pattern[str],
+    label: str,
+) -> dict[str, str]:
+    match = pattern.fullmatch(wheel_filename)
+    if match is None:
+        raise ValueError(f"{label} filename is unsupported")
+    return {"plugin_id": match["plugin"], "version": match["version"]}
 
 
 def project_plugin_wheel_binding(
@@ -510,6 +616,20 @@ class _StableWheelSource(Generic[RecordT]):
 class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource[RecordT]):
     _read_only_capture_error = "Read-only catalog cannot capture"
 
+    def _admit_capture_source(self, source: Path) -> bool:
+        return self._is_external_source(source)
+
+    def _capture_external(
+        self,
+        source: Path,
+        *,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> RecordT:
+        self._require_capture_epoch(epoch_runtime)
+        if not self._admit_capture_source(source):
+            raise self._error_factory(f"{self._source_label} Source is invalid")
+        return self._capture_validated(source, epoch_runtime=epoch_runtime)
+
     def _require_capture_epoch(
         self, epoch_runtime: PackageProductPosixFencedRuntimeOwner
     ) -> None:
@@ -646,13 +766,44 @@ class _PluginWheelSourceCatalog(
     def _record_key(self, record: PluginRecordT) -> Hashable:
         return record.plugin_id, record.version
 
+class _DataWheelSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
+    _record_type: type[PluginRecordT]
+    _error_factory: type[Exception]
+    _wheel_name: re.Pattern[str]
+    _max_wheel_filename: int
+
+    def _admit_capture_source(self, source: Path) -> bool:
+        return (
+            super()._admit_capture_source(source)
+            and self._wheel_name.fullmatch(source.name) is not None
+            and len(source.name) <= self._max_wheel_filename
+        )
+
+    def capture(
+        self,
+        source: Path,
+        *,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> PluginRecordT:
+        return self._capture_external(source, epoch_runtime=epoch_runtime)
+
+    def verify_record(self, record: PluginRecordT) -> None:
+        """Prove selection and controlled bytes of one already admitted binding."""
+        if (
+            not isinstance(record, self._record_type)
+            or record.store_id != self.store_id
+            or record.namespace_id != self.namespace_id
+            or record.scope_id != self.scope_id
+            or record not in self.records()
+        ):
+            raise self._error_factory(f"{self._label} binding changed")
+        self._verify_controlled(record)
+
     def project_management_source_snapshot(
         self,
         desired_state: PluginDesiredStateLedger,
         *,
         owner_revision_prefix: str,
-        verify_record: Callable[[PluginRecordT], None],
-        verification_error: type[Exception],
     ) -> PluginManagementSourceSnapshotV1:
         """Project current controlled sources with committed selections preferred."""
 
@@ -681,8 +832,8 @@ class _PluginWheelSourceCatalog(
         for item in latest.values():
             availability: Literal["available", "unavailable"]
             try:
-                verify_record(item)
-            except (verification_error, OSError):
+                self.verify_record(item)
+            except (self._error_factory, OSError):
                 availability = "unavailable"
             else:
                 availability = "available"
@@ -727,6 +878,50 @@ class _DependencySourceRecord(_SourceRecord, Protocol):
     ) -> PackageProductLocalWheelDependencyV1: ...
 
 
+class _DependencyWheelBindingMethods(_ExternalWheelBindingMethods):
+    """Prove that a controlled dependency retains its exact project/version."""
+
+    __slots__ = ()
+    project_name: str
+    version: str
+    _dependency_directory: ClassVar[str]
+
+    @staticmethod
+    def _wheel_identity(wheel_filename: str) -> tuple[str, str]:
+        raise NotImplementedError
+
+    @classmethod
+    def _wheel_identity_fields(cls, wheel_filename: str) -> dict[str, str]:
+        project_name, version = cls._wheel_identity(wheel_filename)
+        return {"project_name": project_name, "version": version}
+
+    def __post_init__(self) -> None:
+        project_name, version = self._wheel_identity(self.wheel_filename)
+        if (
+            not _source_binding_scope_matches(self, require_strings=True)
+            or self.project_name != project_name
+            or self.version != version
+            or not isinstance(self.artifact_digest, str)
+            or _SOURCE_RECORD_DIGEST.fullmatch(self.artifact_digest) is None
+            or not isinstance(self.record_id, str)
+            or _SOURCE_RECORD_DIGEST.fullmatch(self.record_id) is None
+        ):
+            raise ValueError(f"{self._binding_label} binding is invalid")
+        self._require_binding_identity()
+
+    def policy_dependency(
+        self, source_root: Path
+    ) -> PackageProductLocalWheelDependencyV1:
+        return PackageProductLocalWheelDependencyV1(
+            source_identity=str(
+                source_root / self._dependency_directory / self.wheel_filename
+            ),
+            project_name=self.project_name,
+            version=self.version,
+            artifact_digest=self.artifact_digest,
+        )
+
+
 DependencyRecordT = TypeVar("DependencyRecordT", bound=_DependencySourceRecord)
 
 
@@ -735,6 +930,17 @@ class _DependencyWheelSourceCatalog(_WheelSourceCatalog[DependencyRecordT]):
     _source_read_errors = (OSError, ValueError)
     _source_read_error_suffix = "Source changed or is invalid"
     _binding_limit = 128
+
+    def capture(
+        self,
+        source: Path,
+        *,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> DependencyRecordT:
+        return self._capture_external(source, epoch_runtime=epoch_runtime)
+
+    def _record_key(self, record: DependencyRecordT) -> tuple[str, Version]:
+        return record.project_name, Version(record.version)
 
     def _require_new_record(
         self, record: DependencyRecordT, records: tuple[DependencyRecordT, ...]
