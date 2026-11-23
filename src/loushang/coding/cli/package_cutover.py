@@ -10,7 +10,7 @@ from contextlib import closing
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Literal, TypedDict, overload
+from typing import Literal, overload
 
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
@@ -40,7 +40,7 @@ from loushang.coding.package.legacy_disabled_review import (
     review_coding_first_b_disabled_only,
 )
 from loushang.coding.package.legacy_installation_inventory import (
-    read_coding_legacy_installation_inventory,
+    _legacy_inventory_query,
 )
 from loushang.coding.package.legacy_local_acceptance import (
     reopen_coding_legacy_installed_local_acceptance,
@@ -93,6 +93,9 @@ from loushang.harness.cli.package_lifecycle import (
     write_package_operator_result,
 )
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._legacy_local_migration import (
+    replay_posix_legacy_product_cutover,
+)
 from loushang.harness.package_product._legacy_runtime import (
     inspect_fresh_product_epoch,
     legacy_product_fence_exists,
@@ -111,12 +114,6 @@ _LEGACY_DATA_ROUTES: tuple[tuple[_LegacyResourceKind, str], ...] = (
     ("prompt", "Prompt"),
     ("theme", "Theme"),
 )
-
-
-class _ReplayOptions(TypedDict):
-    workspace: Path
-    runtime_version: str
-    runtime_protocol_epoch: int
 
 
 @overload
@@ -432,102 +429,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                 windows_candidate=True,
             )
         elif has_fence:
-            replay_options = _ReplayOptions(
+            replay_posix_legacy_product_cutover(
+                lifecycle,
+                settings,
+                roots=epoch.fenced_runtime_open_kwargs(),
                 workspace=workspace,
                 runtime_version=runtime_version,
                 runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                inventory_query=_legacy_inventory_query,
+                read_local_acceptance=reopen_coding_legacy_installed_local_acceptance,
+                local_adoption_settled=coding_legacy_local_data_adoption_settled,
+                policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+                disabled=(
+                    read_coding_first_b_disabled_only_acceptance,
+                    bootstrap_coding_accepted_disabled_only_product_plugins,
+                ),
+                builtin=(
+                    read_coding_first_b_builtin_only_acceptance,
+                    adopt_coding_first_b_builtin_only,
+                ),
+                removed=(
+                    read_coding_first_b_removed_local_acceptance,
+                    adopt_coding_first_b_removed_local,
+                ),
+                bootstrap=bootstrap_coding_builtin_product_plugins,
+                default_local_kind="skill",
+                removals_pending="Coding old local removals need explicit adoption or retry",
+                sources_pending="Coding old local Skills need explicit adoption or retry",
             )
-            with PackageProductPosixFencedRuntimeOwner.open(
-                **epoch.fenced_runtime_open_kwargs(), read_only=True
-            ) as read_owner:
-                legacy_inventory = read_coding_legacy_installation_inventory(
-                    lifecycle, read_owner
-                ).inventory
-                local = legacy_inventory.active_local
-                accepted_kinds = {
-                    item.binding.plugin_id: accepted.resource_kind
-                    for item in local
-                    if (
-                        accepted := reopen_coding_legacy_installed_local_acceptance(
-                            lifecycle,
-                            read_owner,
-                            plugin_id=item.binding.plugin_id,
-                            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-                        )
-                    )
-                    is not None
-                }
-                acceptance = (
-                    None
-                    if local
-                    else read_coding_first_b_disabled_only_acceptance(
-                        lifecycle,
-                        read_owner,
-                        settings_manager=settings,
-                    )
-                )
-                builtin_acceptance = (
-                    None
-                    if local
-                    else read_coding_first_b_builtin_only_acceptance(
-                        lifecycle,
-                        read_owner,
-                        settings_manager=settings,
-                    )
-                )
-                removed_acceptance = read_coding_first_b_removed_local_acceptance(
-                    lifecycle,
-                    read_owner,
-                    settings_manager=settings,
-                )
-            pending_removals = bool(legacy_inventory.unselected_source_identities)
-            if pending_removals and removed_acceptance is None:
-                raise RuntimeError(
-                    "Coding old local removals need explicit adoption or retry"
-                )
-            if removed_acceptance is not None and (pending_removals or not local):
-                adopt_coding_first_b_removed_local(
-                    lifecycle,
-                    settings,
-                    accepted_review_id=removed_acceptance.review.review_id,
-                    **replay_options,
-                )
-            if local:
-                if not all(
-                    coding_legacy_local_data_adoption_settled(
-                        lifecycle,
-                        plugin_id=item.binding.plugin_id,
-                        workspace=workspace,
-                        resource_kind=accepted_kinds.get(
-                            item.binding.plugin_id, "skill"
-                        ),
-                    )
-                    for item in local
-                ):
-                    raise RuntimeError(
-                        "Coding old local Skills need explicit adoption or retry"
-                    )
-            elif removed_acceptance is None:
-                if builtin_acceptance is not None:
-                    adopt_coding_first_b_builtin_only(
-                        lifecycle,
-                        settings,
-                        accepted_review_id=builtin_acceptance.review.review_id,
-                        **replay_options,
-                    )
-                elif acceptance is not None:
-                    bootstrap_coding_accepted_disabled_only_product_plugins(
-                        lifecycle,
-                        settings,
-                        accepted_review_id=acceptance.review.review_id,
-                        **replay_options,
-                    )
-                else:
-                    bootstrap_coding_builtin_product_plugins(
-                        lifecycle,
-                        settings,
-                        **replay_options,
-                    )
         else:
             cutover = cutover_and_bootstrap_coding_package_product(
                 lifecycle,

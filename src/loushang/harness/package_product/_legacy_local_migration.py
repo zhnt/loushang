@@ -101,10 +101,11 @@ from ._application_runtime import (
 from ._legacy_inventory import (
     LEGACY_REVIEW_DIGEST,
     LEGACY_REVIEW_ID,
+    LegacyInventoryEvidence,
     _BindingHead,
     legacy_record_digest,
 )
-from ._legacy_runtime import _FencedRuntime
+from ._legacy_runtime import FencedRuntimeOpenKwargs, _FencedRuntime
 from ._local_source_catalog import wheel_source_binding_digest
 from ._plugin_bootstrap import (
     ReviewedPluginChoices,
@@ -1326,6 +1327,102 @@ def match_legacy_replay_source(
 _AcceptedT = TypeVar("_AcceptedT", bound=_AcceptedSource)
 _InstallationReceiptT = TypeVar("_InstallationReceiptT")
 _EnablementReceiptT = TypeVar("_EnablementReceiptT")
+
+
+_ReplayRoute = tuple[
+    Callable[..., _FirstAcceptanceRecord[Any] | None], Callable[..., object]
+]
+_ReplayLayoutT = TypeVar("_ReplayLayoutT")
+
+
+def replay_posix_legacy_product_cutover(
+    layout: _ReplayLayoutT,
+    settings: SettingsManager,
+    *,
+    roots: FencedRuntimeOpenKwargs,
+    workspace: Path,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+    inventory_query: Callable[
+        [_ReplayLayoutT, PackageProductPosixFencedRuntimeOwner],
+        Callable[[], LegacyInventoryEvidence],
+    ],
+    read_local_acceptance: Callable[..., LegacyLocalAcceptanceRecord[Any] | None],
+    local_adoption_settled: Callable[..., bool],
+    policy_revision: str,
+    disabled: _ReplayRoute,
+    builtin: _ReplayRoute,
+    removed: _ReplayRoute,
+    bootstrap: Callable[..., object],
+    default_local_kind: _LegacyResourceKind,
+    removals_pending: str,
+    sources_pending: str,
+) -> None:
+    """Close the read-only inventory before replaying any accepted changes."""
+    read_disabled, replay_disabled = disabled
+    read_builtin, replay_builtin = builtin
+    read_removed, replay_removed = removed
+    with PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=True) as owner:
+        inventory = inventory_query(layout, owner)().inventory
+        local_ids = tuple(binding.plugin_id for binding, _, _ in inventory.active_local)
+        accepted_kinds = {
+            plugin_id: accepted.resource_kind
+            for plugin_id in local_ids
+            if (
+                accepted := read_local_acceptance(
+                    layout, owner, plugin_id=plugin_id, policy_revision=policy_revision
+                )
+            )
+            is not None
+        }
+        disabled_acceptance = builtin_acceptance = None
+        if not local_ids:
+            disabled_acceptance = read_disabled(layout, owner, settings_manager=settings)
+            builtin_acceptance = read_builtin(layout, owner, settings_manager=settings)
+        removed_acceptance = read_removed(layout, owner, settings_manager=settings)
+
+    replay_options = dict(
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+    )
+    pending_removals = bool(inventory.unselected_source_identities)
+    if pending_removals and removed_acceptance is None:
+        raise RuntimeError(removals_pending)
+    if removed_acceptance is not None and (pending_removals or not local_ids):
+        replay_removed(
+            layout,
+            settings,
+            accepted_review_id=removed_acceptance.review.review_id,
+            **replay_options,
+        )
+    if local_ids:
+        if not all(
+            local_adoption_settled(
+                layout,
+                plugin_id=plugin_id,
+                workspace=workspace,
+                resource_kind=accepted_kinds.get(plugin_id, default_local_kind),
+            )
+            for plugin_id in local_ids
+        ):
+            raise RuntimeError(sources_pending)
+        return
+    if removed_acceptance is not None:
+        return
+    for acceptance, replay in (
+        (builtin_acceptance, replay_builtin),
+        (disabled_acceptance, replay_disabled),
+    ):
+        if acceptance is not None:
+            replay(
+                layout,
+                settings,
+                accepted_review_id=acceptance.review.review_id,
+                **replay_options,
+            )
+            return
+    bootstrap(layout, settings, **replay_options)
 
 
 def adopt_legacy_local_data(
