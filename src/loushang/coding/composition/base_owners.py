@@ -37,13 +37,9 @@ from loushang.harness.session.command_controller import (
 from loushang.harness.session.tool_owner_binding import (
     DeferredToolRegistrationSlot,
     SessionToolRegistrationPort,
-    stage_workspace_tool_scope,
-    workspace_options_from_capture,
+    stage_workspace_tool_generation,
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
-from loushang.harness.workspace.generation_bindings import (
-    GenerationBoundOperationSet,
-)
 
 _PLUGIN_ID = "coding.base"
 _REGISTRATION_LABEL = "Coding base"
@@ -172,43 +168,21 @@ class CodingBaseToolOwner:
         *,
         registration: CodingBaseToolRegistrationPort,
     ) -> RegistrationScopeGeneration:
-        options, operation_set = self._options_from_capture(captures)
-        scope = stage_workspace_tool_scope(
+        return stage_workspace_tool_generation(
             self.admission,
             self.scope_id,
-            operation_set,
-            _tool_identities(self.admission.contribution_id),
+            captures,
+            requirement=_WORKSPACE_REQUIREMENT,
+            options=self.options,
+            tool_names=lambda: _tool_identities(self.admission.contribution_id),
             registration=registration,
-            build_definitions=lambda: create_coding_builtin_tool_definitions(
+            build_definitions=lambda options: create_coding_builtin_tool_definitions(
                 options=options
             ),
+            generation_family=_TOOL_GENERATION,
             label=_TOOL_LABEL,
+            stale_generation_message=_STALE_WORKSPACE_GENERATION,
             failed_generation_message=_FAILED_WORKSPACE_GENERATION,
-        )
-        return RegistrationScopeGeneration(
-            scope,
-            _TOOL_GENERATION,
-            invalidate=partial(operation_set.invalidate, _STALE_WORKSPACE_GENERATION),
-        )
-
-    def _options_from_capture(
-        self,
-        captures: tuple[SessionCapabilityConsumerCapture, ...],
-    ) -> tuple[ToolsOptions, GenerationBoundOperationSet]:
-        if len(captures) != 1:
-            raise ValueError("Coding base Tool owner requires one Consumer capture")
-        [capture] = captures
-        if (
-            not isinstance(capture, SessionCapabilityConsumerCapture)
-            or capture.entry.admission_fingerprint != self.admission.fingerprint
-            or capture.entry.requirement != _WORKSPACE_REQUIREMENT
-        ):
-            raise ValueError("Coding base Tool owner received another Consumer")
-        return workspace_options_from_capture(
-            self.options,
-            capture,
-            label=_TOOL_LABEL,
-            stale_message=_STALE_WORKSPACE_GENERATION,
         )
 
 

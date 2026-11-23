@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from functools import partial
 from typing import ClassVar, Protocol, cast
 
 from loushang.harness.capabilities.contracts import CapabilityRequirement
@@ -49,6 +50,7 @@ from .capability_composition_inputs import (
     bind_owner_registration_scope,
     product_contribution_registration_owner,
 )
+from .command_controller import SessionCommandGenerationRegistry
 
 
 class SessionToolRegistrationPort(Protocol):
@@ -93,6 +95,51 @@ class DeferredToolRegistrationSlot:
             tool, owner=owner, enabled=enabled, source_info=source_info
         )
 
+
+@dataclass(frozen=True, slots=True)
+class PreparedOwnerBindings:
+    generations: tuple[SessionCapabilityOwnerGenerationBinding, ...]
+    command_registry: SessionCommandGenerationRegistry | None
+    tool_slots: tuple[DeferredToolRegistrationSlot, ...]
+
+
+_ToolOwnerBinding = tuple[
+    Callable[[DeferredToolRegistrationSlot], SessionCapabilityOwnerGenerationBinding],
+    type[DeferredToolRegistrationSlot],
+]
+
+
+def prepare_session_owner_bindings(
+    *,
+    require_command_registry: bool,
+    base_tool: _ToolOwnerBinding | None,
+    base_command: Callable[
+        [SessionCommandGenerationRegistry], SessionCapabilityOwnerGenerationBinding
+    ] | None,
+    capability_tools: tuple[_ToolOwnerBinding, ...],
+) -> PreparedOwnerBindings:
+    """Prepare exact generation bindings before any Session registration is published."""
+    command_registry = (
+        SessionCommandGenerationRegistry() if require_command_registry else None
+    )
+    generations: list[SessionCapabilityOwnerGenerationBinding] = []
+    base_slot = None
+    if base_tool is not None:
+        bind, slot_type = base_tool
+        base_slot = slot_type()
+        generations.append(bind(base_slot))
+    if base_command is not None:
+        assert command_registry is not None
+        generations.append(base_command(command_registry))
+
+    slots: list[DeferredToolRegistrationSlot] = []
+    for bind, slot_type in capability_tools:
+        slot = slot_type()
+        generations.append(bind(slot))
+        slots.append(slot)
+    if base_slot is not None:
+        slots.append(base_slot)
+    return PreparedOwnerBindings(tuple(generations), command_registry, tuple(slots))
 
 @dataclass(frozen=True, slots=True)
 class _ToolPackSourceInfo:
@@ -167,6 +214,29 @@ def bind_admitted_tool_pack(
     )
 
 
+def _require_tool_consumer(
+    captures: tuple[SessionCapabilityConsumerCapture, ...],
+    admission: OwnerContributionAdmissionRecord,
+    requirement: CapabilityRequirement,
+    *,
+    label: str,
+    invalid_capture_type_error: bool = True,
+) -> SessionCapabilityConsumerCapture:
+    if len(captures) != 1:
+        raise ValueError(f"{label} owner requires one Consumer capture")
+    [capture] = captures
+    if not isinstance(capture, SessionCapabilityConsumerCapture):
+        if invalid_capture_type_error:
+            raise TypeError(f"{label} owner Consumer capture is invalid")
+        raise ValueError(f"{label} owner received another Consumer")
+    if (
+        capture.entry.admission_fingerprint != admission.fingerprint
+        or capture.entry.requirement != requirement
+    ):
+        raise ValueError(f"{label} owner received another Consumer")
+    return capture
+
+
 def workspace_options_from_capture(
     options: ToolsOptions,
     capture: SessionCapabilityConsumerCapture,
@@ -207,19 +277,29 @@ def workspace_options_from_capture(
     ), operation_set
 
 
-def stage_workspace_tool_scope(
+def stage_workspace_tool_generation(
     admission: OwnerContributionAdmissionRecord,
     scope_id: str,
-    operation_set: GenerationBoundOperationSet,
-    tool_names: tuple[str, ...],
+    captures: tuple[SessionCapabilityConsumerCapture, ...],
     *,
+    requirement: CapabilityRequirement,
+    options: ToolsOptions,
+    tool_names: Callable[[], tuple[str, ...]],
     registration: SessionToolRegistrationPort,
-    build_definitions: Callable[[], list[ToolDefinition]],
+    build_definitions: Callable[[ToolsOptions], list[ToolDefinition]],
+    generation_family: object,
     label: str,
+    stale_generation_message: str,
     failed_generation_message: str,
-) -> RegistrationScope:
-    """Stage the complete admitted pack under one revocable scope."""
-
+) -> RegistrationScopeGeneration:
+    """Capture admitted operations and stage one revocable registration generation."""
+    capture = _require_tool_consumer(
+        captures, admission, requirement, label=label, invalid_capture_type_error=False
+    )
+    options, operation_set = workspace_options_from_capture(
+        options, capture, label=label, stale_message=stale_generation_message
+    )
+    names = tool_names()
     scope = RegistrationScope(
         product_contribution_registration_owner(admission, scope_id)
     )
@@ -227,10 +307,10 @@ def stage_workspace_tool_scope(
         admission.plugin_id, admission.contribution_id, admission.fingerprint
     )
     try:
-        by_name = {item.name: item for item in build_definitions()}
-        if set(by_name) != set(tool_names):
+        by_name = {item.name: item for item in build_definitions(options)}
+        if set(by_name) != set(names):
             raise RuntimeError(f"{label} catalog changed admitted identities")
-        for name in tool_names:
+        for name in names:
             scope.add(
                 registration.stage_runtime_tool(
                     by_name[name], owner=scope.owner, source_info=source_info
@@ -242,7 +322,11 @@ def stage_workspace_tool_scope(
             scope, error, incomplete_note=f"{label} rollback remains incomplete"
         )
         raise
-    return scope
+    return RegistrationScopeGeneration(
+        scope,
+        generation_family,
+        invalidate=partial(operation_set.invalidate, stale_generation_message),
+    )
 
 
 class _ToolOwnerBoundState(Protocol):
@@ -321,16 +405,9 @@ class _ReservedToolPackOwner:
         self,
         captures: tuple[SessionCapabilityConsumerCapture, ...],
     ) -> tuple[ToolDefinition, ...]:
-        if len(captures) != 1:
-            raise ValueError(f"{self._label} owner requires one Consumer capture")
-        [capture] = captures
-        if not isinstance(capture, SessionCapabilityConsumerCapture):
-            raise TypeError(f"{self._label} owner Consumer capture is invalid")
-        if (
-            capture.entry.admission_fingerprint != self.admission.fingerprint
-            or capture.entry.requirement != self._requirement
-        ):
-            raise ValueError(f"{self._label} owner received another Consumer")
+        capture = _require_tool_consumer(
+            captures, self.admission, self._requirement, label=self._label
+        )
         definitions = self._tool_definitions(capture.facets)
         if tuple(item.name for item in definitions) != self._tool_names:
             raise RuntimeError(f"{self._label} factories changed admitted identities")
