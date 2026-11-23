@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { uploadAttachments } from "./client/sessionResources";
+import { uploadAttachments, type AttachmentDraft } from "./client/sessionResources";
 import type { ClientSnapshot, DraftBinding, HarnessClientUiPort, SessionModels, SessionSnapshot, SubmitReceipt, ThinkingLevel } from "./client/model";
 
 export interface DraftTarget {
@@ -18,7 +18,7 @@ interface Draft {
   readonly id: string;
   readonly target: DraftTarget;
   readonly text: string;
-  readonly images?: readonly File[];
+  readonly images?: readonly AttachmentDraft[];
   readonly failureReason?: string;
   readonly modelId?: string;
   readonly thinking?: SessionModels["thinking"];
@@ -116,7 +116,7 @@ class SessionCreation {
     if (this.current?.visible && !this.inFlight) this.save({ ...this.current, text });
   }
 
-  changeImages(images: readonly File[]) {
+  changeImages(images: readonly AttachmentDraft[]) {
     if (this.current?.visible && !this.inFlight) this.save({ ...this.current, images });
   }
 
@@ -234,7 +234,7 @@ export function useSessionCreation(onAccepted: Accepted) {
     draft, drafts, observe: creation.observe, hide: creation.hide,
     open: creation.open,
     change: (text: string) => creation.change(text),
-    changeImages: (images: readonly File[]) => creation.changeImages(images),
+    changeImages: (images: readonly AttachmentDraft[]) => creation.changeImages(images),
     selectModel: (target: DraftTarget, id: string, thinking?: SessionModels["thinking"]) => creation.selectModel(target, id, thinking),
     check: () => creation.check(onAccepted),
     submit: (modelId?: string, level?: ThinkingLevel) => creation.submit(onAccepted, modelId, level),
@@ -262,7 +262,7 @@ async function confirmFirstModel(
   }
 }
 
-async function sendDraft(client: HarnessClientUiPort, sessionId: string, text: string, files: readonly File[]): Promise<SubmitReceipt> {
+async function sendDraft(client: HarnessClientUiPort, sessionId: string, text: string, files: readonly AttachmentDraft[]): Promise<SubmitReceipt> {
   const submissionId = `gui-${crypto.randomUUID()}`;
   let resourceRefs;
   try {

@@ -115,6 +115,8 @@ def _encode(value: object) -> object:
     encoded = {_camel(name): _encode(getattr(value, name)) for name in fields}
     if type(value) in (ResourceV1, SessionResourceQueryV1) and value.name is not None:
         encoded["name"] = value.name
+    if type(value) is SessionResourceQueryV1 and value.path is not None:
+        encoded["path"] = value.path
     if type(value) is TranscriptRecordV1:
         if value.record_id is not None:
             encoded["recordId"] = value.record_id
@@ -172,6 +174,8 @@ def _decode(expected: object, raw: object) -> object:
     wire_fields = {_camel(name) for name in fields}
     if expected in (ResourceV1, SessionResourceQueryV1) and type(raw) is dict and "name" in raw:
         wire_fields.add("name")
+    if expected is SessionResourceQueryV1 and type(raw) is dict and "path" in raw:
+        wire_fields.add("path")
     if expected is TranscriptRecordV1 and type(raw) is dict:
         wire_fields.update({"recordId", "resourceIds", "submissionId"} & raw.keys())
     if expected is SessionSnapshotV1 and type(raw) is dict:
@@ -187,6 +191,8 @@ def _decode(expected: object, raw: object) -> object:
     }
     if expected in (ResourceV1, SessionResourceQueryV1) and "name" in value:
         values["name"] = _string(value["name"])
+    if expected is SessionResourceQueryV1 and "path" in value:
+        values["path"] = _string(value["path"])
     if expected is TranscriptRecordV1:
         if "recordId" in value:
             values["record_id"] = _string(value["recordId"])

@@ -46,7 +46,11 @@ from loushang.coding.hosted.goal_recovery import (
     unavailable_recovery,
 )
 from loushang.coding.hosted.models import load_workspace_models
-from loushang.coding.hosted.resource_tools import SESSION_FILES, session_files_tool
+from loushang.coding.hosted.resource_tools import (
+    SESSION_FILES,
+    HostReferencePolicy,
+    hosted_resource_tools,
+)
 from loushang.coding.hosted.resources import HostedResourceAccess
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
@@ -177,7 +181,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._resource_tools = resource_tools
         if resource_tools:
             access = self.create_resource_access()
-            self._tools = [*(tools or ()), session_files_tool(lambda: access)]
+            self._tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=self._workspace_tools)]
         self._workspace_policy = workspace_policy
         self._user_choice_enabled = user_choice_enabled
         self._output_capture_factory = output_capture_factory
@@ -371,7 +375,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
 
     def create_resource_access(self) -> HostedResourceAccess:
         return HostedResourceAccess(self.identity.session_id, self._source.record.scope.session_dir,
-                                    self._resource_records)
+                                    self._resource_records, self._hosted_workspace)
 
     def _resource_records(self):
         if self._active is not None:
@@ -615,6 +619,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 verify_plugin_effects=require_coding_resume_plugin_effect_settlement,
             )
 
+            effective_policy = PolicyEvaluatorChain(
+                (self._workspace_policy, policy_engine), strategy="most_restrictive",
+            ) if self._workspace_policy is not None else policy_engine
             continuation = await prepare_coding_resume_continuation(
                 manager_type=self._source.manager_type,
                 session_file=self._source.record.path,
@@ -636,8 +643,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 approval_resolver=self._approval,
                 no_tools=None if self._workspace_tools else "builtin" if self._resource_tools else "all",
                 allowed_tool_names=[SESSION_FILES] if self._resource_tools and not self._workspace_tools else ToolSelection.ALL,
-                tool_policy_evaluator=PolicyEvaluatorChain((self._workspace_policy, policy_engine))
-                if self._workspace_policy is not None else policy_engine,
+                tool_policy_evaluator=HostReferencePolicy(effective_policy),
                 _hosted_workspace=self._hosted_workspace,
                 observe_input_identity=self._observe_input_identity,
                 product_owner_selection=self._product_owner_selection,

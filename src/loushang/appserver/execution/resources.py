@@ -45,26 +45,32 @@ class ResourceV1:
 
 @dataclass(frozen=True, slots=True)
 class SessionResourceQueryV1:
-    action: Literal["upload", "read", "list"]
+    action: Literal["upload", "read", "list", "reference"]
     resource_id: str | None = None
     offset: int = 0
     total_bytes: int = 0
     media_type: str = ""
     data: str = ""
     name: str | None = None
+    path: str | None = None
 
     def __post_init__(self) -> None:
-        if self.action not in {"upload", "read", "list"}:
+        if self.action not in {"upload", "read", "list", "reference"}:
             raise ValueError("invalid resource action")
         if type(self.offset) is not int or not 0 <= self.offset < MAX_IMAGE_BYTES:
             raise ValueError("invalid resource offset")
-        if self.action == "list":
+        if self.action in {"list", "reference"}:
             if self.resource_id is not None or self.offset:
                 raise ValueError("unexpected resource selection")
         else:
             if self.resource_id is None:
                 raise ValueError("missing resource selection")
             _identifier(self.resource_id)
+        if self.action == "reference":
+            if type(self.path) is not str or not 0 < len(self.path) <= 4096 or "\x00" in self.path:
+                raise ValueError("invalid reference path")
+        elif self.path is not None:
+            raise ValueError("unexpected reference path")
         if self.action == "upload":
             _validate_name(self.name)
             text = self.media_type == TEXT_MEDIA_TYPE and self.name is not None

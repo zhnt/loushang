@@ -1,13 +1,15 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useContextMenu } from "./ContextMenu";
 import { AttachmentImage, AttachmentText } from "./SessionResources";
 import { UiIcon } from "./UiIcon";
-import { attachmentTypes, maxAttachments, supportedAttachment, supportedImage } from "./client/sessionResources";
+import { attachmentTypes, maxAttachments, supportedAttachment, supportedImage, type AttachmentDraft } from "./client/sessionResources";
 
 interface ComposerProps {
-  readonly images?: readonly File[];
-  readonly onImagesChange?: (images: readonly File[]) => void;
+  readonly hostReferences?: boolean;
+  readonly images?: readonly AttachmentDraft[];
+  readonly onImagesChange?: (images: readonly AttachmentDraft[]) => void;
   readonly title: string;
   readonly text: string;
   readonly onChange: (text: string) => void;
@@ -28,10 +30,13 @@ function resizeEditor(input: HTMLTextAreaElement) {
 }
 
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
-  buttonDisabled, fixture, leadingAction, model, notice, submitLabel, images = [], onImagesChange }: ComposerProps) {
+  buttonDisabled, fixture, leadingAction, model, notice, submitLabel, images = [], onImagesChange, hostReferences }: ComposerProps) {
   const { t } = useTranslation("session");
   const editor = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
+  const menu = useContextMenu();
+  const hostPathDialog = useRef<HTMLDialogElement>(null);
+  const [hostPath, setHostPath] = useState("");
   const chooser = useRef<HTMLInputElement>(null);
   const [attachmentError, setAttachmentError] = useState(false);
   const canAttach = Boolean(onImagesChange && !disabled);
@@ -70,7 +75,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
   }, []);
-  return (
+  return (<>
     <form className="composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}
       onDragOver={(event) => {
         if (canAttach && event.dataTransfer.types.includes("Files")) event.preventDefault();
@@ -81,12 +86,13 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
         addImages([...event.dataTransfer.files]);
       }}>
       {images.length ? <div className="attachment-list">
-        {images.map((file, index) => <div key={JSON.stringify([file.name, file.lastModified, index])}>
-          {supportedImage(file)
+        {images.map((file, index) => <div key={JSON.stringify(["hostPath" in file ? file.hostPath : file.name, index])}>
+          {"hostPath" in file ? <span className="permission-label" title={file.hostPath}>{file.hostPath}</span>
+            : supportedImage(file)
             ? <AttachmentImage blob={file} label={file.name || t("attachments.image")} />
             : <AttachmentText blob={file} label={file.name || t("attachments.file")} />}
           <button type="button" className="icon-button" disabled={!canAttach}
-            aria-label={t("attachments.remove", { name: file.name || t("attachments.image") })}
+            aria-label={t("attachments.remove", { name: "hostPath" in file ? file.hostPath : file.name || t("attachments.image") })}
             onClick={() => { setAttachmentError(false); onImagesChange?.(images.filter((_, i) => i !== index)); }}>
             <UiIcon name="close" />
           </button>
@@ -128,7 +134,13 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
             }} /> : null}
           <button type="button" className="icon-button" aria-label={t(canAttach ? "attachments.add" : "composer.attachUnavailable")}
             title={t(canAttach ? "attachments.add" : "composer.attachHint")} disabled={!canAttach}
-            onClick={() => chooser.current?.click()}>＋</button>
+            onClick={(event) => {
+              if (!hostReferences) chooser.current?.click();
+              else menu(event, [
+                { label: t("attachments.pickUpload"), run: () => chooser.current?.click() },
+                { label: t("attachments.referenceHostPath"), run: () => hostPathDialog.current?.showModal() },
+              ]);
+            }}>＋</button>
           {leadingAction}
           {fixture ? <span className="permission-label">◉ {t("composer.fixtureAccess")}</span> : null}
         </div>
@@ -143,5 +155,26 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
         </button>
       </div>
     </form>
-  );
+    {hostReferences ? <dialog ref={hostPathDialog} className="frame-dialog" aria-label={t("attachments.referenceHostPath")}>
+      <div className="settings-header">
+        <h2>{t("attachments.referenceHostPath")}</h2>
+        <button type="button" className="icon-button" aria-label={t("attachments.close")}
+          onClick={() => hostPathDialog.current?.close()}><UiIcon name="close" /></button>
+      </div>
+      <form className="local-host-card" onSubmit={(event) => {
+        event.preventDefault();
+        const value = hostPath.trim();
+        if (!value || !canAttach) return;
+        const full = images.length >= maxAttachments;
+        setAttachmentError(full);
+        if (!full) onImagesChange?.([...images, { hostPath: value }]);
+        setHostPath("");
+        hostPathDialog.current?.close();
+      }}>
+        <label>{t("attachments.hostPath")}<input required maxLength={4096} value={hostPath}
+          onChange={(event) => setHostPath(event.currentTarget.value)} /></label>
+        <div className="local-host-actions"><button disabled={!hostPath.trim()}>{t("attachments.reference")}</button></div>
+      </form>
+    </dialog> : null}
+  </>);
 }

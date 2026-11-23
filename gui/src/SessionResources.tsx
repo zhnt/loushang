@@ -71,6 +71,10 @@ export function StoredResource({ client, sessionId, id }: StoredProps) {
   }, [client, sessionId, id]);
   if (result === "unavailable") return <span role="status">{t("attachments.unavailable")}</span>;
   if (!result) return null;
+  if (!result.blob) return <span className="permission-label">
+    {result.resource.kind === "directory" ? <UiIcon name="folder" /> : null}
+    {result.resource.name ?? t("attachments.file")}
+  </span>;
   return result.resource.mediaType === "text/plain"
     ? <AttachmentText blob={result.blob} label={result.resource.name ?? t("attachments.file")} />
     : <AttachmentImage blob={result.blob} label={t("attachments.image")} />;
@@ -88,7 +92,7 @@ export function SessionResources({ client, sessionId, version }: Omit<StoredProp
     setFailed(false);
     void listResources(client, sessionId).then(
       (resources) => {
-        if (active) setIds(resources.filter((item) => item.kind === "file").map((item) => item.id));
+        if (active) setIds(resources.map((item) => item.id));
       },
       () => { if (active) setFailed(true); },
     );

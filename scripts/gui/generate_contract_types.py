@@ -165,6 +165,12 @@ def generate() -> dict[str, str]:
                 '    #[serde(skip_serializing_if = "Option::is_none")]',
                 "    pub name: Option<String>,",
             ])
+        if cls.__name__ == "SessionResourceQueryV1":
+            ts.append("  readonly path?: string;")
+            rs.extend([
+                '    #[serde(skip_serializing_if = "Option::is_none")]',
+                "    pub path: Option<String>,",
+            ])
         if cls is app.TranscriptRecordV1:
             ts.extend(["  readonly recordId?: string;", "  readonly resourceIds?: readonly string[];",
                        "  readonly submissionId?: string;"])

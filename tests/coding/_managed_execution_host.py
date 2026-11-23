@@ -47,20 +47,29 @@ async def held_stream(model, context, options=None):
     text = latest.content if isinstance(latest.content, str) else "".join(
         part.text for part in latest.content if isinstance(part, TextPart)
     )
-    if latest.role == "user" and text.startswith("read-session-file "):
-        name = "session_files"
+    if latest.role == "user" and text.startswith(("read-session-file ", "host-resource-")):
+        command, resource_id = text.split()
+        if command == "read-session-file":
+            name = "session_files"
+            args = {"action": "read", "id": resource_id}
+        elif command == "host-resource-read":
+            name = "resource_read"
+            args = {"resourceId": resource_id, "path": "nested.txt"}
+        else:
+            name = "resource_write"
+            args = {"resourceId": resource_id, "path": "written.txt", "content": "allowed edit"}
         assert any(tool.name == name for tool in (context.tools or ()))
         original = await scripted_stream(model, context, options)
         message = replace(await original.result(), stop_reason="toolUse", content=[
             ToolCall(type="toolCall", id="read-file", name=name,
-                     arguments={"action": "read", "id": text.split()[-1]}),
+                     arguments=args),
         ])
         stream = AssistantMessageEventStream()
         stream.push({"type": "start", "partial": message})
         stream.push({"type": "done", "reason": "toolUse", "message": message})
         return stream
-    if latest.role == "toolResult" and latest.tool_name == "session_files":
-        audit("model_received_file", text=text)
+    if latest.role == "toolResult" and latest.tool_name in {"session_files", "resource_read", "resource_write"}:
+        audit("model_received_file", text=text, tool=latest.tool_name)
         return await scripted_stream(model, context, options)
     if (root / "image-model").exists():
         latest = context.messages[-1]

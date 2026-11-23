@@ -10,7 +10,7 @@ import "./App.css";
 import type { OfflineAccount } from "./client/offlineAccount";
 import { MessageComposer } from "./MessageComposer";
 import { SessionResources, StoredResource } from "./SessionResources";
-import { uploadAttachments } from "./client/sessionResources";
+import { uploadAttachments, type AttachmentDraft } from "./client/sessionResources";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { GoalProgress } from "./GoalProgress";
 import { InteractiveGoalRecovery } from "./InteractiveGoalRecovery";
@@ -207,7 +207,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }, []);
   const [state, dispatch] = useReducer(guiReducer, undefined, emptyGuiState);
   const [notice, setNotice] = useState<Notice>({ key: "notice.loading" });
-  const [imageDrafts, setImageDrafts] = useState<Record<string, readonly File[]>>({});
+  const [imageDrafts, setImageDrafts] = useState<Record<string, readonly AttachmentDraft[]>>({});
   const [operationFailures, setOperationFailures] = useState<Record<string, {
     notice: Notice; pending?: { id: string; text: string; instanceId?: string; hadImages?: boolean };
   }>>({});
@@ -474,7 +474,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   }, [state.remote.sessions, firstMessages]);
   const operationScope = selected ? JSON.stringify([selectionKey, selected.id]) : null;
   const selectedImages = operationScope ? imageDrafts[operationScope] ?? [] : [];
-  function changeSelectedImages(images: readonly File[]) {
+  function changeSelectedImages(images: readonly AttachmentDraft[]) {
     if (operationScope) setImageDrafts((prior) => {
       const { [operationScope]: _, ...other } = prior;
       return images.length ? { ...other, [operationScope]: images } : other;
@@ -978,6 +978,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
     text: draftPending ? "" : draft.text,
     onChange: draftCreation.change,
     images: draft.images,
+    hostReferences: Boolean(draft.target.workspace),
     onImagesChange: (projectNavigation || client.sessionResource) && !draftPending && draft.status !== "firstSubmissionUnknown"
       ? draftCreation.changeImages : undefined,
     onSubmit: submitDraft,
@@ -987,6 +988,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   } : selected ? {
     text: state.local.drafts[selected.id] ?? "",
     images: selectedImages,
+    hostReferences: !fixture && !temporaryWorkspace && Boolean(workspacePath),
     onImagesChange: client.sessionResource && !controlPending && !failure?.pending ? changeSelectedImages : undefined,
     onChange: (value: string) => dispatch({ type: "draft.changed", sessionId: selected.id, value }),
     onSubmit: () => void submit(state.local.drafts[selected.id] ?? ""),
