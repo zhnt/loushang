@@ -246,7 +246,6 @@ from loushang.harness.session._cleanup import (
 )
 from loushang.harness.session._cleanup import (
     guard_session_construction_handoff,
-    run_cleanup_steps,
 )
 from loushang.harness.session.bootstrap_construction import (
     PreparationRootCustody,
@@ -1178,7 +1177,7 @@ def _create_agent_session(
             initial_catalog.record_admission_failure(error)
             raise
 
-    def _prepare_package_product_catalog_projection(
+    def prepare_package_product_catalog_projection(
         loader: ResourceLoader,
         resolved_cwd: Path,
         product_runtime: PackageProductRuntimeBindingV1,
@@ -1247,23 +1246,9 @@ def _create_agent_session(
             resume_parents=_resume_plugin_parents,
         )
 
-    def prepare_package_product_catalog_projection(
-        loader: ResourceLoader,
-        resolved_cwd: Path,
-        product_runtime: PackageProductRuntimeBindingV1,
-    ) -> ResourceBundle:
-        try:
-            return _prepare_package_product_catalog_projection(
-                loader, resolved_cwd, product_runtime
-            )
-        except BaseException as error:
-            if isinstance(error, CodingResourceCatalogAdmissionError):
-                initial_catalog.record_admission_failure(error)
-            run_cleanup_steps(
-                error,
-                (("Coding Product runtime bootstrap cleanup", product_runtime.dispose_runtime),),
-            )
-            raise
+    def record_package_product_catalog_failure(error: BaseException) -> None:
+        if isinstance(error, CodingResourceCatalogAdmissionError):
+            initial_catalog.record_admission_failure(error)
 
     constructed_session: AgentSession | None = None
 
@@ -1597,6 +1582,14 @@ def _create_agent_session(
             ),
             prepare_package_product_catalog_bootstrap_projection=(
                 prepare_package_product_catalog_projection
+                if product_base_requested
+                else None
+            ),
+            package_product_catalog_failure=(
+                (
+                    record_package_product_catalog_failure,
+                    "Coding Product runtime bootstrap cleanup",
+                )
                 if product_base_requested
                 else None
             ),

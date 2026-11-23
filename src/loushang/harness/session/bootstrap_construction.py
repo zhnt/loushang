@@ -559,6 +559,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         prepare_package_product_catalog_bootstrap_projection: (
             PackageProductCatalogBootstrapProjectionPreparer | None
         ) = None,
+        package_product_catalog_failure: (
+            tuple[Callable[[BaseException], None], str] | None
+        ) = None,
         selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
         explicit_system_prompt: str | None,
         append_system_prompt: Sequence[str],
@@ -775,9 +778,20 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 def prepare_selected_product_catalog(
                     loader: ResourceLoader, resolved_cwd: Path
                 ) -> ResourceBundle:
-                    return product_catalog_preparer(
-                        loader, resolved_cwd, activated_runtime
-                    )
+                    try:
+                        return product_catalog_preparer(
+                            loader, resolved_cwd, activated_runtime
+                        )
+                    except BaseException as error:
+                        if package_product_catalog_failure is not None:
+                            record_failure, cleanup_label = (
+                                package_product_catalog_failure
+                            )
+                            record_failure(error)
+                            run_cleanup_steps(
+                                error, ((cleanup_label, activated_runtime.dispose_runtime),)
+                            )
+                        raise
 
                 selected_catalog_preparer = prepare_selected_product_catalog
             result = AgentProductConstructionRuntime[
