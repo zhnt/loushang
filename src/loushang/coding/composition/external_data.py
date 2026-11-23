@@ -88,9 +88,7 @@ from loushang.harness.session.product_composition_assembly import (
     _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
 )
 from loushang.harness.session.product_composition_assembly import (
-    assemble_agent_data_composition,
-    build_product_data_selection_plan,
-    project_selected_product_data_candidates,
+    assemble_product_data_resources,
 )
 
 
@@ -145,27 +143,18 @@ def compile_coding_external_data_product_selection(
             ]
         )
     ).hexdigest()
-    plan = build_product_data_selection_plan(
+    _, composition, _ = assemble_product_data_resources(
         selected,
-        declarations=declarations,
+        declarations,
         product_id=CODING_PRODUCT_ID,
         scope_id=f"session:{session_id.strip()}",
         policy_revision=(
             f"coding-external-data-v1:{composition_set.set_id}:{composition_set.fingerprint}:{policy_digest}"
         ),
-    )
-    candidates = project_selected_product_data_candidates(
-        plan, declarations, prepare=_candidate
-    )
-    bindings = _bind_coding_external_resource_owners(
-        (),
-        {
-            reservation.owner: EXTERNAL_DATA_TRUST_CLASSES_ORDERED
-            for _, reservation, _ in declarations
-        },
-    )
-    composition = assemble_agent_data_composition(
-        plan, candidates, bindings, evaluated_at=evaluated_at
+        evaluated_at=evaluated_at,
+        prepare=_candidate,
+        bind_owners=_bind_coding_external_resource_owners,
+        external_trust_classes=EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
     )
     return CodingExternalDataProductCompilation(
         product_composition=composition,

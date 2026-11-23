@@ -6,7 +6,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from dataclasses import replace as replace
 from hashlib import sha256
-from itertools import chain
 from typing import TYPE_CHECKING, Literal
 
 from loushang.coding.composition.base_plugin import (
@@ -92,11 +91,12 @@ from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding as ProductContributionOwnerBinding,
 )
 from loushang.harness.session.product_composition_assembly import (
+    ProductDataBaseSelection,
     SelectedProductDataDeclaration,
     _rebind_resource_owner_trust,
     assemble_agent_data_composition,
+    assemble_product_data_resources,
     bind_agent_host_session_inputs,
-    build_product_data_selection_plan,
     prepare_product_selected_contribution_candidate,
     project_selected_product_data_candidates,
 )
@@ -310,40 +310,22 @@ def extend_coding_base_product_data_resources(
     ):
         raise ValueError("External data selections must be sorted and unique")
     declarations = _capture_external_resource_declarations(external, standalone=False)
-    plan = build_product_data_selection_plan(
+    plan, composition, owners = assemble_product_data_resources(
         external,
-        declarations=declarations,
+        declarations,
         product_id=base.plan.context.product_id,
         scope_id=base.plan.context.scope_id,
         policy_revision=base.plan.context.policy_revision,
-        base=base.plan,
-    )
-    base_declarations = (
-        (base.selected_manifest, reservation, declaration)
-        for reservation, declaration in base.selected_manifest.verified_data_only_declarations()
-    )
-    candidates = project_selected_product_data_candidates(
-        plan, chain(base_declarations, declarations), prepare=_candidate
-    )
-    builtin_owners = {
-        item.owner_id for item in candidates if item.plugin_id == CODING_BASE_PLUGIN_ID
-    }
-    trust_by_owner = {
-        reservation.owner: (
-            ("host-equivalent-local", *EXTERNAL_DATA_TRUST_CLASSES_ORDERED)
-            if reservation.owner in builtin_owners
-            else EXTERNAL_DATA_TRUST_CLASSES_ORDERED
-        )
-        for _, reservation, _ in declarations
-    }
-    owners = tuple(
-        sorted(
-            _bind_coding_external_resource_owners(base.owner_bindings, trust_by_owner),
-            key=lambda binding: binding.owner_key,
-        )
-    )
-    composition = assemble_agent_data_composition(
-        plan, candidates, owners, evaluated_at=evaluated_at
+        evaluated_at=evaluated_at,
+        prepare=_candidate,
+        bind_owners=_bind_coding_external_resource_owners,
+        external_trust_classes=EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
+        base=ProductDataBaseSelection(
+            plan=base.plan,
+            manifest=base.selected_manifest,
+            owner_bindings=base.owner_bindings,
+            trust_classes=("host-equivalent-local",),
+        ),
     )
     return replace(
         base,

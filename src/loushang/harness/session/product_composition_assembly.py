@@ -1957,19 +1957,22 @@ SelectedProductDataDeclaration = tuple[
 ]
 
 
+SelectedProductDataCandidatePreparer = Callable[
+    [
+        "PackageProductSelectedPluginManifestV1",
+        PluginSelectionPlanV2,
+        PluginContributionReservation,
+        PluginDeclaration,
+    ],
+    OwnerContributionCandidateEnvelope,
+]
+
+
 def project_selected_product_data_candidates(
     plan: PluginSelectionPlanV2,
     declarations: Iterable[SelectedProductDataDeclaration],
     *,
-    prepare: Callable[
-        [
-            PackageProductSelectedPluginManifestV1,
-            PluginSelectionPlanV2,
-            PluginContributionReservation,
-            PluginDeclaration,
-        ],
-        OwnerContributionCandidateEnvelope,
-    ],
+    prepare: SelectedProductDataCandidatePreparer,
 ) -> tuple[OwnerContributionCandidateEnvelope, ...]:
     """Project precisely the plan's admitted declarations in capture order."""
     selected_refs = set(plan.selected_contributions)
@@ -1981,17 +1984,38 @@ def project_selected_product_data_candidates(
     )
 
 
-def build_product_data_selection_plan(
+@dataclass(frozen=True, slots=True)
+class ProductDataBaseSelection:
+    """Existing facts for extending a base-only plan with external resources."""
+
+    plan: PluginSelectionPlanV2
+    manifest: PackageProductSelectedPluginManifestV1
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...]
+    trust_classes: tuple[str, ...]
+
+
+def assemble_product_data_resources(
     external: tuple[PackageProductSelectedPluginManifestV1, ...],
-    *,
     declarations: tuple[SelectedProductDataDeclaration, ...],
+    *,
     product_id: str,
     scope_id: str,
     policy_revision: str,
-    base: PluginSelectionPlanV2 | None = None,
-) -> PluginSelectionPlanV2:
-    """Build a data plan from verified Store facts and the Product's selected entries."""
-    return build_product_plugin_selection_plan(
+    evaluated_at: int,
+    prepare: SelectedProductDataCandidatePreparer,
+    bind_owners: Callable[
+        [tuple[ProductContributionOwnerBinding, ...], Mapping[str, tuple[str, ...]]],
+        tuple[ProductContributionOwnerBinding, ...],
+    ],
+    external_trust_classes: tuple[str, ...],
+    base: ProductDataBaseSelection | None = None,
+) -> tuple[
+    PluginSelectionPlanV2,
+    ProductCompositionCompilation,
+    tuple[ProductContributionOwnerBinding, ...],
+]:
+    """Compile external data with the optional base's existing owner admissions."""
+    plan = build_product_plugin_selection_plan(
         product_id=product_id,
         scope_id=scope_id,
         policy_revision=policy_revision,
@@ -2010,12 +2034,43 @@ def build_product_data_selection_plan(
             )
             for item, reservation, _ in declarations
         ),
-        base=base,
+        base=base.plan if base is not None else None,
         extend_base_selection=True,
         allowed_authority_ceiling=()
         if base is None
-        else base.allowed_authority_ceiling,
+        else base.plan.allowed_authority_ceiling,
     )
+    inputs: Iterable[SelectedProductDataDeclaration] = declarations
+    if base is not None:
+        manifest = base.manifest
+        inputs = chain(
+            (
+                (manifest, reservation, declaration)
+                for reservation, declaration in manifest.verified_data_only_declarations()
+            ),
+            declarations,
+        )
+    candidates = project_selected_product_data_candidates(plan, inputs, prepare=prepare)
+    trust_by_owner = {
+        reservation.owner: external_trust_classes for _, reservation, _ in declarations
+    }
+    if base is not None:
+        base_plugin_id = base.plan.selected_plugin_ids[0]
+        for owner in {
+            candidate.owner_id
+            for candidate in candidates
+            if candidate.plugin_id == base_plugin_id
+        } & trust_by_owner.keys():
+            trust_by_owner[owner] = (*base.trust_classes, *external_trust_classes)
+    owners = bind_owners(
+        base.owner_bindings if base is not None else (), trust_by_owner
+    )
+    if base is not None:
+        owners = tuple(sorted(owners, key=lambda binding: binding.owner_key))
+    compilation = assemble_agent_data_composition(
+        plan, candidates, owners, evaluated_at=evaluated_at
+    )
+    return plan, compilation, owners
 
 
 def _extend_configured_resource_owner_binding(
