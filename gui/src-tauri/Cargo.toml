@@ -51,3 +51,6 @@ windows = { version = "0.61.3", features = ["Win32_System_Com", "Win32_UI_Shell"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSWindow", "std"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString", "NSURL", "std"] }
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "=2.4.5"

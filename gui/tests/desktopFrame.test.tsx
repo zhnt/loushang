@@ -81,6 +81,16 @@ describe("native frame commands", () => {
     expect(dragRegion).not.toHaveAttribute("title");
   });
 
+  it("creates a window only on the New window menu action", async () => {
+    native.invoke.mockClear();
+    const user = userEvent.setup();
+    render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "File" }));
+    expect(native.invoke).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("menuitem", { name: "New window" }));
+    expect(native.invoke).toHaveBeenCalledExactlyOnceWith("new_window");
+  });
+
   it("routes window buttons to the native window, not fixture execution", async () => {
     const user = userEvent.setup();
     render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);

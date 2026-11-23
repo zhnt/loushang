@@ -4,6 +4,7 @@ import { appName } from "./branding";
 import type Resources from "./i18n/generated/resources";
 
 export interface FrameActions {
+  onNewWindow?: () => void;
   onNewSession?: () => void;
   onOpenFolder?: () => void;
   onFocusComposer?: () => void;
@@ -121,7 +122,7 @@ export function FrameMenu(actions: FrameActions) {
   const entry = (label: Label, action?: () => void, shortcut?: string, checked?: boolean): MenuEntry => ({ label, action, shortcut, checked });
   const groups: Record<MenuName, MenuEntry[][]> = {
     file: [
-      [entry("newWindow"), entry("newSession", actions.onNewSession, "Ctrl+N"), entry("temporarySession", undefined, "Ctrl+Shift+N"), entry("newProject", actions.onOpenFolder)],
+      [entry("newWindow", actions.onNewWindow), entry("newSession", actions.onNewSession, "Ctrl+N"), entry("temporarySession", undefined, "Ctrl+Shift+N"), entry("newProject", actions.onOpenFolder)],
       [entry("openFolder", actions.onOpenFolder), entry("focusComposer", actions.onFocusComposer), entry("close", actions.onClose, "Ctrl+W")],
       [entry("settings", actions.onSettings, "Ctrl+,")],
       [entry("signOut"), entry("quitApp", actions.onQuit, "Ctrl+Q")],
