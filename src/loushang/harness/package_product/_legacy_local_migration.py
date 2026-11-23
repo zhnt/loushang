@@ -110,6 +110,7 @@ from ._plugin_bootstrap import (
     ReviewedPluginChoices,
     _PluginBootstrapPolicy,
     _ProductOwner,
+    replay_reviewed_product_plugins,
     route_project_package,
 )
 from .product_runtime import hold_local_wheel_product_runtime
@@ -1323,9 +1324,11 @@ def match_legacy_replay_source(
 
 
 _AcceptedT = TypeVar("_AcceptedT", bound=_AcceptedSource)
+_InstallationReceiptT = TypeVar("_InstallationReceiptT")
+_EnablementReceiptT = TypeVar("_EnablementReceiptT")
 
 
-def prepare_legacy_adoption_source(
+def adopt_legacy_local_data(
     *,
     open_epoch: Callable[[], PackageProductPosixFencedRuntimeOwner],
     open_application: Callable[[], FencedOrdinaryProductApplication],
@@ -1337,8 +1340,14 @@ def prepare_legacy_adoption_source(
     trust_classes: Collection[str],
     expected_trust: Callable[[], str],
     changed_message: str,
-) -> _AcceptedT:
-    """Open the accepted Product, then finish only a missing Source binding."""
+    install: Callable[[], _InstallationReceiptT],
+    enable: Callable[[], _EnablementReceiptT],
+    reviewed_choices: Callable[[_AcceptedT], ReviewedPluginChoices],
+    builtin_plugin_ids: tuple[str, ...],
+    bootstrap_policy: _PluginBootstrapPolicy,
+    removal_label: str,
+) -> tuple[_AcceptedT, _InstallationReceiptT, _EnablementReceiptT | None]:
+    """Complete the replayable Source, installation and builtin adoption chain."""
     with hold_accepted_product_adoption(
         open_epoch=open_epoch,
         accept_review=accept_and_consume,
@@ -1356,7 +1365,19 @@ def prepare_legacy_adoption_source(
     if bound is None:
         with closing(open_epoch()) as epoch:
             bind_source(epoch, admission_checked)
-    return acceptance
+    installation = install()
+    enablement = enable() if acceptance.review.desired_state == "installed_enabled" else None
+    with closing(open_application()) as application:
+        choices = reviewed_choices(acceptance)
+        replay_reviewed_product_plugins(
+            application.runtime_owner.product_owner,
+            builtin_plugin_ids,
+            choices=choices,
+            removal_label=removal_label,
+            policy=bootstrap_policy,
+            strict_history=False,
+        )
+    return acceptance, installation, enablement
 
 
 class _LegacyLocalInstallationResult(NamedTuple):

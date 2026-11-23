@@ -377,13 +377,17 @@ def _require_reviewed_bootstrap_history(
             raise RuntimeError(f"{history_label} enable history changed")
 
 
+class ReviewedPluginChoices(NamedTuple):
+    disabled_ids: Collection[str]
+    removed_ids: Collection[str]
+    operation_id_for: Callable[[str], str]
+
+
 def replay_reviewed_product_plugins(
     product: _ProductOwner,
     plugin_ids: tuple[str, ...],
     *,
-    disabled_ids: Collection[str],
-    removed_ids: Collection[str],
-    operation_id_for: Callable[[str], str],
+    choices: ReviewedPluginChoices,
     removal_label: str,
     policy: _PluginBootstrapPolicy,
     strict_history: bool,
@@ -395,14 +399,17 @@ def replay_reviewed_product_plugins(
     continuation retains its older plugin-only history selection and yields
     to subsequent operator choices. Products choose the supported mode.
     """
-    for plugin_id in removed_ids:
+    for plugin_id in choices.removed_ids:
         removal_key = policy.installation_key(product.policy.project_scope_id, plugin_id)
         preserve_removed_product_plugin(
-            product, removal_key, operation_id_for(plugin_id), error_prefix=removal_label
+            product,
+            removal_key,
+            choices.operation_id_for(plugin_id),
+            error_prefix=removal_label,
         )
 
     for plugin_id in plugin_ids:
-        if plugin_id in removed_ids:
+        if plugin_id in choices.removed_ids:
             continue
         key = (
             policy.installation_key(product.policy.project_scope_id, plugin_id)
@@ -435,14 +442,8 @@ def replay_reviewed_product_plugins(
             plugin_id,
             store_id=product.epoch_runtime.registry.store_id,
             policy=policy,
-            enable=plugin_id not in disabled_ids,
+            enable=plugin_id not in choices.disabled_ids,
         )
-
-
-class ReviewedPluginChoices(NamedTuple):
-    disabled_ids: Collection[str]
-    removed_ids: Collection[str]
-    operation_id_for: Callable[[str], str]
 
 
 _EpochT = TypeVar("_EpochT", bound=_FencedRuntime)
@@ -467,13 +468,10 @@ def adopt_reviewed_product_plugins(
         open_application=open_application,
     ) as (receipt, application):
         product = application.runtime_owner.product_owner
-        choices = reviewed_choices(receipt)
         replay_reviewed_product_plugins(
             product,
             plugin_ids,
-            disabled_ids=choices.disabled_ids,
-            removed_ids=choices.removed_ids,
-            operation_id_for=choices.operation_id_for,
+            choices=reviewed_choices(receipt),
             removal_label=removal_label,
             policy=policy,
             strict_history=True,
