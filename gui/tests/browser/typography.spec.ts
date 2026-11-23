@@ -150,8 +150,22 @@ for (const sample of [
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(680);
       expect(fontRequests).toEqual([]);
       await page.locator(".brand-actions .frame-icon").click();
-      await page.getByRole("button", { name: sample.locale === "zh-CN" ? "会话操作" : "Session actions" }).click();
-      await page.getByRole("menuitem", { name: sample.locale === "zh-CN" ? "目标" : "Goal", exact: true }).click();
+      const actions = page.getByRole("button", { name: sample.locale === "zh-CN" ? "会话操作" : "Session actions" });
+      await actions.click();
+      const add = page.getByRole("group", { name: sample.locale === "zh-CN" ? "添加" : "Add", exact: true });
+      await expect(add.getByRole("menuitem")).toHaveCount(2);
+      const mode = page.getByRole("group", { name: sample.locale === "zh-CN" ? "模式" : "Mode", exact: true });
+      const goal = mode.getByRole("menuitem", { name: sample.locale === "zh-CN" ? "目标" : "Goal", exact: true });
+      const popup = mode.locator("..");
+      const popupBox = (await popup.boundingBox())!;
+      const actionsBox = (await actions.boundingBox())!;
+      expect(popupBox.y + popupBox.height).toBeLessThan(actionsBox.y);
+      await popup.screenshot({ path: info.outputPath("session-actions.png") });
+      await expect(add.getByRole("menuitem").first()).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("ArrowDown");
+      await expect(goal).toBeFocused();
+      await page.keyboard.press("Enter");
       await expect(page.locator(".interactive-goal")).toBeInViewport();
     } finally {
       await context.close();

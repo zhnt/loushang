@@ -40,6 +40,8 @@ async function mount() {
     submitText: async ({ submissionId }) => ({ accepted: false, submissionId }),
     interrupt: async () => ({ accepted: false }),
     sessionModels: async () => models,
+    sessionResource: async () => { throw new Error("Fixture has no stored resources"); },
+    pickClientDirectory: async () => null,
     createInteractiveGoal: async () => null,
     interactiveGoalStatus: async () => ({
       availability: "ready", goalId: null, status: null, revision: null, epoch: null, executionUnresolved: null,

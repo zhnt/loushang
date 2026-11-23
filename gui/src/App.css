@@ -349,7 +349,7 @@ body:has([role="menu"], .account-popover, dialog[open]) .workspace-scroll {
 .composer textarea { padding: 3px 0 10px; }
 .composer .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .composer-permissions { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.composer-permissions .icon-button { flex: 0 0 25px; }
+.composer-permissions .icon-button { display: grid; place-items: center; padding: 0; flex: 0 0 25px; }
 .composer-permissions .permission-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attachment-label { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-secondary); background: transparent; font-size: var(--font-size-small); font-weight: 500; line-height: 18px; white-space: nowrap; }
 .attachment-label .ui-icon { width: 15px; height: 15px; flex: none; }
@@ -587,6 +587,12 @@ body:has([role="menu"], .account-popover, dialog[open]) .workspace-scroll {
 
 .app-context-menu { position: fixed; z-index: 100; min-inline-size: 150px; max-inline-size: calc(100vw - 8px); padding: 4px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--paper); color: var(--ink); box-shadow: 0 6px 20px #0002; font-size: var(--font-size-small); line-height: var(--line-height-ui); }
 .app-context-menu button { display: block; width: 100%; min-height: 32px; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: start; }
+.context-menu-group { padding: 3px 0; }
+.context-menu-group + .context-menu-group { margin-top: 3px; padding-top: 6px; border-top: 1px solid var(--line); }
+.context-menu-group > .section-label { margin: 0 0 3px; padding-inline: 10px; }
+.context-menu-group > button { display: flex; align-items: center; gap: 8px; }
+.context-menu-group > button > .ui-icon { width: 16px; height: 16px; flex: none; color: var(--ink-secondary); }
+.context-menu-group > button:not(:disabled):is(:hover, :focus-visible) { background: var(--control-hover); }
 .app-context-menu .context-menu-danger { color: var(--red); }
 .context-menu-error { position: fixed; inset: auto 16px 16px auto; z-index: 110; margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 13px; }
 .session-delete-dialog { margin: auto; overflow-wrap: anywhere; }
