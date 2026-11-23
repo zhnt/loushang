@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os as os
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256 as sha256
 from typing import Literal
 
@@ -23,7 +24,6 @@ from loushang.harness.package_product._legacy_local_migration import (
 from loushang.harness.package_product._legacy_local_review import (
     read_frozen_legacy_local_review,
 )
-from loushang.harness.package_product._legacy_runtime import matches_epoch_layout
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1 as PluginInstallationKeyV1,
 )
@@ -93,9 +93,6 @@ class CodingLegacyLocalAcceptanceV1(
             raise ValueError("Legacy local adoption supports built-in disables only")
 
 
-_CODEC = CodingLegacyLocalAcceptanceV1._record_codec()
-
-
 def accept_coding_legacy_installed_local_review(
     lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
@@ -107,36 +104,18 @@ def accept_coding_legacy_installed_local_review(
 ) -> CodingLegacyLocalAcceptanceV1:
     """Accept one exact current review while that Installation is untouched in B."""
 
-    review = review_coding_legacy_installed_local_source(
+    return _acceptance_protocol(
         lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
-    )
-    if accepted_review_id != review.review_id:
-        raise _acceptance_error("review ID changed")
-    _require_current_epoch(lifecycle, epoch_runtime)
-    proposed = CodingLegacyLocalAcceptanceV1.create(review, resource_kind=resource_kind)
-
-    def require_current_review() -> None:
-        _require_live_resource_kind(
-            lifecycle, epoch_runtime, plugin_id=plugin_id, resource_kind=resource_kind
-        )
-        if (
-            review_coding_legacy_installed_local_source(
-                lifecycle,
-                epoch_runtime,
-                plugin_id=plugin_id,
-                policy_revision=policy_revision,
-            )
-            != review
-        ):
-            raise _acceptance_error("review changed before acceptance")
-
-    return _acceptance_protocol(epoch_runtime).accept(
-        proposed,
-        plugin_id=review.plugin_id,
-        installation_key=lambda: PluginInstallationKeyV1.workspace(
-            _PRODUCT_ID, review.scope_id, review.plugin_id
+    ).accept_review(
+        accepted_review_id,
+        resource_kind,
+        require_live_resource_kind=partial(
+            _require_live_resource_kind,
+            lifecycle,
+            epoch_runtime,
+            plugin_id=plugin_id,
+            resource_kind=resource_kind,
         ),
-        require_current_review=require_current_review,
     )
 
 
@@ -149,21 +128,9 @@ def reopen_coding_legacy_installed_local_acceptance(
 ) -> CodingLegacyLocalAcceptanceV1 | None:
     """Reopen a receipt against frozen first-B evidence without live Source."""
 
-    if not isinstance(plugin_id, str) or not plugin_id:
-        raise ValueError(f"{_ACCEPTANCE_LABEL} Plugin identity is required")
-    _require_current_epoch(lifecycle, epoch_runtime)
-    record = _acceptance_protocol(epoch_runtime).reopen(plugin_id)
-    if record is None:
-        return None
-    _require_frozen_review(
-        lifecycle,
-        epoch_runtime,
-        record.review,
-        plugin_id=plugin_id,
-        policy_revision=policy_revision,
-    )
-    epoch_runtime.assert_current()
-    return record
+    return _acceptance_protocol(
+        lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
+    ).read_acceptance(plugin_id)
 
 
 def read_coding_legacy_installed_local_acceptance(
@@ -175,32 +142,9 @@ def read_coding_legacy_installed_local_acceptance(
 ) -> CodingLegacyLocalAcceptanceV1 | None:
     """Additionally require that the original live Source still matches."""
 
-    record = reopen_coding_legacy_installed_local_acceptance(
-        lifecycle,
-        epoch_runtime,
-        plugin_id=plugin_id,
-        policy_revision=policy_revision,
-    )
-    if record is None:
-        return None
-    review = review_coding_legacy_installed_local_source(
+    return _acceptance_protocol(
         lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
-    )
-    if record != CodingLegacyLocalAcceptanceV1.create(
-        review, resource_kind=record.resource_kind
-    ):
-        raise _acceptance_error("acceptance conflicts with current review")
-    epoch_runtime.assert_current()
-    return record
-
-
-def _require_current_epoch(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-) -> None:
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    if not matches_epoch_layout(epoch_runtime, epoch):
-        raise _acceptance_error("Product epoch changed")
+    ).read_acceptance(plugin_id, check_live=True)
 
 
 def _acceptance_error(reason: str) -> CodingLegacyLocalAcceptanceError:
@@ -208,15 +152,37 @@ def _acceptance_error(reason: str) -> CodingLegacyLocalAcceptanceError:
 
 
 def _acceptance_protocol(
+    lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-) -> _LocalAcceptanceProtocol[CodingLegacyLocalAcceptanceV1]:
+    *,
+    plugin_id: str,
+    policy_revision: str,
+) -> _LocalAcceptanceProtocol[
+    CodingLegacyLocalAdoptionReviewV1, CodingLegacyLocalAcceptanceV1
+]:
     return _LocalAcceptanceProtocol(
         epoch_runtime,
-        _CODEC,
         CodingLegacyLocalAcceptanceError,
         _ACCEPTANCE_LABEL,
         _MAX_ACCEPTANCE_BYTES,
         _MAX_DESIRED_BYTES,
+        product_id=_PRODUCT_ID,
+        record_type=CodingLegacyLocalAcceptanceV1,
+        resolve_epoch=partial(resolve_coding_package_epoch_layout, lifecycle),
+        review_live=partial(
+            review_coding_legacy_installed_local_source,
+            lifecycle,
+            epoch_runtime,
+            plugin_id=plugin_id,
+            policy_revision=policy_revision,
+        ),
+        require_frozen_review=partial(
+            _require_frozen_review,
+            lifecycle,
+            epoch_runtime,
+            plugin_id=plugin_id,
+            policy_revision=policy_revision,
+        ),
     )
 
 
@@ -240,11 +206,9 @@ def _require_frozen_review(
     source, configured = _review_source_choices(evidence)
     builtin_intent, removed_builtins = _review_builtin_intent(evidence)
     if (
-        any(getattr(review, key) != value for key, value in evidence.identity.items())
-        or review.scope_id != lifecycle.scope_id
-        or review.legacy_desired_journal_digest
-        != evidence.inventory.desired_journal_digest
-        or review.policy_revision != policy_revision
+        not review.matches_frozen_history(
+            evidence, scope_id=lifecycle.scope_id, policy_revision=policy_revision
+        )
         or review.disabled_plugins != source.disabled_plugins
         or review.builtin_intent != builtin_intent
         or review.removed_builtin_ids != removed_builtins

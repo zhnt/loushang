@@ -105,7 +105,12 @@ from ._legacy_inventory import (
     _BindingHead,
     legacy_record_digest,
 )
-from ._legacy_runtime import FencedRuntimeOpenKwargs, _FencedRuntime
+from ._legacy_runtime import (
+    FencedRuntimeOpenKwargs,
+    _FencedRuntime,
+    _LegacyEpoch,
+    matches_epoch_layout,
+)
 from ._local_source_catalog import wheel_source_binding_digest
 from ._plugin_bootstrap import (
     ReviewedPluginChoices,
@@ -229,6 +234,9 @@ class _FirstAcceptanceRecord(Generic[_FirstReviewT]):
 class _LocalAcceptanceReview(_FirstAcceptanceReview, Protocol):
     @property
     def plugin_id(self) -> str: ...
+
+    @property
+    def scope_id(self) -> str: ...
 
 
 _LocalReviewT = TypeVar("_LocalReviewT", bound=_LocalAcceptanceReview)
@@ -537,26 +545,38 @@ class _FirstAcceptanceJournal(Generic[_FirstReviewT, RecordT]):
             os.close(descriptor)
 
 
+_LocalReceiptT = TypeVar("_LocalReceiptT", bound=LegacyLocalAcceptanceRecord[Any])
+
+
 @dataclass(frozen=True)
-class _LocalAcceptanceProtocol(Generic[RecordT]):
+class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
     epoch_runtime: PackageProductPosixFencedRuntimeOwner
-    codec: JournalRecordCodec[RecordT]
     error_type: type[Exception]
     label: str
     max_acceptance_bytes: int
     max_desired_bytes: int
+    product_id: str
+    record_type: type[_LocalReceiptT]
+    resolve_epoch: Callable[[], _LegacyEpoch]
+    review_live: Callable[[], _LocalReviewT]
+    require_frozen_review: Callable[[_LocalReviewT], None]
 
-    def accept(
+    def accept_review(
         self,
-        proposed: RecordT,
+        accepted_review_id: str,
+        resource_kind: _LegacyResourceKind,
         *,
-        plugin_id: str,
-        installation_key: Callable[[], PluginInstallationKeyV1],
-        require_current_review: Callable[[], None],
-    ) -> RecordT:
+        require_live_resource_kind: Callable[[], None],
+    ) -> _LocalReceiptT:
+        review = self.review_live()
+        if accepted_review_id != review.review_id:
+            raise self.error_type(f"{self.label} review ID changed")
+        self._require_epoch()
+        proposed = self.record_type.create(review, resource_kind=resource_kind)
+
         epoch_runtime = self.epoch_runtime
         state_root = epoch_runtime.prepare_product_state_root()
-        path = self._path(state_root, plugin_id)
+        path = self._path(state_root, review.plugin_id)
         descriptor = os.open(
             state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
         )
@@ -583,12 +603,16 @@ class _LocalAcceptanceProtocol(Generic[RecordT]):
                         self._require_unseen_installation(
                             desired,
                             state_root / "desired-state.jsonl",
-                            installation_key,
+                            review,
                         )
-                        require_current_review()
+                        require_live_resource_kind()
+                        if self.review_live() != review:
+                            raise self.error_type(
+                                f"{self.label} review changed before acceptance"
+                            )
                         payload = encode_jsonl_record(
                             proposed,
-                            record_codec=self.codec,
+                            record_codec=self.record_type._record_codec(),
                             format_profile=SORTED_UNICODE_JSONL_FORMAT,
                         )
                         target.atomic_write(payload, exclusive=True)
@@ -598,7 +622,12 @@ class _LocalAcceptanceProtocol(Generic[RecordT]):
         finally:
             os.close(descriptor)
 
-    def reopen(self, plugin_id: str) -> RecordT | None:
+    def read_acceptance(
+        self, plugin_id: str, *, check_live: bool = False
+    ) -> _LocalReceiptT | None:
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError(f"{self.label} Plugin identity is required")
+        self._require_epoch()
         epoch_runtime = self.epoch_runtime
         state_root = epoch_runtime.control_root / "product-state"
         path = self._path(state_root, plugin_id)
@@ -627,13 +656,28 @@ class _LocalAcceptanceProtocol(Generic[RecordT]):
         records = self._decode(raw, path)
         if len(records) != 1:
             raise self.error_type(f"{self.label} acceptance has multiple records")
-        return records[0]
+        record = records[0]
+        self.require_frozen_review(record.review)
+        epoch_runtime.assert_current()
+        if check_live:
+            if record != self.record_type.create(
+                self.review_live(), resource_kind=record.resource_kind
+            ):
+                raise self.error_type(
+                    f"{self.label} acceptance conflicts with current review"
+                )
+            epoch_runtime.assert_current()
+        return record
 
-    def _decode(self, raw: bytes, path: Path) -> tuple[RecordT, ...]:
+    def _require_epoch(self) -> None:
+        if not matches_epoch_layout(self.epoch_runtime, self.resolve_epoch()):
+            raise self.error_type(f"{self.label} Product epoch changed")
+
+    def _decode(self, raw: bytes, path: Path) -> tuple[_LocalReceiptT, ...]:
         return decode_jsonl(
             raw.decode("utf-8"),
             target=path,
-            record_codec=self.codec,
+            record_codec=self.record_type._record_codec(),
             load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
         ).records
 
@@ -641,7 +685,7 @@ class _LocalAcceptanceProtocol(Generic[RecordT]):
         self,
         desired: RootedFile,
         path: Path,
-        installation_key: Callable[[], PluginInstallationKeyV1],
+        review: _LocalReviewT,
     ) -> None:
         try:
             raw = desired.read_bytes(max_bytes=self.max_desired_bytes)
@@ -650,7 +694,7 @@ class _LocalAcceptanceProtocol(Generic[RecordT]):
         if raw and not raw.endswith(b"\n"):
             raise self.error_type("Product Desired State is incomplete")
         snapshot = decode_plugin_desired_state_snapshot(raw.decode("utf-8"), path=path)
-        key = installation_key()
+        key = PluginInstallationKeyV1.workspace(self.product_id, review.scope_id, review.plugin_id)
         if any(item.installation_key == key for item in snapshot.installations):
             raise self.error_type(
                 f"{self.label} Installation already has Product Desired history"
