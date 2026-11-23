@@ -30,9 +30,11 @@ from loushang.harness.session.lifecycle import (
     ForkProfile,
     ForkSelection,
     MissingSessionCwdError,
+    PreparedSessionLifecycleOperation,
     SessionLifecycleDecision,
     SessionLifecycleHooks,
     SessionLifecycleTransition,
+    _RetainedResultT,
 )
 from loushang.harness.session.product_runtime import (
     ProductSessionRuntime,
@@ -57,6 +59,10 @@ from loushang.harness.transcript.session_catalog import (
 if TYPE_CHECKING:
     from loushang.harness.resources.loader import ResourceLoader
     from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
+    from loushang.harness.session._resume_continuation import (
+        ResumeContinuationCleanupFailure,
+        _ResumeCleanupSession,
+    )
     from loushang.harness.transcript._resume_continuation import _ResumePlanRead
     from loushang.harness.transcript.session_factory import (
         AgentTranscriptSessionFactory,
@@ -76,6 +82,8 @@ HistoryPreviewT = TypeVar("HistoryPreviewT", bound=_SessionHistoryPreview)
 
 
 PlanningT = TypeVar("PlanningT")
+_ResumeAttemptT = TypeVar("_ResumeAttemptT")
+_ContinuationT = TypeVar("_ContinuationT")
 
 
 class _SessionPlanningSlot(Generic[PlanningT]):
@@ -610,6 +618,81 @@ class AgentProductSessionRuntime(
                     )
         if failure is not None:
             raise failure
+
+    async def _prepare_retained_resume(
+        self,
+        session_ref: str | Path,
+        *,
+        transition_type: Callable[..., SessionLifecycleTransition],
+        current_view: Callable[[], None],
+        admit_current: Callable[[_ResumeAttemptT], None],
+        prepare: Callable[
+            [Callable[[_ResumeAttemptT], None]],
+            Awaitable[tuple[SessionT, _ContinuationT]],
+        ],
+        cleanup_error: type[ResumeContinuationCleanupFailure],
+        deliver: Callable[
+            [PreparedSessionLifecycleOperation[SessionT, str], _ContinuationT],
+            _RetainedResultT,
+        ],
+    ) -> _RetainedResultT:
+        """Retain the exact resumed Session until the original slot delivers it."""
+        prefix = self._resume_shutdown_error_prefix
+        previous = self.current_session
+        operation: PreparedSessionLifecycleOperation[SessionT, str] | None = None
+        prepared_value: tuple[SessionT, _ContinuationT] | None = None
+
+        def admit(attempt: _ResumeAttemptT) -> None:
+            if self._resume_history_closed:
+                raise RuntimeError(f"{prefix}_root_closed")
+            if operation is None or not operation.consumed:
+                current_view()
+            expected = (
+                prepared_value[0]
+                if operation is not None and operation.consumed and prepared_value is not None
+                else previous
+            )
+            if self.current_session is not expected:
+                raise RuntimeError(f"{prefix}_active_session_changed")
+            admit_current(attempt)
+
+        async def build(current: SessionT | None) -> SessionT:
+            nonlocal prepared_value
+            if current is not previous:
+                raise RuntimeError(f"{prefix}_active_session_changed")
+            prepared_value = await prepare(admit)
+            session = cast("_ResumeCleanupSession", prepared_value[0])
+            try:
+                session.set_extension_runtime_host(self)
+            except BaseException as error:
+                await cleanup_error.discard_candidate(session, error)
+                raise
+            return prepared_value[0]
+
+        def bind_operation(
+            prepared: PreparedSessionLifecycleOperation[SessionT, str],
+        ) -> None:
+            nonlocal operation
+            operation = prepared
+            assert prepared_value is not None
+
+        return await self.lifecycle.prepare_retained_candidate(
+            lambda: transition_type(
+                reason="resume",
+                target_session_ref=str(session_ref),
+                metadata={
+                    "activate_extensions": False,
+                    "emit_before_transition": False,
+                    "schedule_index": False,
+                },
+            ),
+            build,
+            cleanup_error_type=cleanup_error,
+            bind_operation=bind_operation,
+            result_factory=lambda prepared: deliver(
+                prepared, cast("tuple[SessionT, _ContinuationT]", prepared_value)[1]
+            ),
+        )
 
     async def _drain_resume_activations(self) -> None:
         await self.lifecycle.drain_retained_preparations(

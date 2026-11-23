@@ -17,7 +17,6 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.resume._cleanup import (
     CodingResumeContinuationCleanupFailure as CodingResumeContinuationCleanupFailure,
 )
-from loushang.coding.resume._cleanup import discard_candidate
 from loushang.coding.resume._cleanup import (
     retain_resume_cleanup_failure as retain_resume_cleanup_failure,
 )
@@ -427,24 +426,8 @@ class AgentSessionRuntime(
             require_current_admission
         ):
             raise TypeError('Coding Resume requires synchronous current owner checks')
-        previous = self.current_session
-        continuation: CodingResumePreparedContinuation | None = None
-        operation: (
-            PreparedSessionLifecycleOperation[AgentSession, str] | None
-        ) = None
 
-        def admit(observed: CodingActivationAttemptV1) -> None:
-            if self._resume_history_closed:
-                raise RuntimeError('coding_resume_root_closed')
-            if operation is None or not operation.consumed:
-                current_view()
-            expected = (
-                continuation.session
-                if operation is not None and operation.consumed and continuation is not None
-                else previous
-            )
-            if self.current_session is not expected:
-                raise RuntimeError('coding_resume_active_session_changed')
+        def admit_current(observed: CodingActivationAttemptV1) -> None:
             if self._embedded_resume_approval_owner is not None:
                 self.require_current_embedded_resume_subject(observed)
             require_resume_owner_check(
@@ -462,10 +445,9 @@ class AgentSessionRuntime(
                     'input.epoch_changed'
                 )
 
-        async def build(current: AgentSession | None) -> AgentSession:
-            nonlocal continuation
-            if current is not previous:
-                raise RuntimeError('coding_resume_active_session_changed')
+        async def prepare(
+            admit: Callable[[CodingActivationAttemptV1], None],
+        ) -> tuple[AgentSession, CodingResumePreparedContinuation]:
             continuation = await prepare_coding_resume_continuation(
                 manager_type=_bind_owned_session_manager(factory),
                 session_file=session_file,
@@ -489,40 +471,17 @@ class AgentSessionRuntime(
                 worker_candidates=worker_candidates,
                 worker_candidate_plugin_id=worker_candidate_plugin_id,
             )
-            # Native model transport checks the original Root's actual slot.
-            try:
-                continuation.session.set_extension_runtime_host(self)
-            except BaseException as error:
-                await discard_candidate(continuation.session, error)
-                raise
-            return continuation.session
+            return continuation.session, continuation
 
-        def bind_operation(
-            prepared: PreparedSessionLifecycleOperation[
-                AgentSession, str
-            ],
-        ) -> None:
-            nonlocal operation
-            operation = prepared
-            assert continuation is not None
-
-        return await self.lifecycle.prepare_retained_candidate(
-            lambda: SessionLifecycleTransition(
-                reason="resume",
-                target_session_ref=str(session_file),
-                metadata={
-                    "activate_extensions": False,
-                    "emit_before_transition": False,
-                    "schedule_index": False,
-                },
-            ),
-            build,
-            cleanup_error_type=CodingResumeContinuationCleanupFailure,
-            bind_operation=bind_operation,
-            result_factory=lambda prepared: CodingRuntimePreparedResume(
-                self,
-                prepared,
-                cast("CodingResumePreparedContinuation", continuation),
+        return await self._prepare_retained_resume(
+            session_file,
+            transition_type=SessionLifecycleTransition,
+            current_view=current_view,
+            admit_current=admit_current,
+            prepare=prepare,
+            cleanup_error=CodingResumeContinuationCleanupFailure,
+            deliver=lambda operation, continuation: CodingRuntimePreparedResume(
+                self, operation, continuation
             ),
         )
 

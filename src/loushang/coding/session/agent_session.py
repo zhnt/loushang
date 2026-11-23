@@ -147,7 +147,6 @@ from loushang.harness.session._resume_continuation import (
     _ResumeContinuationSession,
     _ResumeRuntimeCandidate,
 )
-from loushang.harness.session.bash import UserBashHookResult, UserBashRequest
 from loushang.harness.session.bootstrap_construction import (
     rollback_unpublished_construction,
 )
@@ -189,7 +188,7 @@ from loushang.harness.transcript.kinds import (
     MODEL_SELECTION_KIND,
     THINKING_SELECTION_KIND,
 )
-from loushang.harness.workspace.exec import ExecResult, ExecService, ExecUpdateCallback
+from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 if TYPE_CHECKING:
@@ -328,69 +327,6 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
     _lsp_access: CodingLspSessionAccess | None
     _deferred_lsp_slot: DeferredCapabilitySlot[CodingDeferredLspGeneration] | None
     _deferred_lsp_management_cleanup: Callable[[], None] | None
-
-    @property
-    def execution_available(self) -> bool:
-        return (
-            super().execution_available
-            and not self._coding_session_manager.resume_runtime_publication_pending
-        )
-
-    def _require_coding_execution_admission(self) -> None:
-        self._coding_session_manager.require_no_unsettled_resume_activation()
-        publication = getattr(self, "_resume_publication", None)
-        if publication is not None:
-            self._require_current_resume_publication(publication)
-
-    def _is_current_model_call_session(self) -> bool:
-        if not super()._is_current_model_call_session():
-            return False
-        publication = getattr(self, "_resume_publication", None)
-        if publication is not None:
-            self._require_current_resume_publication(publication)
-        return True
-
-    async def _before_bash(self, request: UserBashRequest) -> UserBashHookResult | None:
-        self._require_coding_execution_admission()
-        return await super()._before_bash(request)
-
-    async def compact(self, custom_instructions: str | None = None) -> object:
-        self._require_coding_execution_admission()
-        return await super().compact(custom_instructions)
-
-    async def _exec_command_from_extension(
-        self,
-        command: str,
-        args: Sequence[str] = (),
-        *,
-        cwd: str | Path | None = None,
-        env: Mapping[str, str] | Sequence[tuple[str, str]] | None = None,
-        timeout_seconds: float | None = None,
-        stdin: str | None = None,
-        signal: object | None = None,
-        on_update: ExecUpdateCallback | None = None,
-        preview_max_lines: int = 2000,
-        preview_max_bytes: int = 50 * 1024,
-        artifact_dir: str | None = None,
-        capture_full_output: bool = True,
-        rolling_max_bytes: int = 100 * 1024,
-    ) -> ExecResult:
-        self._require_coding_execution_admission()
-        return await super()._exec_command_from_extension(
-            command,
-            args,
-            cwd=cwd,
-            env=env,
-            timeout_seconds=timeout_seconds,
-            stdin=stdin,
-            signal=signal,
-            on_update=on_update,
-            preview_max_lines=preview_max_lines,
-            preview_max_bytes=preview_max_bytes,
-            artifact_dir=artifact_dir,
-            capture_full_output=capture_full_output,
-            rolling_max_bytes=rolling_max_bytes,
-        )
 
     @staticmethod
     def _reject_peer_worker_tool(tool: object) -> None:

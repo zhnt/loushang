@@ -292,6 +292,9 @@ class _ResumeTranscriptLifecycle(Protocol):
 class _ResumeTranscript(Protocol[IntentCo]):
     @property
     def _lifecycle_session(self) -> _ResumeTranscriptLifecycle: ...
+    @property
+    def resume_runtime_publication_pending(self) -> bool: ...
+    def require_no_unsettled_resume_activation(self) -> None: ...
     def _require_resume_runtime_preparation(self, attempt_id: str) -> IntentCo: ...
     def _require_resume_staged_input(
         self, attempt_id: str, message: UserMessage
@@ -314,6 +317,27 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
 
     _resume_label: ClassVar[str]
     _resume_recovery_error: ClassVar[type[RuntimeError]]
+
+    @property
+    def execution_available(self) -> bool:
+        return (
+            super().execution_available
+            and not self._resume_transcript.resume_runtime_publication_pending
+        )
+
+    def _require_session_operation_admission(self) -> None:
+        self._resume_transcript.require_no_unsettled_resume_activation()
+        publication = getattr(self, "_resume_publication", None)
+        if publication is not None:
+            self._require_current_resume_publication(publication)
+
+    def _is_current_model_call_session(self) -> bool:
+        if not super()._is_current_model_call_session():
+            return False
+        publication = getattr(self, "_resume_publication", None)
+        if publication is not None:
+            self._require_current_resume_publication(publication)
+        return True
 
     def _init_resume_runtime_state(self) -> None:
         # Called at the Product's original construction point, before graph IO.
