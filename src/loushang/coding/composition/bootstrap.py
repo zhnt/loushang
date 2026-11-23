@@ -244,9 +244,8 @@ from loushang.harness.session._cleanup import (
     guard_session_construction_handoff,
 )
 from loushang.harness.session.bootstrap_construction import (
-    PreparationRootCustody,
+    SessionStartupCustody,
     bind_deferred_plugin,
-    construct_catalog_session,
     require_catalog_receipt,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
@@ -1005,9 +1004,9 @@ def _create_agent_session(
     def coding_plugin_clock() -> int:
         return time.time_ns() // 1_000_000
 
-    preparation_custody: PreparationRootCustody[
+    preparation_custody: SessionStartupCustody[
         CodingCapabilityPluginCompositionPreparation
-    ] = PreparationRootCustody()
+    ] = SessionStartupCustody()
     initial_catalog = InitialCatalogHandoff(
         services=services,
         session_id=session_id,
@@ -1148,7 +1147,7 @@ def _create_agent_session(
                 compatibility.reconcile()
 
         try:
-            initial_catalog.require_unprepared(
+            preparation_custody.require_catalog_unprepared(
                 "Initial Resource Catalog projection was already prepared"
             )
             _reject_peer_coding_exact_tools(
@@ -1185,7 +1184,7 @@ def _create_agent_session(
     ) -> ResourceBundle:
         if not product_base_requested or initial_catalog.base is not None:
             raise RuntimeError("Coding Product base Catalog was already prepared")
-        initial_catalog.require_unprepared("Coding Product base cannot mix Catalog routes")
+        preparation_custody.require_catalog_unprepared("Coding Product base cannot mix Catalog routes")
         _reject_peer_coding_exact_tools(
             tool_registry=session_tool_registry,
             tools=construction_tools,
@@ -1251,8 +1250,6 @@ def _create_agent_session(
         if isinstance(error, CodingResourceCatalogAdmissionError):
             initial_catalog.record_admission_failure(error)
 
-    constructed_session: AgentSession | None = None
-
     def _create_session(
         capability_runtime: StagedResourceCompositionCandidate,
         side_question_binding: LegacySideQuestionBinding | None,
@@ -1267,8 +1264,7 @@ def _create_agent_session(
         package_product_inventory: PackageProductLifecycleInventoryPort | None,
         package_product_lifecycle_mode: PackageProductLifecycleMode,
     ) -> AgentSession:
-        nonlocal constructed_session
-        resource_catalog_adapter = initial_catalog.take_adapter()
+        resource_catalog_adapter = preparation_custody.take_catalog_adapter()
         catalog_selection = initial_catalog.selection
         product_base_compilation = initial_catalog.base
         product_base_runtime = catalog_selection.runtime
@@ -1283,11 +1279,6 @@ def _create_agent_session(
             clock=coding_plugin_clock,
         )
 
-        async def emit_process_audit_event(event: Mapping[str, object]) -> None:
-            if constructed_session is None:
-                raise RuntimeError("Coding workspace Session is not yet bound")
-            await constructed_session.emit_product_tool_audit_event(event)
-
         sandbox_runtime, workspace_binding = bind_session_workspace(
             services,
             session_manager.get_cwd,
@@ -1296,7 +1287,9 @@ def _create_agent_session(
             delegated_execution_profile=delegated_execution_profile,
             tool_policy_evaluator=tool_policy_evaluator,
             approval_resolver=approval_resolver,
-            audit_sink=emit_process_audit_event,
+            audit_sink=partial(
+                preparation_custody.emit_workspace_audit, product_label="Coding"
+            ),
         )
 
         capability_tool_modes = (
@@ -1552,7 +1545,7 @@ def _create_agent_session(
                 worker_turn_tool.bind_session(session)
             return session
 
-        child_session = construct_catalog_session(
+        return preparation_custody.construct_catalog_session(
             resource_catalog_adapter,
             product_id=CODING_PRODUCT_ID,
             session_id=session_id,
@@ -1567,14 +1560,22 @@ def _create_agent_session(
                 else None
             ),
         )
-        constructed_session = child_session
-        return child_session
 
     construction_binding = replace(
         _CODING_AGENT_PRODUCT_CONSTRUCTION,
         default_system_prompt=coding_kernel_prompt,
     )
-    try:
+    with preparation_custody.guard_startup(
+        read_failure_custodian=coding_capability_plugin_failure_custodian,
+        management_cleanup=capability_management_state_cleanup,
+        product_label="Coding",
+        private_label="Coding Arch private-state cleanup",
+        before=(
+            "Deferred Coding LSP management-state cleanup",
+            deferred_lsp_management_state_cleanup,
+        ),
+        base_preparation=coding_base_plugin_assembly,
+    ):
         result = construction_binding.construct(
             services=services,
             package_materializer=resolved_package_materializer,
@@ -1634,26 +1635,6 @@ def _create_agent_session(
                 cast(list[dict[str, object]], scoped_models)
             ),
         )
-    except BaseException as error:
-        cleanup = get_session_construction_cleanup(error)
-        if cleanup is not None and cleanup.owns_session(constructed_session):
-            raise
-        preparation_custody.rollback_startup(
-            error,
-            failure_custodian=coding_capability_plugin_failure_custodian(error),
-            management_cleanup=capability_management_state_cleanup,
-            product_label="Coding",
-            private_label="Coding Arch private-state cleanup",
-            before=(
-                "Deferred Coding LSP management-state cleanup",
-                deferred_lsp_management_state_cleanup,
-            ),
-            after=(
-                "Coding base Plugin cleanup",
-                coding_base_plugin_assembly.close if coding_base_plugin_assembly is not None else None,
-            ),
-        )
-        raise
     with guard_session_construction_handoff(result.session):
         result.session.cwd_bound_services_audit = (
             result.configuration.cwd_bound_services_audit

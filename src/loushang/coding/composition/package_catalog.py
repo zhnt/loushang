@@ -65,6 +65,7 @@ from loushang.harness.resources._catalog_input_receipt import (
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.session.bootstrap_construction import (
     PreparationRootCustody,
+    SessionStartupCustody,
     require_catalog_receipt,
 )
 from loushang.harness.session.product_composition_assembly import (
@@ -76,9 +77,6 @@ from loushang.harness.session.product_composition_assembly import (
 if TYPE_CHECKING:
     from loushang.coding.composition.capability_specs import (
         CodingCapabilityPluginConfig,
-    )
-    from loushang.harness.resource_catalog.product_inputs import (
-        InitialResourceCatalogProductAdapter,
     )
     from loushang.harness.resource_catalog.product_snapshot_source import (
         ProductSelectedResourceInput,
@@ -96,7 +94,7 @@ class InitialCatalogHandoff:
 
     services: BootstrapServices
     session_id: str
-    custody: PreparationRootCustody[CodingCapabilityPluginCompositionPreparation]
+    custody: SessionStartupCustody[CodingCapabilityPluginCompositionPreparation]
     source_policy: CodingResourceCatalogSourcePolicy
     selection: ProductCatalogSelection = field(
         default_factory=ProductCatalogSelection, init=False
@@ -111,22 +109,6 @@ class InitialCatalogHandoff:
     builtin_preparation: CodingBuiltinProductCompositionPreparation | None = field(
         default=None, init=False
     )
-    _adapter: InitialResourceCatalogProductAdapter | None = field(
-        default=None, init=False
-    )
-
-    def require_unprepared(self, error: str) -> None:
-        if self._adapter is not None:
-            raise RuntimeError(error)
-
-    def take_adapter(self) -> InitialResourceCatalogProductAdapter:
-        adapter = self._adapter
-        if adapter is None:
-            raise RuntimeError(
-                "Initial Resource Catalog projection adapter is unavailable"
-            )
-        self._adapter = None
-        return adapter
 
     def record_admission_failure(
         self, error: CodingResourceCatalogAdmissionError
@@ -185,7 +167,7 @@ class InitialCatalogHandoff:
             clock=clock,
             source_policy=self.source_policy,
         )
-        self._adapter = adapter
+        self.custody.catalog_adapter = adapter
         return projection.bundle
 
     def prepare_fenced_projection(
@@ -337,7 +319,7 @@ class InitialCatalogHandoff:
         self.base = base
         self.external = external
         self.builtin_preparation = builtin
-        self._adapter = adapter
+        self.custody.catalog_adapter = adapter
         return projection.bundle
 
     def prepare_refresh(
