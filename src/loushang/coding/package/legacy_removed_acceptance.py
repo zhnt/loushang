@@ -52,6 +52,8 @@ class CodingLegacyRemovedAcceptanceV1(
 
 
 _acceptance_journal = _FirstAcceptanceJournal(
+    review=review_coding_first_b_removed_local,
+    resolve_epoch=resolve_coding_package_epoch_layout,
     filename="legacy-removed-acceptance.jsonl",
     codec=CodingLegacyRemovedAcceptanceV1._record_codec(),
     error_type=CodingLegacyRemovedAcceptanceError,
@@ -77,12 +79,10 @@ def accept_coding_first_b_removed_local(
     """Commit acceptance before the first Product Desired mutation."""
 
     return _acceptance_journal.accept_review(
+        lifecycle,
         epoch_runtime,
+        settings_manager=settings_manager,
         accepted_review_id=accepted_review_id,
-        review=lambda: review_coding_first_b_removed_local(
-            lifecycle, epoch_runtime, settings_manager=settings_manager
-        ),
-        expected_store_id=lambda: resolve_coding_package_epoch_layout(lifecycle).store_id,
     )
 
 
@@ -95,11 +95,7 @@ def read_coding_first_b_removed_local_acceptance(
     """Reopen acceptance against the current authenticated first-B review."""
 
     return _acceptance_journal.read_acceptance(
-        epoch_runtime,
-        expected_store_id=resolve_coding_package_epoch_layout(lifecycle).store_id,
-        review=lambda: review_coding_first_b_removed_local(
-            lifecycle, epoch_runtime, settings_manager=settings_manager
-        ),
+        lifecycle, epoch_runtime, settings_manager=settings_manager
     )
 
 

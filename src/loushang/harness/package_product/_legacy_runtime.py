@@ -19,6 +19,9 @@ from loushang.harness.resources.packages._private_directory import (
 from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
     PackageLegacyStateEvidenceV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackagePosixEpochCutoverError,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
     PackagePosixEpochSnapshotEvidenceStore,
 )
@@ -266,6 +269,20 @@ def require_legacy_snapshot_members(
     """Check observed membership in order, without treating absence as empty."""
     if any(list_members(domain=domain) != names for domain, names in expected.items()):
         raise error
+
+
+@contextmanager
+def guard_legacy_snapshot_admission(
+    message: str, *, code: str, extra_errors: tuple[type[Exception], ...] = ()
+) -> Iterator[None]:
+    """Report inadmissible evidence while preserving native cutover failures."""
+    wrapped_errors = (OSError, ValueError, TypeError) + extra_errors
+    try:
+        yield
+    except PackagePosixEpochCutoverError:
+        raise
+    except wrapped_errors as exc:
+        raise PackagePosixEpochCutoverError(message, code=code) from exc
 
 
 def legacy_product_projection_parent(lifecycle_root: Path) -> Path:

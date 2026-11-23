@@ -33,7 +33,6 @@ from loushang.harness.package_product._application_runtime import (
     FencedSourceCatalogRoots,
     LegacyProductWorkspace,
     OrdinaryProductSessionOwner,
-    SourceCatalogIdentity,
     bind_fenced_product_session_owner,
     fenced_source_catalog_scope,
     handoff_product_open,
@@ -45,9 +44,6 @@ from loushang.harness.package_product._legacy_runtime import (
     matches_epoch_layout,
     open_native_fenced_product_epoch,
     read_fresh_product_source_snapshot,
-)
-from loushang.harness.package_product._local_source_catalog import (
-    project_local_source_policy_group,
 )
 from loushang.harness.package_product._plugin_bootstrap import (
     _PluginBootstrapPolicy,
@@ -363,40 +359,18 @@ class CodingFencedProductApplicationSelection(
         *,
         lifecycle: CodingPluginLifecycleStateLayout,
     ) -> bool:
-        product = owner.runtime_owner.product_owner
-        switch = owner.epoch_runtime.cutover_result.switch_receipt
-        if switch is None:
+        roots = owner.selected_source_catalog_roots(lifecycle.scope_id)
+        if roots is None:
             return False
-        catalog_identity = SourceCatalogIdentity(
-            source_root=product.policy.source_root,
-            store_id=owner.epoch_runtime.registry.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=lifecycle.scope_id,
+        policy = owner.runtime_owner.product_owner.policy
+        expected_data, observed_data = (
+            CodingExternalDataWheelCatalog.for_roots(roots).project_policy_group(
+                policy, trust_class="local-data-only"
+            )
         )
-        catalog = CodingExternalDataWheelCatalog(
-            product.state_root / "external-data-wheel-bindings.jsonl", **catalog_identity
-        )
-        expected_data, observed_data = project_local_source_policy_group(
-            product.policy,
-            (
-                record.policy_binding(catalog.source_root)
-                for record in catalog.records()
-            ),
-            trust_classes=frozenset({"local-data-only"}),
-        )
-        legacy_catalog = CodingLegacyLocalBindingCatalog(
-            product.state_root / "legacy-local-bindings.jsonl",
-            **catalog_identity,
-            policy_revision=product.policy.policy_revision,
-        )
-        expected_legacy, observed_legacy = project_local_source_policy_group(
-            product.policy,
-            (
-                record.to_policy_binding(legacy_catalog.source_root)
-                for record in legacy_catalog.read_records()
-            ),
-            trust_classes=LEGACY_LOCAL_DATA_TRUST_CLASSES,
-        )
+        expected_legacy, observed_legacy = CodingLegacyLocalBindingCatalog.for_roots(
+            roots, policy_revision=policy.policy_revision
+        ).project_policy_group(policy, trust_classes=LEGACY_LOCAL_DATA_TRUST_CLASSES)
         return expected_data == observed_data and expected_legacy == observed_legacy
 
     def _open_workspace_selection(
@@ -652,15 +626,14 @@ def _capture_coding_inert_source(
         scope_id=lifecycle.scope_id,
         no_namespace="Coding Package Product root is not fenced",
     ) as roots:
-        catalog_type, journal_name = (
-            (CodingExternalDataWheelCatalog, "external-data-wheel-bindings.jsonl")
+        catalog = (
+            CodingExternalDataWheelCatalog.for_roots(roots)
             if kind == "data"
-            else (
-                CodingExternalDependencyWheelCatalog,
-                "external-dependency-wheel-bindings.jsonl",
+            else CodingExternalDependencyWheelCatalog(
+                roots.state_root / "external-dependency-wheel-bindings.jsonl",
+                **roots.identity,
             )
         )
-        catalog = catalog_type(roots.state_root / journal_name, **roots.identity)
         return catalog.capture(source, epoch_runtime=epoch_runtime)
 
 
@@ -1174,17 +1147,14 @@ def _compose_coding_product_source_policy(
             lifecycle, epoch_runtime, plugin_id=plugin_id, policy_revision=policy_revision
         )
 
-    legacy = CodingLegacyLocalBindingCatalog(
-        state_root / "legacy-local-bindings.jsonl",
-        **roots.identity,
+    legacy = CodingLegacyLocalBindingCatalog.for_roots(
+        roots,
         policy_revision=policy_revision,
         acceptance_reader=read_legacy_acceptance,
     )
     policy = legacy.read_extend_policy(policy) if read_only else legacy.extend_policy(policy)
-    policy = CodingExternalDataWheelCatalog(
-        state_root / "external-data-wheel-bindings.jsonl",
-        **roots.identity,
-        read_only=read_only,
+    policy = CodingExternalDataWheelCatalog.for_roots(
+        roots, read_only=read_only
     ).extend_policy(policy)
     if isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
         policy = CodingExternalDependencyWheelCatalog(

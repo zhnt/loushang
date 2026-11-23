@@ -176,11 +176,7 @@ class _ProductCliOwner(FencedProductManagementApplication):
             require_existing_source=True,
         )
         return _ProductSources(
-            CodingExternalDataWheelCatalog(
-                roots.state_root / "external-data-wheel-bindings.jsonl",
-                **roots.identity,
-                read_only=read_only,
-            ),
+            CodingExternalDataWheelCatalog.for_roots(roots, read_only=read_only),
             desired,
         )
 
