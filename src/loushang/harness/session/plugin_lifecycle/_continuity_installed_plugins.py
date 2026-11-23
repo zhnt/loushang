@@ -10,6 +10,10 @@ from typing import Protocol
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
 )
+from loushang.harness.plugin_authoring.host import (
+    PluginDeclarationHost,
+    PluginDefinitionApprovalIssuer,
+)
 from loushang.harness.plugin_management.assembly import (
     _ManagedPluginLease,
     _ManagedPluginLifecycle,
@@ -32,15 +36,25 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.plugins import (
     InstalledPlugin,
+    PluginEffectiveConfigurationEntry,
     PluginInspection,
     PluginInstanceRevisionRef,
     PluginResolutionAuthority,
     PluginRuntimeResolution,
+    PluginSelection,
+    PluginSelectionPlanV2,
     PluginSource,
     PluginSourceBinding,
+    PluginSourceTrustSnapshotV1,
     PublishedPluginPackage,
     ResolvedPluginPackage,
     is_remote_plugin_source,
+)
+from loushang.harness.resources.plugins.distribution_evidence import (
+    InstalledPythonDistributionEvidenceResolver,
+)
+from loushang.harness.resources.plugins.selection import (
+    build_product_plugin_selection_plan,
 )
 
 
@@ -52,6 +66,75 @@ class _InstalledContinuityLifecycle(_ManagedPluginLifecycle[_ManagedPluginLease]
     @property
     def instances(self) -> PluginInstanceRuntimeLedger: ...
     def complete_startup_recovery(self) -> None: ...
+
+
+def resolve_installed_continuity_definitions(
+    runtime: PluginRuntimeResolution,
+    *,
+    instance_refs: tuple[PluginInstanceRevisionRef, ...],
+    product_id: str,
+    scope_id: str,
+    policy_revision: str,
+    allowed_authority_ceiling: tuple[str, ...],
+    source_trust: Callable[
+        [PublishedPluginPackage, PluginSourceBinding], PluginSourceTrustSnapshotV1
+    ],
+    journal_path: Path,
+    clock: Callable[[], int],
+    approval_owner: Callable[[PluginSelectionPlanV2], PluginDefinitionApprovalIssuer],
+    distribution_evidence_resolver: Callable[
+        [], InstalledPythonDistributionEvidenceResolver
+    ],
+    error_code_prefix: str,
+    error_factory: Callable[[str, str], RuntimeError],
+) -> PluginSelection:
+    """Resolve installed Providers using the same Definition host and Product issuer."""
+    bindings = {item.plugin_id: item for item in runtime.bindings}
+    packages = tuple(sorted(runtime.packages, key=lambda item: item.manifest.name))
+    # Package indexes already guarantee contribution order.
+    contributions = tuple(
+        (package, item)
+        for package in packages
+        for item in package.contribution_index.items
+        if item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
+    )
+    plan = build_product_plugin_selection_plan(
+        product_id=product_id,
+        scope_id=scope_id,
+        policy_revision=policy_revision,
+        instance_refs=instance_refs,
+        plugin_ids=tuple(package.manifest.name for package in packages),
+        source_trust=(
+            source_trust(package, bindings[package.manifest.name])
+            for package in packages
+        ),
+        additions=(
+            PluginEffectiveConfigurationEntry(
+                plugin_id=package.manifest.name,
+                contribution_id=item.contribution_id,
+                configuration=item.configuration,
+            )
+            for package, item in contributions
+        ),
+        allowed_authority_ceiling=allowed_authority_ceiling,
+    )
+    return PluginDeclarationHost.resolve_for_product(
+        packages,
+        bindings=tuple(bindings[item.manifest.name] for item in packages),
+        plan=plan,
+        journal_path=journal_path,
+        scope_kind="workspace",
+        scope_id=scope_id,
+        clock=clock,
+        required_writer_capabilities=frozenset(),
+        approval_owner=lambda: approval_owner(plan),
+        distribution_evidence_resolver=distribution_evidence_resolver,
+        resume_parent_context=lambda: None,
+        approval_label="Continuity",
+        error_code_prefix=error_code_prefix,
+        error_factory=error_factory,
+        include_preflight_notes=False,
+    )
 
 
 @contextmanager

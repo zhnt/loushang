@@ -64,18 +64,17 @@ from loushang.harness.approval.plugin_activation import (
 )
 from loushang.harness.approval.plugin_execution import (
     PluginApprovalAuthorizationV1,
+    PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
 )
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
-    CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
 )
 from loushang.harness.continuity.plugin_runtime import prepare_continuity_activation
 from loushang.harness.continuity.plugin_runtime import (
     resolve_continuity_plugin_selection as resolve_continuity_plugin_selection,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionAuthority,
     PluginContinuityDeletionJournal,
@@ -93,10 +92,8 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
 )
 from loushang.harness.resources.plugins import (
-    PluginEffectiveConfigurationEntry,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
-    PluginPreflightDeniedOutcome,
     PluginRuntimeResolution,
     PluginSelection,
     PluginSelectionPlanV2,
@@ -107,9 +104,7 @@ from loushang.harness.resources.plugins import (
 )
 from loushang.harness.session.plugin_lifecycle._continuity_installed_plugins import (
     hold_installed_continuity_runtime,
-)
-from loushang.harness.session.product_composition_assembly import (
-    build_product_plugin_selection_plan,
+    resolve_installed_continuity_definitions,
 )
 
 _PRODUCT_POLICY_REVISION = "coding-continuity-production-1"
@@ -120,7 +115,6 @@ _CONTINUITY_REVOCATION_EPOCH = 0
 _APPROVAL_TTL_MS = 300_000
 _BOOTSTRAP_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_status"
 _CONTINUITY_COMPOSITION_ATTRIBUTE = "_loushang_coding_continuity"
-_CONTINUITY_INSTALLATION_SCOPE: Literal["workspace"] = "workspace"
 _CONTINUITY_ACTIVATION_ID_PREFIX = "continuity-bootstrap-activate"
 _CONTINUITY_ALREADY_BOUND = "coding_continuity_composition_already_bound"
 _REVISION_CLEANUP_NOTE = "Coding Continuity revision cleanup failed: "
@@ -507,63 +501,20 @@ async def bind_coding_configured_continuity(
         )
 
 
-def _finalize_selection(
-    runtime: PluginRuntimeResolution,
-    *,
-    instance_refs: tuple[PluginInstanceRevisionRef, ...],
-    layout: CodingContinuityStateLayout,
-    clock: Callable[[], int],
-) -> PluginSelection:
-    bindings = {item.plugin_id: item for item in runtime.bindings}
-    packages = tuple(sorted(runtime.packages, key=lambda item: item.manifest.name))
-    contributions = tuple(
-        sorted(
-            (
-                (package, item)
-                for package in packages
-                for item in package.contribution_index.items
-                if item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
-            ),
-            key=lambda pair: (pair[0].manifest.name, pair[1].contribution_id),
-        )
-    )
-    plan = build_product_plugin_selection_plan(
-        product_id=CODING_EXPERIENCE_ID,
-        scope_id=layout.scope_id,
-        policy_revision=_PRODUCT_POLICY_REVISION,
-        instance_refs=instance_refs,
-        plugin_ids=tuple(package.manifest.name for package in packages),
-        source_trust=(
-            _configured_source_trust(package, bindings[package.manifest.name])
-            for package in packages
-        ),
-        additions=(
-            PluginEffectiveConfigurationEntry(
-                plugin_id=package.manifest.name,
-                contribution_id=item.contribution_id,
-                configuration=item.configuration,
-            )
-            for package, item in contributions
-        ),
-        allowed_authority_ceiling=_AUTHORITY_CEILING,
-    )
-    journal = PluginExecutionDecisionJournal(
-        layout.definition_decisions,
-        scope_kind=_CONTINUITY_INSTALLATION_SCOPE,
-        scope_id=layout.scope_id,
-        clock=clock,
-    )
-    host = PluginDeclarationHost.for_definition_journal(
-        journal,
-        clock=clock,
-        distribution_evidence_resolver=coding_plugin_distribution_evidence_resolver,
-        resume_parent_context=lambda: None,
-    )
+@dataclass(frozen=True, slots=True)
+class _ContinuityDefinitionApprovalOwner:
+    plan: PluginSelectionPlanV2
+    clock: Callable[[], int]
 
-    def approve(subject: PluginExecutionApprovalSubject) -> None:
-        _validate_definition_subject(subject, plan)
-        now = _read_clock(clock)
-        journal.issue_execution_decision(
+    def approve_definition(
+        self,
+        *,
+        journal: PluginExecutionDecisionJournal,
+        subject: PluginExecutionApprovalSubject,
+    ) -> PluginApprovalDecisionRecordV1:
+        _validate_definition_subject(subject, self.plan)
+        now = _read_clock(self.clock)
+        return journal.issue_execution_decision(
             subject,
             disposition="approved",
             authorization=_approval_authorization(),
@@ -573,21 +524,31 @@ def _finalize_selection(
             expected_journal_revision=journal.snapshot().journal_revision,
         )
 
-    outcome = host.resolve_with_definition_approval(
-        packages,
-        bindings=tuple(bindings[item.manifest.name] for item in packages),
-        plan=plan,
-        journal=journal,
-        approve=approve,
+
+def _finalize_selection(
+    runtime: PluginRuntimeResolution,
+    *,
+    instance_refs: tuple[PluginInstanceRevisionRef, ...],
+    layout: CodingContinuityStateLayout,
+    clock: Callable[[], int],
+) -> PluginSelection:
+    return resolve_installed_continuity_definitions(
+        runtime,
+        instance_refs=instance_refs,
+        product_id=CODING_EXPERIENCE_ID,
+        scope_id=layout.scope_id,
+        policy_revision=_PRODUCT_POLICY_REVISION,
+        allowed_authority_ceiling=_AUTHORITY_CEILING,
+        source_trust=_configured_source_trust,
+        journal_path=layout.definition_decisions,
+        clock=clock,
+        approval_owner=lambda plan: _ContinuityDefinitionApprovalOwner(plan, clock),
+        distribution_evidence_resolver=coding_plugin_distribution_evidence_resolver,
+        error_code_prefix="coding_continuity",
+        error_factory=lambda _message, code: CodingContinuityBootstrapError(
+            code=code, retryable=False
+        ),
     )
-    if not isinstance(outcome, PluginSelection):
-        reason = (
-            "definition_denied"
-            if isinstance(outcome, PluginPreflightDeniedOutcome)
-            else f"definition_{outcome.disposition}"
-        )
-        raise _continuity_lifecycle_error(reason, retryable=False)
-    return outcome
 
 
 async def retry_coding_continuity_bootstrap(

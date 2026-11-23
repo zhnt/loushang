@@ -93,6 +93,9 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
+from loushang.harness.resources.plugins.selection import (
+    build_product_plugin_selection_plan as build_product_plugin_selection_plan,
+)
 from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     PublishedPluginPackage,
@@ -1975,57 +1978,6 @@ def project_selected_product_data_candidates(
         for item, reservation, declaration in declarations
         if PluginContributionRef(item.manifest.name, reservation.contribution_id)
         in selected_refs
-    )
-
-
-def build_product_plugin_selection_plan(
-    *,
-    product_id: str,
-    scope_id: str,
-    policy_revision: str,
-    plugin_ids: tuple[str, ...],
-    instance_refs: tuple[PluginInstanceRevisionRef, ...],
-    source_trust: Iterable[PluginSourceTrustSnapshotV1],
-    additions: Iterable[PluginEffectiveConfigurationEntry],
-    allowed_authority_ceiling: tuple[str, ...],
-    base: PluginSelectionPlanV2 | None = None,
-    extend_base_selection: bool = False,
-) -> PluginSelectionPlanV2:
-    """Combine contribution entries with an exact Plugin selection.
-
-    By default the Plugin evidence describes the entire selection. If it covers
-    only additional Plugins, extend the base evidence as well as its entries.
-    """
-    extend_base = base if extend_base_selection else None
-    if extend_base is not None:
-        instance_refs = tuple(
-            sorted(
-                (*extend_base.context.instance_revision_refs, *instance_refs),
-                key=lambda item: (item.plugin_id, item.instance_id, item.revision),
-            )
-        )
-        plugin_ids = tuple(sorted((*extend_base.selected_plugin_ids, *plugin_ids)))
-    context = PluginPreflightContextV1(
-        product_id=product_id,
-        scope_id=scope_id,
-        policy_revision=policy_revision,
-        instance_revision_refs=instance_refs,
-    )
-    trust = tuple(source_trust)
-    if extend_base is not None:
-        trust = tuple(
-            sorted(
-                (*extend_base.source_trust_snapshots, *trust),
-                key=lambda item: item.plugin_id,
-            )
-        )
-    return PluginSelectionPlanV2.from_selected_entries(
-        context=context,
-        selected_plugin_ids=plugin_ids,
-        source_trust_snapshots=trust,
-        additions=additions,
-        base=base,
-        allowed_authority_ceiling=allowed_authority_ceiling,
     )
 
 

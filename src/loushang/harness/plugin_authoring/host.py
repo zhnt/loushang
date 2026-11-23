@@ -166,6 +166,7 @@ class PluginDeclarationHost:
             PluginApprovalAuthorizationV1, frozenset[str]
         ]
         | None = None,
+        include_preflight_notes: bool = True,
     ) -> PluginSelection:
         """Drive one explicit issuer round without granting or consuming authority.
 
@@ -217,10 +218,11 @@ class PluginDeclarationHost:
                 if isinstance(outcome, PluginPreflightDeniedOutcome)
                 else f"{error_code_prefix}_definition_{disposition}",
             )
-            for diagnostic in outcome.diagnostics:
-                error.add_note(
-                    f"Plugin preflight {diagnostic.plugin_id or '<plan>'}: {diagnostic.code}"
-                )
+            if include_preflight_notes:
+                for diagnostic in outcome.diagnostics:
+                    error.add_note(
+                        f"Plugin preflight {diagnostic.plugin_id or '<plan>'}: {diagnostic.code}"
+                    )
             raise error
         return outcome
 
