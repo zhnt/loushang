@@ -11,7 +11,7 @@ import importlib
 import json
 import os
 import stat as stat_module
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -19,6 +19,11 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, cast
 
+from loushang.foundation.file_identity import file_status_fingerprint
+from loushang.foundation.file_identity import (
+    regular_file_status_no_follow as _status_is_regular_no_follow,
+)
+from loushang.foundation.file_identity import same_file_status as _same_file_status
 from loushang.foundation.json import validate_json_value
 from loushang.harness.conversation import (
     ConversationHeader,
@@ -53,7 +58,10 @@ from loushang.harness.transcript.model_input_v2_types import (
     MODEL_INPUT_V2_PROJECTION_VERSION,
     MODEL_INPUT_V2_SCHEMA_VERSION,
 )
-from loushang.harness.transcript.profile import AgentTranscriptProfile
+from loushang.harness.transcript.profile import (
+    AgentTranscriptProfile,
+    create_transcript_branch_repository,
+)
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 if TYPE_CHECKING:
@@ -193,14 +201,10 @@ def write_agent_transcript_export(
 def create_agent_transcript_repository(
     *,
     header: ConversationHeader,
-    records: list[AgentTranscriptRecord],
+    records: Sequence[AgentTranscriptRecord],
 ) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
-    return ConversationRepository.create(
-        header=header,
-        records=records,
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        mode="compatible",
+    return create_transcript_branch_repository(
+        header=header, records=records, mode="compatible"
     )
 
 
@@ -217,7 +221,7 @@ def load_agent_transcript_repository(
                 path=path,
                 code="missing_conversation_header",
             )
-        return _create_detached_repository(
+        return create_agent_transcript_repository(
             header=snapshot.header,
             records=snapshot.records,
         )
@@ -706,20 +710,6 @@ def _load_agent_transcript_readonly_snapshot(
     )
 
 
-def _create_detached_repository(
-    *,
-    header: ConversationHeader,
-    records: tuple[AgentTranscriptRecord, ...],
-) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
-    return ConversationRepository.create(
-        header=header,
-        records=records,
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        mode="compatible",
-    )
-
-
 def _agent_transcript_file_error(error: JournalFileError) -> AgentTranscriptFileError:
     code = {
         "empty_journal": "empty_session_file",
@@ -776,16 +766,6 @@ def _is_directory_no_follow(path: Path) -> bool:
     )
 
 
-def _status_is_regular_no_follow(status: os.stat_result) -> bool:
-    return stat_module.S_ISREG(status.st_mode) and not (
-        stat_module.S_ISLNK(status.st_mode)
-        or bool(
-            getattr(status, "st_file_attributes", 0)
-            & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-        )
-    )
-
-
 def _absolute_path_preserving_leaf(path: str | Path) -> Path:
     absolute = Path(os.path.abspath(Path(path).expanduser()))
     return absolute.parent.resolve(strict=False) / absolute.name
@@ -798,10 +778,7 @@ def _read_stable_regular_file(
     expected_source_fingerprint: str | None = None,
 ) -> bytes:
     before = path.lstat()
-    fingerprint = (
-        f"stat-v1:{before.st_dev}:{before.st_ino}:{before.st_size}:"
-        f"{before.st_mtime_ns}:{before.st_ctime_ns}"
-    )
+    fingerprint = file_status_fingerprint(before)
     if expected_source_fingerprint is not None and fingerprint != expected_source_fingerprint:
         raise OSError("transcript source identity changed before import")
     if not _status_is_regular_no_follow(before):
@@ -924,22 +901,6 @@ def _open_file_no_follow(path: Path, *, flags: int) -> tuple[int, int]:
             _close_read_descriptors(-1, parent, primary=exc)
             raise
     return os.open(path, flags), -1
-
-
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
 
 
 def _reject_json_constant(token: str) -> NoReturn:

@@ -56,37 +56,19 @@ class ResumePlanningSlot(_SessionPlanningSlot[SessionActivationPlanV1]):
     ) -> None:
         """Start background pure-data work; no result admits continuation."""
 
-        self._on_loop()
-        if self._closed:
-            raise RuntimeError('coding_resume_planning_closed')
-        # Validate all envelope inputs before scheduling. These are dependency
-        # observations, without approval/selection meaning.
-        baseline = build_session_activation_plan(
-            history,
-            current_composition,
-            workspace_root=workspace_root,
-            owner_inputs=_resume_domain_input_refs(
-                policy_digest=policy_digest, subject_digest=subject_digest
+        await self._start_validated_planning(
+            lambda: build_session_activation_plan(
+                history,
+                current_composition,
+                workspace_root=workspace_root,
+                owner_inputs=_resume_domain_input_refs(
+                    policy_digest=policy_digest, subject_digest=subject_digest
+                ),
             ),
-        )
-        if type(max_work_units) is not int or max_work_units < 1:
-            raise ValueError('invalid Resume planning work budget')
-        if (
-            type(time_budget_seconds) not in {int, float}
-            or not 0 < time_budget_seconds <= 60
-        ):
-            raise ValueError('invalid Resume planning time budget')
-        if not isinstance(resource_loader, ResourceLoader):
-            raise TypeError('Resume planning requires the original ResourceLoader')
-        key = (
-            baseline.plan_id,
-            ref(resource_loader),
-            max_work_units,
-            time_budget_seconds,
-        )
-        await self._start_work(
-            key,
-            lambda: plan_coding_resume_async(
+            resource_loader,
+            max_work_units=max_work_units,
+            time_budget_seconds=time_budget_seconds,
+            work_factory=lambda: plan_coding_resume_async(
                 history,
                 current_composition,
                 workspace_root=workspace_root,
@@ -111,17 +93,10 @@ class ResumePlanningSlot(_SessionPlanningSlot[SessionActivationPlanV1]):
         owners. A match grants neither Writer access nor executable authority.
         """
 
-        self._on_loop()
-        if self._closed:
-            return None
-        plan = self._plan
-        if plan is None:
-            return None
-        try:
+        def require_current(plan: SessionActivationPlanV1) -> None:
             require_current_resume_plan_source(plan, history)
             require_current_resume_plan_inputs(plan, current_owner_inputs)
-        except ResumePlanStaleError:
-            self._plan = None
-            self._key = None
-            return None
-        return plan
+
+        return self._current_validated_plan(
+            require_current, stale_error=ResumePlanStaleError
+        )

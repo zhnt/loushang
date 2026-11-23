@@ -8,7 +8,8 @@ This module neither approves nor executes a Plugin Definition.
 from __future__ import annotations
 
 import io
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
@@ -33,6 +34,11 @@ from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source 
     resolve_installed_product_root,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
+from loushang.harness.resources.plugins.declarations import (
+    PluginContributionReservation,
+    PluginDeclaration,
+    admits_single_data_resource,
+)
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
     PluginPythonDistributionLock,
@@ -46,6 +52,7 @@ from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     VerifiedRevisionHandle,
 )
+from loushang.harness.resources.plugins.selection import PluginSourceTrustSnapshotV1
 from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
     PluginManifest,
@@ -236,7 +243,14 @@ def open_selected_resolution(
                 max_total_bytes=policy.maximum_bytes(),
             )
             if plugin_id in external_data_plugin_ids:
-                _validate_external_data_selection(policy, selected, plugin_id)
+                capture_external_data_declaration(
+                    selected,
+                    trust_classes=policy.external_trust_classes,
+                    resource_owners=policy.external_resource_owners,
+                    permits_owner=policy.permits_external_owner,
+                    invalid=f"{policy.product_label} external data selection is not admissible",
+                    expected_selection=(policy.product_id, plugin_id),
+                )
             else:
                 _validate_builtin_selection(policy, selected, plugin_id)
             handle = policy.handle_type(runtime, selected)
@@ -374,33 +388,51 @@ def _validate_builtin_selection(
         )
 
 
-def _validate_external_data_selection(
-    policy: ProductSelectedRevisionPolicy,
+def capture_external_data_declaration(
     selected: PackageProductSelectedPluginManifestV1,
-    plugin_id: str,
-) -> None:
-    manifest = selected.verified_manifest()
+    *,
+    trust_classes: frozenset[str],
+    resource_owners: frozenset[str],
+    permits_owner: Callable[[str, str], bool],
+    invalid: str,
+    expected_selection: tuple[str, str] | None = None,
+    standalone: bool = False,
+) -> tuple[PluginContributionReservation, PluginDeclaration]:
+    """Read the single declaration allowed by the Product's data Source policy."""
+    manifest = selected.verified_manifest() if expected_selection is not None else None
     trust = selected.source_trust_snapshot
     pairs = selected.verified_data_only_declarations()
     if (
-        selected.snapshot.installation_key.product_id != policy.product_id
-        or manifest.name != plugin_id
-        or trust is None
-        or (not trust.trusted)
-        or (trust.plugin_id != plugin_id)
-        or (trust.source_trust_class not in policy.external_trust_classes)
-        or (len(pairs) != 1)
-        or (
-            not policy.permits_external_owner(
-                trust.source_trust_class, pairs[0][0].owner
+        (
+            expected_selection is not None
+            and (
+                selected.snapshot.installation_key.product_id != expected_selection[0]
+                or manifest is None
+                or manifest.name != expected_selection[1]
             )
         )
-        or (pairs[0][0].kind != "resource_item")
-        or (pairs[0][0].owner not in policy.external_resource_owners)
-    ):
-        raise ValueError(
-            f"{policy.product_label} external data selection is not admissible"
+        or trust is None
+        or (standalone and not isinstance(trust, PluginSourceTrustSnapshotV1))
+        or not trust.trusted
+        or (expected_selection is not None and trust.plugin_id != expected_selection[1])
+        or not admits_single_data_resource(
+            pairs,
+            trust.source_trust_class,
+            trust_classes=trust_classes,
+            resource_owners=resource_owners,
+            permits_owner=permits_owner,
         )
+        or (
+            standalone
+            and (
+                selected.snapshot.installation_key.plugin_id != selected.manifest.name
+                or selected.snapshot.instance_revision_ref.plugin_id != selected.manifest.name
+            )
+        )
+    ):
+        raise ValueError(invalid)
+    (declaration,) = pairs
+    return declaration
 
 
 def _host_distribution_lock(
@@ -548,30 +580,232 @@ def observe_requested_plugins(
 def require_current_manifests(
     runtime: PackageProductRuntimeBindingV1,
     manifests: tuple[PackageProductSelectedPluginManifestV1, ...],
-    reason: str,
-    admission_failure: ProductAdmissionFailure,
+    reason: str = "",
+    admission_failure: ProductAdmissionFailure | None = None,
 ) -> None:
-    for manifest in manifests:
-        try:
+    try:
+        for manifest in manifests:
             runtime.assert_selected_plugin_manifest_current(manifest)
-        except (
-            PackageProductRuntimeActivationError,
-            PackageProductRuntimeReadError,
-        ) as exc:
-            raise admission_failure((reason,)) from exc
+    except (
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeReadError,
+    ) as exc:
+        if admission_failure is None:
+            raise
+        raise admission_failure((reason,)) from exc
+
+
+def capture_catalog_base_selection(
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_id: str,
+    admission_failure: ProductAdmissionFailure,
+) -> PackageProductPluginDesiredSelectionV1 | None:
+    """Distinguish a recorded disabled base from a missing installation."""
+    selection = runtime.capture_plugin_desired_selection_for(plugin_id)
+    if selection.desired_state == "installed_disabled" or (
+        selection.desired_state == "absent" and selection.recorded
+    ):
+        return selection
+    if selection.desired_state != "installed_enabled":
+        raise admission_failure(("product_requested_base_not_installed",))
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class ProductCatalogSelection:
+    """Exact Package Store evidence retained from Catalog preparation to refresh."""
+
+    runtime: PackageProductRuntimeBindingV1 | None = None
+    capability_selections: tuple[PackageProductPluginDesiredSelectionV1, ...] = ()
+    disabled_base: PackageProductPluginDesiredSelectionV1 | None = None
+    base: PackageProductSelectedPluginManifestV1 | None = None
+    capabilities: tuple[PackageProductSelectedPluginManifestV1, ...] = ()
+    external: tuple[PackageProductSelectedPluginManifestV1, ...] = ()
+
+    @property
+    def desired(self) -> tuple[PackageProductPluginDesiredSelectionV1, ...]:
+        if self.disabled_base is None:
+            return self.capability_selections
+        return (self.disabled_base, *self.capability_selections)
+
+    def capture_capabilities_without_base(
+        self, *, max_files: int, max_total_bytes: int
+    ) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
+        if self.base is not None or self.runtime is None:
+            return ()
+        return capture_selected_manifests(
+            self.runtime.capture_selected_plugin_manifest_for,
+            (
+                selection.installation_key.plugin_id
+                for selection in self.capability_selections
+                if selection.desired_state == "installed_enabled"
+            ),
+            max_files=max_files,
+            max_total_bytes=max_total_bytes,
+        )
+
+    def require_current(
+        self,
+        *,
+        product_label: str,
+        refresh_failure: ProductAdmissionFailure | None = None,
+    ) -> None:
+        """Recheck the pinned startup evidence and refresh-specific Store membership."""
+
+        def require_runtime(role: str) -> PackageProductRuntimeBindingV1:
+            if self.runtime is None:
+                raise RuntimeError(
+                    f"{product_label} Product {role} runtime is unavailable"
+                )
+            return self.runtime
+
+        if self.capability_selections:
+            owner = require_runtime("Capability")
+            try:
+                for selection in self.capability_selections:
+                    owner.assert_plugin_desired_selection_current(selection)
+            except (
+                PackageProductRuntimeActivationError,
+                PackageProductRuntimeReadError,
+            ) as exc:
+                if refresh_failure is None:
+                    raise
+                raise refresh_failure(
+                    ("product_capability_selection_refresh_requires_restart",)
+                ) from exc
+        if self.disabled_base is not None:
+            owner = require_runtime("disabled-base")
+            try:
+                owner.assert_plugin_desired_selection_current(self.disabled_base)
+                if refresh_failure is not None:
+                    current_ids = owner.selected_external_data_plugin_ids()
+                    if current_ids != tuple(
+                        item.manifest.name for item in self.external
+                    ):
+                        raise RuntimeError("Product external data selection changed")
+                require_current_manifests(owner, self.external)
+            except RuntimeError as exc:
+                if refresh_failure is None:
+                    raise
+                raise refresh_failure(
+                    ("product_disabled_base_refresh_requires_restart",)
+                ) from exc
+        if self.base is not None and refresh_failure is not None:
+            owner = require_runtime("base")
+            for manifests, reason in (
+                ((self.base,), "product_selected_base_refresh_requires_restart"),
+                (
+                    self.capabilities,
+                    "product_selected_capability_refresh_requires_restart",
+                ),
+                (self.external, "product_selected_resource_refresh_requires_restart"),
+            ):
+                require_current_manifests(owner, manifests, reason, refresh_failure)
+
+
+SelectionPhase = Literal[
+    "worker", "desired", "base", "capability", "selected", "deferred"
+]
+SelectionError = PackageProductRuntimeActivationError | PackageProductRuntimeReadError
+SelectionFailure = Callable[
+    [SelectionPhase, SelectionError, PackageProductSelectedPluginManifestV1 | None],
+    BaseException,
+]
+
+
+@contextmanager
+def translate_selection_failure(
+    failure: SelectionFailure,
+    phase: SelectionPhase,
+    selected: PackageProductSelectedPluginManifestV1 | None = None,
+) -> Iterator[None]:
+    try:
+        yield
+    except (
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeReadError,
+    ) as exc:
+        raise failure(phase, exc, selected) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class ProductSessionSelection:
+    """Package facts pinned by a Session across construction, execution and receipt creation."""
+
+    runtime: PackageProductRuntimeBindingV1 | None
+    desired: tuple[PackageProductPluginDesiredSelectionV1, ...]
+    base: PackageProductSelectedPluginManifestV1 | None
+    capabilities: tuple[PackageProductSelectedPluginManifestV1, ...]
+    external: tuple[PackageProductSelectedPluginManifestV1, ...]
+    worker: PackageProductSelectedPluginManifestV1 | None
+
+    def manifests(
+        self, *, include_worker: bool = True
+    ) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
+        return (
+            *((self.base,) if self.base is not None else ()),
+            *self.capabilities,
+            *self.external,
+            *((self.worker,) if include_worker and self.worker is not None else ()),
+        )
+
+    def require_current(
+        self, failure: SelectionFailure, *, check_desired: bool
+    ) -> None:
+        runtime = self.runtime
+        if runtime is None:
+            return
+        if self.worker is not None:
+            with translate_selection_failure(failure, "worker"):
+                runtime.assert_selected_plugin_manifest_current(self.worker)
+        if check_desired:
+            for selection in self.desired:
+                with translate_selection_failure(failure, "desired"):
+                    runtime.assert_plugin_desired_selection_current(selection)
+        if self.base is not None:
+            with translate_selection_failure(failure, "base"):
+                runtime.assert_selected_plugin_manifest_current(self.base)
+            for manifest in self.capabilities:
+                with translate_selection_failure(failure, "capability", manifest):
+                    runtime.assert_selected_plugin_manifest_current(manifest)
+        else:
+            for manifest in (*self.capabilities, *self.external):
+                with translate_selection_failure(failure, "selected"):
+                    runtime.assert_selected_plugin_manifest_current(manifest)
+
+    def require_prepared_inventory(
+        self, packages: tuple[PublishedPluginPackage, ...], *, product_label: str
+    ) -> None:
+        """Check the composition inventory before a Session can use it."""
+        selected = (
+            self.manifests(include_worker=False)
+            if self.base is not None
+            else self.capabilities
+        )
+        inventory_changed = (
+            tuple(package.manifest.name for package in packages)
+            != tuple(sorted(item.manifest.name for item in selected))
+            if self.base is not None
+            else len(packages) != len(selected)
+        )
+        if inventory_changed or {
+            package.manifest.name: package.content_digest for package in packages
+        } != {
+            item.manifest.name: item.snapshot.root_ref.artifact_digest
+            for item in selected
+        }:
+            raise ValueError(f"{product_label} Product Session packages changed")
 
 
 def capture_selected_manifests(
-    runtime: PackageProductRuntimeBindingV1,
+    capture: Callable[..., PackageProductSelectedPluginManifestV1],
     plugin_ids: Iterable[str],
     *,
     max_files: int,
     max_total_bytes: int,
 ) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
     return tuple(
-        runtime.capture_selected_plugin_manifest_for(
-            plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
-        )
+        capture(plugin_id, max_files=max_files, max_total_bytes=max_total_bytes)
         for plugin_id in plugin_ids
     )
 

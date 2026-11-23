@@ -5,10 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 
+from loushang.harness.plugin_management._private_data_expiry import (
+    expiry_acceptance_matches,
+)
+from loushang.harness.plugin_management._private_data_records import (
+    PRIVATE_DATA_INSTALLATION_KEY_FIELD,
+    PrivateDataRecordWire,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
-    RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -18,7 +24,7 @@ from .private_data_backup_records import _digest as _digest
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataBackupExpiryPlanV1:
+class CodingArchPrivateDataBackupExpiryPlanV1(PrivateDataRecordWire):
     installation_key: PluginInstallationKeyV1
     backup_id: str
     backup_receipt_id: str
@@ -64,21 +70,18 @@ class CodingArchPrivateDataBackupExpiryPlanV1:
             + canonical_json_bytes(self.to_dict())
         ).hexdigest()
 
-    def to_dict(self) -> dict[str, object]:
-        return _SCHEMA_BACKUP_EXPIRY_PLAN_V1.encode(self, sort_keys=True)
+    _invalid_fields = "Coding Arch backup expiry plan fields are invalid"
 
     @classmethod
     def from_dict(cls, value: object) -> CodingArchPrivateDataBackupExpiryPlanV1:
-        if type(value) is not dict or set(value) != _SCHEMA_BACKUP_EXPIRY_PLAN_V1.keys:
-            raise ValueError("Coding Arch backup expiry plan fields are invalid")
-        identity = value["archiveRootIdentity"]
-        if type(identity) is not list:
+        document = cls._wire_document(value)
+        if type(document["archiveRootIdentity"]) is not list:
             raise ValueError("Coding Arch backup expiry identity is invalid")
-        return _SCHEMA_BACKUP_EXPIRY_PLAN_V1.decode(cls, value)
+        return cls._wire_schema.decode(cls, document)
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataBackupExpiryConfirmationV1:
+class CodingArchPrivateDataBackupExpiryConfirmationV1(PrivateDataRecordWire):
     plan_fingerprint: str
     actor_id: str
     policy_revision: str
@@ -115,25 +118,11 @@ class CodingArchPrivateDataBackupExpiryConfirmationV1:
             ),
         )
 
-    def to_dict(self) -> dict[str, object]:
-        return _SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1.encode(self, sort_keys=True)
-
-    @classmethod
-    def from_dict(
-        cls, value: object
-    ) -> CodingArchPrivateDataBackupExpiryConfirmationV1:
-        if (
-            type(value) is not dict
-            or set(value) != _SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1.keys
-        ):
-            raise ValueError(
-                "Coding Arch backup expiry confirmation fields are invalid"
-            )
-        return _SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1.decode(cls, value)
+    _invalid_fields = "Coding Arch backup expiry confirmation fields are invalid"
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataBackupExpiryReceiptV1:
+class CodingArchPrivateDataBackupExpiryReceiptV1(PrivateDataRecordWire):
     installation_key: PluginInstallationKeyV1
     backup_id: str
     plan_fingerprint: str
@@ -169,17 +158,22 @@ class CodingArchPrivateDataBackupExpiryReceiptV1:
             receipt_id=_receipt_id(plan.fingerprint, confirmation.confirmation_id),
         )
 
-    def to_dict(self) -> dict[str, object]:
-        return _SCHEMA_BACKUP_EXPIRY_RECEIPT_V1.encode(self, sort_keys=True)
+    _invalid_fields = "Coding Arch backup expiry receipt fields are invalid"
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingArchPrivateDataBackupExpiryReceiptV1:
-        if (
-            type(value) is not dict
-            or set(value) != _SCHEMA_BACKUP_EXPIRY_RECEIPT_V1.keys
-        ):
-            raise ValueError("Coding Arch backup expiry receipt fields are invalid")
-        return _SCHEMA_BACKUP_EXPIRY_RECEIPT_V1.decode(cls, value)
+
+def require_expiry_acceptance(
+    plan: object,
+    confirmation: object,
+    *,
+    label: str,
+) -> None:
+    if not expiry_acceptance_matches(
+        plan,
+        confirmation,
+        plan_type=CodingArchPrivateDataBackupExpiryPlanV1,
+        confirmation_type=CodingArchPrivateDataBackupExpiryConfirmationV1,
+    ):
+        raise ValueError(f"{label} backup expiry acceptance is invalid")
 
 
 def _confirmation_id(plan_fingerprint: str, actor_id: str, policy: str) -> str:
@@ -222,30 +216,21 @@ def _label(value: object) -> bool:
     )
 
 
-_SCHEMA_BACKUP_EXPIRY_PLAN_V1 = RecordSchema.for_dataclass(
-    CodingArchPrivateDataBackupExpiryPlanV1,
-    lambda value: value,
-    RecordField(
-        "installation_key",
-        decoder=PluginInstallationKeyV1.from_dict,
-        encoder=PluginInstallationKeyV1.to_dict,
-    ),
-    RecordField("archive_root_identity", decoder=tuple, encoder=list),
+_SCHEMA_BACKUP_EXPIRY_PLAN_V1 = (
+    CodingArchPrivateDataBackupExpiryPlanV1._bind_wire_schema(
+        PRIVATE_DATA_INSTALLATION_KEY_FIELD,
+        RecordField("archive_root_identity", decoder=tuple, encoder=list),
+    )
 )
 
-_SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1 = RecordSchema.for_dataclass(
-    CodingArchPrivateDataBackupExpiryConfirmationV1,
-    lambda value: value,
+_SCHEMA_BACKUP_EXPIRY_CONFIRMATION_V1 = (
+    CodingArchPrivateDataBackupExpiryConfirmationV1._bind_wire_schema()
 )
 
-_SCHEMA_BACKUP_EXPIRY_RECEIPT_V1 = RecordSchema.for_dataclass(
-    CodingArchPrivateDataBackupExpiryReceiptV1,
-    lambda value: value,
-    RecordField(
-        "installation_key",
-        decoder=PluginInstallationKeyV1.from_dict,
-        encoder=PluginInstallationKeyV1.to_dict,
-    ),
+_SCHEMA_BACKUP_EXPIRY_RECEIPT_V1 = (
+    CodingArchPrivateDataBackupExpiryReceiptV1._bind_wire_schema(
+        PRIVATE_DATA_INSTALLATION_KEY_FIELD,
+    )
 )
 
 

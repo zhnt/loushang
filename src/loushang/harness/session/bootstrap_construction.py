@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
@@ -44,7 +45,13 @@ from loushang.harness.resources.activation import (
     SkillActivationRuntime,
 )
 from loushang.harness.resources.loader import ResourceLoader
-from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.catalog_diagnostics import (
+    record_package_lockfile_diagnostics,
+)
+from loushang.harness.resources.packages.materializer import (
+    GitPackageMaterializerBackend,
+    PackageMaterializer,
+)
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
     PackageProductLifecycleMode,
@@ -81,8 +88,19 @@ from loushang.harness.session.model_resolution import (
     resolve_session_model,
     scoped_models_from_patterns,
 )
+from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+    share_startup_cleanup,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+if TYPE_CHECKING:
+    from loushang.harness.resource_catalog.product_inputs import (
+        InitialResourceCatalogProductAdapter,
+    )
+    from loushang.harness.resource_catalog.session_bootstrap import (
+        InitialSessionResourceCatalogBootstrap,
+    )
 
 
 class _RootOwnedResourceHandles(Protocol):
@@ -541,6 +559,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         prepare_package_product_catalog_bootstrap_projection: (
             PackageProductCatalogBootstrapProjectionPreparer | None
         ) = None,
+        package_product_catalog_failure: (
+            tuple[Callable[[BaseException], None], str] | None
+        ) = None,
         selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
         explicit_system_prompt: str | None,
         append_system_prompt: Sequence[str],
@@ -757,9 +778,20 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 def prepare_selected_product_catalog(
                     loader: ResourceLoader, resolved_cwd: Path
                 ) -> ResourceBundle:
-                    return product_catalog_preparer(
-                        loader, resolved_cwd, activated_runtime
-                    )
+                    try:
+                        return product_catalog_preparer(
+                            loader, resolved_cwd, activated_runtime
+                        )
+                    except BaseException as error:
+                        if package_product_catalog_failure is not None:
+                            record_failure, cleanup_label = (
+                                package_product_catalog_failure
+                            )
+                            record_failure(error)
+                            run_cleanup_steps(
+                                error, ((cleanup_label, activated_runtime.dispose_runtime),)
+                            )
+                        raise
 
                 selected_catalog_preparer = prepare_selected_product_catalog
             result = AgentProductConstructionRuntime[
@@ -938,6 +970,29 @@ def rollback_unpublished_construction(
     run_cleanup_steps(error, steps)
 
 
+def construct_catalog_session(
+    adapter: InitialResourceCatalogProductAdapter,
+    *,
+    product_id: str,
+    session_id: str,
+    bundle: ResourceBundle,
+    construct: Callable[[InitialSessionResourceCatalogBootstrap], SessionT],
+    abort_unpublished: CleanupStep | None = None,
+) -> SessionT:
+    """Keep the original Catalog and Plugin cleanup order on a failed handoff."""
+    try:
+        return adapter.construct_session(
+            product_id=product_id,
+            session_id=session_id,
+            base_resource_bundle=bundle,
+            construct=construct,
+        )
+    except BaseException as error:
+        if abort_unpublished is not None:
+            run_cleanup_steps(error, (abort_unpublished,))
+        raise
+
+
 def require_catalog_receipt(
     loader: ResourceLoader,
     cwd: Path,
@@ -953,6 +1008,111 @@ def require_catalog_receipt(
         raise admission_failure(("catalog_receipt_unavailable",))
     return receipt
 
+
+class _ManagedStartupLayout(Protocol):
+    @property
+    def package_install_root(self) -> Path: ...
+    @property
+    def package_lockfile(self) -> Path: ...
+    @property
+    def plugin_revision_root(self) -> Path: ...
+
+
+class _ManagedStartupLifecycle(Protocol):
+    def complete_startup_recovery(self) -> None: ...
+    def release_owned_process_startup_lease(self) -> None: ...
+
+
+_LayoutT = TypeVar("_LayoutT", bound=_ManagedStartupLayout)
+_LifecycleT = TypeVar("_LifecycleT", bound=_ManagedStartupLifecycle)
+_MaterializerT = TypeVar("_MaterializerT", bound=PackageMaterializer)
+_PrimaryT = TypeVar("_PrimaryT")
+_Cleanup = Callable[[], None]
+
+
+def prepare_managed_plugin_startup(
+    *,
+    resolve_layout: Callable[[str | None], _LayoutT],
+    build_lifecycle: Callable[[_LayoutT], _LifecycleT],
+    materializer_type: type[_MaterializerT],
+    package_materializer: _MaterializerT | None,
+    resolved_package_materializer: _MaterializerT | None,
+    ephemeral_prefix: str | None,
+    prepare_primary: Callable[[_LifecycleT, _MaterializerT, _Cleanup | None], _PrimaryT] | None,
+    needs_eager: bool,
+    needs_deferred: bool,
+    diagnostics_service: DiagnosticsService,
+    session_id: str,
+    authority_mismatch: Callable[[], Exception],
+    record_failure: Callable[[BaseException], None],
+    directory_factory: Callable[..., ExplicitTemporaryDirectory],
+) -> tuple[_LifecycleT, _MaterializerT, _PrimaryT | None, _Cleanup | None, _Cleanup | None]:
+    """Hand off the original startup lease and temporary root, or recover both."""
+    ephemeral = directory_factory(prefix=ephemeral_prefix) if ephemeral_prefix is not None else None
+    lifecycle = None
+    materializer = None
+    recorded_diagnostics: list[dict[str, object]] = []
+    primary_cleanup = eager_cleanup = deferred_cleanup = None
+    record_diagnostics = partial(
+        record_package_lockfile_diagnostics,
+        diagnostics_service=diagnostics_service,
+        session_id=session_id,
+    )
+    try:
+        layout = resolve_layout(ephemeral.name if ephemeral is not None else None)
+        if (
+            ephemeral is None
+            and package_materializer is not None
+            and not package_materializer.uses_storage_authority(
+                install_root=layout.package_install_root,
+                lockfile_path=layout.package_lockfile,
+                plugin_revision_root=layout.plugin_revision_root,
+            )
+        ):
+            raise authority_mismatch()
+        lifecycle = build_lifecycle(layout)
+        materializer = package_materializer or materializer_type(
+            install_root=layout.package_install_root,
+            lockfile_path=layout.package_lockfile,
+            plugin_revision_root=layout.plugin_revision_root,
+            backend=GitPackageMaterializerBackend(),
+        )
+        if materializer is not resolved_package_materializer:
+            recorded_diagnostics = materializer.get_lockfile_diagnostics()
+            record_diagnostics(recorded_diagnostics)
+        if ephemeral is not None:
+            primary_cleanup, eager_cleanup, deferred_cleanup = share_startup_cleanup(
+                lifecycle.release_owned_process_startup_lease,
+                ephemeral.cleanup,
+                primary=prepare_primary is not None,
+                eager=needs_eager,
+                deferred=needs_deferred,
+            )
+        lifecycle.complete_startup_recovery()
+        primary = (
+            prepare_primary(lifecycle, materializer, primary_cleanup)
+            if prepare_primary is not None
+            else None
+        )
+    except BaseException as error:
+        record_failure(error)
+        if materializer is not None:
+            record_diagnostics(
+                [
+                    diagnostic
+                    for diagnostic in materializer.get_lockfile_diagnostics()
+                    if diagnostic not in recorded_diagnostics
+                ]
+            )
+        for cleanup in (primary_cleanup, eager_cleanup, deferred_cleanup):
+            if cleanup is not None:
+                cleanup()
+        if lifecycle is not None:
+            lifecycle.release_owned_process_startup_lease()
+        if eager_cleanup is None and primary_cleanup is None and ephemeral is not None:
+            ephemeral.cleanup()
+        raise
+    return lifecycle, materializer, primary, eager_cleanup, deferred_cleanup
 
 @dataclass(slots=True)
 class PreparationRootCustody(Generic[_PreparationT]):
@@ -971,12 +1131,19 @@ class PreparationRootCustody(Generic[_PreparationT]):
     def prepare_roots(
         self,
         *,
-        make_state: Callable[[], ExplicitTemporaryDirectory | None],
-        make_private: Callable[[], ExplicitTemporaryDirectory | None],
+        state_prefix: str | None,
+        private_prefix: str | None,
         persistent_root: Callable[[], Path],
+        directory_factory: Callable[..., ExplicitTemporaryDirectory] = ExplicitTemporaryDirectory,
     ) -> Path:
-        self.state_root = make_state()
-        self.private_root = make_private()
+        self.state_root = (
+            directory_factory(prefix=state_prefix) if state_prefix is not None else None
+        )
+        self.private_root = (
+            directory_factory(prefix=private_prefix)
+            if private_prefix is not None
+            else None
+        )
         return (
             Path(self.state_root.name)
             if self.state_root is not None
@@ -984,12 +1151,21 @@ class PreparationRootCustody(Generic[_PreparationT]):
         )
 
     def attach_cleanup(self, preparation: _PreparationT) -> None:
-        preparation.state_cleanup = (
-            self.state_root.cleanup if self.state_root is not None else None
-        )
-        preparation.private_state_cleanup = (
-            self.private_root.cleanup if self.private_root is not None else None
-        )
+        preparation.state_cleanup = self.state_cleanup
+        preparation.private_state_cleanup = self.private_cleanup
+
+    @property
+    def state_cleanup(self) -> Callable[[], None] | None:
+        return self.state_root.cleanup if self.state_root is not None else None
+
+    @property
+    def private_cleanup(self) -> Callable[[], None] | None:
+        return self.private_root.cleanup if self.private_root is not None else None
+
+    def cleanup_preparation_sequentially(self) -> None:
+        if self.preparation is not None:
+            self.preparation.close()
+        self.cleanup_roots_sequentially()
 
     def cleanup_roots_sequentially(self) -> None:
         if self.state_root is not None:
@@ -1005,31 +1181,25 @@ class PreparationRootCustody(Generic[_PreparationT]):
             tuple(
                 (name, cleanup)
                 for name, cleanup in (
-                    (
-                        state_label,
-                        self.state_root.cleanup
-                        if self.state_root is not None
-                        else None,
-                    ),
-                    (
-                        private_label,
-                        self.private_root.cleanup
-                        if self.private_root is not None
-                        else None,
-                    ),
+                    (state_label, self.state_cleanup),
+                    (private_label, self.private_cleanup),
                 )
                 if cleanup is not None
             ),
         )
 
-    def failure_callbacks(
+    def rollback_startup(
         self,
+        error: BaseException,
         *,
         failure_custodian: _PreparationFailureCleanup | None,
         management_cleanup: Callable[[], None] | None,
-    ) -> tuple[
-        Callable[[], None] | None, Callable[[], None] | None, Callable[[], None] | None
-    ]:
+        product_label: str,
+        private_label: str,
+        before: tuple[str, Callable[[], None] | None],
+        after: tuple[str, Callable[[], None] | None],
+    ) -> None:
+        """Release a failed preparation between its surrounding Product owners."""
         preparation_cleanup: Callable[[], None] | None
         private_cleanup: Callable[[], None] | None
         selected_management: Callable[[], None] | None
@@ -1044,16 +1214,19 @@ class PreparationRootCustody(Generic[_PreparationT]):
             preparation_cleanup = (
                 self.preparation.close
                 if self.preparation is not None
-                else self.state_root.cleanup
-                if self.state_root is not None
-                else None
+                else self.state_cleanup
             )
             private_cleanup = (
-                self.private_root.cleanup
-                if self.preparation is None and self.private_root is not None
-                else None
+                self.private_cleanup if self.preparation is None else None
             )
             selected_management = (
                 management_cleanup if self.preparation is None else None
             )
-        return preparation_cleanup, selected_management, private_cleanup
+        steps = (
+            before,
+            (f"{product_label} Capability Plugin management-state cleanup", selected_management),
+            (f"{product_label} Capability Plugin preparation cleanup", preparation_cleanup),
+            (private_label, private_cleanup),
+            after,
+        )
+        run_cleanup_steps(error, ((label, cleanup) for label, cleanup in steps if cleanup is not None))

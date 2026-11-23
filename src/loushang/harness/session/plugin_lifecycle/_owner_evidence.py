@@ -5,7 +5,16 @@ from __future__ import annotations
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Generic, Literal, Protocol, Self, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    Self,
+    TypeVar,
+    cast,
+)
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -24,7 +33,6 @@ from loushang.harness.resources.plugins.selection import PluginInstanceRevisionR
 from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 
 OwnerGenerationEventKind = Literal["prepared", "published", "retired"]
-
 
 
 def owner_generation_event_payload(
@@ -63,19 +71,76 @@ def owner_generation_event_identity(
     return sha256(digest_domain + StrictPluginJsonCodec.encode(payload)).hexdigest()
 
 
-class _Event(Protocol):
-    @property
-    def journal_revision(self) -> int: ...
-    @property
-    def family_id(self) -> str: ...
-    @property
-    def event_kind(self) -> OwnerGenerationEventKind: ...
-    @property
-    def instance_revision_ref(self) -> PluginInstanceRevisionRef: ...
-    @property
-    def receipts(self) -> tuple[OwnerGenerationRetirementReceipt, ...]: ...
-    @property
-    def outcome_reference(self) -> str: ...
+class _OwnerGenerationEvidenceEvent:
+    """Canonical evidence record behavior for the product's nominal wire type."""
+
+    __slots__ = ()
+
+    if TYPE_CHECKING:
+        _product_label: ClassVar[str]
+        _event_digest_domain: ClassVar[bytes]
+        _invalid_event_code: ClassVar[str]
+
+        journal_revision: int
+        event_id: str
+        event_kind: OwnerGenerationEventKind
+        family_id: str
+        instance_revision_ref: PluginInstanceRevisionRef
+        receipts: tuple[OwnerGenerationRetirementReceipt, ...]
+        outcome_reference: str
+        record_version: int
+
+        def __init__(
+            self,
+            *,
+            journal_revision: int,
+            event_id: str,
+            event_kind: OwnerGenerationEventKind,
+            family_id: str,
+            instance_revision_ref: PluginInstanceRevisionRef,
+            receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+            outcome_reference: str,
+            record_version: int = 1,
+        ) -> None: ...
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.journal_revision, bool)
+            or not isinstance(self.journal_revision, int)
+            or self.journal_revision < 1
+        ):
+            raise ValueError(
+                f"{self._product_label} owner evidence revision must be positive"
+            )
+        if self.event_kind not in {"prepared", "published", "retired"}:
+            raise ValueError(f"{self._product_label} owner evidence kind is invalid")
+        for value, name in (
+            (self.family_id, "family id"),
+            (self.outcome_reference, "outcome reference"),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"{self._product_label} owner evidence {name} must not be empty"
+                )
+        if not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef):
+            raise TypeError(
+                f"{self._product_label} owner evidence Instance reference is invalid"
+            )
+        _validate_receipts(self.receipts, label=self._product_label)
+        if self.record_version != 1:
+            raise ValueError(
+                f"Unsupported {self._product_label} owner evidence version"
+            )
+        if self.event_id != owner_generation_event_identity(
+            digest_domain=self._event_digest_domain,
+            event_kind=self.event_kind,
+            family_id=self.family_id,
+            instance_revision_ref=self.instance_revision_ref,
+            receipts=self.receipts,
+            outcome_reference=self.outcome_reference,
+        ):
+            raise ValueError(f"{self._product_label} owner evidence id does not match")
+
     @classmethod
     def create(
         cls,
@@ -86,7 +151,86 @@ class _Event(Protocol):
         instance_revision_ref: PluginInstanceRevisionRef,
         receipts: tuple[OwnerGenerationRetirementReceipt, ...],
         outcome_reference: str,
-    ) -> Self: ...
+    ) -> Self:
+        canonical = _canonical_receipts(receipts)
+        return cls(
+            journal_revision=journal_revision,
+            event_id=owner_generation_event_identity(
+                digest_domain=cls._event_digest_domain,
+                event_kind=event_kind,
+                family_id=family_id,
+                instance_revision_ref=instance_revision_ref,
+                receipts=canonical,
+                outcome_reference=outcome_reference,
+            ),
+            event_kind=event_kind,
+            family_id=family_id,
+            instance_revision_ref=instance_revision_ref,
+            receipts=canonical,
+            outcome_reference=outcome_reference,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        payload = owner_generation_event_payload(
+            event_kind=self.event_kind,
+            family_id=self.family_id,
+            instance_revision_ref=self.instance_revision_ref,
+            receipts=self.receipts,
+            outcome_reference=self.outcome_reference,
+        )
+        payload.update(
+            eventId=self.event_id,
+            journalRevision=self.journal_revision,
+            recordVersion=self.record_version,
+        )
+        return dict(sorted(payload.items()))
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: object,
+    ) -> Self:
+        try:
+            if not isinstance(value, dict) or set(value) != {
+                "eventId",
+                "eventKind",
+                "familyId",
+                "instanceRevisionRef",
+                "journalRevision",
+                "outcomeReference",
+                "receipts",
+                "recordVersion",
+            }:
+                raise ValueError(
+                    f"{cls._product_label} owner evidence fields are invalid"
+                )
+            raw_receipts = value["receipts"]
+            if not isinstance(raw_receipts, list):
+                raise TypeError(
+                    f"{cls._product_label} owner evidence receipts must be an array"
+                )
+            return cls(
+                journal_revision=cast(int, value["journalRevision"]),
+                event_id=cast(str, value["eventId"]),
+                event_kind=cast(OwnerGenerationEventKind, value["eventKind"]),
+                family_id=cast(str, value["familyId"]),
+                instance_revision_ref=PluginInstanceRevisionRef.from_dict(
+                    value["instanceRevisionRef"]
+                ),
+                receipts=tuple(
+                    OwnerGenerationRetirementReceipt.from_dict(item)
+                    for item in raw_receipts
+                ),
+                outcome_reference=cast(str, value["outcomeReference"]),
+                record_version=cast(int, value["recordVersion"]),
+            )
+        except JournalCodecError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise JournalCodecError(
+                str(exc),
+                code=cls._invalid_event_code,
+            ) from exc
 
 
 class _Family(Protocol):
@@ -117,7 +261,7 @@ class _EvidenceErrorFactory(Protocol):
     def __call__(self, message: str, *, code: str, path: Path) -> RuntimeError: ...
 
 
-EventT = TypeVar("EventT", bound=_Event)
+EventT = TypeVar("EventT", bound=_OwnerGenerationEvidenceEvent)
 FamilyT = TypeVar("FamilyT", bound=_Family)
 
 

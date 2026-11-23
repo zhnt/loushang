@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from loushang.harness.journal import JournalFormatProfile, JournalRecordCodec
 from loushang.harness.worker.activation_state_journal import (
-    _CODEC,
-    _FORMAT,
-    _StateRecord,
+    _CODEC as _CODEC,
+)
+from loushang.harness.worker.activation_state_journal import (
+    _FORMAT as _FORMAT,
 )
 from loushang.harness.worker.activation_state_journal import (
     _MAX_JOURNAL_BYTES as _DEFAULT_MAX_BYTES,
@@ -42,14 +42,6 @@ class CodingProductWorkerActivationStateJournal(SegmentedActivationJournal):
             tuple[CodingProductWorkerRetainedAttemptV1, ...],
             super().retained_attempts_read_only(),
         )
-
-    @property
-    def _record_codec(self) -> JournalRecordCodec[_StateRecord]:
-        return _CODEC
-
-    @property
-    def _record_format(self) -> JournalFormatProfile:
-        return _FORMAT
 
     def _max_history_bytes(self) -> int:
         return _MAX_BYTES

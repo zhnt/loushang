@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import PurePosixPath
@@ -42,6 +42,25 @@ MAX_PLUGIN_DECLARATION_DOCUMENT_BYTES = 4_194_304
 MAX_PLUGIN_DECLARATIONS_PER_DOCUMENT = 1_024
 
 PluginDeclarationSourceKind = Literal["document", "in_process"]
+
+
+def admits_single_data_resource(
+    declarations: tuple[tuple[PluginContributionReservation, PluginDeclaration], ...],
+    trust_class: str,
+    *,
+    trust_classes: frozenset[str],
+    resource_owners: frozenset[str],
+    permits_owner: Callable[[str, str], bool],
+) -> bool:
+    """Check the single-Resource contract under the supplied Source policy."""
+    if trust_class not in trust_classes or len(declarations) != 1:
+        return False
+    ((reservation, _),) = declarations
+    return (
+        permits_owner(trust_class, reservation.owner)
+        and reservation.kind == "resource_item"
+        and reservation.owner in resource_owners
+    )
 
 _SUPPORTED_CONTRIBUTION_INDEX_VERSIONS = frozenset(PLUGIN_CONTRIBUTION_SCHEMAS)
 _SUPPORTED_DECLARATION_IR_VERSIONS = frozenset(

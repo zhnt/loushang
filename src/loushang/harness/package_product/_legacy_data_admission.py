@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Set
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -15,7 +15,6 @@ from loushang.harness.plugin_authoring.resource_item import (
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
 )
-from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
@@ -31,22 +30,15 @@ from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
 )
 
 from ._legacy_binding_evidence import (
-    LEGACY_BINDING_CAPTURE_MAX_BYTES,
     LegacyLocalBindingEvidence,
-    decode_legacy_local_binding_heads,
 )
 from ._legacy_inventory import (
-    LegacyInventoryEvidence,
     LegacyInventoryFacts,
-    classify_legacy_installations,
+    LegacyInventoryReader,
     prove_removed_legacy_bindings,
     reacquire_legacy_bound_wheel,
 )
 from ._legacy_management_evidence import (
-    LEGACY_DESIRED_CAPTURE_MAX_BYTES,
-    LegacyManagementCapturePaths,
-    classify_management_members,
-    decode_legacy_desired_evidence,
     read_settled_management_history,
     require_empty_lock_markers,
     require_service_lock_markers,
@@ -67,18 +59,8 @@ class LegacyDataAdmissionEvidence(NamedTuple):
 @dataclass(frozen=True, slots=True)
 class LegacyDataSnapshotAdmission:
     source_member: str
-    desired_path: Path
-    management_paths: LegacyManagementCapturePaths
-    product_id: str
-    scope_id: str
-    builtin_ids: Set[str]
+    inventory_reader: LegacyInventoryReader
     maximum_bindings: int
-    inventory_error: type[ValueError]
-    lock_error: type[ValueError]
-    desired_error: type[ValueError]
-    operation_error: type[ValueError]
-    instance_error: type[ValueError]
-    label: str
 
     def before_fence(
         self,
@@ -96,8 +78,11 @@ class LegacyDataSnapshotAdmission:
         require_legacy_snapshot_members(members, self._expected(), error=shape_error)
         lock_members = members(domain="lock_history") or ()
         instance_members = members(domain="instance_state") or ()
-        has_operations = self._classify_members(
-            members(domain="desired_state") or (), instance_members, lock_members
+        has_operations = self.inventory_reader.classify_members(
+            members(domain="desired_state") or (),
+            instance_members,
+            lock_members,
+            has_binding=True,
         )
         read = partial(owner.read_regular_member, receipt)
         if _PACKAGE_LOCK_MARKER in lock_members:
@@ -113,8 +98,8 @@ class LegacyDataSnapshotAdmission:
         if source_raw is None or lock_raw is None or desired_raw is None:
             raise ValueError("Legacy Skill snapshot members are incomplete")
         source = json.loads(source_raw)
-        bindings = self._decode_heads(lock_raw)
-        desired, _, transitions = self._decode_desired(desired_raw)
+        bindings = self.inventory_reader.decode_binding_heads(lock_raw)
+        desired, _, transitions = self.inventory_reader.decode_desired(desired_raw)
         if has_operations:
             require_service_lock_markers(
                 read,
@@ -124,7 +109,7 @@ class LegacyDataSnapshotAdmission:
             )
             read_settled_management_history(
                 read,
-                paths=self.management_paths,
+                paths=self.inventory_reader.management_paths,
                 instance_members=instance_members,
                 desired_snapshot=desired,
                 desired_transitions=transitions,
@@ -134,11 +119,11 @@ class LegacyDataSnapshotAdmission:
                     "Legacy retirement journals are missing",
                     "Legacy Instance evidence is missing",
                 ),
-                operation_error=self.operation_error,
-                operation_label=f"{self.label} old",
-                instance_error=self.instance_error,
+                operation_error=self.inventory_reader.operation_error,
+                operation_label=f"{self.inventory_reader.label} old",
+                instance_error=self.inventory_reader.instance_error,
             )
-        inventory = self._classify_installations(bindings, desired)
+        inventory = self.inventory_reader.classify(bindings, desired)
         return LegacyDataAdmissionEvidence(
             inventory,
             self._removed_ids(inventory, bindings, transitions)
@@ -150,20 +135,20 @@ class LegacyDataSnapshotAdmission:
     def after_fence(
         self,
         reader: _LegacyFirstSnapshot,
-        read_inventory: Callable[[], LegacyInventoryEvidence],
     ) -> LegacyDataAdmissionEvidence:
         members = reader.list_members
         require_legacy_snapshot_members(
             members,
             self._expected(),
             error=ValueError(
-                f"{self.label} first-B local Skill snapshot is unsupported"
+                f"{self.inventory_reader.label} first-B local Skill snapshot is unsupported"
             ),
         )
-        self._classify_members(
+        self.inventory_reader.classify_members(
             members(domain="desired_state"),
             members(domain="instance_state"),
             members(domain="lock_history"),
+            has_binding=True,
         )
         read = reader.read_member
         source_raw = read(
@@ -172,34 +157,18 @@ class LegacyDataSnapshotAdmission:
             maximum_bytes=2 * 1024 * 1024,
         )
         if source_raw is None:
-            raise ValueError(f"{self.label} first-B Source configuration is missing")
+            raise ValueError(
+                f"{self.inventory_reader.label} first-B Source configuration is missing"
+            )
         source = json.loads(source_raw)
         reader.runtime.assert_current()
-        inventory = read_inventory().inventory
+        evidence = self.inventory_reader.read(reader)
+        inventory = evidence.inventory
         removed_ids: frozenset[str] = frozenset()
         if inventory.unselected_source_identities:
-            desired_raw = read(
-                domain="desired_state",
-                member_name=_DESIRED_JOURNAL,
-                maximum_bytes=LEGACY_DESIRED_CAPTURE_MAX_BYTES,
-            )
-            if desired_raw is None:
-                raise ValueError(f"{self.label} first-B Desired history is missing")
-            desired, _, transitions = self._decode_desired(desired_raw)
-            lock_raw = read(
-                domain="binding_history",
-                member_name=_BINDING_LOCK,
-                maximum_bytes=LEGACY_BINDING_CAPTURE_MAX_BYTES,
-            )
-            if lock_raw is None:
-                raise self.lock_error(
-                    f"{self.label} legacy Package binding lock is missing"
-                )
-            bindings = self._decode_heads(lock_raw)
+            reader.assert_snapshot_current(evidence.snapshot_receipt_id)
             removed_ids = self._removed_ids(
-                self._classify_installations(bindings, desired),
-                bindings,
-                transitions,
+                inventory, evidence.binding_heads, evidence.desired_transitions
             )
         return LegacyDataAdmissionEvidence(inventory, removed_ids, source)
 
@@ -209,67 +178,6 @@ class LegacyDataSnapshotAdmission:
             "source_configuration": (self.source_member,),
             "enablement_state": (),
         }
-
-    def _classify_members(
-        self,
-        desired: tuple[str, ...],
-        instance: tuple[str, ...],
-        locks: tuple[str, ...],
-    ) -> bool:
-        return classify_management_members(
-            desired_members=desired,
-            instance_members=instance,
-            lock_members=locks,
-            has_binding=True,
-            allow_retirement=True,
-            allow_retired_runtime=True,
-            error_type=self.operation_error,
-            label=f"{self.label} old",
-        )
-
-    def _decode_heads(self, raw: bytes) -> tuple[LegacyLocalBindingEvidence, ...]:
-        return decode_legacy_local_binding_heads(
-            raw,
-            maximum_bytes=LEGACY_BINDING_CAPTURE_MAX_BYTES,
-            error_type=self.lock_error,
-            label=f"{self.label} legacy",
-        )
-
-    def _decode_desired(
-        self, raw: bytes
-    ) -> tuple[
-        PluginDesiredStateSnapshotV1,
-        str,
-        tuple[PluginDesiredStateJournalTransition, ...],
-    ]:
-        return decode_legacy_desired_evidence(
-            raw,
-            path=self.desired_path,
-            product_id=self.product_id,
-            scope_id=self.scope_id,
-            maximum_bytes=LEGACY_DESIRED_CAPTURE_MAX_BYTES,
-            error_type=self.desired_error,
-            label=f"{self.label} legacy",
-        )
-
-    def _classify_installations(
-        self,
-        bindings: tuple[LegacyLocalBindingEvidence, ...],
-        desired: PluginDesiredStateSnapshotV1,
-    ) -> LegacyInventoryFacts[LegacyLocalBindingEvidence]:
-        if not isinstance(self.scope_id, str) or not self.scope_id.startswith(
-            "workspace:"
-        ):
-            raise ValueError(f"{self.label} legacy workspace scope is invalid")
-        return classify_legacy_installations(
-            bindings,
-            desired,
-            product_id=self.product_id,
-            scope_id=self.scope_id,
-            builtin_ids=self.builtin_ids,
-            error_type=self.inventory_error,
-            label=f"{self.label} legacy",
-        )
 
     def _removed_ids(
         self,
@@ -284,10 +192,10 @@ class LegacyDataSnapshotAdmission:
                 transitions,
                 unselected_source_identities=inventory.unselected_source_identities,
                 removed_plugin_ids=inventory.removed_plugin_ids,
-                builtin_ids=self.builtin_ids,
+                builtin_ids=self.inventory_reader.builtin_ids,
                 maximum_bindings=self.maximum_bindings,
-                error_type=self.inventory_error,
-                label=f"{self.label} old local removal",
+                error_type=self.inventory_reader.inventory_error,
+                label=f"{self.inventory_reader.label} old local removal",
             )
         )
 

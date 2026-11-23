@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from functools import partial
-from typing import Protocol
+from typing import ClassVar, Protocol, Self
 
 from loushang.harness.session._cleanup import run_cleanup_steps
 
@@ -79,25 +79,34 @@ class _CompositionCleanup:
 class _PreparationFailureCleanup(_CompositionCleanup):
     __slots__ = ()
     _released_plugin_ids: set[str]
+    _failure_attribute: ClassVar[str]
 
-    def close_after_failed_preparation(
-        self, error: BaseException, *, cleanup_note_prefix: str
-    ) -> bool:
-        """Close owned preparation state and report whether custody can end."""
-        try:
-            self.close()
-        except BaseException as cleanup_error:
-            error.add_note(f"{cleanup_note_prefix}{cleanup_error}")
-            return False
-        return True
+    @classmethod
+    def retained_on(cls, error: BaseException) -> Self | None:
+        """Find the original cleanup owner through an exception chain."""
+        current: BaseException | None = error
+        seen: set[int] = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            owner = getattr(current, cls._failure_attribute, None)
+            if isinstance(owner, cls):
+                return owner
+            current = current.__cause__ or current.__context__
+        return None
 
-    def adopt_cleanup_callbacks(
+    def retain_on(self, error: BaseException) -> None:
+        setattr(error, self._failure_attribute, self)
+
+    def finish_failed_preparation(
         self,
+        error: BaseException,
         *,
+        cleanup_note_prefix: str,
         management_state_cleanup: Callable[[], None] | None,
         state_cleanup: Callable[[], None] | None,
         private_state_cleanup: Callable[[], None] | None,
     ) -> None:
+        """Adopt remaining cleanup, retaining this owner if release fails."""
         for name, callback in (
             ("management_state_cleanup", management_state_cleanup),
             ("state_cleanup", state_cleanup),
@@ -110,6 +119,11 @@ class _PreparationFailureCleanup(_CompositionCleanup):
                 )
             if current is None:
                 setattr(self, name, callback)
+        try:
+            self.close()
+        except BaseException as cleanup_error:
+            error.add_note(f"{cleanup_note_prefix}{cleanup_error}")
+            self.retain_on(error)
 
     def _release_failure_lease(self, plugin_id: str, lease: _Closeable) -> None:
         lease.close()

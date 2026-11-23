@@ -59,7 +59,10 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputSnapshotV2,
 )
 from loushang.harness.transcript.model_usage_types import ModelCallAttemptUsage
-from loushang.harness.transcript.profile import AgentTranscriptProfile
+from loushang.harness.transcript.profile import (
+    AgentTranscriptProfile,
+    create_transcript_branch_repository,
+)
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptPayload,
@@ -172,10 +175,11 @@ class AgentTranscriptUnitOfWork:
         _require_matching_identity(key, header)
         initial_records = tuple(records)
         resolved_profile = profile or AgentTranscriptProfile.default()
-        repository = _create_repository(
+        repository = create_transcript_branch_repository(
             header=header,
             records=initial_records,
             leaf_id=leaf_id,
+            mode="strict",
         )
         resolved_clock = clock or _utc_now
         if defer_materialization:
@@ -1422,21 +1426,6 @@ def _require_encoded_record_size(
         raise ModelInputRecordSizeError(
             f"{record.kind} encoded record is {encoded_size} bytes; limit is {maximum}"
         )
-
-
-def _create_repository(
-    *,
-    header: ConversationHeader,
-    records: Sequence[AgentTranscriptRecord],
-    leaf_id: str | None,
-) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
-    return ConversationRepository.create(
-        header=header,
-        records=records,
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        leaf_id=leaf_id,
-    )
 
 
 def _require_matching_identity(

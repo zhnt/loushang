@@ -21,6 +21,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 import loushang.apphost.integrations._continuity_preparation as _continuity_owner
+import loushang.coding.hosted.application as _foreground_owner
 import loushang.coding.hosted.continuity as _coding_owner
 from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
 from tests.apphost.test_continuity import _attempt, _Lease, _record
@@ -251,9 +252,15 @@ async def observe(case, monkeypatch):
         event(
             "registrations", request is foreground, isinstance(product_factory, Factory)
         )
-        return "product", "profile"
+        return NS(
+            generation_id=request.generation_id,
+            products=("product",),
+            profiles=("profile",),
+        )
 
     def resolver(**kwargs):
+        assert kwargs.pop("method") is None
+        assert kwargs.pop("goal") is None
         event(
             "resolver.construct",
             list(kwargs),
@@ -263,12 +270,20 @@ async def observe(case, monkeypatch):
         )
         return "resolver"
 
-    def application(request, **kwargs):
+    def application(**kwargs):
+        inputs = {
+            "product_factory": kwargs.pop("product_owner"),
+            "runtime": kwargs.pop("apphost"),
+            "resolver": kwargs.pop("resolver"),
+        }
+        assert inputs["product_factory"] is attempt._product_factory
+        assert inputs["runtime"] is attempt._runtime
+        assert kwargs.pop("product_id") == "coding"
         event(
             "application.request",
-            request is foreground,
-            list(kwargs),
-            kwargs["resolver"],
+            all(value is getattr(foreground, name) for name, value in kwargs.items()),
+            list(inputs),
+            inputs["resolver"],
         )
         return "application-request"
 
@@ -289,18 +304,18 @@ async def observe(case, monkeypatch):
         return child
 
     monkeypatch.setattr(code, "CodingForegroundProductFactoryV1", Factory)
-    monkeypatch.setattr(code, "AppHostCatalogInputV1", lambda **fields: NS(**fields))
     monkeypatch.setattr(code, "AppHostCatalogV1", Catalog)
     monkeypatch.setattr(code, "AppHostRuntimeV1", Runtime)
-    monkeypatch.setattr(code, "CodingAppHostHostedSessionResolverV1", resolver)
-    monkeypatch.setattr(code, "_coding_hosted_registrations", registrations)
-    monkeypatch.setattr(code, "_coding_hosted_application_request", application)
+    monkeypatch.setattr(_foreground_owner, "CodingAppHostHostedSessionResolverV1", resolver)
+    monkeypatch.setattr(code, "_coding_hosted_catalog_input", registrations)
+    monkeypatch.setattr(_foreground_owner, "HostedApplicationRequestV1", application)
     monkeypatch.setattr(code, "HostedApplicationContinuityRequestV1", child_request)
     monkeypatch.setattr(
         code, "create_hosted_application_continuity_attempt", construct_child
     )
     monkeypatch.setattr(CodingWorkspaceCatalog, "load", load)
     foreground = NS(
+        activation="foreground-activation",
         session_factory="session-factory",
         session_owner="session-owner",
         sessions=workspace,
@@ -310,6 +325,13 @@ async def observe(case, monkeypatch):
         admitted_scopes=("scope",),
         execution=None,
         managed_selection="selection",
+        shutdown_budget="shutdown-budget",
+        phase_timeout_seconds=10.0,
+        service_close_timeout_seconds=10.0,
+        service_id_factory=None,
+        discovery=None,
+        managed_mux=None,
+        workspaces=None,
     )
     request = object.__new__(code.CodingHostedContinuityRequestV1)
     for key, value in dict(

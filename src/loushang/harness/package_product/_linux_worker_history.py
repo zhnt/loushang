@@ -29,6 +29,7 @@ from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationSnapshotV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseRegistry,
     PackageEpochRuntimeQuiescenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -1087,13 +1088,13 @@ def _product_history_write_guard(
     product: PosixLocalWheelProductSessionOwner,
     *,
     offline_error: type[RuntimeError] | None = None,
-) -> Iterator[PackageEpochRuntimeQuiescenceV1]:
+) -> Iterator[tuple[PackageEpochRuntimeLeaseRegistry, PackageEpochRuntimeQuiescenceV1]]:
     registry = product.epoch_runtime.registry
     with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiet:
         if offline_error is not None and quiet.active_runtime_lease_ids:
             raise offline_error("coding_worker_v2_runtime_active")
         with product.gc_gate.guard(require_write=True):
-            yield quiet
+            yield registry, quiet
 
 
 @contextmanager
@@ -1116,7 +1117,7 @@ def prepare_product_history_cutover(
     error_type: type[Exception],
     first_retained_generations: tuple[int, ...],
 ) -> _PreparedT:
-    with _product_history_write_guard(product) as quiet:
+    with _product_history_write_guard(product) as (_, quiet):
         return prepare_history_cutover_under_guard(
             bindings,
             product,
@@ -1136,7 +1137,7 @@ def stage_product_history_preparation(
     error_type: type[Exception],
     first_retained_generations: tuple[int, ...],
 ) -> _PreparationIntentMethods:
-    with _product_history_write_guard(product) as quiet:
+    with _product_history_write_guard(product) as (_, quiet):
         prepared = prepare_history_cutover_under_guard(
             bindings,
             product,
@@ -1169,7 +1170,7 @@ def commit_product_history_owner(
     commit_error_type: type[RuntimeError],
     first_retained_generations: tuple[int, ...],
 ) -> _IndexMethods:
-    with _product_history_write_guard(product) as quiet:
+    with _product_history_write_guard(product) as (_, quiet):
         with _bound_product_history_write(product, PREPARATION_INTENT_NAME) as rooted:
             prepared = _read_preparation(bindings, rooted)
             if prepared is None:
@@ -1263,35 +1264,9 @@ def publish_product_worker_history_checkpoint(
     closure_error: Callable[[], RuntimeError],
 ) -> _CheckpointMethods:
     """Publish a closed Product snapshot under runtime and GC writer custody."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        with product.gc_gate.guard(require_write=True):
-            review = cast(
-                RetentionReviewMethods,
-                review_history_under_guard(
-                    bindings,
-                    product,
-                    attempt_id=attempt_id,
-                    active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
-                    gc_snapshot=product.gc_gate.snapshot(),
-                ),
-            )
-            if (
-                review.missing_proofs
-                or review.receipt_record is None
-                or review.worker_backup_references is None
-            ):
-                raise closure_error()
-            with bindings.checkpoints().bound(bindings.access(product)) as rooted:
-                return bindings.checkpoints().publish(
-                    rooted,
-                    access=bindings.access(product),
-                    captured_store=registry,
-                    attempt_id=attempt_id,
-                    review=review,
-                )
+    return _write_product_worker_history_checkpoint(
+        bindings, product, attempt_id=attempt_id, closure_error=closure_error, repair=False
+    )
 
 
 def repair_product_worker_history_checkpoint_append(
@@ -1302,41 +1277,53 @@ def repair_product_worker_history_checkpoint_append(
     closure_error: Callable[[], RuntimeError],
 ) -> _CheckpointMethods:
     """Commit one complete interrupted append only if its Product inputs still match."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        with product.gc_gate.guard(require_write=True):
-            review = cast(
-                RetentionReviewMethods,
-                review_history_under_guard(
-                    bindings,
-                    product,
-                    attempt_id=attempt_id,
-                    active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
-                    gc_snapshot=product.gc_gate.snapshot(),
-                ),
+    return _write_product_worker_history_checkpoint(
+        bindings, product, attempt_id=attempt_id, closure_error=closure_error, repair=True
+    )
+
+
+def _write_product_worker_history_checkpoint(
+    bindings: HistoryProofBindings[ReviewT],
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    closure_error: Callable[[], RuntimeError],
+    repair: bool,
+) -> _CheckpointMethods:
+    with _product_history_write_guard(product) as (registry, quiet):
+        review = cast(
+            RetentionReviewMethods,
+            review_history_under_guard(
+                bindings,
+                product,
+                attempt_id=attempt_id,
+                active_runtime_lease_ids=quiet.active_runtime_lease_ids,
+                gc_snapshot=product.gc_gate.snapshot(),
+            ),
+        )
+        if review.missing_proofs or (
+            not repair
+            and (review.receipt_record is None or review.worker_backup_references is None)
+        ):
+            raise closure_error()
+        with bindings.checkpoints().bound(bindings.access(product)) as rooted:
+            commands = bindings.checkpoints()
+            action = commands.repair if repair else commands.publish
+            return action(
+                rooted,
+                access=bindings.access(product),
+                captured_store=registry,
+                attempt_id=attempt_id,
+                review=review,
             )
-            if review.missing_proofs:
-                raise closure_error()
-            with bindings.checkpoints().bound(bindings.access(product)) as rooted:
-                return bindings.checkpoints().repair(
-                    rooted,
-                    access=bindings.access(product),
-                    captured_store=registry,
-                    attempt_id=attempt_id,
-                    review=review,
-                )
 
 
 def rollback_product_worker_history_checkpoint_tail(
     bindings: HistoryProofBindings[ReviewT], product: PosixLocalWheelProductSessionOwner
 ) -> tuple[_CheckpointMethods, ...]:
     """Discard only bytes after the last committed checkpoint head."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(store_id=registry.store_id):
-        with product.gc_gate.guard(require_write=True):
-            with bindings.checkpoints().bound(bindings.access(product)) as rooted:
-                return bindings.checkpoints().rollback(
-                    rooted, access=bindings.access(product), captured_store=registry
-                )
+    with _product_history_write_guard(product) as (registry, _):
+        with bindings.checkpoints().bound(bindings.access(product)) as rooted:
+            return bindings.checkpoints().rollback(
+                rooted, access=bindings.access(product), captured_store=registry
+            )

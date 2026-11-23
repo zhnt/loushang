@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
-from argparse import ArgumentParser
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal, TextIO
 
 from loushang.coding.workspace.worktree import create_coding_git_workspace_manager
+from loushang.harness.cli.parser import (
+    CliCommandUsageError,
+    RaisingArgumentParser,
+    extract_root_command,
+    write_usage_error,
+)
 from loushang.harness.workspace import (
     GitApplyPlan,
     GitWorkspaceError,
@@ -21,30 +26,16 @@ WorkspaceOutputFormat = Literal["text", "json"]
 ManagerFactory = Callable[..., GitWorkspaceManager]
 
 
-class WorkspaceCliUsageError(ValueError):
-    def __init__(self, message: str, *, usage: str) -> None:
-        super().__init__(message)
-        self.usage = usage
+class WorkspaceCliUsageError(CliCommandUsageError):
+    pass
 
 
-class _NoExitParser(ArgumentParser):
-    def error(self, message: str) -> None:
-        raise WorkspaceCliUsageError(message, usage=self.format_usage())
+class _NoExitParser(RaisingArgumentParser):
+    usage_error_type = WorkspaceCliUsageError
 
 
 def extract_workspace_argv(argv: Sequence[str]) -> tuple[str, ...] | None:
-    values = list(argv)
-    if values and values[0] == "workspace":
-        return tuple(values[1:])
-    if len(values) >= 3 and values[0] == "--cwd" and values[2] == "workspace":
-        return ("--cwd", values[1], *values[3:])
-    if (
-        len(values) >= 2
-        and values[0].startswith("--cwd=")
-        and values[1] == "workspace"
-    ):
-        return (values[0], *values[2:])
-    return None
+    return extract_root_command(argv, "workspace")
 
 
 async def run_coding_workspace_command(
@@ -59,9 +50,7 @@ async def run_coding_workspace_command(
     try:
         namespace = _parser().parse_args(list(argv))
     except WorkspaceCliUsageError as error:
-        stderr.write(error.usage)
-        stderr.write(f"Error: {error}\n")
-        return 2
+        return write_usage_error(stderr, error)
     if namespace.help or namespace.command is None:
         stdout.write(_parser().format_help())
         return 0
@@ -109,8 +98,8 @@ async def run_coding_workspace_command(
                     "Error: discard was not confirmed; pass --yes to approve it.\n"
                 )
                 return 2
-            result = await manager.discard(record.workspace_ref)
-            stdout.write(f"Discarded {result.workspace_ref}\n")
+            discarded = await manager.discard(record.workspace_ref)
+            stdout.write(f"Discarded {discarded.workspace_ref}\n")
             return 0
         raise AssertionError(f"unknown workspace command: {namespace.command}")
     except (GitWorkspaceError, OSError, ValueError) as error:

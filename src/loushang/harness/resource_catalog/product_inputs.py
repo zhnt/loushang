@@ -39,6 +39,7 @@ from loushang.harness.resources._catalog_embedded_source import (
 )
 from loushang.harness.resources._catalog_native_source import (
     NativeResourceDiscoveryBudget,
+    NativeResourceRootHandle,
     NativeResourceRootKind,
     NativeResourceSourceClass,
     mint_native_resource_root_handle,
@@ -57,6 +58,7 @@ from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
 from loushang.harness.resources.types import ResourceBundle
 
 SessionT = TypeVar("SessionT")
+CatalogResultT = TypeVar("CatalogResultT")
 ProductInputClock = Callable[[], int]
 _INITIAL_ADMISSION_TTL_SECONDS = 60
 
@@ -400,79 +402,31 @@ class InitialResourceCatalogProductAdapter:
     ) -> ResourceCatalogBootstrapResult:
         """Expose the exact disposable Catalog selection to a Product read owner."""
 
-        if not isinstance(product_id, str) or not product_id.strip():
-            raise ValueError("initial Resource Catalog Product id must not be empty")
-        if not isinstance(session_id, str) or not session_id.strip():
-            raise ValueError("initial Resource Catalog Session id must not be empty")
+        self._require_catalog_identity(product_id, session_id)
         if not isinstance(cwd, Path):
             raise TypeError("initial Resource Catalog cwd must be a Path")
-        now = self.clock()
-        if isinstance(now, bool) or not isinstance(now, int):
-            raise TypeError("initial Resource Catalog Product clock must return an int")
-        self._validate_product_selection(product_id=product_id, now=now)
+        self._require_current_selection(product_id)
         selection = self.selection
-        root_handles = tuple(
-            mint_native_resource_root_handle(
-                handle_id=spec.handle_id,
-                root=spec.root,
-                source_class=spec.source_class,
-                root_kind=spec.root_kind,
-                source_root_order=spec.source_root_order,
-            )
-            for spec in selection.native_roots
-        )
-        package_resources: list[AdmittedPackageResource] = []
-        embedded_handles: list[EmbeddedResourceCollectionHandle] = []
-        try:
-            for package_spec in selection.package_resources:
-                package_resources.append(
-                    acquire_admitted_package_resource(
-                        admission=package_spec.admission,
-                        revision_handle=package_spec.revision_handle,
-                        source_root_order=package_spec.source_root_order,
-                    )
-                )
-            for embedded_spec in selection.embedded_collections:
-                embedded_handles.append(
-                    mint_embedded_resource_collection_handle(
-                        collection_id=embedded_spec.collection_id,
-                        embedded_revision=embedded_spec.embedded_revision,
-                        files=embedded_spec.files,
-                        source_root_order=embedded_spec.source_root_order,
-                    )
-                )
+        root_handles = self._mint_native_roots()
+
+        def prepare(
+            package_resources: tuple[AdmittedPackageResource, ...],
+            embedded_handles: tuple[EmbeddedResourceCollectionHandle, ...],
+        ) -> ResourceCatalogBootstrapResult:
             return prepare_resource_catalog_bootstrap_result(
                 product_id=product_id,
                 runtime_id=f"resource-bootstrap:{session_id}",
                 product_policy_revision=selection.product_policy_revision,
                 cwd=cwd,
                 root_handles=root_handles,
-                package_resources=tuple(package_resources),
+                package_resources=package_resources,
                 product_snapshot_resources=selection.product_snapshot_resources,
-                embedded_collections=tuple(embedded_handles),
+                embedded_collections=embedded_handles,
                 context_file_names=selection.context_file_names,
                 disabled_skill_selectors=selection.disabled_skill_selectors,
             )
-        except BaseException as preparation_error:
-            for handle in reversed(embedded_handles):
-                if not handle.closed:
-                    try:
-                        handle.close()
-                    except BaseException as cleanup_error:
-                        preparation_error.add_note(
-                            "Catalog bootstrap embedded cleanup also failed: "
-                            f"{cleanup_error!r}"
-                        )
-            for resource in reversed(package_resources):
-                if not resource.revision_handle.closed:
-                    try:
-                        resource.close()
-                    except BaseException as cleanup_error:
-                        preparation_error.add_note(
-                            "Catalog bootstrap package cleanup also failed: "
-                            f"{cleanup_error!r}"
-                        )
-            raise
+
+        return self._prepare_with_catalog_sources(prepare, projection=True)
 
     def prepare_session_bootstrap(
         self,
@@ -499,10 +453,7 @@ class InitialResourceCatalogProductAdapter:
         base_resource_bundle: ResourceBundle,
         catalog_generation: int,
     ) -> InitialSessionResourceCatalogBootstrap:
-        if not isinstance(product_id, str) or not product_id.strip():
-            raise ValueError("initial Resource Catalog Product id must not be empty")
-        if not isinstance(session_id, str) or not session_id.strip():
-            raise ValueError("initial Resource Catalog Session id must not be empty")
+        self._require_catalog_identity(product_id, session_id)
         if not isinstance(base_resource_bundle, ResourceBundle):
             raise TypeError("initial Resource Catalog requires a base ResourceBundle")
         if (
@@ -511,24 +462,9 @@ class InitialResourceCatalogProductAdapter:
             or catalog_generation < 1
         ):
             raise ValueError("Session Resource Catalog generation must be positive")
-        now = self.clock()
-        if isinstance(now, bool) or not isinstance(now, int):
-            raise TypeError("initial Resource Catalog Product clock must return an int")
-
-        self._validate_product_selection(product_id=product_id, now=now)
+        now = self._require_current_selection(product_id)
         selection = self.selection
-        root_handles = tuple(
-            mint_native_resource_root_handle(
-                handle_id=spec.handle_id,
-                root=spec.root,
-                source_class=spec.source_class,
-                root_kind=spec.root_kind,
-                source_root_order=spec.source_root_order,
-            )
-            for spec in selection.native_roots
-        )
-        package_resources: list[AdmittedPackageResource] = []
-        embedded_handles: list[EmbeddedResourceCollectionHandle] = []
+        root_handles = self._mint_native_roots()
         disabled_skill_identities = tuple(
             ResourceIdentity(
                 resource_kind="skill",
@@ -542,24 +478,11 @@ class InitialResourceCatalogProductAdapter:
                 selection.disabled_skill_selectors,
             )
         )
-        try:
-            for package_spec in selection.package_resources:
-                package_resources.append(
-                    acquire_admitted_package_resource(
-                        admission=package_spec.admission,
-                        revision_handle=package_spec.revision_handle,
-                        source_root_order=package_spec.source_root_order,
-                    )
-                )
-            for embedded_spec in selection.embedded_collections:
-                embedded_handles.append(
-                    mint_embedded_resource_collection_handle(
-                        collection_id=embedded_spec.collection_id,
-                        embedded_revision=embedded_spec.embedded_revision,
-                        files=embedded_spec.files,
-                        source_root_order=embedded_spec.source_root_order,
-                    )
-                )
+
+        def prepare(
+            package_resources: tuple[AdmittedPackageResource, ...],
+            embedded_handles: tuple[EmbeddedResourceCollectionHandle, ...],
+        ) -> InitialSessionResourceCatalogBootstrap:
             return InitialSessionResourceCatalogBootstrap(
                 InitialSessionResourceCatalogInputs(
                     product_id=product_id,
@@ -570,9 +493,9 @@ class InitialResourceCatalogProductAdapter:
                     product_policy_revision=selection.product_policy_revision,
                     catalog_generation=catalog_generation,
                     root_handles=root_handles,
-                    package_resources=tuple(package_resources),
+                    package_resources=package_resources,
                     product_snapshot_resources=selection.product_snapshot_resources,
-                    embedded_collections=tuple(embedded_handles),
+                    embedded_collections=embedded_handles,
                     issued_at=now,
                     expires_at=now + _INITIAL_ADMISSION_TTL_SECONDS,
                     now=now,
@@ -589,26 +512,20 @@ class InitialResourceCatalogProductAdapter:
                     ),
                 )
             )
-        except BaseException as preparation_error:
-            for handle in reversed(embedded_handles):
-                try:
-                    handle.close()
-                except BaseException as cleanup_error:
-                    preparation_error.add_note(
-                        "Partial Product embedded Resource cleanup also failed: "
-                        f"{cleanup_error!r}"
-                    )
-            for resource in reversed(package_resources):
-                try:
-                    resource.close()
-                except BaseException as cleanup_error:
-                    preparation_error.add_note(
-                        "Partial Product package Resource cleanup also failed: "
-                        f"{cleanup_error!r}"
-                    )
-            raise
 
-    def _validate_product_selection(self, *, product_id: str, now: int) -> None:
+        return self._prepare_with_catalog_sources(prepare, projection=False)
+
+    @staticmethod
+    def _require_catalog_identity(product_id: str, session_id: str) -> None:
+        if not isinstance(product_id, str) or not product_id.strip():
+            raise ValueError("initial Resource Catalog Product id must not be empty")
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise ValueError("initial Resource Catalog Session id must not be empty")
+
+    def _require_current_selection(self, product_id: str) -> int:
+        now = self.clock()
+        if isinstance(now, bool) or not isinstance(now, int):
+            raise TypeError("initial Resource Catalog Product clock must return an int")
         selection = self.selection
         product_composition = selection.product_composition
         if (
@@ -637,6 +554,77 @@ class InitialResourceCatalogProductAdapter:
                 )
             if not admission.issued_at <= now < admission.expires_at:
                 raise ValueError("Product package Resource admission is not active")
+        return now
+
+    def _mint_native_roots(self) -> tuple[NativeResourceRootHandle, ...]:
+        return tuple(
+            mint_native_resource_root_handle(
+                handle_id=spec.handle_id,
+                root=spec.root,
+                source_class=spec.source_class,
+                root_kind=spec.root_kind,
+                source_root_order=spec.source_root_order,
+            )
+            for spec in self.selection.native_roots
+        )
+
+    def _prepare_with_catalog_sources(
+        self,
+        prepare: Callable[
+            [tuple[AdmittedPackageResource, ...], tuple[EmbeddedResourceCollectionHandle, ...]],
+            CatalogResultT,
+        ],
+        *,
+        projection: bool,
+    ) -> CatalogResultT:
+        """Acquire exact inputs and retain their reverse cleanup until transfer."""
+        package_resources: list[AdmittedPackageResource] = []
+        embedded_handles: list[EmbeddedResourceCollectionHandle] = []
+        try:
+            for package_spec in self.selection.package_resources:
+                package_resources.append(
+                    acquire_admitted_package_resource(
+                        admission=package_spec.admission,
+                        revision_handle=package_spec.revision_handle,
+                        source_root_order=package_spec.source_root_order,
+                    )
+                )
+            for embedded_spec in self.selection.embedded_collections:
+                embedded_handles.append(
+                    mint_embedded_resource_collection_handle(
+                        collection_id=embedded_spec.collection_id,
+                        embedded_revision=embedded_spec.embedded_revision,
+                        files=embedded_spec.files,
+                        source_root_order=embedded_spec.source_root_order,
+                    )
+                )
+            return prepare(tuple(package_resources), tuple(embedded_handles))
+        except BaseException as error:
+            for handle in reversed(embedded_handles):
+                if projection and handle.closed:
+                    continue
+                try:
+                    handle.close()
+                except BaseException as cleanup_error:
+                    label = (
+                        "Catalog bootstrap embedded"
+                        if projection
+                        else "Partial Product embedded Resource"
+                    )
+                    error.add_note(f"{label} cleanup also failed: {cleanup_error!r}")
+            for resource in reversed(package_resources):
+                if projection and resource.revision_handle.closed:
+                    continue
+                try:
+                    resource.close()
+                except BaseException as cleanup_error:
+                    label = (
+                        "Catalog bootstrap package"
+                        if projection
+                        else "Partial Product package Resource"
+                    )
+                    error.add_note(f"{label} cleanup also failed: {cleanup_error!r}")
+            raise
 
 
 def _skill_matches_selectors(

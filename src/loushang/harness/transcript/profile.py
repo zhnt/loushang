@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import cast
+from typing import TypeVar, cast
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.types import (
@@ -20,6 +20,7 @@ from loushang.harness.context.conversation import (
     ConversationPreviousSummary,
     ConversationRecordPorts,
 )
+from loushang.harness.conversation import BranchMode, ConversationRepository
 from loushang.harness.conversation.jsonl_codec import (
     ConversationPayloadCodec,
     ConversationPayloadCodecRegistry,
@@ -32,6 +33,7 @@ from loushang.harness.conversation.replay import (
 )
 from loushang.harness.conversation.types import (
     CommandExecutionRecord,
+    ConversationHeader,
     ConversationRecord,
     OpaquePayload,
 )
@@ -79,6 +81,27 @@ from loushang.harness.transcript.types import (
     ThinkingSelectionSnapshot,
     application_message_content_blocks,
 )
+
+_TranscriptHeaderT = TypeVar("_TranscriptHeaderT", bound=ConversationHeader | None)
+
+
+def create_transcript_branch_repository(
+    *,
+    header: _TranscriptHeaderT,
+    records: Sequence[AgentTranscriptRecord],
+    mode: BranchMode,
+    leaf_id: str | None = None,
+) -> ConversationRepository[_TranscriptHeaderT, AgentTranscriptRecord]:
+    """Build the native parent-linked repository with an explicit integrity mode."""
+    return ConversationRepository.create(
+        header=header,
+        records=records,
+        record_id=lambda record: record.record_id,
+        parent_id=lambda record: record.parent_id,
+        mode=mode,
+        leaf_id=leaf_id,
+    )
+
 
 ContextProjector = Callable[[AgentTranscriptRecord], AgentMessage | None]
 StateReducer = Callable[

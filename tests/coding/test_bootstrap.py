@@ -1790,13 +1790,13 @@ def test_base_owner_commit_failure_restores_catalog_and_every_owner_generation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from loushang.coding.composition.base_owners import _CodingBaseGeneration
     from loushang.coding.composition.bootstrap import (
         create_agent_session,
         create_services,
     )
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.session.manager import SessionManager
+    from loushang.harness.runtime.registration import RegistrationScope
 
     manager = asyncio.run(
         SessionManager.new(
@@ -1824,21 +1824,23 @@ def test_base_owner_commit_failure_restores_catalog_and_every_owner_generation(
     assert session._resource_catalog_snapshot is None
     assert session._resource_catalog_projection is None
 
-    original_commit = _CodingBaseGeneration.commit
-    committed_kinds: list[str] = []
+    original_commit = RegistrationScope.commit
+    committed_owners: list[str] = []
 
-    def fail_second_commit(generation: _CodingBaseGeneration) -> None:
-        original_commit(generation)
-        committed_kinds.append(generation.kind)
-        if len(committed_kinds) == 2:
+    def fail_second_commit(scope: RegistrationScope) -> None:
+        original_commit(scope)
+        if scope.owner.owner_id not in {"tools.workspace", "commands.session"}:
+            return
+        committed_owners.append(scope.owner.owner_id)
+        if len(committed_owners) == 2:
             raise RuntimeError("injected second base owner commit failure")
 
-    monkeypatch.setattr(_CodingBaseGeneration, "commit", fail_second_commit)
+    monkeypatch.setattr(RegistrationScope, "commit", fail_second_commit)
 
     with pytest.raises(RuntimeError, match="second base owner commit failure"):
         asyncio.run(session.prepare_model_call_runtime())
 
-    assert set(committed_kinds) == {"tool", "command"}
+    assert set(committed_owners) == {"tools.workspace", "commands.session"}
     assert session._capability_owner_generations == ()
     assert session.resource_bundle is initial_bundle
     assert session._resource_catalog_snapshot is None

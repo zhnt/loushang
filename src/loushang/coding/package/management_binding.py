@@ -2,30 +2,25 @@
 
 from __future__ import annotations
 
-import os
 import stat
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._application_runtime import (
-    open_read_only_product_management_state,
-    read_fenced_product_desired_transition,
+    FencedProductManagementApplication,
+    fenced_source_catalog_roots,
     verify_handoff_desired_commit,
 )
 from loushang.harness.plugin_management import (
-    PluginInstallationKeyV1 as PluginInstallationKeyV1,
+    PluginBackupRetentionProjectionSourcePort,
+    PluginManagementApplicationPorts,
+    PluginManagementSourceSnapshotV1,
 )
 from loushang.harness.plugin_management import (
-    PluginManagementApplicationCommandV1,
-    PluginManagementApplicationPorts,
-    PluginManagementApplicationResultV1,
-    PluginManagementProjectionV1,
-    PluginManagementQueryV1,
-    PluginManagementSourceSnapshotV1,
+    PluginInstallationKeyV1 as PluginInstallationKeyV1,
 )
 from loushang.harness.plugin_management import (
     PluginManagementCommandApplication as PluginManagementCommandApplication,
@@ -50,11 +45,9 @@ from loushang.harness.plugin_management.journal_codecs import (
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.operation_explanation import (
-    PluginOperationExplanationProjector,
     PluginOperationExplanationV1,
 )
 from loushang.harness.plugin_management.package_operation_explanation import (
-    PackageOperationExplanationProjector,
     PackageOperationExplanationV1,
 )
 from loushang.harness.plugin_management.retirement import (
@@ -63,11 +56,8 @@ from loushang.harness.plugin_management.retirement import (
 from loushang.harness.plugin_management.retirement_sets import (
     PluginRetirementSetLedger as PluginRetirementSetLedger,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.journal import (
-    PackageLifecycleJournal,
-)
+from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
-    PackageRetentionHandoffJournal,
     PackageRetentionHandoffReceiptV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -100,12 +90,7 @@ def explain_coding_fenced_package_operation(
 ) -> PackageOperationExplanationV1:
     """Read an existing A2 operation without activating or repairing Product."""
 
-    with _ProductCliOwner(layout).scope(read_only=True) as (runtime, _):
-        return PackageOperationExplanationProjector(
-            PackageLifecycleJournal(
-                runtime.control_root / "product-state" / "lifecycle.jsonl"
-            )
-        ).explain_operation(operation_id)
+    return _ProductCliOwner(layout).explain_package_operation(operation_id)
 
 
 def explain_coding_fenced_plugin_operation(
@@ -117,14 +102,9 @@ def explain_coding_fenced_plugin_operation(
 ) -> PluginOperationExplanationV1:
     """Observe A2, handoff, and A1 within one inert fenced Product lease."""
 
-    owner = _ProductCliOwner(layout, workspace_guard)
-    with owner.scope(read_only=True) as (runtime, ports):
-        state_root = runtime.control_root / "product-state"
-        return PluginOperationExplanationProjector(
-            package_operations=PackageLifecycleJournal(state_root / "lifecycle.jsonl"),
-            management_commands=ports.commands,
-            handoffs=PackageRetentionHandoffJournal(state_root / "handoff.jsonl"),
-        ).explain_operation(operation_id, correlation_id=correlation_id)
+    return _ProductCliOwner(layout, workspace_guard).explain_plugin_operation(
+        operation_id, correlation_id=correlation_id
+    )
 
 
 def read_coding_fenced_package_handoff(
@@ -133,10 +113,7 @@ def read_coding_fenced_package_handoff(
 ) -> PackageRetentionHandoffReceiptV1 | None:
     """Observe one exact A2 handoff receipt without repairing its owner."""
 
-    with _ProductCliOwner(layout).scope(read_only=True) as (runtime, _):
-        return PackageRetentionHandoffJournal(
-            runtime.control_root / "product-state" / "handoff.jsonl"
-        ).read_operation(operation_id)
+    return _ProductCliOwner(layout).read_package_handoff(operation_id)
 
 
 def read_coding_fenced_desired_transition(
@@ -145,11 +122,7 @@ def read_coding_fenced_desired_transition(
 ) -> PluginDesiredStateJournalTransition | None:
     """Read one exact Desired commit without repairing management or Product state."""
 
-    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
-    try:
-        return read_fenced_product_desired_transition(runtime, operation_id)
-    finally:
-        runtime.close()
+    return _ProductCliOwner(layout).read_desired_transition(operation_id)
 
 
 def read_coding_fenced_handoff_desired_commit(
@@ -170,84 +143,53 @@ def read_coding_fenced_handoff_desired_commit(
 
 
 @dataclass(frozen=True, slots=True)
-class _ProductCliOwner:
+class _ProductCliOwner(FencedProductManagementApplication):
     layout: CodingPluginLifecycleStateLayout
     workspace_guard: Callable[[], None] | None = None
 
-    def assert_workspace_current(self) -> None:
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-
-    def open(
-        self, *, read_only: bool
-    ) -> tuple[
-        PackageProductPosixFencedRuntimeOwner,
-        PluginManagementApplicationPorts,
-    ]:
-        from .private_data_backup import CodingArchPrivateDataBackupReadSource
-
-        self.assert_workspace_current()
+    def _open_epoch(self, *, read_only: bool) -> PackageProductPosixFencedRuntimeOwner:
         epoch = resolve_coding_package_epoch_layout(self.layout)
-        runtime = PackageProductPosixFencedRuntimeOwner.open(
+        return PackageProductPosixFencedRuntimeOwner.open(
             **epoch.fenced_runtime_open_kwargs(), read_only=read_only
         )
-        try:
-            self.assert_workspace_current()
-            state_root = runtime.control_root / "product-state"
-            if read_only:
-                desired, management, load_policy = (
-                    open_read_only_product_management_state(state_root)
-                )
-            else:
-                runtime.prepare_product_state_root()
-                state = open_coding_package_product_state(
-                    self.layout, runtime, before_recovery=self.assert_workspace_current
-                )
-                desired = state.desired_state
-                management = state.management
-            retirement_intents = PluginRetirementIntentLedger(
-                management.retirement_intent_journal_path,
-                load_policy=load_policy if read_only else None,
-            )
-            retirement = PluginRetirementSetLedger(
-                management.retirement_set_journal_path,
-                retirement_intents=retirement_intents,
-                load_policy=load_policy if read_only else None,
-            )
-            ports = PluginManagementApplicationPorts(
-                commands=PluginManagementCommandApplication(management),
-                queries=PluginManagementReadModelProjector(
-                    desired_state=desired,
-                    operations=management,
-                    retirement=retirement,
-                    source=_product_sources(
-                        self.layout, runtime, desired, read_only=read_only
-                    ),
-                    backup_retention=CodingArchPrivateDataBackupReadSource(
-                        self.layout, runtime
-                    ),
-                ),
-            )
-            runtime.assert_current()
-            self.assert_workspace_current()
-            return runtime, ports
-        except BaseException:
-            runtime.close()
-            raise
 
-    @contextmanager
-    def scope(
-        self, *, read_only: bool
-    ) -> Iterator[
-        tuple[PackageProductPosixFencedRuntimeOwner, PluginManagementApplicationPorts]
-    ]:
-        runtime, ports = self.open(read_only=read_only)
-        try:
-            yield runtime, ports
-            runtime.assert_current()
-            self.assert_workspace_current()
-        finally:
-            runtime.close()
+    def _open_write_state(
+        self, runtime: PackageProductPosixFencedRuntimeOwner
+    ) -> tuple[PluginDesiredStateLedger, PluginManagementService]:
+        state = open_coding_package_product_state(
+            self.layout, runtime, before_recovery=self.assert_workspace_current
+        )
+        return state.desired_state, state.management
+
+    def _source(
+        self,
+        runtime: PackageProductPosixFencedRuntimeOwner,
+        desired: PluginDesiredStateLedger,
+        *,
+        read_only: bool,
+    ) -> _ProductSources:
+        roots = fenced_source_catalog_roots(
+            runtime,
+            scope_id=self.layout.scope_id,
+            no_namespace="Fenced Product Source namespace is unavailable",
+            read_only=read_only,
+            require_existing_source=True,
+        )
+        return _ProductSources(
+            CodingExternalDataWheelCatalog(
+                roots.state_root / "external-data-wheel-bindings.jsonl",
+                **roots.identity,
+                read_only=read_only,
+            ),
+            desired,
+        )
+
+    def _backup_retention(
+        self, runtime: PackageProductPosixFencedRuntimeOwner
+    ) -> PluginBackupRetentionProjectionSourcePort:
+        from .private_data_backup import CodingArchPrivateDataBackupReadSource
+
+        return CodingArchPrivateDataBackupReadSource(self.layout, runtime)
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,76 +201,7 @@ class _ProductSources:
         return self.catalog.project_management_source_snapshot(
             self.desired_state,
             owner_revision_prefix="coding-product-source:",
-            verify_record=self.catalog.verify_record,
-            verification_error=CodingExternalDataWheelError,
         )
-
-
-def _product_sources(
-    layout: CodingPluginLifecycleStateLayout,
-    runtime: PackageProductPosixFencedRuntimeOwner,
-    desired_state: PluginDesiredStateLedger,
-    *,
-    read_only: bool = False,
-) -> _ProductSources:
-    switch = runtime.cutover_result.switch_receipt
-    if switch is None:
-        raise ValueError("Fenced Product Source namespace is unavailable")
-    source_root = runtime.control_root / "product-sources"
-    try:
-        source_metadata = source_root.lstat()
-    except FileNotFoundError as exc:
-        raise ValueError("Fenced Product Source root is absent") from exc
-    if (
-        not stat.S_ISDIR(source_metadata.st_mode)
-        or stat.S_IMODE(source_metadata.st_mode) & 0o077
-        or source_metadata.st_uid != os.geteuid()
-    ):
-        raise ValueError("Fenced Product Source root is unsafe")
-    if not read_only:
-        runtime.prepare_product_source_root()
-    return _ProductSources(
-        CodingExternalDataWheelCatalog(
-            runtime.control_root
-            / "product-state"
-            / "external-data-wheel-bindings.jsonl",
-            source_root=source_root,
-            store_id=runtime.registry.store_id,
-            namespace_id=switch.namespace_id,
-            scope_id=layout.scope_id,
-            read_only=read_only,
-        ),
-        desired_state,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class _ProductCliQueries:
-    owner: _ProductCliOwner
-
-    def snapshot(self, query: PluginManagementQueryV1) -> PluginManagementProjectionV1:
-        with self.owner.scope(read_only=True) as (_, ports):
-            self.owner.assert_workspace_current()
-            return ports.queries.snapshot(query)
-
-
-@dataclass(frozen=True, slots=True)
-class _ProductCliCommands:
-    owner: _ProductCliOwner
-
-    def submit(
-        self, request: PluginManagementApplicationCommandV1
-    ) -> PluginManagementApplicationResultV1:
-        with self.owner.scope(read_only=False) as (_, ports):
-            self.owner.assert_workspace_current()
-            return ports.commands.submit(request)
-
-    def operation(
-        self, operation_id: str, *, correlation_id: str
-    ) -> PluginManagementApplicationResultV1 | None:
-        with self.owner.scope(read_only=True) as (_, ports):
-            self.owner.assert_workspace_current()
-            return ports.commands.operation(operation_id, correlation_id=correlation_id)
 
 
 def build_coding_fenced_product_management_cli_ports(
@@ -336,10 +209,7 @@ def build_coding_fenced_product_management_cli_ports(
     *,
     workspace_guard: Callable[[], None] | None = None,
 ) -> PluginManagementApplicationPorts:
-    owner = _ProductCliOwner(layout, workspace_guard)
-    return PluginManagementApplicationPorts(
-        commands=_ProductCliCommands(owner), queries=_ProductCliQueries(owner)
-    )
+    return _ProductCliOwner(layout, workspace_guard).bind_ports()
 
 
 def repair_coding_fenced_cli_desired_operation(

@@ -14,6 +14,8 @@ class _DeferredComponentImports:
             "loushang.coding._component_imports",
             "loushang.coding._compat",
             "loushang.coding._compat.root_names",
+            "loushang.coding.cli",
+            "loushang.coding.cli.__main__",
             "loushang.coding.package",
             "loushang.coding.package._legacy_names",
             "loushang.coding.plugin_manager",

@@ -34,6 +34,7 @@ from loushang.foundation._owned_tasks import (
     _task_failed_or_cancelled as _void_task_needs_retry,
 )
 
+from ._ownership import _report_task_needs_retry
 from .application import (
     HostedApplicationError,
     HostedApplicationRequestV1,
@@ -41,6 +42,7 @@ from .application import (
     HostedApplicationShutdownReportV1,
     _adopt_recovered_appservice,
     _create_unpublished_hosted_application_runtime,
+    _run_owned_shutdown_phase,
 )
 
 if TYPE_CHECKING:
@@ -336,9 +338,11 @@ class HostedApplicationContinuityRuntimeV1:
             if revision is None:
                 self._record_retired = True
             else:
-                result = await self._run_phase(
+                result, _ = await _run_owned_shutdown_phase(
+                    self._phase_tasks,
                     HostedApplicationContinuityPhase.RECORD,
                     lambda: self._lease.delete(expected_revision=revision),
+                    timeout_seconds=self._phase_timeout_seconds,
                 )
                 if result == "timed_out":
                     timed_out.append(HostedApplicationContinuityPhase.RECORD)
@@ -350,9 +354,11 @@ class HostedApplicationContinuityRuntimeV1:
                 return _report(intent, timed_out, failed, application, False, False)
 
         if not self._lease_released:
-            result = await self._run_phase(
+            result, _ = await _run_owned_shutdown_phase(
+                self._phase_tasks,
                 HostedApplicationContinuityPhase.LEASE,
                 self._lease.close,
+                timeout_seconds=self._phase_timeout_seconds,
             )
             if result == "timed_out":
                 timed_out.append(HostedApplicationContinuityPhase.LEASE)
@@ -368,27 +374,6 @@ class HostedApplicationContinuityRuntimeV1:
             self._record_retired,
             self._lease_released,
         )
-
-    async def _run_phase(
-        self,
-        phase: HostedApplicationContinuityPhase,
-        callback: object,
-    ) -> str:
-        task = self._phase_tasks.get(phase)
-        if task is None or _void_task_needs_retry(task):
-            task = asyncio.create_task(callback())  # type: ignore[operator]
-            task.add_done_callback(_observe_background_result)
-            self._phase_tasks[phase] = task
-        try:
-            async with asyncio.timeout(self._phase_timeout_seconds):
-                await asyncio.shield(task)
-        except TimeoutError:
-            return "timed_out"
-        except asyncio.CancelledError:
-            raise
-        except BaseException:
-            return "failed"
-        return "completed"
 
 
 # Concrete attempt subclasses retain their original slot storage.
@@ -640,14 +625,6 @@ _join_report = _join_preserving_cancellation
 
 
 _join_runtime = _join_preserving_cancellation
-
-
-def _report_task_needs_retry(
-    task: asyncio.Task[HostedApplicationContinuityShutdownReportV1],
-) -> bool:
-    return task.done() and (
-        task.cancelled() or task.exception() is not None or not task.result().completed
-    )
 
 
 __all__ = [

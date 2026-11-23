@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Collection, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import NamedTuple, TypeVar
 
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
@@ -18,16 +19,28 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
 )
 from loushang.harness.resources.packages.product_contract import (
+    PackageProductEntrypoint,
+    PackageProductLifecycleAction,
     PackageProductLifecycleIntentV1,
+    PackageProductLifecycleOutcomeV1,
 )
 
+from ._application_runtime import (
+    FencedOrdinaryProductApplication,
+    hold_accepted_product_adoption,
+)
+from ._legacy_runtime import (
+    FencedRuntimeOpenKwargs,
+    _FencedRuntime,
+    inspect_fresh_product_epoch,
+)
 from .product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
 )
 from .product_runtime import (
     PackageProductRuntimeBindingV1,
-    PackageProductRuntimeRequestV1,
+    hold_local_wheel_product_runtime,
 )
 
 _ProductOwner = (
@@ -35,28 +48,20 @@ _ProductOwner = (
 )
 
 
-@contextmanager
-def _product_plugin_runtime(
-    product: _ProductOwner, *, product_id: str, session_id: str
-) -> Iterator[PackageProductRuntimeBindingV1]:
-    """Activate one Product runtime and settle its original factory on all exits."""
-    factory = product.factory_for_session(
-        session_id=session_id, cwd=product.workspace, runtime_id=session_id
+def route_project_package(
+    runtime: PackageProductRuntimeBindingV1,
+    *,
+    operation_id: str,
+    action: PackageProductLifecycleAction,
+    source: str,
+    entrypoint: PackageProductEntrypoint,
+) -> PackageProductLifecycleOutcomeV1:
+    return runtime.lifecycle.route(
+        PackageProductLifecycleIntentV1(
+            operation_id=operation_id, action=action, source=source, scope="project"
+        ),
+        entrypoint=entrypoint,
     )
-    binding: PackageProductRuntimeBindingV1 | None = None
-    try:
-        binding = factory.create(
-            PackageProductRuntimeRequestV1(
-                product_id=product_id, session_id=session_id, cwd=str(product.workspace)
-            )
-        )
-        binding.activate()
-        yield binding
-    finally:
-        if binding is None:
-            factory.dispose_unbound_runtime()
-        else:
-            binding.dispose_runtime()
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +70,9 @@ class _PluginBootstrapPolicy:
     operation_id_prefix: str
     enable_id_prefix: str
     error_prefix: str
+
+    def installation_key(self, scope_id: str, plugin_id: str) -> PluginInstallationKeyV1:
+        return PluginInstallationKeyV1.workspace(self.product_id, scope_id, plugin_id)
 
     def operation_id(self, store_id: str, plugin_id: str) -> str:
         return (
@@ -94,20 +102,17 @@ def _initial_install_was_enabled(
 
 
 def product_bootstrap_completed(
-    product: _ProductOwner,
+    application: FencedOrdinaryProductApplication,
     plugin_ids: tuple[str, ...],
     *,
-    store_id: str,
     policy: _PluginBootstrapPolicy,
 ) -> bool:
+    """Recognize completed startup even after later operator choices."""
+    product = application.runtime_owner.product_owner
+    store_id = application.epoch_runtime.registry.store_id
     transitions = product.desired_state.transitions()
     for plugin_id in plugin_ids:
-        key = PluginInstallationKeyV1(
-            product_id=policy.product_id,
-            installation_scope="workspace",
-            scope_id=product.policy.project_scope_id,
-            plugin_id=plugin_id,
-        )
+        key = policy.installation_key(product.policy.project_scope_id, plugin_id)
         history = tuple(
             item for item in transitions if item.mutation.installation_key == key
         )
@@ -122,6 +127,47 @@ def product_bootstrap_completed(
     return True
 
 
+def fresh_product_bootstrap_pending(
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    windows: bool,
+    verify_snapshot: Callable[[_FencedRuntime], bool],
+    open_application: Callable[[], FencedOrdinaryProductApplication],
+    plugin_ids: tuple[str, ...],
+    policy: _PluginBootstrapPolicy,
+) -> bool:
+    """Require authenticated first-cutover evidence before inspecting startup history."""
+    if not inspect_fresh_product_epoch(
+        roots, windows=windows, verify_snapshot=verify_snapshot
+    ):
+        return False
+    with closing(open_application()) as application:
+        return not product_bootstrap_completed(application, plugin_ids, policy=policy)
+
+
+def bootstrap_product_plugins(
+    product: _ProductOwner,
+    plugin_ids: tuple[str, ...],
+    *,
+    policy: _PluginBootstrapPolicy,
+    disabled_ids: Collection[str] = (),
+    require_current_admission: Callable[[], None] | None = None,
+) -> bool:
+    """Replay the Product's ordered first-party selections under its admission."""
+    changed = False
+    for plugin_id in plugin_ids:
+        if require_current_admission is not None:
+            require_current_admission()
+        changed = bootstrap_product_plugin(
+            product,
+            plugin_id,
+            store_id=product.epoch_runtime.registry.store_id,
+            policy=policy,
+            enable=plugin_id not in disabled_ids,
+        ) or changed
+    return changed
+
+
 def bootstrap_product_plugin(
     product: _ProductOwner,
     plugin_id: str,
@@ -131,12 +177,7 @@ def bootstrap_product_plugin(
     enable: bool = True,
 ) -> bool:
     desired = product.desired_state
-    key = PluginInstallationKeyV1(
-        product_id=policy.product_id,
-        installation_scope="workspace",
-        scope_id=product.policy.project_scope_id,
-        plugin_id=plugin_id,
-    )
+    key = policy.installation_key(product.policy.project_scope_id, plugin_id)
     operation_id = policy.operation_id(store_id, plugin_id)
     snapshot = desired.snapshot()
     current = snapshot.installation(key).selection.desired_state
@@ -166,7 +207,7 @@ def bootstrap_product_plugin(
     ):
         raise RuntimeError(f"{policy.error_prefix} was removed")
     bootstrap_id = f"{policy.operation_id_prefix}{secrets.token_hex(16)}"
-    with _product_plugin_runtime(
+    with hold_local_wheel_product_runtime(
         product, product_id=policy.product_id, session_id=bootstrap_id
     ) as binding:
         if current == "absent":
@@ -175,13 +216,11 @@ def bootstrap_product_plugin(
                 for item in product.policy.bindings
                 if item.plugin_id == plugin_id
             )
-            outcome = binding.lifecycle.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id=operation_id,
-                    action="install",
-                    source=source,
-                    scope="project",
-                ),
+            outcome = route_project_package(
+                binding,
+                operation_id=operation_id,
+                action="install",
+                source=source,
                 entrypoint="startup",
             )
             if (
@@ -296,27 +335,6 @@ def preserve_removed_product_plugin(
         raise RuntimeError(f"{error_prefix} tombstone refused")
 
 
-def replay_reviewed_removals(
-    product: _ProductOwner,
-    plugin_ids: Iterable[str],
-    *,
-    product_id: str,
-    operation_id_for: Callable[[str], str],
-    error_prefix: str,
-) -> None:
-    """Replay each reviewed removal in the caller's order."""
-    for plugin_id in plugin_ids:
-        key = PluginInstallationKeyV1(
-            product_id=product_id,
-            installation_scope="workspace",
-            scope_id=product.policy.project_scope_id,
-            plugin_id=plugin_id,
-        )
-        preserve_removed_product_plugin(
-            product, key, operation_id_for(plugin_id), error_prefix=error_prefix
-        )
-
-
 def _require_reviewed_bootstrap_history(
     product: _ProductOwner,
     plugin_id: str,
@@ -359,32 +377,42 @@ def _require_reviewed_bootstrap_history(
             raise RuntimeError(f"{history_label} enable history changed")
 
 
-def bootstrap_reviewed_product_plugins(
+class ReviewedPluginChoices(NamedTuple):
+    disabled_ids: Collection[str]
+    removed_ids: Collection[str]
+    operation_id_for: Callable[[str], str]
+
+
+def replay_reviewed_product_plugins(
     product: _ProductOwner,
     plugin_ids: tuple[str, ...],
     *,
-    disabled_ids: Collection[str],
-    removed_ids: Collection[str],
+    choices: ReviewedPluginChoices,
+    removal_label: str,
     policy: _PluginBootstrapPolicy,
     strict_history: bool,
     history_label: str = "Product",
 ) -> None:
-    """Replay reviewed builtin choices through the original bootstrap owner.
+    """Replay reviewed removals before applying the remaining builtin choices.
 
     Strict first-adoption paths validate exact scoped history. Active-local
     continuation retains its older plugin-only history selection and yields
     to subsequent operator choices. Products choose the supported mode.
     """
+    for plugin_id in choices.removed_ids:
+        removal_key = policy.installation_key(product.policy.project_scope_id, plugin_id)
+        preserve_removed_product_plugin(
+            product,
+            removal_key,
+            choices.operation_id_for(plugin_id),
+            error_prefix=removal_label,
+        )
+
     for plugin_id in plugin_ids:
-        if plugin_id in removed_ids:
+        if plugin_id in choices.removed_ids:
             continue
         key = (
-            PluginInstallationKeyV1(
-                product_id=policy.product_id,
-                installation_scope="workspace",
-                scope_id=product.policy.project_scope_id,
-                plugin_id=plugin_id,
-            )
+            policy.installation_key(product.policy.project_scope_id, plugin_id)
             if strict_history
             else None
         )
@@ -414,5 +442,39 @@ def bootstrap_reviewed_product_plugins(
             plugin_id,
             store_id=product.epoch_runtime.registry.store_id,
             policy=policy,
-            enable=plugin_id not in disabled_ids,
+            enable=plugin_id not in choices.disabled_ids,
         )
+
+
+_EpochT = TypeVar("_EpochT", bound=_FencedRuntime)
+_ReceiptT = TypeVar("_ReceiptT")
+
+
+def adopt_reviewed_product_plugins(
+    *,
+    open_epoch: Callable[[], _EpochT],
+    accept_review: Callable[[_EpochT], _ReceiptT],
+    open_application: Callable[[], FencedOrdinaryProductApplication],
+    reviewed_choices: Callable[[_ReceiptT], ReviewedPluginChoices],
+    plugin_ids: tuple[str, ...],
+    policy: _PluginBootstrapPolicy,
+    removal_label: str,
+    history_label: str,
+) -> _ReceiptT:
+    """Commit acceptance and replay the exact reviewed choices against scoped history."""
+    with hold_accepted_product_adoption(
+        open_epoch=open_epoch,
+        accept_review=accept_review,
+        open_application=open_application,
+    ) as (receipt, application):
+        product = application.runtime_owner.product_owner
+        replay_reviewed_product_plugins(
+            product,
+            plugin_ids,
+            choices=reviewed_choices(receipt),
+            removal_label=removal_label,
+            policy=policy,
+            strict_history=True,
+            history_label=history_label,
+        )
+        return receipt

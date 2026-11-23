@@ -310,7 +310,7 @@ def observe(case, monkeypatch):
 def test_original_projection(row, monkeypatch):
     source = Path(__file__).resolve().parents[2] / "src"
     for module, relative in (
-        (code, "loushang/coding/_base_product_composition.py"),
+        (code, "loushang/coding/composition/base_product.py"),
         (core, "loushang/harness/session/product_composition_assembly.py"),
     ):
         assert Path(module.__file__).resolve() == (source / relative).resolve()

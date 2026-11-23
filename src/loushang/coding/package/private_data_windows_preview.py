@@ -96,6 +96,11 @@ class CodingWindowsArchPrivateDataReadPreview:
                 "Windows Coding Arch private-data Product owner is not bound"
             )
 
+    def _require_product_state_root(self, operation: str) -> None:
+        epoch = resolve_coding_package_epoch_layout(self.layout)
+        if self.product.state_root != epoch.control_root / "product-state":
+            raise ValueError(f"Windows Coding Arch {operation} Product state changed")
+
     def snapshot_for(
         self, key: PluginInstallationKeyV1
     ) -> CodingArchPrivateDataTargetSnapshotV1:

@@ -1,4 +1,4 @@
-"""Borrowed-task joins and terminal observations.
+"""Borrowed-task joins, terminal observations and ordered close attempts.
 
 Lifecycle owners retain the task and any cleanup/retry debt. No submission,
 timeout, registration, cancellation request or ownership transfer happens here.
@@ -7,6 +7,7 @@ timeout, registration, cancellation request or ownership transfer happens here.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import TypeVar, cast
 
 T = TypeVar("T")
@@ -79,6 +80,21 @@ def _task_failed_or_cancelled(task: asyncio.Task[T]) -> bool:
 def _observe_task_result(task: asyncio.Task[T]) -> None:
     if not task.cancelled():
         task.exception()
+
+
+async def _try_settle_owned_closes(
+    *closes: Callable[[], Awaitable[None]] | None,
+) -> bool:
+    """Attempt every close in order, including after an earlier failure."""
+    complete = True
+    for close in closes:
+        if close is None:
+            continue
+        try:
+            await close()
+        except BaseException:
+            complete = False
+    return complete
 
 
 __all__: list[str] = []

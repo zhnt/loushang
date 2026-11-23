@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Protocol, TypeVar
+from uuid import uuid4
 
 from loushang.harness.package_product.product_rebind_preflight import (
     PackageProductAcquiredRebindPreflightV1,
@@ -27,11 +29,14 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
     PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
+    PackageRepairActionV1,
 )
 
 if TYPE_CHECKING:
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
+        PosixLocalWheelProductSessionOwner,
+        WindowsLocalWheelProductSessionOwner,
     )
     from loushang.harness.package_product.product_pinned_adoption import (
         PackageProductPinnedAdoptionOwner,
@@ -1480,22 +1485,58 @@ class PackageProductRuntimeBindingV1:
         return self
 
 
+@contextmanager
+def hold_local_wheel_product_runtime(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    *,
+    product_id: str,
+    session_id: str,
+    workspace: Path | None = None,
+    activate: bool = True,
+) -> Iterator[PackageProductRuntimeBindingV1]:
+    """Borrow one operation runtime and release its lease at the same boundary."""
+    cwd = product.workspace if workspace is None else workspace
+    factory = product.factory_for_session(
+        session_id=session_id, cwd=cwd, runtime_id=session_id
+    )
+    binding: PackageProductRuntimeBindingV1 | None = None
+    try:
+        binding = factory.create(
+            PackageProductRuntimeRequestV1(
+                product_id=product_id, session_id=session_id, cwd=str(cwd)
+            )
+        )
+        if activate:
+            binding.activate()
+        yield binding
+    finally:
+        if binding is None:
+            factory.dispose_unbound_runtime()
+        else:
+            binding.dispose_runtime()
+
+
 _RepairResultT = TypeVar("_RepairResultT")
 
 
 async def _perform_package_repair(
-    runtime: PackageProductRuntimeBindingV1,
-    action: str,
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    action: PackageRepairActionV1,
     operation_id: str,
     *,
+    product_id: str,
+    workspace: Path,
     max_bytes: int,
     result_factory: Callable[..., _RepairResultT],
 ) -> _RepairResultT:
-    """Settle one admitted repair operation and dispose its borrowed runtime.
-
-    The caller admits the action, owns runtime creation and closes its parent.
-    """
-    try:
+    """Settle one admitted repair operation inside a temporary Product runtime."""
+    with hold_local_wheel_product_runtime(
+        product,
+        product_id=product_id,
+        session_id=f"package-repair:{uuid4().hex}",
+        workspace=workspace,
+        activate=action != "repair-handoff",
+    ) as runtime:
         if action == "repair-handoff":
             recovered = runtime.recover_committed_handoff_exact(operation_id)
             return result_factory(
@@ -1512,7 +1553,6 @@ async def _perform_package_repair(
                     else "package_handoff_aborted"
                 ),
             )
-        runtime.activate()
         if action == "inspect-staging":
             observed = await runtime.inspect_staging_rebind_claim(
                 operation_id, max_bytes=max_bytes
@@ -1594,9 +1634,6 @@ async def _perform_package_repair(
                 settled.failure.code if settled.failure is not None else None
             ),
         )
-    finally:
-        runtime.dispose_runtime()
-
 
 
 class PackageProductRuntimeFactoryPort(Protocol):
@@ -1624,14 +1661,14 @@ def activate_package_product_runtime(
             "Package Product runtime factory failed",
             code="package_product_runtime_factory_failed",
         )
-        _dispose_unbound_factory_after_failure(factory, failure)
+        dispose_unbound_factory_after_failure(factory, failure)
         raise failure from error
     if not isinstance(binding, PackageProductRuntimeBindingV1):
         failure = PackageProductRuntimeActivationError(
             "Package Product runtime factory returned an invalid binding",
             code="package_product_runtime_binding_invalid",
         )
-        _dispose_unbound_factory_after_failure(factory, failure)
+        dispose_unbound_factory_after_failure(factory, failure)
         raise failure
     if binding.product_id != request.product_id:
         failure = PackageProductRuntimeActivationError(
@@ -1656,15 +1693,28 @@ def _dispose_after_failure(
         failure.add_note("Package Product runtime cleanup also failed")
 
 
-def _dispose_unbound_factory_after_failure(
-    factory: PackageProductRuntimeFactoryPort, failure: BaseException
+def dispose_unbound_factory_after_failure(
+    factory: PackageProductRuntimeFactoryPort | None, failure: BaseException
 ) -> None:
+    """Preserve the failure while releasing an untransferred factory lease."""
+    if factory is None:
+        return
     dispose = getattr(factory, "dispose_unbound_runtime", None)
     if callable(dispose):
         try:
             dispose()
         except BaseException:
             failure.add_note("Package Product runtime cleanup also failed")
+
+
+@contextmanager
+def guard_unbound_factory(factory: PackageProductRuntimeFactoryPort | None) -> Iterator[None]:
+    """Release an untransferred factory if the caller's construction fails."""
+    try:
+        yield
+    except BaseException as failure:
+        dispose_unbound_factory_after_failure(factory, failure)
+        raise
 
 
 __all__ = [

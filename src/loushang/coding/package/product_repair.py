@@ -9,11 +9,10 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
-from typing import Literal
-from uuid import uuid4 as uuid4
 
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -24,6 +23,15 @@ from loushang.harness.package_product.product_runtime import (
 )
 from loushang.harness.package_product.product_runtime import (
     _perform_package_repair as _perform_package_repair,
+)
+from loushang.harness.resources.packages.product_contract import (
+    PACKAGE_REPAIR_ACTIONS_V1 as CODING_PACKAGE_REPAIR_ACTIONS_V1,
+)
+from loushang.harness.resources.packages.product_contract import (
+    PACKAGE_REPAIR_INSPECTIONS_V1 as CODING_PACKAGE_REPAIR_INSPECTIONS_V1,
+)
+from loushang.harness.resources.packages.product_contract import (
+    PackageRepairActionV1 as CodingPackageRepairActionV1,
 )
 from loushang.harness.workspace.paths import (
     assert_workspace_directory_identity,
@@ -38,35 +46,6 @@ from .product_runtime import (
     open_coding_fenced_product_application_owner,
 )
 
-CodingPackageRepairActionV1 = Literal[
-    "repair-handoff",
-    "inspect-staging",
-    "inspect-published",
-    "repair-staging",
-    "repair-published",
-    "repair-pinned",
-    "repair-retryable",
-    "repair-unstarted",
-    "repair-acquired",
-    "repair-resolving",
-    "repair-verified",
-]
-CODING_PACKAGE_REPAIR_ACTIONS_V1: tuple[CodingPackageRepairActionV1, ...] = (
-    "repair-handoff",
-    "inspect-staging",
-    "inspect-published",
-    "repair-staging",
-    "repair-published",
-    "repair-pinned",
-    "repair-retryable",
-    "repair-unstarted",
-    "repair-acquired",
-    "repair-resolving",
-    "repair-verified",
-)
-CODING_PACKAGE_REPAIR_INSPECTIONS_V1 = frozenset(
-    {"inspect-staging", "inspect-published"}
-)
 _ACTIONS = frozenset(CODING_PACKAGE_REPAIR_ACTIONS_V1)
 _MAX_SOURCE_BYTES = 2 * 1024 * 1024
 _OwnerFactory = Callable[..., CodingFencedProductApplicationOwner]
@@ -180,36 +159,24 @@ async def _aperform_coding_package_repair(
     ):
         raise CodingPackageRepairError("package_repair_invalid_operation_id")
     _require_workspace_identity(client)
-    owner = owner_factory(
-        client.layout,
-        workspace=client.workspace,
-        runtime_version=client.runtime_version,
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-    )
-    try:
-        _require_workspace_identity(client)
-        product = owner.runtime_owner.product_owner
-        session_id = f"package-repair:{uuid4().hex}"
-        runtime = product.factory_for_session(
-            session_id=session_id,
-            cwd=client.workspace,
-            runtime_id=session_id,
-        ).create(
-            PackageProductRuntimeRequestV1(
-                product_id="coding",
-                session_id=session_id,
-                cwd=str(client.workspace),
-            )
+    with closing(
+        owner_factory(
+            client.layout,
+            workspace=client.workspace,
+            runtime_version=client.runtime_version,
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         )
+    ) as owner:
+        _require_workspace_identity(client)
         return await _perform_package_repair(
-            runtime,
+            owner.runtime_owner.product_owner,
             action,
             operation_id,
+            product_id="coding",
+            workspace=client.workspace,
             max_bytes=_MAX_SOURCE_BYTES,
-            result_factory=lambda **fields: CodingPackageRepairResultV1(**fields),
+            result_factory=CodingPackageRepairResultV1,
         )
-    finally:
-        owner.close()
 
 
 def _require_workspace_identity(client: CodingPackageRepairClientV1) -> None:

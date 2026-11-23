@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
-
 from loushang.harness.package_product._windows_worker_history import (
     review_windows_product_worker_history_cutover_candidate,
 )
-from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -30,10 +27,9 @@ def review_coding_windows_worker_history_cutover_candidate(
     cannot grant retirement or new-Session authority.
     """
 
-    if not is_windows_product(product, "coding", os.name):
-        raise ValueError("Windows Worker cutover review requires its Product")
     return review_windows_product_worker_history_cutover_candidate(
         product,
+        product_id="coding",
         record_type=CodingWindowsWorkerHistoryCutoverRecordV1,
         read_persisted=_read_coding_windows_worker_persisted_bases_under_gc_guard,
         review_checkpoint=_current_checkpoint_under_guard,

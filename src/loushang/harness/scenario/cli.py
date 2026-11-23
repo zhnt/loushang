@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import traceback
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TextIO
 
+from loushang.harness.host.product_host import dispose_runtime_or_session
 from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
 from loushang.harness.scenario.protocols import CommandRunner, WorkflowAdapter
@@ -187,20 +187,6 @@ def format_workflow_json_report(
         "workflows": [_workflow_result_payload(result) for result in results],
     }
     return json.dumps(payload, ensure_ascii=False) + "\n"
-
-
-async def dispose_runtime_or_session(
-    runtime: object | None,
-    session: object | None,
-) -> None:
-    disposer = getattr(runtime, "dispose", None)
-    if not callable(disposer):
-        disposer = getattr(session, "dispose", None)
-    if not callable(disposer):
-        return
-    result = disposer()
-    if inspect.isawaitable(result):
-        await result
 
 
 def _write_step_progress(

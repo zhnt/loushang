@@ -1,16 +1,406 @@
-"""Shared asynchronous package lifecycle command orchestration."""
+"""Shared Package lifecycle and standalone operator command execution."""
 
 from __future__ import annotations
 
 import inspect
+import json
+import re
+import secrets
+import sys
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass
+from functools import partial
+from importlib.metadata import PackageNotFoundError
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal, Protocol, TextIO, TypeVar
 from uuid import uuid4
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleAction,
+    PackageProductLifecycleRecordV1,
     canonicalize_package_product_scope,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product._application_runtime import (
+        FencedOrdinaryProductApplication,
+        FencedProductManagementApplication,
+        PackageChangeFailureEvidence,
+        PackageRemovalFailureEvidence,
+    )
+    from loushang.harness.plugin_management.application import (
+        PluginManagementInstallationViewV1,
+    )
+    from loushang.harness.plugin_management.desired_command import (
+        PluginDesiredCommandAuthorityV1,
+    )
+
+_OPERATOR_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
+_RecordT = TypeVar("_RecordT")
+
+
+def package_operator_workspace(value: str, *, not_directory: str) -> Path:
+    workspace = Path(value).expanduser().resolve(strict=True)
+    if not workspace.is_dir():
+        raise ValueError(not_directory)
+    return workspace
+
+
+def package_operator_error_code(error: Exception, *, fallback: str) -> str:
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and _OPERATOR_ERROR_CODE.fullmatch(code) is not None:
+        return code
+    return fallback
+
+
+def write_package_operator_result(
+    document: dict[str, object],
+    *,
+    compact: bool = False,
+    stream: TextIO | None = None,
+    ensure_ascii: bool = True,
+    sort_keys: bool = True,
+) -> int:
+    encoded = json.dumps(
+        document,
+        ensure_ascii=ensure_ascii,
+        sort_keys=sort_keys,
+        separators=(",", ":") if compact else None,
+    )
+    output = sys.stdout if stream is None else stream
+    output.write(encoded + "\n")
+    return 0
+
+
+@dataclass(frozen=True, slots=True)
+class PackageOperatorRecordInput:
+    """Read a bounded command document and verify its embedded record."""
+
+    label: str
+    maximum_bytes: int
+
+    def read(
+        self,
+        path: Path,
+        field: str,
+        decode: Callable[[object], _RecordT],
+        *,
+        label: str,
+        fingerprint: Callable[[_RecordT], str] | None = None,
+    ) -> _RecordT:
+        with path.open("rb") as handle:
+            raw = handle.read(self.maximum_bytes + 1)
+        if len(raw) > self.maximum_bytes:
+            raise ValueError(f"{self.label} input is too large")
+        document = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_json_object_hook(
+                lambda: f"{self.label} has duplicate JSON keys"
+            ),
+        )
+        expected = {field} if fingerprint is None else {field, "fingerprint"}
+        if type(document) is not dict or set(document) != expected:
+            raise ValueError(f"{label} document is invalid")
+        record = decode(document[field])
+        if fingerprint is not None and document["fingerprint"] != fingerprint(record):
+            raise ValueError(f"{label} fingerprint changed")
+        return record
+
+
+def run_package_operator_command(
+    workspace: str,
+    execute: Callable[[Path], dict[str, object]],
+    *,
+    not_directory: str,
+    refused: str,
+    failure_reason: Callable[[Exception], object] | str,
+    compact: bool = False,
+) -> int:
+    """Resolve and execute one admitted command with its Product's output contract."""
+    try:
+        resolved = package_operator_workspace(workspace, not_directory=not_directory)
+        document = execute(resolved)
+    except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
+        reason = failure_reason(error) if callable(failure_reason) else failure_reason
+        sys.stderr.write(f"{refused}: {reason}\n")
+        return 1
+    return write_package_operator_result(document, compact=compact)
+
+
+class _AdmittedPackageWheel(Protocol):
+    @property
+    def wheel_filename(self) -> str: ...
+
+    @property
+    def plugin_id(self) -> str: ...
+
+    @property
+    def artifact_digest(self) -> str: ...
+
+
+def run_fenced_package_changes(
+    sources: Sequence[str],
+    *,
+    action: Literal["install", "update"],
+    admit_source: Callable[[Path], _AdmittedPackageWheel],
+    open_application: Callable[[], FencedOrdinaryProductApplication],
+    management: FencedProductManagementApplication,
+    product_id: str,
+    operation_prefix: str,
+    runtime_prefix: str,
+    output: FencedPackageOperatorOutput,
+) -> int:
+    """Admit the batch, then settle each routed operation within its own runtime."""
+    from loushang.harness.package_product._plugin_bootstrap import route_project_package
+    from loushang.harness.package_product.product_runtime import (
+        hold_local_wheel_product_runtime,
+    )
+
+    operation_id: str | None = None
+    try:
+        admitted = tuple(admit_source(Path(raw)) for raw in sources)
+        with closing(open_application()) as owner:
+            product = owner.runtime_owner.product_owner
+            for wheel in admitted:
+                operation_id = f"{operation_prefix}{action}:{secrets.token_hex(16)}"
+                with hold_local_wheel_product_runtime(
+                    product,
+                    product_id=product_id,
+                    session_id=f"{runtime_prefix}{secrets.token_hex(16)}",
+                ) as runtime:
+                    outcome = route_project_package(
+                        runtime,
+                        operation_id=operation_id,
+                        action=action,
+                        source=str(
+                            owner.epoch_runtime.control_root
+                            / "product-sources"
+                            / wheel.wheel_filename
+                        ),
+                        entrypoint="cli",
+                    )
+                record = outcome.record
+                if not outcome.handled or record is None:
+                    raise RuntimeError(f"Package Product {action} was not handled")
+                if record.lifecycle == "failed":
+                    output.package_failure(
+                        operation_id,
+                        record.failure_code or "package_operation_failed",
+                        management.observe_package_change_failure(operation_id),
+                    )
+                    return 1
+                output.package_success(action, wheel, record)
+            return 0
+    except (OSError, RuntimeError, ValueError) as error:
+        if operation_id is None:
+            output.unstarted(error)
+        else:
+            output.package_failure(
+                operation_id,
+                package_operator_error_code(error, fallback="package_operation_incomplete"),
+                management.observe_package_change_failure(operation_id),
+            )
+        return 1
+
+
+@dataclass(frozen=True, slots=True)
+class FencedPackageOperatorOutput:
+    """Render the Package and Desired State owner evidence used by the CLI."""
+
+    program: str
+    explain_command: tuple[str, ...]
+    repair_handoff_command: tuple[str, ...]
+    repair_desired_command: tuple[str, ...]
+    gc_command: tuple[str, ...]
+    stdout: TextIO
+    stderr: TextIO
+
+    def _list_plugins(self) -> list[str]:
+        return [self.program, "--list-plugins", "--list-plugins-format", "json"]
+
+    def _write(
+        self, document: dict[str, object], *, failure: bool = False, sort_keys: bool = False
+    ) -> None:
+        write_package_operator_result(
+            document,
+            stream=self.stderr if failure else self.stdout,
+            ensure_ascii=False,
+            sort_keys=sort_keys,
+        )
+
+    def unstarted(self, error: BaseException) -> None:
+        self.stderr.write(f"Error: {error}\n")
+
+    def package_success(
+        self,
+        action: Literal["install", "update"],
+        wheel: _AdmittedPackageWheel,
+        record: PackageProductLifecycleRecordV1,
+    ) -> None:
+        next_commands = [
+            " ".join(self._list_plugins()),
+            " ".join((*self.explain_command, record.operation_id)),
+        ]
+        if action == "install":
+            next_commands.insert(0, f"{self.program} --enable-plugin {wheel.plugin_id}")
+        self._write(
+            {
+                "command": f"{action}_package",
+                "operationKind": "A2",
+                "pluginId": wheel.plugin_id,
+                "sourceSha256": wheel.artifact_digest,
+                "stage": "package_operation_recorded",
+                "record": record.to_dict(),
+                "nextCommands": next_commands,
+            }
+        )
+
+    def package_failure(
+        self,
+        operation_id: str,
+        error_code: str,
+        evidence: PackageChangeFailureEvidence,
+    ) -> None:
+        next_commands = [[*self.explain_command, operation_id], self._list_plugins()]
+        if evidence.stage == "desired_committed":
+            next_commands.append([*self.repair_handoff_command, operation_id])
+        self.stderr.write(f"Error: {error_code} (Package operation: {operation_id})\n")
+        self._write(
+            {
+                "operationKind": "A2",
+                "operationId": operation_id,
+                "stage": evidence.stage,
+                "desiredInventoryRevision": evidence.desired_inventory_revision,
+                "committedRevision": evidence.committed_revision,
+                "handoffReceiptId": evidence.handoff_receipt_id,
+                "handoffEvidence": evidence.handoff_evidence,
+                "joinStatus": evidence.join_status,
+                "nextCommands": next_commands,
+            },
+            failure=True,
+            sort_keys=True,
+        )
+
+    def removal_success(
+        self,
+        plugin_id: str,
+        operation_id: str,
+        installed: PluginManagementInstallationViewV1 | None,
+    ) -> None:
+        self._write(
+            {
+                "command": "uninstall_package",
+                "operationKind": "A1",
+                "stage": "desired_absent",
+                "retirementStatus": (
+                    {
+                        "evidence": "observed",
+                        "retirementStates": list(installed.retirement_states),
+                        "cleanupDebtIds": list(installed.cleanup_debt_ids),
+                        "unknownDimensions": list(installed.unknown_dimensions),
+                    }
+                    if installed is not None
+                    else {"evidence": "not_checked"}
+                ),
+                "gcStatus": "not_checked",
+                "nextCommands": [self._list_plugins()],
+                "gcStatusCommand": [*self.gc_command, "list"],
+                "gcPrepareCommand": [*self.gc_command, "prepare"],
+                "gcStatusPrerequisite": "close_active_sessions_and_prepare_gc",
+                "record": {
+                    "pluginId": plugin_id,
+                    "desiredState": "absent",
+                    "operationId": operation_id,
+                },
+            }
+        )
+
+    def removal_failure(
+        self,
+        operation_id: str,
+        evidence: PackageRemovalFailureEvidence,
+        *,
+        expected_actor_id: str,
+    ) -> None:
+        next_commands = [[*self.explain_command, operation_id], self._list_plugins()]
+        if evidence.pending_operation and evidence.actor_id == expected_actor_id:
+            next_commands.append([*self.repair_desired_command, operation_id])
+        committed = evidence.committed_revision is not None
+        self.stderr.write(
+            f"Error: plugin_uninstall_incomplete (Desired operation: {operation_id})\n"
+        )
+        self._write(
+            {
+                "operationKind": "A1",
+                "operationId": operation_id,
+                "actorId": evidence.actor_id,
+                "operationStatus": evidence.operation_status,
+                "stage": "desired_absent" if committed else "unknown",
+                "desiredInventoryRevision": evidence.committed_revision,
+                "retirementEvidence": (
+                    "incomplete" if committed and evidence.pending_operation else "not_checked"
+                ),
+                "nextCommands": next_commands,
+            },
+            failure=True,
+        )
+
+
+def run_fenced_package_removals(
+    plugin_ids: Sequence[str],
+    *,
+    application: FencedProductManagementApplication,
+    authority: PluginDesiredCommandAuthorityV1,
+    max_attempts: int,
+    operation_id_for_revision: Callable[[str, int], str],
+    output: FencedPackageOperatorOutput,
+) -> int:
+    """Remove each exact selection and report any surviving operation evidence."""
+    from loushang.harness.plugin_management.application import PluginManagementQueryV1
+    from loushang.harness.plugin_management.desired_command import (
+        PluginPackageRemovalAttempt,
+        remove_installed_plugin_package,
+    )
+
+    ports = application.bind_ports()
+    attempt = PluginPackageRemovalAttempt()
+    try:
+        for plugin_id in plugin_ids:
+            attempt = PluginPackageRemovalAttempt()
+            correlation_id = f"cli:uninstall-package:{plugin_id}"
+            installed = remove_installed_plugin_package(
+                ports,
+                attempt,
+                query=PluginManagementQueryV1(
+                    correlation_id=f"{correlation_id}:query",
+                    product_id=authority.product_id,
+                    installation_scope=authority.installation_scope,
+                    scope_id=authority.scope_id,
+                    plugin_ids=(plugin_id,),
+                ),
+                correlation_id=correlation_id,
+                actor_id=authority.actor_id,
+                policy_revision=authority.policy_revision,
+                max_attempts=max_attempts,
+                operation_id_for_revision=partial(operation_id_for_revision, plugin_id),
+            )
+            assert attempt.operation_id is not None
+            output.removal_success(plugin_id, attempt.operation_id, installed)
+        return 0
+    except (OSError, RuntimeError, ValueError) as error:
+        operation_id = attempt.operation_id
+        if operation_id is None:
+            output.unstarted(error)
+        else:
+            evidence = application.observe_package_removal_failure(
+                ports, operation_id, pending_operation=attempt.pending
+            )
+            output.removal_failure(
+                operation_id, evidence, expected_actor_id=authority.actor_id
+            )
+        return 1
 
 
 class PackageLifecycleError(RuntimeError):

@@ -21,9 +21,14 @@ _MAX_UNMARKED_DEPTH = 16
 _MAX_UNMARKED_PATH_BYTES = 1024
 
 
-class PayloadPlan(Protocol):
+class _RepairPlanIdentity(Protocol):
     @property
     def attempt_id(self) -> str: ...
+    @property
+    def fingerprint(self) -> str: ...
+
+
+class PayloadPlan(_RepairPlanIdentity, Protocol):
     @property
     def entrypoint(self) -> str: ...
     @property
@@ -38,9 +43,7 @@ class PayloadPlan(Protocol):
     def stage_inode(self) -> int: ...
 
 
-class EmptyPayloadPlan(Protocol):
-    @property
-    def attempt_id(self) -> str: ...
+class EmptyPayloadPlan(_RepairPlanIdentity, Protocol):
     @property
     def stage_device(self) -> int: ...
     @property
@@ -65,9 +68,7 @@ class PayloadMember(Protocol):
     def to_dict(self) -> dict[str, object]: ...
 
 
-class PayloadReview(Protocol):
-    @property
-    def attempt_id(self) -> str: ...
+class PayloadReview(_RepairPlanIdentity, Protocol):
     @property
     def stage_device(self) -> int: ...
     @property

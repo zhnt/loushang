@@ -6,6 +6,7 @@ import secrets
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from loushang.coding.composition.base_plugin import (
@@ -25,6 +26,7 @@ from loushang.coding.composition.product_capability_plugins import (
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycle,
+    CodingPluginLifecycleStateLayout,
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
@@ -42,17 +44,12 @@ from loushang.harness.package_product._selected_plugin_revisions import (
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
-from loushang.harness.resources.packages.catalog_diagnostics import (
-    record_package_lockfile_diagnostics,
-)
-from loushang.harness.resources.packages.materializer import (
-    GitPackageMaterializerBackend,
-)
 from loushang.harness.session._cleanup import ExplicitTemporaryDirectory
-from loushang.harness.session.bootstrap_services import BootstrapServices
-from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
-    share_startup_cleanup,
+from loushang.harness.session.bootstrap_construction import (
+    PreparationRootCustody,
+    prepare_managed_plugin_startup,
 )
+from loushang.harness.session.bootstrap_services import BootstrapServices
 from loushang.harness.session.product_composition_assembly import ProductPluginPlanSeed
 
 _MANAGED_PACKAGE_AUTHORITY_MISMATCH = (
@@ -125,65 +122,13 @@ def prepare_managed_plugins(
     needs_eager: bool,
     needs_deferred: bool,
 ) -> ManagedPluginPreparation:
-    ephemeral_state = (
-        ExplicitTemporaryDirectory(prefix=ephemeral_prefix)
-        if ephemeral_prefix is not None
-        else None
-    )
-    lifecycle = None
-    materializer = None
-    recorded_diagnostics: list[dict[str, object]] = []
-    primary_cleanup = eager_cleanup = deferred_cleanup = None
-    try:
-        layout = (
-            resolve_coding_plugin_lifecycle_state_layout(
-                session_manager.get_cwd()
-            )
-            if ephemeral_state is None
-            else resolve_ephemeral_coding_plugin_lifecycle_state_layout(
-                ephemeral_state.name, cwd=session_manager.get_cwd()
-            )
-        )
-        if (
-            ephemeral_state is None
-            and package_materializer is not None
-            and not package_materializer.uses_storage_authority(
-                install_root=layout.package_install_root,
-                lockfile_path=layout.package_lockfile,
-                plugin_revision_root=layout.plugin_revision_root,
-            )
-        ):
-            message, code = _MANAGED_PACKAGE_AUTHORITY_MISMATCH
-            raise CodingBasePluginAssemblyError(message, code=code)
-        lifecycle = build_coding_plugin_lifecycle(layout)
-        materializer = package_materializer or CodingPackageMaterializer(
-            install_root=layout.package_install_root,
-            lockfile_path=layout.package_lockfile,
-            plugin_revision_root=layout.plugin_revision_root,
-            backend=GitPackageMaterializerBackend(),
-        )
-        if materializer is not resolved_package_materializer:
-            recorded_diagnostics = materializer.get_lockfile_diagnostics()
-            record_package_lockfile_diagnostics(
-                recorded_diagnostics,
-                diagnostics_service=services.diagnostics_service,
-                session_id=session_id,
-            )
-        if ephemeral_state is not None:
-            primary_cleanup, eager_cleanup, deferred_cleanup = share_startup_cleanup(
-                lifecycle.release_owned_process_startup_lease,
-                ephemeral_state.cleanup,
-                primary=prepare_primary is not None,
-                eager=needs_eager,
-                deferred=needs_deferred,
-            )
-        lifecycle.complete_startup_recovery()
-        primary = (
-            prepare_primary(lifecycle, materializer, primary_cleanup)
-            if prepare_primary is not None
-            else None
-        )
-    except BaseException as error:
+    def resolve_layout(ephemeral: str | None) -> CodingPluginLifecycleStateLayout:
+        cwd = session_manager.get_cwd()
+        if ephemeral is None:
+            return resolve_coding_plugin_lifecycle_state_layout(cwd)
+        return resolve_ephemeral_coding_plugin_lifecycle_state_layout(ephemeral, cwd=cwd)
+
+    def record_failure(error: BaseException) -> None:
         if isinstance(error, CodingBasePluginAssemblyError):
             services.diagnostics_service.capture_failure(
                 code=error.code,
@@ -193,31 +138,24 @@ def prepare_managed_plugins(
                 session_id=session_id,
                 details={"check": _MANAGED_PACKAGE_REPLAY_CHECK, "ok": False},
             )
-        # Exact replay can discover additional lock corruption during preparation.
-        if materializer is not None:
-            record_package_lockfile_diagnostics(
-                [
-                    diagnostic
-                    for diagnostic in materializer.get_lockfile_diagnostics()
-                    if diagnostic not in recorded_diagnostics
-                ],
-                diagnostics_service=services.diagnostics_service,
-                session_id=session_id,
-            )
-        for cleanup in (primary_cleanup, eager_cleanup, deferred_cleanup):
-            if cleanup is not None:
-                cleanup()
-        if lifecycle is not None:
-            lifecycle.release_owned_process_startup_lease()
-        if (
-            eager_cleanup is None
-            and primary_cleanup is None
-            and ephemeral_state is not None
-        ):
-            ephemeral_state.cleanup()
-        raise
+    message, code = _MANAGED_PACKAGE_AUTHORITY_MISMATCH
     return ManagedPluginPreparation(
-        lifecycle, materializer, primary, eager_cleanup, deferred_cleanup
+        *prepare_managed_plugin_startup(
+            resolve_layout=resolve_layout,
+            build_lifecycle=build_coding_plugin_lifecycle,
+            materializer_type=CodingPackageMaterializer,
+            package_materializer=package_materializer,
+            resolved_package_materializer=resolved_package_materializer,
+            ephemeral_prefix=ephemeral_prefix,
+            prepare_primary=prepare_primary,
+            needs_eager=needs_eager,
+            needs_deferred=needs_deferred,
+            diagnostics_service=services.diagnostics_service,
+            session_id=session_id,
+            authority_mismatch=partial(CodingBasePluginAssemblyError, message, code=code),
+            record_failure=record_failure,
+            directory_factory=ExplicitTemporaryDirectory,
+        )
     )
 
 
@@ -241,15 +179,13 @@ def bind_deferred_plugin(
     admission_failure: ProductAdmissionFailure,
 ) -> tuple[CodingCapabilityPluginCompositionAssembly, _Cleanup | None]:
     """Prepare a requested generation and retain its selected Product evidence."""
-    temporary_state = (
-        ExplicitTemporaryDirectory(prefix=temporary_prefix)
-        if not session_manager.persist
-        else None
+    custody = PreparationRootCustody[CodingCapabilityPluginCompositionPreparation]()
+    state_root = custody.prepare_roots(
+        state_prefix=None if session_manager.persist else temporary_prefix,
+        private_prefix=None,
+        persistent_root=persistent_root,
+        directory_factory=ExplicitTemporaryDirectory,
     )
-    state_root = (
-        Path(temporary_state.name) if temporary_state is not None else persistent_root()
-    )
-    preparation = None
     current_selection_check = None
     try:
         configurations = {plugin_id: build_config()}
@@ -261,18 +197,18 @@ def bind_deferred_plugin(
                 max_total_bytes=max_manifest_bytes,
                 admission_failure=admission_failure,
             )
-            preparation = prepare_coding_product_capability_plugin_composition(
+            custody.preparation = prepare_coding_product_capability_plugin_composition(
                 runtime,
                 session_id=session_id,
                 configurations=configurations,
                 state_root=state_root,
                 clock=clock,
             )
-            if temporary_state is not None:
-                preparation.state_cleanup = temporary_state.cleanup
+            if custody.state_root is not None:
+                custody.preparation.state_cleanup = custody.state_cleanup
         else:
             assert managed is not None
-            preparation = managed.prepare_capabilities(
+            custody.preparation = managed.prepare_capabilities(
                 create_coding_capability_plugin_composition_request(
                     clock=clock, plugin_ids=frozenset({plugin_id})
                 ),
@@ -283,17 +219,14 @@ def bind_deferred_plugin(
                 clock=clock,
                 legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
                 management_cleanup=managed.deferred_cleanup,
-                state_cleanup=temporary_state.cleanup if temporary_state is not None else None,
+                state_cleanup=custody.state_cleanup,
             )
-        assembly = preparation.bind_workspace(
+        assembly = custody.preparation.bind_workspace(
             workspace_binding, host_boot_id=host_boot_id, tool_modes=tool_modes, clock=clock
         )
         return assembly, current_selection_check
     except BaseException:
-        if preparation is not None:
-            preparation.close()
-        if temporary_state is not None:
-            temporary_state.cleanup()
+        custody.cleanup_preparation_sequentially()
         raise
 
 

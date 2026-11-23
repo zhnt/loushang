@@ -16,6 +16,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .private_data_deletion import _require_sha256
+from .records import PluginInstallationKeyV1
 
 M = TypeVar("M", bound="PrivateDataMemberV1")
 
@@ -47,6 +48,39 @@ _TARGET_SCHEMA = RecordSchema(
         RecordField("root_path_digest"),
     ),
 )
+
+
+PRIVATE_DATA_INSTALLATION_KEY_FIELD = RecordField(
+    "installation_key",
+    decoder=PluginInstallationKeyV1.from_dict,
+    encoder=PluginInstallationKeyV1.to_dict,
+)
+
+
+class PrivateDataRecordWire:
+    """Encode and admit an exact conventional private-data record envelope."""
+
+    __slots__ = ()
+    _wire_schema: ClassVar[RecordSchema]
+    _invalid_fields: ClassVar[str]
+
+    @classmethod
+    def _bind_wire_schema(cls, *overrides: RecordField) -> RecordSchema:
+        cls._wire_schema = RecordSchema.for_dataclass(cls, _unchanged, *overrides)
+        return cls._wire_schema
+
+    def to_dict(self) -> dict[str, object]:
+        return self._wire_schema.encode(self, sort_keys=True)
+
+    @classmethod
+    def _wire_document(cls, value: object) -> dict[str, object]:
+        if type(value) is not dict or set(value) != cls._wire_schema.keys:
+            raise ValueError(cls._invalid_fields)
+        return value
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        return cls._wire_schema.decode(cls, cls._wire_document(value))
 
 
 @dataclass(frozen=True, slots=True)

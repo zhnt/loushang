@@ -58,6 +58,10 @@ class CodingRuntimeBindingV1:
     difference_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        self._validate_v1_fields()
+        _require_v1_budget(self._document())
+
+    def _validate_v1_fields(self) -> None:
         for name in ("attempt_id", "input_id", "record_id", "session_id"):
             _require_identifier(getattr(self, name), name=name)
         if self.original_leaf_id is not None:
@@ -82,8 +86,6 @@ class CodingRuntimeBindingV1:
             for code in self.difference_codes
         ):
             raise ValueError("RuntimeBinding difference codes must be redacted identifiers")
-        if len(_canonical_bytes(self._document())) > CODING_RUNTIME_BINDING_MAX_BYTES:
-            raise ValueError("RuntimeBinding metadata exceeds its byte budget")
 
     def to_message_metadata(self) -> dict[str, JSONValue]:
         return {CODING_RUNTIME_BINDING_METADATA_KEY: self._document()}
@@ -295,20 +297,14 @@ def prepare_coding_resume_user_record(
         raise TypeError("RuntimeBinding record requires a Coding binding")
     if coding_user_payload_digest(message) != binding.payload_digest:
         raise ValueError("RuntimeBinding payload digest does not match the message")
-    evidence = require_json_mapping(
-        {} if resource_metadata is None else dict(resource_metadata),
-        name="Resume resource evidence metadata",
-    )
-    binding_metadata = binding.to_message_metadata()
-    if evidence.keys() & binding_metadata.keys():
-        raise ValueError("Resume metadata key conflict")
-    record = _records.make_resume_record(
-        AGENT_MESSAGE_KIND,
+    record = _records.make_resume_user_record(
         message,
-        record_id=binding.record_id,
+        binding,
         parent_id=commit_parent_id,
         created_at=created_at,
-        metadata={**evidence, **binding_metadata},
+        resource_metadata=resource_metadata,
+        evidence_name="Resume resource evidence metadata",
+        metadata_conflict="Resume metadata key conflict",
     )
     validate_coding_runtime_binding_record(
         record, expected_session_id=binding.session_id,
@@ -352,8 +348,12 @@ def _require_decoded_v1_binding(
         raise ValueError("RuntimeBinding payload digest differs from the message")
 
 
-def _canonical_bytes(value: object) -> bytes:
-    return _records.canonical_binding_bytes(value)
+_canonical_bytes = _records.canonical_binding_bytes
+
+
+def _require_v1_budget(document: object) -> None:
+    if len(_canonical_bytes(document)) > CODING_RUNTIME_BINDING_MAX_BYTES:
+        raise ValueError("RuntimeBinding metadata exceeds its byte budget")
 
 
 def _require_identifier(value: object, *, name: str) -> None:

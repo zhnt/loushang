@@ -289,6 +289,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         self._approval_runtime.close_session(reason)
 
     async def _before_bash(self, request: UserBashRequest) -> UserBashHookResult | None:
+        self._require_session_operation_admission()
         runner = self._extension_runner
         if runner is None or not runner.has_handlers("user_bash"):
             return None
@@ -770,6 +771,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         capture_full_output: bool = True,
         rolling_max_bytes: int = 100 * 1024,
     ) -> ExecResult:
+        self._require_session_operation_admission()
         request = ExecRequest(
             command=_normalize_exec_command(command, args),
             cwd=_resolve_exec_cwd(self.session_manager.get_cwd(), cwd),

@@ -58,13 +58,19 @@ def test_contribution_kinds_have_one_canonical_closed_definition() -> None:
     definitions = tuple(definitions)
     assert definitions == (CONTRIBUTION_TYPES,)
 
-    for path in (
-        Path("src/loushang/harness/session/product_composition_assembly.py"),
-        Path('src/loushang/coding/composition/product_capability_plugins.py'),
+    for path, canonical_route in (
+        (
+            Path("src/loushang/harness/session/product_composition_assembly.py"),
+            "PLUGIN_OWNER_CONTRIBUTION_KINDS",
+        ),
+        (
+            Path("src/loushang/coding/composition/product_capability_plugins.py"),
+            "project_product_owner_candidates(",
+        ),
     ):
         source = path.read_text(encoding="utf-8")
         assert "_EXTERNAL_CONTRIBUTION_KINDS" not in source
-        assert "PLUGIN_OWNER_CONTRIBUTION_KINDS" in source
+        assert canonical_route in source
 
 
 def test_wire_owner_is_only_an_inert_exact_id_and_records_reject_locator_fields() -> None:

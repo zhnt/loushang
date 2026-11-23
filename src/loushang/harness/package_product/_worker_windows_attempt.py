@@ -92,10 +92,13 @@ from loushang.harness.worker.history._windows_sources import (
 )
 from loushang.harness.worker.history._windows_stage_review_wire import (
     WINDOWS_STAGE_REVIEW_MAX_BYTES,
+    _WindowsPartialStageReviewMethods,
+    _WindowsReservedStageReviewMethods,
 )
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 from loushang.harness.worker.payload._selected_payload import (
     _PendingPayload,
+    require_current_pending_launch,
     worker_identity_from_receipt,
 )
 from loushang.harness.worker.payload._windows_stage_io import (
@@ -117,6 +120,7 @@ from loushang.hosting.windows_backend_material import (
     verify_windows_backend_material_expectation,
 )
 
+from ._worker_history_access import windows_product_worker_quiescence
 from ._worker_product_authority import _WindowsWorkerProductReceiptAuthority
 from .product_worker_candidate import (
     ProductWorkerSelectedPayloadFacts,
@@ -1168,6 +1172,10 @@ class _StageCaptureIntent(LaunchIntent, Protocol):
 
 
 StageReviewT = TypeVar("StageReviewT")
+_PartialReviewT = TypeVar("_PartialReviewT", bound=_WindowsPartialStageReviewMethods)
+_ReservedReviewT = TypeVar("_ReservedReviewT", bound=_WindowsReservedStageReviewMethods)
+_PAYLOAD_MARKER = "worker-payload.json"
+_PAYLOAD_MARKER_MAX_BYTES = 1024
 
 
 def verify_windows_product_worker_live_stage(
@@ -1273,17 +1281,59 @@ def verify_windows_product_worker_live_stage(
                 os.close(stage)
 
 
+def _open_windows_worker_stage(
+    product: WindowsLocalWheelProductSessionOwner,
+    root: int,
+    stage_name: str,
+    inspection: WindowsStageInspection,
+    acl: WindowsPrivateDirectoryAcl,
+    *,
+    error_type: type[Exception],
+    error_prefix: str,
+) -> int:
+    """Verify the pinned Product root before opening the stage without write access."""
+    inspection.require_direct(root, acl, directory=True)
+    if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
+        raise error_type(f"{error_prefix}_root_changed")
+    return open_windows_directory(
+        stage_name, dir_fd=root, share_delete=False, read_control=True
+    )
+
+
 def capture_windows_product_worker_stage(
     product: WindowsLocalWheelProductSessionOwner,
     *,
     attempt_id: str,
     expected_stage: tuple[int, int],
     intent: _StageCaptureIntent,
+    inspect: Callable[[], WindowsStageInspection],
+) -> CapturedWindowsWorkerStage:
+    """Capture the live tree against the exact Product launch-intent type."""
+    inspection = inspect()
+    if type(intent) is not inspection.intent_type:
+        raise inspection.error_type(inspection.error_prefix + "_intent_invalid")
+    return _capture_windows_product_worker_stage(
+        product,
+        attempt_id=attempt_id,
+        expected_stage=expected_stage,
+        intent=intent,
+        inspection=inspection,
+        max_payload_bytes=inspection.max_payload_bytes,
+        error_type=inspection.error_type,
+        error_prefix=inspection.error_prefix,
+        result_factory=lambda captured: captured,
+    )
+
+
+def _capture_windows_product_worker_stage(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    expected_stage: tuple[int, int],
+    intent: _StageCaptureIntent,
     inspection: WindowsStageInspection,
-    marker_name: str,
-    max_marker_bytes: int,
     max_payload_bytes: int,
-    error_type: type[RuntimeError],
+    error_type: type[Exception],
     error_prefix: str,
     result_factory: Callable[[CapturedWindowsWorkerStage], StageReviewT],
 ) -> StageReviewT:
@@ -1291,11 +1341,9 @@ def capture_windows_product_worker_stage(
     stage_name = "worker-payload-" + attempt_id
     with WindowsPrivateDirectoryAcl() as acl:
         with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            inspection.require_direct(root, acl, directory=True)
-            if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                raise error_type(f"{error_prefix}_root_changed")
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
+            stage = _open_windows_worker_stage(
+                product, root, stage_name, inspection, acl,
+                error_type=error_type, error_prefix=error_prefix,
             )
             try:
                 stage_identity = inspection.require_direct(stage, acl, directory=True)
@@ -1308,15 +1356,15 @@ def capture_windows_product_worker_stage(
                     raise error_type(f"{error_prefix}_stage_changed")
                 raw_marker, marker_identity = inspection.read_checked_file(
                     stage,
-                    marker_name,
+                    _PAYLOAD_MARKER,
                     acl,
-                    maximum_bytes=max_marker_bytes,
+                    maximum_bytes=_PAYLOAD_MARKER_MAX_BYTES,
                 )
                 entrypoint, marker_payload_size = inspection.verify_marker(
                     raw_marker, intent=intent, stage_identity=expected_stage
                 )
                 parts = entrypoint.split("/")
-                if set(windows_listdir_at(stage)) != {marker_name, parts[0]}:
+                if set(windows_listdir_at(stage)) != {_PAYLOAD_MARKER, parts[0]}:
                     raise error_type(f"{error_prefix}_tree_changed")
                 current = stage
                 children: list[int] = []
@@ -1360,7 +1408,7 @@ def capture_windows_product_worker_stage(
                     _file_identity(os.fstat(stage)) != stage_identity
                     or _file_identity(windows_stat_at(root, stage_name))
                     != stage_identity
-                    or set(windows_listdir_at(stage)) != {marker_name, parts[0]}
+                    or set(windows_listdir_at(stage)) != {_PAYLOAD_MARKER, parts[0]}
                 ):
                     raise error_type(f"{error_prefix}_stage_changed")
                 return result_factory(
@@ -1377,37 +1425,27 @@ def capture_windows_product_worker_stage(
                 os.close(stage)
 
 
-@dataclass(frozen=True, slots=True)
-class CapturedWindowsWorkerPartialStage:
-    stage_identity: FileIdentity
-    directory_identities: tuple[tuple[str, FileIdentity], ...]
-    entrypoint: str | None
-    executable_identity: FileIdentity | None
-    executable_digest: str | None
-
-
 def capture_windows_product_worker_partial_stage(
     product: WindowsLocalWheelProductSessionOwner,
     *,
     attempt_id: str,
     expected_stage: tuple[int, int] | None,
-    inspection: WindowsStageInspection,
-    max_payload_bytes: int,
-    max_depth: int,
-    marker_name: str,
-    error_type: type[RuntimeError],
+    lease_owner_revision: int,
+    record_type: type[_PartialReviewT],
+    inspect: Callable[[], WindowsStageInspection],
     error_prefix: str,
-    result_factory: Callable[[CapturedWindowsWorkerPartialStage], StageReviewT],
-) -> StageReviewT:
-    """Build the public result at the original innermost resource boundary."""
+) -> _PartialReviewT:
+    """Capture a marker-absent stage without granting deletion authority."""
+    inspection = inspect()
+    max_payload_bytes = record_type._payload_maximum()
+    max_depth = record_type._depth_maximum()
+    error_type = record_type._record_error
     stage_name = "worker-payload-" + attempt_id
     with WindowsPrivateDirectoryAcl() as acl:
         with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            inspection.require_direct(root, acl, directory=True)
-            if not os.path.samestat(os.fstat(root), product.state_root.lstat()):
-                raise error_type(f"{error_prefix}_root_changed")
-            stage = open_windows_directory(
-                stage_name, dir_fd=root, share_delete=False, read_control=True
+            stage = _open_windows_worker_stage(
+                product, root, stage_name, inspection, acl,
+                error_type=error_type, error_prefix=error_prefix,
             )
             try:
                 stage_identity = inspection.require_direct(stage, acl, directory=True)
@@ -1430,7 +1468,7 @@ def capture_windows_product_worker_partial_stage(
                     for depth in range(max_depth + 1):
                         names = tuple(windows_listdir_at(current))
                         if len(names) > 1 or any(
-                            name.casefold() == marker_name for name in names
+                        name.casefold() == _PAYLOAD_MARKER for name in names
                         ):
                             raise error_type(f"{error_prefix}_shape_invalid")
                         if not names:
@@ -1490,19 +1528,57 @@ def capture_windows_product_worker_partial_stage(
                         or tuple(windows_listdir_at(stage)) != names_before
                     ):
                         raise error_type(f"{error_prefix}_changed")
-                    return result_factory(
-                        CapturedWindowsWorkerPartialStage(
-                            stage_identity=stage_identity,
-                            directory_identities=tuple(directories),
-                            entrypoint=entrypoint,
-                            executable_identity=executable_identity,
-                            executable_digest=executable_digest,
-                        )
+                    return cast(Callable[..., _PartialReviewT], record_type)(
+                        attempt_id=attempt_id,
+                        lease_owner_revision=lease_owner_revision,
+                        stage_identity=stage_identity,
+                        directory_identities=tuple(directories),
+                        entrypoint=entrypoint,
+                        executable_identity=executable_identity,
+                        executable_digest=executable_digest,
                     )
                 finally:
                     close_opened(opened)
             finally:
                 os.close(stage)
+
+
+def capture_windows_product_worker_reserved_stage(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    intent: WindowsLaunchIntentMethods,
+    native_revision: int | None,
+    lease_owner_revision: int,
+    record_type: type[_ReservedReviewT],
+    inspection: Callable[[], WindowsStageInspection],
+    error_prefix: str,
+) -> _ReservedReviewT:
+    """Capture the exact stage whose native reservation had no launch effect."""
+    if native_revision not in (1, 2):
+        raise record_type._record_error(error_prefix + "_history_unverified")
+    build = cast(Callable[..., _ReservedReviewT], record_type)
+    return _capture_windows_product_worker_stage(
+        product,
+        attempt_id=intent.attempt_id,
+        expected_stage=intent.stage_identity,
+        intent=intent,
+        inspection=inspection(),
+        max_payload_bytes=record_type._payload_maximum(),
+        error_type=record_type._record_error,
+        error_prefix=error_prefix,
+        result_factory=lambda stage: build(
+            attempt_id=intent.attempt_id,
+            intent_fingerprint=intent.fingerprint,
+            lease_owner_revision=lease_owner_revision,
+            native_revision=native_revision,
+            stage_identity=stage.stage_identity,
+            directory_identities=stage.directory_identities,
+            marker_identity=stage.marker_identity,
+            executable_identity=stage.executable_identity,
+            executable_digest=stage.executable_digest,
+            entrypoint=stage.entrypoint,
+        ),
+    )
 
 
 class _PinnedRecoveryStore:
@@ -1604,12 +1680,9 @@ def windows_product_worker_offline_write(
     active_message: str,
 ) -> Iterator[PackageWindowsRuntimeQuiescenceV1]:
     """Hold Package quiescence then writable GC for an admitted mutation."""
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise active_error(active_message)
+    with windows_product_worker_quiescence(
+        product, active_error=active_error, active_message=active_message
+    ) as (_, quiescence):
         with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             yield quiescence
@@ -1941,25 +2014,17 @@ class WindowsProductWorkerPayload(
         verify_current(initial=True)
         if pending_launch is not None:
             with product.gc_gate.guard():
-                if (
-                    type(pending_launch) is not self.pending_type
-                    or pending_launch.receipt_fingerprint != receipt.fingerprint
-                    or pending_launch.identity
-                    != worker_identity_from_receipt(
-                        receipt=receipt,
-                        owner_id=payload_lease.owner_id,
-                        attempt_id=payload_lease.attempt_id,
-                        supervisor_epoch=supervisor_epoch,
-                        session_nonce=pending_launch.identity.session_nonce,
-                    )
-                    or (
-                        self.supervisor_journal(product).next_supervisor_epoch(
-                            pending_launch.identity
-                        )
-                        != supervisor_epoch
-                    )
-                ):
-                    raise self.error_type(self.error_prefix + "_pending_launch_changed")
+                require_current_pending_launch(
+                    pending_launch,
+                    pending_type=self.pending_type,
+                    receipt=receipt,
+                    owner_id=payload_lease.owner_id,
+                    attempt_id=payload_lease.attempt_id,
+                    supervisor_epoch=supervisor_epoch,
+                    supervisor=partial(self.supervisor_journal, product),
+                    error_type=self.error_type,
+                    error_prefix=self.error_prefix,
+                )
 
         def validate_current() -> None:
             try:

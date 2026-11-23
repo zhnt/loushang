@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import inspect
 import time
 import traceback
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Generic, TextIO, TypeVar
+
+from loushang.harness.host.product_host import dispose_runtime_or_session
 
 FailureStateT = TypeVar("FailureStateT")
 TurnT = TypeVar("TurnT")
@@ -242,19 +243,6 @@ def session_identity(session: object) -> str:
         if isinstance(conversation_id, str) and conversation_id:
             return conversation_id
     return "session"
-
-
-async def dispose_runtime_or_session(runtime: object, session: object) -> None:
-    """Dispose a Product runtime, falling back to its session."""
-
-    disposer = getattr(runtime, "dispose", None)
-    if not callable(disposer):
-        disposer = getattr(session, "dispose", None)
-    if not callable(disposer):
-        return
-    result = disposer()
-    if inspect.isawaitable(result):
-        await result
 
 
 async def _run_plain_prompt_turn(

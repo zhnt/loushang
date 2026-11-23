@@ -10,7 +10,6 @@ from loushang.appserver.goal import (
     GoalObservationV1,
 )
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
-from loushang.appservice.execution_contract import InterruptModeV1
 from loushang.appservice.execution_registry import ExecutionLimitsV1
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 from loushang.coding.adapters.goal import CodingGoal
@@ -22,6 +21,8 @@ from loushang.coding.hosted.session import CodingRealHostedSessionV1
 
 
 class CodingHostedGoalSessionV1(CodingHostedExecutionSessionV1):
+    _legacy_turns = False
+
     def __init__(self, binding, setup: HostedGoalSetup, *, owner=None):
         if type(binding) is not CodingRealHostedSessionV1 or type(setup) is not HostedGoalSetup:
             raise TypeError("hosted Goal requires fresh Coding binding and fixed setup")
@@ -38,14 +39,14 @@ class CodingHostedGoalSessionV1(CodingHostedExecutionSessionV1):
 
     @property
     def goal_capability(self):
-        self._require_execution_open()
+        self._require_open()
         c = self._setup.config
         return GoalCapabilityV1(self._goal_binding, c.max_advances, c.max_model_calls,
                                 c.max_output_tokens, c.deadline_seconds, profile=self._setup.profile_id,
                                 accepting=self._invocation is None, supports_progress=True)
 
     def start_execution(self, request):
-        self._require_execution_open()
+        self._require_open()
         if self._invocation is not None or not self._product_binding.execution_available:
             raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
         assert self._goal is not None
@@ -54,8 +55,14 @@ class CodingHostedGoalSessionV1(CodingHostedExecutionSessionV1):
         self._guard.start(request, invocation)
         self._invocation = invocation
 
-    async def query_goal(self, execution_id):
-        self._require_execution_open()
+    async def query_goal(self, execution_id: str) -> GoalObservationV1:
+        return await self._observe_goal(execution_id, progress=False)
+
+    async def progress_goal(self, execution_id: str) -> GoalObservationV1:
+        return await self._observe_goal(execution_id, progress=True)
+
+    async def _observe_goal(self, execution_id: str, *, progress: bool) -> GoalObservationV1:
+        self._require_open()
         invocation, owner = self._invocation, self._goal
         if invocation is None:
             return GoalObservationV1("not_started", "not_started")
@@ -66,83 +73,63 @@ class CodingHostedGoalSessionV1(CodingHostedExecutionSessionV1):
             return GoalObservationV1("initializing" if invocation.initializing else
                                      "unavailable" if invocation.initialization_failed else "not_started",
                                      invocation.reason, **usage)
-        assert owner is not None
+        if not progress:
+            assert owner is not None
         try:
-            view = await owner.query(self._setup.goal_id)
+            assert owner is not None
+            view = None if progress else await owner.query(self._setup.goal_id)
             core = owner.controller
-            batches = []
+            if progress:
+                state = core.query(self._setup.goal_id)
+                if len(core.history.batches) > self._setup.config.max_advances:
+                    raise ValueError("unexpected Goal batch count")
+            batches, unresolved = [], core.fenced if progress else False
             for batch in core.history.batches:
-                run = owner._work.get_run_for_operation(batch.operation_id)
-                observed = observe_work_run(owner._work, run) if run is not None else None
-                if observed is not None and self._setup.repository is not None:
-                    observed = _repository_observation(observed)
-                batches.append(GoalBatchObservationV1(
-                    batch.id, batch.operation_id, observed.work if observed else None,
-                    observed.recording if observed else None, observed.cancellation if observed else None,
-                    observed.errors if observed else ("work_observation_unavailable",),
-                ))
-            state = view.goal
-            recording_unavailable = any(b.recording is None for b in batches)
-            result = GoalObservationV1(
-                "present", invocation.reason, state.id, state.status, state.revision, state.epoch,
-                core.history.sequence, "unknown" if core.fenced or recording_unavailable else view.validity,
-                view.execution_unresolved or core.fenced,
-                batches=tuple(batches), **usage,
-            )
-        except Exception:
-            result = GoalObservationV1("unavailable", "goal_observation_unavailable", **usage)
-        self._require_execution_open()
-        return result
-
-    async def start_turn(self, text):
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-
-    async def progress_goal(self, execution_id):
-        # No await, business assessment, workspace IO or history replay here.
-        self._require_execution_open()
-        invocation, owner = self._invocation, self._goal
-        if invocation is None:
-            return GoalObservationV1("not_started", "not_started")
-        if invocation.execution_id != execution_id:
-            raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
-        usage = dict(advances=invocation.advances, model_calls=self._setup.allowance.total_calls)
-        if not invocation.initialized:
-            return GoalObservationV1("initializing" if invocation.initializing else
-                                     "unavailable" if invocation.initialization_failed else "not_started",
-                                     invocation.reason, **usage)
-        try:
-            core = owner.controller
-            state = core.query(self._setup.goal_id)
-            if len(core.history.batches) > self._setup.config.max_advances:
-                raise ValueError("unexpected Goal batch count")
-            batches, unresolved = [], core.fenced
-            for batch in core.history.batches:
-                observed = None
-                if batch.run_receipt is not None and not batch.not_submitted:
+                run = None
+                if not progress:
+                    run = owner._work.get_run_for_operation(batch.operation_id)
+                elif batch.run_receipt is not None and not batch.not_submitted:
                     run = owner._work.get_run(batch.run_receipt)
                     if run.operation_id != batch.operation_id or run.session_id != core.header.session_id:
                         raise ValueError("Goal/Work identity mismatch")
-                    observed = observe_work_run(owner._work, run, progress=True)
-                    if self._setup.repository is not None:
-                        observed = _repository_observation(observed)
-                    unresolved |= (run.status == "orphaned" or observed.cancellation is None or
-                                   observed.cancellation.status not in {"not_requested", "settled"})
-                elif not batch.not_submitted:
-                    unresolved = True
+                observed = observe_work_run(owner._work, run, progress=progress) if run is not None else None
+                if observed is not None and self._setup.repository is not None:
+                    observed = _repository_observation(observed)
+                if progress and not batch.not_submitted:
+                    assert run is None or observed is not None
+                    cancellation = observed.cancellation if observed is not None else None
+                    unresolved |= (
+                        run is None or run.status == "orphaned" or cancellation is None
+                        or cancellation.status not in {"not_requested", "settled"}
+                    )
                 batches.append(GoalBatchObservationV1(
                     batch.id, batch.operation_id, observed.work if observed else None,
                     observed.recording if observed else None, observed.cancellation if observed else None,
-                    observed.errors if observed else (() if batch.not_submitted else ("work_observation_unavailable",)),
+                    observed.errors if observed else
+                    (() if progress and batch.not_submitted else ("work_observation_unavailable",)),
                 ))
-            unknown = core.fenced or any(b.errors for b in batches)
-            reason = "advancing" if invocation.reason in {"planning", "advancing"} else invocation.reason
-            return GoalObservationV1(
+            reason = invocation.reason
+            if progress:
+                validity = "unknown" if core.fenced or any(batch.errors for batch in batches) else "not_checked"
+                if reason in {"planning", "advancing"}:
+                    reason = "advancing"
+            else:
+                assert view is not None
+                state = view.goal
+                validity = (
+                    "unknown" if core.fenced or any(batch.recording is None for batch in batches)
+                    else view.validity
+                )
+                unresolved = view.execution_unresolved or core.fenced
+            result = GoalObservationV1(
                 "present", reason, state.id, state.status, state.revision, state.epoch,
-                core.history.sequence, "unknown" if unknown else "not_checked",
-                unresolved, batches=tuple(batches), **usage,
+                core.history.sequence, validity, unresolved, batches=tuple(batches), **usage,
             )
         except Exception:
-            return GoalObservationV1("unavailable", "goal_observation_unavailable", **usage)
+            result = GoalObservationV1("unavailable", "goal_observation_unavailable", **usage)
+        if not progress:
+            self._require_open()
+        return result
 
     async def snapshot(self):
         snapshot = await super().snapshot()
@@ -164,28 +151,11 @@ class CodingHostedGoalSessionV1(CodingHostedExecutionSessionV1):
         if self._setup.repository is None:
             await super()._on_runtime_event(event)
 
-    def steer_turn(self, text):
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-
-    def follow_up_turn(self, text):
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-
-    def interrupt_turn(self):
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-
-    def interrupt_execution(self, execution_id, mode):
-        if mode is not InterruptModeV1.WHOLE_EXECUTION:
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        return super().interrupt_execution(execution_id, mode)
-
-    async def _close_execution(self):
-        state = self._guard.state
-        if state is not None and not state.status.terminal:
-            self._guard.interrupt(state.execution_id, InterruptModeV1.WHOLE_EXECUTION)
-            await self._guard.retry_settlement(state.execution_id)
+    async def _dispose_execution_resources(self) -> None:
         if self._goal is not None:
             await self._goal.close()
-        await super()._close_execution()
+
+    def _release_execution_resources(self) -> None:
         if self._invocation is not None:
             self._invocation.task = None
             self._invocation.owner = None

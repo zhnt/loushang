@@ -6,6 +6,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from hashlib import sha256
+from itertools import chain
 from re import fullmatch
 from typing import TYPE_CHECKING, TypeGuard, cast
 
@@ -22,6 +23,13 @@ from loushang.harness.resources._catalog_records import (
 if TYPE_CHECKING:
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
+    )
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeBindingV1,
+    )
+    from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+    from loushang.harness.resources.plugins.selection import (
+        PluginInstanceRevisionRef,
     )
     from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
     from loushang.harness.transcript.product_session import ProductTranscriptSession
@@ -95,6 +103,64 @@ def read_composition_receipt(
             payload.data, label=label, require_current=require_current
         )
     return found
+
+
+def _capture_worker_startup_selection(
+    *,
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_id: str,
+    receipt: ProductWorkerActivationReceiptV1,
+    existing_startup: dict[str, object] | None,
+    max_files: int,
+    max_total_bytes: int,
+    failure: Callable[[str], RuntimeError],
+) -> PackageProductSelectedPluginManifestV1:
+    selected_worker = runtime.capture_selected_plugin_manifest_for(
+        plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
+    )
+
+    if (
+        selected_worker.snapshot.root_ref.artifact_digest
+        != receipt.policy.plugin_revision_digest
+    ):
+        raise failure("selection_changed")
+
+    if existing_startup is not None:
+        worker = existing_startup.get("workerSelection")
+        expected_revision = {
+            "pluginId": plugin_id,
+            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
+                selected_worker.snapshot.package_revision
+            ),
+            "instanceRevisionRef": selected_worker.snapshot.instance_revision_ref.to_dict(),
+        }
+        revisions = existing_startup.get("selectedRevisions")
+        if (
+            not isinstance(worker, dict)
+            or not isinstance(revisions, list)
+            or expected_revision not in revisions
+            or (worker.get("pluginId") != receipt.policy.plugin_id)
+            or (
+                worker.get("productPolicyRevision")
+                != receipt.policy.product_policy_revision
+            )
+            or (worker.get("nativeProfileId") != receipt.policy.native_profile_id)
+            or (
+                worker.get("selectedLocatorRevision")
+                != receipt.policy.selected_locator_revision
+            )
+            or (
+                worker.get("selectedLocatorFingerprint")
+                != receipt.policy.selected_locator_fingerprint
+            )
+            or (
+                worker.get("workerConfigurationFingerprint")
+                != receipt.policy.worker_configuration_fingerprint
+            )
+        ):
+            raise failure("startup_selection_changed")
+
+    return selected_worker
 
 
 def _validate_startup_record(
@@ -273,20 +339,32 @@ def should_defer_mount(
     )
 
 
-
 def composition_manifest_revision_evidence(
     selected: Iterable[PackageProductSelectedPluginManifestV1],
+    *,
+    managed_revisions: Iterable[
+        tuple[str, PluginPackageRevisionRefV1, PluginInstanceRevisionRef]
+    ] = (),
 ) -> list[dict[str, object]]:
-    """Project selected manifests with their existing Package fingerprints."""
+    """Project both Store manifests and managed leases with the same receipt format."""
+    revisions = chain(
+        (
+            (
+                item.manifest.name,
+                item.snapshot.package_revision,
+                item.snapshot.instance_revision_ref,
+            )
+            for item in selected
+        ),
+        managed_revisions,
+    )
     return [
         {
-            "pluginId": item.manifest.name,
-            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
-                item.snapshot.package_revision
-            ),
-            "instanceRevisionRef": item.snapshot.instance_revision_ref.to_dict(),
+            "pluginId": plugin_id,
+            "packageRevisionFingerprint": plugin_package_revision_fingerprint(package),
+            "instanceRevisionRef": instance.to_dict(),
         }
-        for item in selected
+        for plugin_id, package, instance in revisions
     ]
 
 
@@ -381,13 +459,47 @@ def worker_composition_selection_evidence(
         else None
     )
 
+
+def observe_session_composition_evidence(
+    selected: Iterable[PackageProductSelectedPluginManifestV1],
+    *,
+    managed_revisions: Iterable[
+        tuple[str, PluginPackageRevisionRefV1, PluginInstanceRevisionRef]
+    ],
+    policy_revision: str | None,
+    base_receipts: Iterable[OwnerGenerationRetirementReceipt],
+    capability_receipts: Iterable[Iterable[OwnerGenerationRetirementReceipt]],
+    catalog_snapshot: object | None,
+    catalog_schema: str,
+    worker_receipt: ProductWorkerActivationReceiptV1 | None,
+) -> dict[str, object]:
+    """Project detached startup and Resume evidence from the selected authorities."""
+    revisions = composition_manifest_revision_evidence(
+        selected, managed_revisions=managed_revisions
+    )
+    generations = composition_generation_evidence(
+        chain(base_receipts, chain.from_iterable(capability_receipts))
+    )
+    evidence: dict[str, object] = {
+        "productPolicyRevision": policy_revision,
+        "catalogSelectionFingerprint": catalog_composition_selection_fingerprint(
+            catalog_snapshot, catalog_schema=catalog_schema
+        ),
+        "selectedRevisions": sorted(revisions, key=lambda item: str(item["pluginId"])),
+        "ownerGenerations": generations,
+    }
+    worker = worker_composition_selection_evidence(worker_receipt)
+    if worker is not None:
+        evidence["workerSelection"] = worker
+    return evidence
+
+
 async def publish_composition_startup(
     transcript: ProductTranscriptSession,
     *,
     set_id: str,
     existing_only: bool,
     had_entries_at_construction: Callable[[], bool],
-
     build_current_receipt: Callable[[], dict[str, object]],
     mark_prepared: Callable[[], None],
     header_key: str,

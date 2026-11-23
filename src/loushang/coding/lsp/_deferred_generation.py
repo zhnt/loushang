@@ -54,6 +54,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityOwnerGenerationBinding,
     SessionCapabilityOwnerGenerationStagingError,
     StagedSessionCapabilityOwnerGeneration,
+    capture_owner_generation_receipts,
     commit_session_capability_owner_generations,
     dispose_session_capability_owner_generations,
     stage_session_capability_owner_generations,
@@ -173,23 +174,12 @@ class CodingDeferredLspGeneration:
             f"coding-session-runtime:{self.session_id}",
         )
         component_host = assembly.component_host
-        self._component_start = component_host.begin_admission(
-            request.resolved,
-            owner_snapshot=request.owner_snapshot,
-            trust_snapshot=request.trust_snapshot,
-            decision_id=request.activation_decision_id,
-        )
+        self._component_start = request.begin_admission(component_host)
         binding = owner.bind(self.registration)
         self._owner_binding = binding
         self._owner_start = binding.authority_gate.begin(admission)
         self.prepared_component = await _run_sync(
-            component_host.prepare_component,
-            request.resolved,
-            package=request.package,
-            owner_snapshot=request.owner_snapshot,
-            trust_snapshot=request.trust_snapshot,
-            decision_id=request.activation_decision_id,
-            admission_start=self._component_start,
+            request.prepare_component, component_host, self._component_start
         )
         graph = RuntimeCapabilityGraphRuntime(
             product_id=CODING_PRODUCT_ID,
@@ -248,9 +238,9 @@ class CodingDeferredLspGeneration:
         self.access = CodingLspSessionCapabilityConsumer(self.capture).access
         self.receipts = {
             plugin_id: tuple(
-                generation.capture_prepared_retirement_receipt()
-                for generation in self.generations
-                if generation.binding.plugin_id == plugin_id
+                capture_owner_generation_receipts(
+                    self.generations, plugin_id, prepared=True
+                )
             )
             for plugin_id in assembly.management_leases
         }

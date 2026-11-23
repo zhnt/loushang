@@ -13,11 +13,10 @@ from loushang.harness.package_product._legacy_binding_evidence import (
 from loushang.harness.package_product._legacy_inventory import (
     LegacyInventoryEvidence,
     LegacyInventoryFacts,
+    LegacyInventoryReader,
     classify_legacy_installations,
     prove_removed_legacy_bindings,
-    read_legacy_installation_inventory,
 )
-from loushang.harness.package_product._legacy_runtime import _LegacyFirstSnapshot
 
 from .legacy_desired_evidence import (
     CodingLegacyDesiredError,
@@ -143,18 +142,14 @@ def _legacy_inventory_query(
     if not isinstance(epoch_runtime, CodingFencedEpochRuntime):
         raise TypeError("Fenced Product epoch owner is required")
     epoch_runtime.assert_current()
-    return _bind_legacy_inventory_query(
-        lifecycle, _snapshot_reader(lifecycle, epoch_runtime)
-    )
+    reader = _snapshot_reader(lifecycle, epoch_runtime)
+    return partial(_legacy_inventory_reader(lifecycle).read, reader)
 
 
-def _bind_legacy_inventory_query(
+def _legacy_inventory_reader(
     lifecycle: CodingPluginLifecycleStateLayout,
-    reader: _LegacyFirstSnapshot,
-) -> partial[LegacyInventoryEvidence]:
-    return partial(
-        read_legacy_installation_inventory,
-        reader,
+) -> LegacyInventoryReader:
+    return LegacyInventoryReader(
         desired_path=lifecycle.desired_state,
         management_paths=_management_capture_paths(lifecycle),
         product_id="coding",

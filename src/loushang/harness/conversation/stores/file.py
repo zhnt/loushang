@@ -8,7 +8,6 @@ import hmac
 import json
 import math
 import os
-import stat
 import threading
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext, suppress
@@ -17,6 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from loushang.foundation.file_identity import (
+    regular_file_status_no_follow as _regular_file_status_no_follow,
+)
+from loushang.foundation.file_identity import same_file_status as _same_file_status
 from loushang.harness.conversation.store import (
     CommitReceipt,
     ConversationBatchCommitResult,
@@ -2133,32 +2136,6 @@ def _open_file_no_follow(path: Path) -> tuple[int, int]:
             os.close(parent)
             raise
     return os.open(path, file_flags), -1
-
-
-def _regular_file_status_no_follow(value: os.stat_result) -> bool:
-    return stat.S_ISREG(value.st_mode) and not (
-        stat.S_ISLNK(value.st_mode)
-        or bool(
-            getattr(value, "st_file_attributes", 0)
-            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-        )
-    )
-
-
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
 
 
 def _write_tombstone(

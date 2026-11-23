@@ -121,6 +121,28 @@ class PluginDeclarationHost:
         )
 
     @classmethod
+    def for_definition_journal(
+        cls,
+        journal: PluginExecutionDecisionJournal,
+        *,
+        clock: Callable[[], int],
+        distribution_evidence_resolver: Callable[
+            [], InstalledPythonDistributionEvidenceResolver
+        ],
+        resume_parent_context: Callable[[], ResumeEffectParentContextV1 | None],
+    ) -> PluginDeclarationHost:
+        """Create a boot-local Definition host around the caller's decision journal."""
+        return cls(
+            execution_evaluator=PluginDefinitionEvaluator(
+                decision_journal=journal,
+                import_realm=PluginImportRealm(),
+                clock=clock,
+                distribution_evidence_resolver=distribution_evidence_resolver(),
+                resume_parent_context=resume_parent_context(),
+            )
+        )
+
+    @classmethod
     def resolve_for_product(
         cls,
         packages: tuple[PublishedPluginPackage, ...],
@@ -142,7 +164,9 @@ class PluginDeclarationHost:
         error_factory: Callable[[str, str], RuntimeError],
         windows_initial_approval_recovery: tuple[
             PluginApprovalAuthorizationV1, frozenset[str]
-        ] | None = None,
+        ]
+        | None = None,
+        include_preflight_notes: bool = True,
     ) -> PluginSelection:
         """Drive one explicit issuer round without granting or consuming authority.
 
@@ -159,17 +183,16 @@ class PluginDeclarationHost:
         if windows_initial_approval_recovery is not None:
             authorization, plugin_ids = windows_initial_approval_recovery
             journal.archive_windows_duplicate_initial_approvals(
-                authorization=authorization, plugin_ids=plugin_ids,
+                authorization=authorization,
+                plugin_ids=plugin_ids,
             )
-        host = cls(
-            execution_evaluator=PluginDefinitionEvaluator(
-                decision_journal=journal,
-                import_realm=PluginImportRealm(),
-                clock=clock,
-                distribution_evidence_resolver=distribution_evidence_resolver(),
-                resume_parent_context=resume_parent_context(),
-            )
+        host = cls.for_definition_journal(
+            journal,
+            clock=clock,
+            distribution_evidence_resolver=distribution_evidence_resolver,
+            resume_parent_context=resume_parent_context,
         )
+
         def approve(subject: PluginExecutionApprovalSubject) -> None:
             decision = approval_owner().approve_definition(
                 journal=journal, subject=subject
@@ -195,10 +218,11 @@ class PluginDeclarationHost:
                 if isinstance(outcome, PluginPreflightDeniedOutcome)
                 else f"{error_code_prefix}_definition_{disposition}",
             )
-            for diagnostic in outcome.diagnostics:
-                error.add_note(
-                    f"Plugin preflight {diagnostic.plugin_id or '<plan>'}: {diagnostic.code}"
-                )
+            if include_preflight_notes:
+                for diagnostic in outcome.diagnostics:
+                    error.add_note(
+                        f"Plugin preflight {diagnostic.plugin_id or '<plan>'}: {diagnostic.code}"
+                    )
             raise error
         return outcome
 

@@ -7,10 +7,30 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
+    PackageWindowsEpochRuntimeLeaseRegistry,
+    PackageWindowsRuntimeQuiescenceV1,
+)
+
 from .product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
 )
+
+
+@contextmanager
+def windows_product_worker_quiescence(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    active_message: str,
+    active_error: type[Exception] = ValueError,
+) -> Iterator[tuple[PackageWindowsEpochRuntimeLeaseRegistry, PackageWindowsRuntimeQuiescenceV1]]:
+    """Pin the existing offline lease view before a caller takes its GC guard."""
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as quiescence:
+        if quiescence.active_runtime_lease_ids:
+            raise active_error(active_message)
+        yield registry, quiescence
 
 
 @dataclass(frozen=True, slots=True)

@@ -10,6 +10,7 @@ from typing import Generic, Literal, TypeVar, cast
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
+    SORTED_UNICODE_JSONL_FORMAT,
     JournalFormatProfile,
     JournalLoadPolicy,
     JournalRecordCodec,
@@ -45,7 +46,6 @@ from ._opt_in import (
     require_opt_in_plugin_id,
 )
 from ._read_v2 import RetainedHistoryReader
-from ._v2_names import PRODUCT_OWNER_INDEX_NAME
 
 _STEM = "worker-opt-in"
 _DecisionT = TypeVar("_DecisionT", bound=_OptInDecisionMethods)
@@ -435,30 +435,17 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
     ]:
         """Use the committed Product base and retained bytes after V2 ownership."""
 
-        try:
-            owner = (
-                self._history_reader.preparation.prepared_type._index_type.from_bytes(
-                    rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
-                )
-            )
-            if owner.scope_id != self._scope_id or owner.store_id != self._store_id:
-                raise self._error_type("coding_worker_opt_in_v2_owner_changed")
-            retained = self._history_reader.read(rooted, stem=_STEM)
-            replay = retained.replay
-            if not isinstance(
-                replay,
-                self._history_reader.preparation.prepared_type._opt_in_type._replay_type,
-            ) or any(
-                item.scope_id != self._scope_id for item in replay.latest_decisions
-            ):
-                raise self._error_type("coding_worker_opt_in_v2_owner_changed")
-            history = self._history_reader.history_from_retained(
+        with self._history_reader.translate_stream_errors(
+            self._error_type,
+            prefix="coding_worker_opt_in_v2",
+        ) as failure:
+            retained, history, replay = self._history_reader.read_owned_stream(
                 rooted,
-                retained,
                 stem=_STEM,
-                manifest_changed=lambda: self._error_type(
-                    "coding_worker_opt_in_v2_manifest_changed"
-                ),
+                scope_id=self._scope_id,
+                store_id=self._store_id,
+                replay_type=self._history_reader.preparation.prepared_type._opt_in_type._replay_type,
+                failure=failure,
             )
             events = tuple(
                 event
@@ -467,18 +454,7 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
                     raw, decision_type=self._decision_type
                 )
             )
-            return (
-                cast(tuple[_DecisionT, ...], events),
-                history,
-                cast(_OptInReplayFields, replay),
-            )
-        except (
-            self._history_reader.error_type,
-            CodingWorkerHistorySegmentError,
-        ) as exc:
-            raise self._error_type(cast(_CodedFailure, exc).code) from exc
-        except (OSError, ValueError) as exc:
-            raise self._error_type("coding_worker_opt_in_v2_corrupt") from exc
+            return cast(tuple[_DecisionT, ...], events), history, replay
 
     def _load_history(
         self, rooted: RootedFile
@@ -544,7 +520,7 @@ class OptInJournal(Generic[_DecisionT, _ProjectionT, _PolicyT]):
 
     @property
     def _record_format(self) -> JournalFormatProfile:
-        raise NotImplementedError("the original format is required")
+        return SORTED_UNICODE_JSONL_FORMAT
 
     def _max_history_bytes(self) -> int:
         return _MAX_SEGMENT_BYTES

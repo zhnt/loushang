@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import datetime
 from functools import partial
 from pathlib import Path
+from threading import Event
 from typing import Self
 
 from loushang.ai.types import UserMessage
@@ -54,10 +54,13 @@ from loushang.coding.resume.binding import (
     CodingRuntimeBindingV1,
     coding_user_input_digest,
     freeze_coding_user_input,
+    inspect_coding_runtime_binding,
     prepare_coding_resume_user_record,
 )
 from loushang.coding.resume.binding_v2 import (
+    CODING_RUNTIME_BINDING_V2_METADATA_KEY,
     CodingRuntimeBindingV2,
+    decode_coding_runtime_binding_v2,
     prepare_coding_resume_v2_user_record,
 )
 from loushang.coding.resume.history import (
@@ -74,7 +77,6 @@ from loushang.harness.conversation import (
     ConversationHeader,
     ConversationRecord,
 )
-from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import (
     SIDE_QUESTION_PROVIDER_SLOT,
     ResolvedRuntimeProfile,
@@ -87,7 +89,6 @@ from loushang.harness.session.composition_evidence import (
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
-    AgentTranscriptLifecycleSession,
     AgentTranscriptRecord,
     AgentTranscriptSessionFactory,
 )
@@ -100,10 +101,6 @@ from loushang.harness.transcript._resume_continuation import (
     _ResumePendingInput,
     _ResumeProjector,
 )
-from loushang.harness.transcript._resume_records import (
-    restore_verified_branch,
-    select_input_record,
-)
 from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_file,
     load_agent_transcript_header,
@@ -111,30 +108,9 @@ from loushang.harness.transcript.jsonl_file import (
 from loushang.harness.transcript.product_session import (
     _ApplicationProductTranscriptSession,
 )
+from loushang.harness.transcript.session_factory import SessionFileFactory
 from loushang.harness.transcript.types import ExtensionData
 
-
-@dataclass(slots=True)
-class _PendingResumeFirstInput:
-    expected_message: UserMessage
-    expected_message_digest: str
-    prepare_binding: Callable[
-        [UserMessage], CodingRuntimeBindingV1 | CodingRuntimeBindingV2
-    ]
-    created_at: datetime
-    original_leaf_id: str | None
-    commit_parent_id: str
-    attempt_id: str
-    attempt: CodingActivationAttemptV1
-    revision: int
-    ancestry_digest: str
-    lock: asyncio.Lock
-    expected_metadata: dict[str, JSONValue] | None = None
-    prepared_record: AgentTranscriptRecord | None = None
-    outcome_unknown: bool = False
-
-
-_RESUME_WRITER_LABEL = "Coding Resume Writer"
 _RESUME_WRITER_CAPABILITIES = frozenset({"coding.resume-continuation/v2"})
 
 
@@ -180,6 +156,17 @@ class _CodingResumeRecords:
     @staticmethod
     def validate_attempt(record: AgentTranscriptRecord) -> CodingActivationAttemptV1:
         return _validate_resume_attempt_record(record)
+
+    @staticmethod
+    def input_binding_identity(
+        metadata: Mapping[str, JSONValue],
+    ) -> tuple[str, str] | None:
+        binding = inspect_coding_runtime_binding(metadata).binding
+        if binding is None and CODING_RUNTIME_BINDING_V2_METADATA_KEY in metadata:
+            binding = decode_coding_runtime_binding_v2(metadata)
+        if binding is None:
+            return None
+        return binding.session_id, binding.input_id
 
     @staticmethod
     def prepare_attempt(
@@ -238,6 +225,8 @@ class _CodingResumeRecords:
 
 
 class _CodingResumeHistory:
+    find_input_records = staticmethod(find_input_records)
+
     @property
     def project(self) -> _ResumeProjector[CodingActivationAttemptV1]:
         return project_coding_activation_attempt_path_v2
@@ -326,9 +315,9 @@ class SessionManager(
     _resume_messages = _CodingResumeMessages()
     _resume_records = _CodingResumeRecords()
     _resume_history = _CodingResumeHistory()
-    _resume_pending_type = _PendingResumeFirstInput
     _resume_recovery_error = CodingResumeRecoveryRequired
     _resume_label = "Coding Resume"
+    _resume_writer_capabilities = _RESUME_WRITER_CAPABILITIES
 
     def _require_ordinary_input_policy(self, message: object) -> None:
         if (
@@ -342,19 +331,6 @@ class SessionManager(
                 "Coding Session composition startup is not prepared; "
                 "prepare the Session before committing input"
             )
-
-    @classmethod
-    def _require_resume_writer_capabilities(
-        cls, required_writer_capabilities: frozenset[str]
-    ) -> None:
-        """Negotiate Transcript wire support without acquiring or reading a source."""
-
-        if type(required_writer_capabilities) is not frozenset or any(
-            type(item) is not str for item in required_writer_capabilities
-        ):
-            raise TypeError("Resume Writer capabilities require exact strings")
-        if not required_writer_capabilities <= _RESUME_WRITER_CAPABILITIES:
-            raise CodingResumeRecoveryRequired("writer.resume_protocol_unsupported")
 
     @classmethod
     async def _load_resume_writer(
@@ -377,34 +353,25 @@ class SessionManager(
         The activation coordinator must still admit owners and publish Runtime.
         """
 
-        cls._require_resume_writer_capabilities(required_writer_capabilities)
-        factory = _factory
-        if factory is None:
-            factory = cls._factory_for_persistence(True)
-        label = _RESUME_WRITER_LABEL
-        if not isinstance(factory, AgentTranscriptSessionFactory):
-            raise TypeError(f"{label} factory is invalid")
-        if not factory.owns_persistent_sessions:
-            raise ValueError(f"{label} requires its application-owned factory")
-        if (
-            not isinstance(plan, SessionActivationPlanV1)
-            or plan.status != "needs_final_validation"
-        ):
-            raise ValueError(f"{label} requires an available activation Plan")
-        require_current_resume_plan_inputs(plan, current_owner_inputs)
-        context = factory._discover_owned_context(session_file)
-        history = await settled_io(
-            read_coding_resume_snapshot,
-            context.session_file,
-            max_bytes=MAX_CODING_RESUME_HISTORY_BYTES,
-            selected_leaf_id=plan.selected_leaf_id,
-            expected_source_fingerprint=plan.source_fingerprint,
-        )
-        require_current_resume_plan_source(plan, history)
-        if (
-            context.header != history.header_preview.header
-            or context.cwd != plan.workspace_root
-            or build_session_activation_plan(
+        return await cls._load_verified_resume_writer(
+            session_file,
+            plan=plan,
+            plan_type=SessionActivationPlanV1,
+            required_writer_capabilities=required_writer_capabilities,
+            factory=_factory,
+            require_plan_inputs=lambda: require_current_resume_plan_inputs(
+                plan, current_owner_inputs
+            ),
+            read_history=lambda path: read_coding_resume_snapshot(
+                path,
+                max_bytes=MAX_CODING_RESUME_HISTORY_BYTES,
+                selected_leaf_id=plan.selected_leaf_id,
+                expected_source_fingerprint=plan.source_fingerprint,
+            ),
+            require_plan_source=lambda history: require_current_resume_plan_source(
+                plan, history
+            ),
+            rebuild_plan=lambda history: build_session_activation_plan(
                 history,
                 resolve_coding_composition_set(
                     plan.composition_comparison.candidate_set_id
@@ -412,33 +379,10 @@ class SessionManager(
                 workspace_root=Path(plan.workspace_root),
                 owner_inputs=plan.owner_inputs,
                 owner_selections=plan.owner_selections,
-            )
-            != plan
-        ):
-            raise ResumePlanStaleError(f"{label} Plan differs from current history")
-        binding = factory._resolve_binding_input(True)
-        # Historical identity must still match. Epoch equality belongs to the new binding.
-        _validate_coding_restored_header(context.header, binding, False)
-        result: list[Self] = []
-
-        def project(
-            session: AgentTranscriptLifecycleSession[RuntimeProfileBinding],
-        ) -> None:
-            manager = cls(lifecycle_session=session)
-            manager._resume_runtime_publication_pending = True
-            restore_verified_branch(
-                manager,
-                records=history.records,
-                selected_leaf_id=history.selected_leaf_id,
-                selected_records=history.selected_records,
-                stale=lambda: ResumePlanStaleError(f"{label} history changed during acquisition"),
-            )
-            manager._resume_writer_plan = plan
-            manager._creation_factory = factory
-            result.append(manager)
-
-        await factory._construct_owned(context, binding, restore=True, _projection=project)
-        return result[0]
+            ),
+            validate_historical_header=_validate_coding_restored_header,
+            stale_error=ResumePlanStaleError,
+        )
 
     def _require_resume_bootstrap_composition(
         self,
@@ -512,37 +456,10 @@ class SessionManager(
 
         if not isinstance(query, CodingResumeInputLookupQueryV1):
             raise TypeError("Coding Resume lookup query is invalid")
-        unknown = CodingResumeInputLookupResultV1(query.input_id, None, "unknown")
-        if not self.persist or len(self._transcript.records) > 65536:
-            return unknown
-        session_id = self.get_header().conversation_id
-        try:
-            candidates = find_input_records(
-                self._transcript.active_path(),
-                current_session_id=session_id,
-                input_id=query.input_id,
-            )
-        except ValueError:
-            return unknown
-        if candidates is None:
-            return unknown
-        pending = self._resume_first_input
-        if (
-            not candidates
-            and isinstance(pending, _PendingResumeFirstInput)
-            and pending.attempt.request_id == query.input_id
-            and pending.prepared_record is not None
-        ):
-            candidates.append(pending.prepared_record)
-        selected = select_input_record(
-            candidates, expected_digest=query.record_digest, digest=coding_resume_input_record_digest
+        observation = await self._lookup_resume_input_observation(
+            input_id=query.input_id, expected_digest=query.record_digest, max_records=65536,
         )
-        if isinstance(selected, str):
-            return CodingResumeInputLookupResultV1(query.input_id, None, selected)
-        observed = await self.lookup_prebuilt_user_message(selected)
-        return CodingResumeInputLookupResultV1(
-            query.input_id, observed.record_id, observed.status
-        )
+        return CodingResumeInputLookupResultV1(query.input_id, *observation)
 
     @classmethod
     def _session_factory(
@@ -641,6 +558,8 @@ def _create_owned_session_factory(
     *,
     store_state_root: Path | None = None,
     enroll_legacy_shared_store: bool = False,
+    store_root_observed: Event | None = None,
+    session_file_factory: SessionFileFactory | None = None,
 ) -> AgentTranscriptSessionFactory[
     ResolvedRuntimeProfile,
     RuntimeProfileBinding,
@@ -650,14 +569,17 @@ def _create_owned_session_factory(
         bind_runtime=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle,
         bind_runtime_owned=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle_owned,
     )
+    if session_file_factory is None:
+        session_file_factory = lifecycle.default_jsonl_session_file
     return AgentTranscriptSessionFactory(
         lifecycle=lifecycle,
         resolve_binding_input=_resolve_coding_binding_input,
         header_metadata=_coding_header_metadata,
         validate_restored_header=_validate_coding_restored_header,
-        session_file_factory=lifecycle.default_jsonl_session_file,
+        session_file_factory=session_file_factory,
         owned_product_id=CODING_PRODUCT_ID,
         store_state_root=store_state_root,
+        store_root_observed=store_root_observed,
         enroll_legacy_shared_store=enroll_legacy_shared_store,
     )
 

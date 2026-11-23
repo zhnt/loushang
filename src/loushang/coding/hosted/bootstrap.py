@@ -22,6 +22,7 @@ from loushang.apphost import (
     AppHostShutdownBudgetV1,
 )
 from loushang.apphost.application import HostedApplicationActivationV1
+from loushang.apphost.catalog import _InstalledAdmissionSource
 from loushang.apphost.continuity import HostedApplicationContinuityActivationV1
 from loushang.appserver.protocol import SessionScopeV1
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
@@ -125,27 +126,6 @@ class CodingHostedLaunchV1:
         }
 
 
-class _InstalledPin:
-    def __init__(self, identity: AdmissionIdentityV1) -> None:
-        self._identity = identity
-
-    @property
-    def identity(self) -> AdmissionIdentityV1:
-        return self._identity
-
-    async def close(self) -> None:
-        # Imported, process-local installed code has no hot replacement path.
-        return None
-
-
-class _InstalledSource:
-    def __init__(self, identity: AdmissionIdentityV1) -> None:
-        self._identity = identity
-
-    async def acquire_pin(self) -> _InstalledPin:
-        return _InstalledPin(self._identity)
-
-
 def create_coding_hosted_attempt(
     launch: CodingHostedLaunchV1,
     *,
@@ -233,14 +213,14 @@ def _coding_foreground_request(
     package_product_runtime_factory_for_session: CodingHostedProductRuntimeFactoryForSession | None = None,
 ) -> CodingForegroundHostedApplicationRequestV1:
     """Shared installed Product composition, independent of application persistence."""
-    admitted_scopes = tuple(HostedSessionDiscoveryScopeV1(
-        "coding", scope.scope, scope.fingerprint,
-    ) for scope in catalog.scopes)
-    from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
+    def current_scopes() -> tuple[HostedSessionDiscoveryScopeV1, ...]:
+        return tuple(
+            HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint)
+            for scope in catalog.scopes
+        )
 
-    def current_scopes():
-        return tuple(HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint)
-                     for scope in catalog.scopes)
+    admitted_scopes = current_scopes()
+    from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
 
     discovery = None if not session_discovery else HostedSessionDiscoveryBindingV1(
         generation, admitted_scopes, catalog,
@@ -266,12 +246,12 @@ def _coding_foreground_request(
         generation_id=generation,
         product_version=product_version,
         compatibility_id=CODING_HOSTED_COMPATIBILITY_ID,
-        product_admission_source=_InstalledSource(
+        product_admission_source=_InstalledAdmissionSource(
             AdmissionIdentityV1(
                 generation, AppHostAdmissionSubjectKind.PRODUCT, "coding"
             )
         ),
-        profile_admission_source=_InstalledSource(
+        profile_admission_source=_InstalledAdmissionSource(
             AdmissionIdentityV1(
                 generation,
                 AppHostAdmissionSubjectKind.PROFILE,

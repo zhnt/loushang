@@ -8,25 +8,15 @@ from typing import Any, Protocol, cast
 
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.routing import LegacyRpcHandler
+from loushang.harness.resources.packages.product_contract import (
+    PACKAGE_REPAIR_ACTIONS_V1,
+    PACKAGE_REPAIR_INSPECTIONS_V1,
+)
 
 _COMMAND = "repair_plugin_package_v1"
 _SAFE_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
-_ACTIONS = frozenset(
-    {
-        "repair-handoff",
-        "inspect-staging",
-        "inspect-published",
-        "repair-staging",
-        "repair-published",
-        "repair-pinned",
-        "repair-retryable",
-        "repair-unstarted",
-        "repair-acquired",
-        "repair-resolving",
-        "repair-verified",
-    }
-)
+_ACTIONS = frozenset(PACKAGE_REPAIR_ACTIONS_V1)
 
 
 class PackageRepairRpcResultPort(Protocol):
@@ -147,7 +137,7 @@ def _safe_result(
         or _SAFE_CODE.fullmatch(result.phase) is None
     ):
         raise ValueError("Package repair result changed identity")
-    if action in {"inspect-staging", "inspect-published"}:
+    if action in PACKAGE_REPAIR_INSPECTIONS_V1:
         if (
             result.phase
             != (

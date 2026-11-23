@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
 
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
+)
+from loushang.harness.plugin_authoring.host import (
+    PluginDeclarationHost,
+    PluginDefinitionApprovalIssuer,
 )
 from loushang.harness.plugin_management.assembly import (
     _ManagedPluginLease,
@@ -22,7 +27,6 @@ from loushang.harness.plugin_management.instance_runtime import (
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
-    PluginInstallationScope,
     PluginInstallationStateV1,
     PluginPackageRevisionRefV1,
 )
@@ -32,15 +36,25 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.plugins import (
     InstalledPlugin,
+    PluginEffectiveConfigurationEntry,
     PluginInspection,
     PluginInstanceRevisionRef,
     PluginResolutionAuthority,
     PluginRuntimeResolution,
+    PluginSelection,
+    PluginSelectionPlanV2,
     PluginSource,
     PluginSourceBinding,
+    PluginSourceTrustSnapshotV1,
     PublishedPluginPackage,
     ResolvedPluginPackage,
     is_remote_plugin_source,
+)
+from loushang.harness.resources.plugins.distribution_evidence import (
+    InstalledPythonDistributionEvidenceResolver,
+)
+from loushang.harness.resources.plugins.selection import (
+    build_product_plugin_selection_plan,
 )
 
 
@@ -48,9 +62,165 @@ class _ContinuitySelectionFailure(Protocol):
     def __call__(self, reason: str, *, retryable: bool = True) -> Exception: ...
 
 
+class _InstalledContinuityLifecycle(_ManagedPluginLifecycle[_ManagedPluginLease], Protocol):
+    @property
+    def instances(self) -> PluginInstanceRuntimeLedger: ...
+    def complete_startup_recovery(self) -> None: ...
+
+
+def resolve_installed_continuity_definitions(
+    runtime: PluginRuntimeResolution,
+    *,
+    instance_refs: tuple[PluginInstanceRevisionRef, ...],
+    product_id: str,
+    scope_id: str,
+    policy_revision: str,
+    allowed_authority_ceiling: tuple[str, ...],
+    source_trust: Callable[
+        [PublishedPluginPackage, PluginSourceBinding], PluginSourceTrustSnapshotV1
+    ],
+    journal_path: Path,
+    clock: Callable[[], int],
+    approval_owner: Callable[[PluginSelectionPlanV2], PluginDefinitionApprovalIssuer],
+    distribution_evidence_resolver: Callable[
+        [], InstalledPythonDistributionEvidenceResolver
+    ],
+    error_code_prefix: str,
+    error_factory: Callable[[str, str], RuntimeError],
+) -> PluginSelection:
+    """Resolve installed Providers using the same Definition host and Product issuer."""
+    bindings = {item.plugin_id: item for item in runtime.bindings}
+    packages = tuple(sorted(runtime.packages, key=lambda item: item.manifest.name))
+    # Package indexes already guarantee contribution order.
+    contributions = tuple(
+        (package, item)
+        for package in packages
+        for item in package.contribution_index.items
+        if item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
+    )
+    plan = build_product_plugin_selection_plan(
+        product_id=product_id,
+        scope_id=scope_id,
+        policy_revision=policy_revision,
+        instance_refs=instance_refs,
+        plugin_ids=tuple(package.manifest.name for package in packages),
+        source_trust=(
+            source_trust(package, bindings[package.manifest.name])
+            for package in packages
+        ),
+        additions=(
+            PluginEffectiveConfigurationEntry(
+                plugin_id=package.manifest.name,
+                contribution_id=item.contribution_id,
+                configuration=item.configuration,
+            )
+            for package, item in contributions
+        ),
+        allowed_authority_ceiling=allowed_authority_ceiling,
+    )
+    return PluginDeclarationHost.resolve_for_product(
+        packages,
+        bindings=tuple(bindings[item.manifest.name] for item in packages),
+        plan=plan,
+        journal_path=journal_path,
+        scope_kind="workspace",
+        scope_id=scope_id,
+        clock=clock,
+        required_writer_capabilities=frozenset(),
+        approval_owner=lambda: approval_owner(plan),
+        distribution_evidence_resolver=distribution_evidence_resolver,
+        resume_parent_context=lambda: None,
+        approval_label="Continuity",
+        error_code_prefix=error_code_prefix,
+        error_factory=error_factory,
+        include_preflight_notes=False,
+    )
+
+
+@contextmanager
+def hold_installed_continuity_runtime(
+    sources: tuple[str, ...],
+    lifecycle: _InstalledContinuityLifecycle,
+    *,
+    materializer: PackageMaterializer,
+    product_id: str,
+    scope_id: str,
+    activation_id_prefix: str,
+    direct_host_reference: str,
+    legacy_disabled_plugin_ids: frozenset[str],
+    reconcile_compatibility: Callable[[], None] | None,
+    supports_secure_staging: Callable[[], bool],
+    lifecycle_error: _ContinuitySelectionFailure,
+    cleanup_note: str,
+) -> Iterator[tuple[PluginRuntimeResolution, tuple[PluginInstanceRevisionRef, ...]]]:
+    """Hold selected revisions through publication and transfer on success."""
+    lifecycle.reconcile_retirements()
+    authority = PluginResolutionAuthority()
+    replayed, inspections = resolve_installed_continuity_sources(
+        sources,
+        authority=authority,
+        materializer=materializer,
+        desired_state=lifecycle.desired,
+        product_id=product_id,
+        scope_id=scope_id,
+        lifecycle_error=lifecycle_error,
+    )
+    try:
+        if reconcile_compatibility is not None:
+            reconcile_compatibility()
+        if not replayed.packages and not inspections:
+            lifecycle.complete_startup_recovery()
+            yield replayed, ()
+            return
+        staging_supported = supports_secure_staging()
+    except BaseException as error:
+        _close_runtime_after_failure(replayed, error, cleanup_note)
+        raise
+    if not staging_supported:
+        replayed.close()
+        raise lifecycle_error("secure_staging_unsupported", retryable=False)
+
+    runtime = publish_continuity_runtime(
+        replayed,
+        inspections=inspections,
+        authority=authority,
+        materializer=materializer,
+        lifecycle_error=lifecycle_error,
+    )
+    try:
+        refs = reconcile_enabled_continuity_instances(
+            runtime,
+            lifecycle,
+            activation_id_prefix=activation_id_prefix,
+            direct_host_reference=direct_host_reference,
+            lifecycle_error=lifecycle_error,
+            legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
+        )
+        if reconcile_compatibility is not None:
+            reconcile_compatibility()
+        runtime = retain_enabled_continuity_runtime(
+            runtime, enabled_plugin_ids=frozenset(item.plugin_id for item in refs)
+        )
+        lifecycle.complete_startup_recovery()
+        yield runtime, refs
+    except BaseException as error:
+        _close_runtime_after_failure(runtime, error, cleanup_note)
+        raise
+
+
+def _close_runtime_after_failure(
+    runtime: PluginRuntimeResolution, error: BaseException, cleanup_note: str
+) -> None:
+    try:
+        runtime.close()
+    except BaseException as cleanup_error:
+        error.add_note(cleanup_note + type(cleanup_error).__name__)
+
+
 def resolve_installed_continuity_sources(
     sources: tuple[str, ...],
     *,
+    authority: PluginResolutionAuthority,
     materializer: PackageMaterializer,
     desired_state: PluginDesiredStateLedger,
     product_id: str,
@@ -59,7 +229,6 @@ def resolve_installed_continuity_sources(
 ) -> tuple[PluginRuntimeResolution, tuple[PluginInspection, ...]]:
     """Resolve seen sources from desired exact revisions; inspect only unseen ones."""
 
-    authority = PluginResolutionAuthority()
     desired_by_source = _desired_installations_by_source(
         desired_state, product_id=product_id, scope_id=scope_id,
         lifecycle_error=lifecycle_error,
@@ -272,29 +441,21 @@ def publish_continuity_runtime(
 
 def reconcile_enabled_continuity_instances(
     runtime: PluginRuntimeResolution,
-    lifecycle: _ManagedPluginLifecycle[_ManagedPluginLease],
+    lifecycle: _InstalledContinuityLifecycle,
     *,
-    desired_state: PluginDesiredStateLedger,
-    instances: PluginInstanceRuntimeLedger,
-    product_id: str,
-    scope_id: str,
-    installation_scope: PluginInstallationScope,
     activation_id_prefix: str,
-    read_direct_host_reference: Callable[[], str],
+    direct_host_reference: str,
     lifecycle_error: _ContinuitySelectionFailure,
     legacy_disabled_plugin_ids: frozenset[str],
 ) -> tuple[PluginInstanceRevisionRef, ...]:
+    desired_state = lifecycle.desired
+    instances = lifecycle.instances
     refs: list[PluginInstanceRevisionRef] = []
     bindings = {item.plugin_id: item for item in runtime.bindings}
     for package in sorted(runtime.packages, key=lambda item: item.manifest.name):
         plugin_id = package.manifest.name
         binding = bindings[plugin_id]
-        key = PluginInstallationKeyV1(
-            product_id=product_id,
-            installation_scope=installation_scope,
-            scope_id=scope_id,
-            plugin_id=plugin_id,
-        )
+        key = lifecycle.installation_key(plugin_id)
         package_revision = PluginPackageRevisionRefV1.from_published_package(
             package, source_identity=binding.source_identity
         )
@@ -347,7 +508,7 @@ def reconcile_enabled_continuity_instances(
                 key,
                 operation_id=activation_id,
                 idempotency_key=activation_id,
-                direct_host_reference=read_direct_host_reference(),
+                direct_host_reference=direct_host_reference,
             )
         if instance.state != "ACTIVE" or instance.instance_revision_ref != ref:
             raise lifecycle_error(

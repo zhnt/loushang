@@ -8,11 +8,12 @@ import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import cast
 
-from loushang.coding.composition.base_plugin import _owner_bindings
 from loushang.coding.composition.base_product import (
     CodingBaseProductCompilation,
     CodingBaseProductSessionAssembly,
+    _bind_coding_external_resource_owners,
 )
 from loushang.coding.composition.base_product import (
     _resource_bodies as _resource_bodies,
@@ -22,18 +23,8 @@ from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionPreparation,
     CodingResumePluginParents,
-)
-from loushang.coding.composition.capability_plugins import (
-    _assembly_request as _assembly_request,
-)
-from loushang.coding.composition.capability_plugins import (
-    _bind_default_approval_request_to_plan as _bind_default_approval_request_to_plan,
-)
-from loushang.coding.composition.capability_plugins import (
-    _finalize_selection as _finalize_selection,
-)
-from loushang.coding.composition.capability_plugins import (
-    _provider_owner_authorities as _provider_owner_authorities,
+    _capability_configuration_entries,
+    _prepare_capability_plugin_plan,
 )
 from loushang.coding.composition.capability_plugins import (
     _read_clock as _read_clock,
@@ -46,6 +37,7 @@ from loushang.coding.composition.capability_plugins import (
 )
 from loushang.coding.composition.capability_specs import (
     CodingCapabilityPluginConfig,
+    CodingCapabilityPluginSpec,
 )
 from loushang.coding.composition.capability_specs import (
     ordered_coding_capability_plugin_specs as ordered_coding_capability_plugin_specs,
@@ -59,9 +51,6 @@ from loushang.coding.package.product_revisions import (
 )
 from loushang.coding.package.product_revisions import (
     open_coding_product_capability_resolution as open_coding_product_capability_resolution,
-)
-from loushang.coding.resources.catalog import (
-    complete_coding_package_plugin_selection_seed as complete_coding_package_plugin_selection_seed,
 )
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
@@ -80,40 +69,26 @@ from loushang.harness.package_product._selected_plugin_revisions import (
 from loushang.harness.package_product._selected_plugin_revisions import (
     selected_runtime_recheck as selected_runtime_recheck,
 )
-from loushang.harness.package_product._selected_plugin_revisions import (
-    validate_preparation_lineage,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
-from loushang.harness.plugin_authoring.contribution_admission import (
-    prepare_owner_contribution_candidate,
-)
 from loushang.harness.resources.packages._private_tree_windows import (
     prepare_private_windows_directory_chain,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
-from loushang.harness.resources.plugins.contribution_types import (
-    PLUGIN_OWNER_CONTRIBUTION_KINDS,
-)
 from loushang.harness.resources.plugins.selection import (
-    PluginContributionRef,
-    PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
-    PluginPreflightContextV1,
     PluginSelection,
-    PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
+from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
-)
-from loushang.harness.session.product_composition_assembly import (
-    prepare_product_plugin_composition as prepare_product_plugin_composition,
+    build_product_plugin_selection_plan,
+    project_product_owner_candidates,
 )
 
 _MAX_FILES = 64
@@ -221,129 +196,20 @@ def prepare_coding_builtin_product_composition(
     """Compile all first-party Product selections before binding host Providers."""
 
     if not isinstance(base_compilation, CodingBaseProductCompilation):
-        raise TypeError('Coding Product base compilation is invalid')
-    if not isinstance(session_id, str) or not session_id.strip():
-        raise ValueError('Coding Product Session id is invalid')
-    if not isinstance(configurations, Mapping) or not configurations:
-        raise ValueError('Coding Product Capability configuration is invalid')
-    specs = ordered_coding_capability_plugin_specs(configurations)
-    if any(
-        (
-            not isinstance(configurations[spec.plugin_id], spec.configuration_type)
-            for spec in specs
-        )
-    ):
-        raise TypeError('Coding Product Capability configuration type is invalid')
-    _read_clock(clock)
-    root = _prepare_product_approval_state_root(state_root)
-    with SelectedProductPreparationScope(
-        product_runtime=product_runtime,
-        open_runtime=lambda: open_coding_product_builtin_resolution(
+        raise TypeError("Coding Product base compilation is invalid")
+    return cast(
+        CodingBuiltinProductCompositionPreparation,
+        _prepare_fenced_capabilities(
             product_runtime,
-            capability_plugin_ids=tuple((spec.plugin_id for spec in specs)),
-            external_data_plugin_ids=external_data_plugin_ids,
-        ),
-        selection_id=lambda package: package.manifest.name,
-        selection_items=lambda runtime: runtime.packages,
-        maximum_files=lambda: _MAX_FILES,
-        maximum_bytes=lambda: _MAX_BYTES,
-        label='Coding Product Capability',
-    ) as (runtime, selected):
-        by_id = {item.manifest.name: item for item in selected}
-        base = by_id['coding.base']
-        if (
-            base != base_compilation.selected_manifest
-            or base_compilation.plan.selected_plugin_ids
-            != ('coding.base',)
-            or base_compilation.plan.context.scope_id != f"session:{session_id.strip()}"
-        ):
-            raise ValueError('Coding Product base selection changed')
-        trust_revisions = {
-            _required_trust(item).source_trust_policy_revision
-            for item in selected
-        }
-        if len(trust_revisions) != 1:
-            raise ValueError('Coding Product trust policy changed')
-        plugin_ids = frozenset(configurations)
-        scope_id = base_compilation.plan.context.scope_id
-        policy_revision = base_compilation.plan.context.policy_revision
-        tool_authority = _tool_owner_authority(plugin_ids)
-        seed = _builtin_plan_seed(
-            runtime,
-            selected,
-            base_compilation=base_compilation,
+            session_id=session_id,
             configurations=configurations,
-            tool_authority=tool_authority,
-        )
-        request = _bind_default_approval_request_to_plan(
-            create_coding_capability_plugin_composition_request(
-                clock=clock,
-                plugin_ids=plugin_ids,
-                product_policy_revision=policy_revision,
-                source_trust_policy_revision=next(iter(trust_revisions)),
-            ),
-            seed,
-        )
-        selection = _finalize_selection(
-            seed,
-            request=request,
-            scope_id=scope_id,
-            state_root=root,
+            state_root=state_root,
             clock=clock,
             resume_parents=resume_parents,
-        )
-        provider_authorities = _provider_owner_authorities(plugin_ids)
-        selected_seed = complete_coding_package_plugin_selection_seed(
-            seed, selection=selection
-        )
-        product = prepare_product_plugin_composition(
-            _assembly_request(
-                selected_seed,
-                provider_authorities=provider_authorities,
-                owner_candidates=_selected_store_owner_candidates(
-                    selection,
-                    base=base,
-                    selected=tuple((by_id[item] for item in external_data_plugin_ids)),
-                ),
-            ),
-            evaluated_at=_read_clock(clock),
-        )
-        recheck_selected_revisions = selected_runtime_recheck(runtime)
-        capability_preparation = CodingCapabilityPluginCompositionPreparation(
-            request=request,
-            runtime=runtime,
-            selection=selection,
-            product=product,
-            provider_owner_authorities=provider_authorities,
-            tool_owner_authority=tool_authority,
-            scope_id=scope_id,
-            state_root=root,
-            selection_recheck=recheck_selected_revisions,
-            resume_parents=resume_parents,
-        )
-        combined_base = replace(
-            base_compilation,
-            plan=selection.plan,
-            product_composition=product.product_composition,
-            owner_bindings=selected_seed.owner_bindings,
-            resource_bodies=_resource_bodies(
-                base,
-                product.product_composition,
-                external_selected=tuple(
-                    (by_id[plugin_id] for plugin_id in external_data_plugin_ids)
-                ),
-            ),
-            selected_capability_manifests=tuple(
-                (by_id[plugin_id] for plugin_id in sorted(plugin_ids))
-            ),
-            selected_external_data_manifests=tuple(
-                (by_id[plugin_id] for plugin_id in external_data_plugin_ids)
-            ),
-        )
-        return CodingBuiltinProductCompositionPreparation(
-            base_compilation=combined_base,
-            capability_preparation=capability_preparation,
-        )
+            base_compilation=base_compilation,
+            external_data_plugin_ids=external_data_plugin_ids,
+        ),
+    )
 
 
 def prepare_coding_product_capability_plugin_composition(
@@ -363,42 +229,114 @@ def prepare_coding_product_capability_plugin_composition(
     requires the normal host-Provider binding and Session graph publication.
     """
 
+    return cast(
+        CodingCapabilityPluginCompositionPreparation,
+        _prepare_fenced_capabilities(
+            product_runtime,
+            session_id=session_id,
+            configurations=configurations,
+            state_root=state_root,
+            clock=clock,
+            resume_parents=resume_parents,
+            product_policy_revision=product_policy_revision,
+        ),
+    )
+
+
+def _prepare_fenced_capabilities(
+    product_runtime: PackageProductRuntimeBindingV1,
+    *,
+    session_id: str,
+    configurations: Mapping[str, CodingCapabilityPluginConfig],
+    state_root: Path,
+    clock: Callable[[], int],
+    resume_parents: CodingResumePluginParents | None,
+    product_policy_revision: str = _PRODUCT_POLICY_REVISION,
+    base_compilation: CodingBaseProductCompilation | None = None,
+    external_data_plugin_ids: tuple[str, ...] = (),
+) -> (
+    CodingCapabilityPluginCompositionPreparation
+    | CodingBuiltinProductCompositionPreparation
+):
     if not isinstance(session_id, str) or not session_id.strip():
-        raise ValueError('Coding Product Capability Session id is invalid')
+        if base_compilation is None:
+            raise ValueError("Coding Product Capability Session id is invalid")
+        raise ValueError("Coding Product Session id is invalid")
     if not isinstance(configurations, Mapping) or not configurations:
-        raise ValueError('Coding Product Capability configuration is invalid')
+        raise ValueError("Coding Product Capability configuration is invalid")
     specs = ordered_coding_capability_plugin_specs(configurations)
     if any(
-        (
-            not isinstance(configurations[spec.plugin_id], spec.configuration_type)
-            for spec in specs
-        )
+        not isinstance(configurations[spec.plugin_id], spec.configuration_type)
+        for spec in specs
     ):
-        raise TypeError('Coding Product Capability configuration type is invalid')
-    if not isinstance(product_policy_revision, str) or not product_policy_revision:
-        raise ValueError('Coding Product Capability policy revision is invalid')
+        raise TypeError("Coding Product Capability configuration type is invalid")
+    if base_compilation is None and (
+        not isinstance(product_policy_revision, str) or not product_policy_revision
+    ):
+        raise ValueError("Coding Product Capability policy revision is invalid")
     _read_clock(clock)
     root = _prepare_product_approval_state_root(state_root)
-    with SelectedProductPreparationScope(
+
+    def open_runtime() -> PluginRuntimeResolution:
+        plugin_ids = tuple(spec.plugin_id for spec in specs)
+        if base_compilation is None:
+            return open_coding_product_capability_resolution(
+                product_runtime, plugin_ids=plugin_ids
+            )
+        return open_coding_product_builtin_resolution(
+            product_runtime,
+            capability_plugin_ids=plugin_ids,
+            external_data_plugin_ids=external_data_plugin_ids,
+        )
+
+    capture: SelectedProductPreparationScope[
+        CodingCapabilityPluginSpec | PublishedPluginPackage
+    ] = SelectedProductPreparationScope(
         product_runtime=product_runtime,
-        open_runtime=lambda: open_coding_product_capability_resolution(
-            product_runtime, plugin_ids=tuple((spec.plugin_id for spec in specs))
+        open_runtime=open_runtime,
+        selection_id=lambda item: (
+            item.plugin_id
+            if isinstance(item, CodingCapabilityPluginSpec)
+            else item.manifest.name
         ),
-        selection_id=lambda spec: spec.plugin_id,
-        selection_items=lambda runtime: specs,
+        selection_items=lambda runtime: (
+            specs if base_compilation is None else runtime.packages
+        ),
         maximum_files=lambda: _MAX_FILES,
         maximum_bytes=lambda: _MAX_BYTES,
-        label='Coding Product Capability',
-    ) as (runtime, selected):
-        trust_revisions = {
-            item.source_trust_snapshot.source_trust_policy_revision
-            for item in selected
-            if item.source_trust_snapshot is not None
-        }
-        if len(trust_revisions) != 1:
-            raise ValueError('Coding Product Capability trust policy changed')
+        label="Coding Product Capability",
+    )
+    with capture as (runtime, selected):
+        base = None
+        if base_compilation is None:
+            trust_revisions = {
+                item.source_trust_snapshot.source_trust_policy_revision
+                for item in selected
+                if item.source_trust_snapshot is not None
+            }
+            if len(trust_revisions) != 1:
+                raise ValueError("Coding Product Capability trust policy changed")
+        else:
+            by_id = {item.manifest.name: item for item in selected}
+            base = by_id["coding.base"]
+            if (
+                base != base_compilation.selected_manifest
+                or base_compilation.plan.selected_plugin_ids != ("coding.base",)
+                or base_compilation.plan.context.scope_id
+                != f"session:{session_id.strip()}"
+            ):
+                raise ValueError("Coding Product base selection changed")
+            trust_revisions = {
+                _required_trust(item).source_trust_policy_revision for item in selected
+            }
+            if len(trust_revisions) != 1:
+                raise ValueError("Coding Product trust policy changed")
         plugin_ids = frozenset(configurations)
-        scope_id = f"session:{session_id.strip()}"
+        if base_compilation is None:
+            scope_id = f"session:{session_id.strip()}"
+        else:
+            scope_id = base_compilation.plan.context.scope_id
+            product_policy_revision = base_compilation.plan.context.policy_revision
         tool_authority = _tool_owner_authority(plugin_ids)
         seed = _product_plan_seed(
             runtime,
@@ -407,54 +345,65 @@ def prepare_coding_product_capability_plugin_composition(
             scope_id=scope_id,
             product_policy_revision=product_policy_revision,
             tool_authority=tool_authority,
+            base_compilation=base_compilation,
         )
-        request = _bind_default_approval_request_to_plan(
-            create_coding_capability_plugin_composition_request(
-                clock=clock,
-                plugin_ids=plugin_ids,
-                product_policy_revision=product_policy_revision,
-                source_trust_policy_revision=next(iter(trust_revisions)),
-            ),
-            seed,
+        request = create_coding_capability_plugin_composition_request(
+            clock=clock,
+            plugin_ids=plugin_ids,
+            product_policy_revision=product_policy_revision,
+            source_trust_policy_revision=next(iter(trust_revisions)),
         )
-        selection = _finalize_selection(
+        external_selected = (
+            tuple(by_id[item] for item in external_data_plugin_ids)
+            if base is not None
+            else ()
+        )
+        def project_store_owners(
+            selection: PluginSelection,
+        ) -> tuple[OwnerContributionCandidateEnvelope, ...] | None:
+            if base is None:
+                return None
+            return project_product_owner_candidates(
+                selection,
+                selected_manifests=(base, *external_selected),
+                selection_changed="Coding Product base owner changed Store selection",
+            )
+
+        capability_preparation = _prepare_capability_plugin_plan(
+            request,
             seed,
-            request=request,
-            scope_id=scope_id,
+            runtime=runtime,
+            plugin_ids=plugin_ids,
+            tool_authority=tool_authority,
             state_root=root,
             clock=clock,
             resume_parents=resume_parents,
+            project_store_owners=project_store_owners,
         )
-        provider_authorities = _provider_owner_authorities(plugin_ids)
-        product = prepare_product_plugin_composition(
-            _assembly_request(
-                complete_coding_package_plugin_selection_seed(
-                    seed, selection=selection
-                ),
-                provider_authorities=provider_authorities,
+        capability_preparation.selection_recheck = selected_runtime_recheck(runtime)
+        if base_compilation is None:
+            return capability_preparation
+        assert base is not None
+        product = capability_preparation.product
+        combined_base = replace(
+            base_compilation,
+            plan=capability_preparation.selection.plan,
+            product_composition=product.product_composition,
+            owner_bindings=product.request.contribution_request.owner_bindings,
+            resource_bodies=_resource_bodies(
+                base,
+                product.product_composition,
+                external_selected=external_selected,
             ),
-            evaluated_at=_read_clock(clock),
+            selected_capability_manifests=tuple(
+                by_id[plugin_id] for plugin_id in sorted(plugin_ids)
+            ),
+            selected_external_data_manifests=external_selected,
         )
-        recheck_selected_revisions = selected_runtime_recheck(runtime)
-        return CodingCapabilityPluginCompositionPreparation(
-            request=request,
-            runtime=runtime,
-            selection=selection,
-            product=product,
-            provider_owner_authorities=provider_authorities,
-            tool_owner_authority=tool_authority,
-            scope_id=scope_id,
-            state_root=root,
-            selection_recheck=recheck_selected_revisions,
-            resume_parents=resume_parents,
+        return CodingBuiltinProductCompositionPreparation(
+            base_compilation=combined_base,
+            capability_preparation=capability_preparation,
         )
-
-
-def _validate_product_lineage(
-    runtime: PluginRuntimeResolution,
-    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
-) -> None:
-    validate_preparation_lineage(runtime, selected, label="Coding Product Capability")
 
 
 def _product_plan_seed(
@@ -465,215 +414,49 @@ def _product_plan_seed(
     scope_id: str,
     product_policy_revision: str,
     tool_authority: OwnerContributionAuthority,
+    base_compilation: CodingBaseProductCompilation | None = None,
 ) -> ProductPluginPlanSeed:
-    by_id = {item.manifest.name: item for item in selected}
     pairs = tuple(
         sorted(
             zip(runtime.packages, runtime.bindings, strict=True),
             key=lambda item: item[0].manifest.name,
         )
     )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id="coding",
-            scope_id=scope_id,
-            policy_revision=product_policy_revision,
-            instance_revision_refs=tuple(
-                by_id[plugin_id].snapshot.instance_revision_ref
-                for plugin_id in sorted(by_id)
-            ),
+    base_plan = None
+    base_owner_bindings: tuple[ProductContributionOwnerBinding, ...] = ()
+    selected_data_ids: set[str] = set()
+    if base_compilation is not None:
+        base_plan = base_compilation.plan
+        selected_data_ids, base_owner_bindings = _builtin_data_owner_bindings(
+            base_compilation, selected
+        )
+    by_id = {item.manifest.name: item for item in selected}
+    plugin_ids = tuple(sorted(by_id))
+    plan = build_product_plugin_selection_plan(
+        product_id="coding" if base_plan is None else base_plan.context.product_id,
+        scope_id=scope_id,
+        policy_revision=product_policy_revision,
+        plugin_ids=plugin_ids,
+        instance_refs=tuple(
+            by_id[plugin_id].snapshot.instance_revision_ref for plugin_id in plugin_ids
         ),
-        selected_plugin_ids=tuple(sorted(by_id)),
-        selected_contributions=tuple(
-            sorted(
-                PluginContributionRef(package.manifest.name, item.contribution_id)
+        source_trust=(_required_trust(by_id[plugin_id]) for plugin_id in plugin_ids),
+        additions=_capability_configuration_entries(
+            (
+                package
                 for package, _ in pairs
-                for item in package.contribution_index.items
-            )
-        ),
-        source_trust_snapshots=tuple(
-            _required_trust(by_id[plugin_id]) for plugin_id in sorted(by_id)
-        ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        PluginEffectiveConfigurationEntry(
-                            plugin_id=package.manifest.name,
-                            contribution_id=item.contribution_id,
-                            configuration=(
-                                configurations[package.manifest.name].to_dict()
-                                if item.kind == "capability_provider"
-                                else {}
-                            ),
-                        )
-                        for package, _ in pairs
-                        for item in package.contribution_index.items
-                    ),
-                    key=lambda item: (item.plugin_id, item.contribution_id),
-                )
+                if base_plan is None
+                or package.manifest.name in configurations
+                or package.manifest.name in selected_data_ids
             ),
+            configurations,
         ),
         allowed_authority_ceiling=("filesystem", "process"),
+        base=base_plan,
     )
-    return ProductPluginPlanSeed(
-        plan=plan,
-        packages=tuple(package for package, _ in pairs),
-        bindings=tuple(binding for _, binding in pairs),
-        owner_bindings=(ProductContributionOwnerBinding(authority=tool_authority),),
-    )
-
-
-def _builtin_plan_seed(
-    runtime: PluginRuntimeResolution,
-    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
-    *,
-    base_compilation: CodingBaseProductCompilation,
-    configurations: Mapping[str, CodingCapabilityPluginConfig],
-    tool_authority: OwnerContributionAuthority,
-) -> ProductPluginPlanSeed:
-    by_id = {item.manifest.name: item for item in selected}
-    pairs = tuple(
-        sorted(
-            zip(runtime.packages, runtime.bindings, strict=True),
-            key=lambda item: item[0].manifest.name,
-        )
-    )
-
-    base_plan = base_compilation.plan
-    selected_data_ids = {
-        item.manifest.name
-        for item in selected
-        if item.source_trust_snapshot is not None
-        and item.source_trust_snapshot.source_trust_class in EXTERNAL_DATA_TRUST_CLASSES
-        and all(
-            permits_external_data_owner(
-                item.source_trust_snapshot.source_trust_class,
-                reservation.owner,
-            )
-            for reservation, _ in item.verified_data_only_declarations()
-        )
-    }
-    external_data_owners = {
-        reservation.owner
-        for item in selected
-        if item.manifest.name in selected_data_ids
-        for reservation, _ in item.verified_data_only_declarations()
-    }
-    missing_data_owners = external_data_owners - {
-        item.owner_key[0] for item in base_compilation.owner_bindings
-    }
-    initial_owner_bindings = (
-        *base_compilation.owner_bindings,
-        *(
-            _owner_bindings(
-                include_tools=False,
-                include_prompt="resources.prompt" in missing_data_owners,
-                include_skill="resources.skill" in missing_data_owners,
-                include_theme="resources.theme" in missing_data_owners,
-                include_command=False,
-            )
-            if missing_data_owners
-            else ()
-        ),
-    )
-    base_owner_bindings = tuple(
-        ProductContributionOwnerBinding(
-            authority=OwnerContributionAuthority(
-                replace(
-                    binding.authority.policy,
-                    allowed_source_trust_classes=tuple(
-                        sorted(
-                            (
-                                {"host-equivalent-local"}
-                                if any(
-                                    item.plugin_id == "coding.base"
-                                    and item.owner_id == binding.owner_key[0]
-                                    for item in base_compilation.product_composition.resource_admissions
-                                )
-                                else set()
-                            )
-                            | {
-                                item.source_trust_snapshot.source_trust_class
-                                for item in selected
-                                if item.manifest.name in selected_data_ids
-                                and item.source_trust_snapshot is not None
-                                and any(
-                                    reservation.owner == binding.owner_key[0]
-                                    for reservation, _ in item.verified_data_only_declarations()
-                                )
-                            }
-                        )
-                    ),
-                )
-            ),
-            admission_ttl_seconds=binding.admission_ttl_seconds,
-        )
-        if binding.owner_key[0] in external_data_owners
-        else binding
-        for binding in initial_owner_bindings
-    )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id=base_plan.context.product_id,
-            scope_id=base_plan.context.scope_id,
-            policy_revision=base_plan.context.policy_revision,
-            instance_revision_refs=tuple(
-                by_id[plugin_id].snapshot.instance_revision_ref
-                for plugin_id in sorted(by_id)
-            ),
-        ),
-        selected_plugin_ids=tuple(sorted(by_id)),
-        selected_contributions=tuple(
-            sorted(
-                (
-                    *base_plan.selected_contributions,
-                    *(
-                        PluginContributionRef(
-                            package.manifest.name, item.contribution_id
-                        )
-                        for package, _ in pairs
-                        if package.manifest.name in configurations
-                        or package.manifest.name in selected_data_ids
-                        for item in package.contribution_index.items
-                    ),
-                )
-            )
-        ),
-        source_trust_snapshots=tuple(
-            _required_trust(by_id[plugin_id]) for plugin_id in sorted(by_id)
-        ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        *base_plan.effective_configuration_set.entries,
-                        *(
-                            PluginEffectiveConfigurationEntry(
-                                plugin_id=package.manifest.name,
-                                contribution_id=item.contribution_id,
-                                configuration=(
-                                    configurations[package.manifest.name].to_dict()
-                                    if item.kind == "capability_provider"
-                                    else {}
-                                ),
-                            )
-                            for package, _ in pairs
-                            if package.manifest.name in configurations
-                            or package.manifest.name in selected_data_ids
-                            for item in package.contribution_index.items
-                        ),
-                    ),
-                    key=lambda item: (item.plugin_id, item.contribution_id),
-                )
-            ),
-        ),
-        allowed_authority_ceiling=("filesystem", "process"),
-    )
-    return ProductPluginPlanSeed(
-        plan=plan,
-        packages=tuple(package for package, _ in pairs),
-        bindings=tuple(binding for _, binding in pairs),
+    return ProductPluginPlanSeed.from_package_bindings(
+        plan,
+        pairs,
         owner_bindings=(
             *base_owner_bindings,
             ProductContributionOwnerBinding(authority=tool_authority),
@@ -681,44 +464,45 @@ def _builtin_plan_seed(
     )
 
 
-def _selected_store_owner_candidates(
-    selection: PluginSelection,
-    *,
-    base: PackageProductSelectedPluginManifestV1,
-    selected: tuple[PackageProductSelectedPluginManifestV1, ...] = (),
-) -> tuple[OwnerContributionCandidateEnvelope, ...]:
-    """Carry B's lock digest without changing Plugin declaration facts."""
-
-    snapshots = {item.manifest.name: item.snapshot for item in (base, *selected)}
-    candidates = tuple(
-        prepare_owner_contribution_candidate(selection, item)
-        for item in selection.candidates
-        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
-    )
-    projected: list[OwnerContributionCandidateEnvelope] = []
-    for candidate in candidates:
-        snapshot = snapshots.get(candidate.plugin_id)
-        if snapshot is None:
-            projected.append(candidate)
+def _builtin_data_owner_bindings(
+    base_compilation: CodingBaseProductCompilation,
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+) -> tuple[set[str], tuple[ProductContributionOwnerBinding, ...]]:
+    selected_data_ids: set[str] = set()
+    external_trust_by_owner: dict[str, set[str]] = {}
+    for item in selected:
+        trust = item.source_trust_snapshot
+        if trust is None or trust.source_trust_class not in EXTERNAL_DATA_TRUST_CLASSES:
             continue
-        if (
-            candidate.product_id != snapshot.installation_key.product_id
-            or candidate.instance_revision_ref != snapshot.instance_revision_ref
-            or candidate.package_content_digest
-            != snapshot.package_revision.package_content_digest
-            or candidate.package_source_identity
-            != snapshot.package_revision.package_source_identity
-        ):
-            raise ValueError("Coding Product base owner changed Store selection")
-        projected.append(
-            replace(
-                candidate,
-                dependency_lock_digest=(
-                    snapshot.package_revision.dependency_lock_digest
-                ),
-            )
+        owners = tuple(
+            reservation.owner
+            for reservation, _ in item.verified_data_only_declarations()
         )
-    return tuple(projected)
+        if not all(
+            permits_external_data_owner(trust.source_trust_class, owner)
+            for owner in owners
+        ):
+            continue
+        selected_data_ids.add(item.manifest.name)
+        for owner in owners:
+            external_trust_by_owner.setdefault(owner, set()).add(
+                trust.source_trust_class
+            )
+
+    for admission in base_compilation.product_composition.resource_admissions:
+        if (
+            admission.plugin_id == "coding.base"
+            and admission.owner_id in external_trust_by_owner
+        ):
+            external_trust_by_owner[admission.owner_id].add("host-equivalent-local")
+    base_owner_bindings = _bind_coding_external_resource_owners(
+        base_compilation.owner_bindings,
+        {
+            owner: tuple(sorted(classes))
+            for owner, classes in external_trust_by_owner.items()
+        },
+    )
+    return selected_data_ids, base_owner_bindings
 
 
 def _required_trust(

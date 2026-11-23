@@ -9,8 +9,8 @@ from pathlib import Path
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
-    bootstrap_reviewed_product_plugins,
-    replay_reviewed_removals,
+    ReviewedPluginChoices,
+    adopt_reviewed_product_plugins,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -33,11 +33,11 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
+    _CODING_BUILTIN_PLUGIN_IDS,
+)
+from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
-
-_BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
-
 
 _REMOVAL_LABEL = "Coding removed local Product"
 
@@ -54,50 +54,40 @@ def adopt_coding_first_b_removed_local(
     """Write the accepted absent choices and bootstrap current builtin choices."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
-    )
-    try:
-        receipt = accept_coding_first_b_removed_local(
+    return adopt_reviewed_product_plugins(
+        open_epoch=lambda: PackageProductPosixFencedRuntimeOwner.open(
+            **epoch.fenced_runtime_open_kwargs()
+        ),
+        accept_review=lambda epoch_runtime: accept_coding_first_b_removed_local(
             lifecycle,
             epoch_runtime,
             settings_manager=settings_manager,
             accepted_review_id=accepted_review_id,
-        )
-    finally:
-        epoch_runtime.close()
-    owner = open_coding_fenced_product_application_owner(
-        lifecycle,
-        workspace=workspace,
-        runtime_version=runtime_version,
-        runtime_protocol_epoch=runtime_protocol_epoch,
+        ),
+        open_application=lambda: open_coding_fenced_product_application_owner(
+            lifecycle,
+            workspace=workspace,
+            runtime_version=runtime_version,
+            runtime_protocol_epoch=runtime_protocol_epoch,
+        ),
+        reviewed_choices=_removed_choices,
+        plugin_ids=_CODING_BUILTIN_PLUGIN_IDS,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+        removal_label=_REMOVAL_LABEL,
+        history_label="Coding builtin-only Product",
     )
-    try:
-        product = owner.runtime_owner.product_owner
-        removed_ids = {
-            *(item.plugin_id for item in receipt.review.removed_local),
-            *receipt.review.removed_builtin_ids,
-        }
-        replay_reviewed_removals(
-            product,
-            sorted(removed_ids),
-            product_id=_CODING_BUILTIN_BOOTSTRAP_POLICY.product_id,
-            operation_id_for=partial(_removed_operation_id, receipt),
-            error_prefix=_REMOVAL_LABEL,
-        )
-        disabled = _reviewed_disabled_ids(receipt.review)
-        bootstrap_reviewed_product_plugins(
-            product,
-            _BUILTINS,
-            disabled_ids=disabled,
-            removed_ids=removed_ids,
-            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-            strict_history=True,
-            history_label="Coding builtin-only Product",
-        )
-        return receipt
-    finally:
-        owner.close()
+
+
+def _removed_choices(receipt: CodingLegacyRemovedAcceptanceV1) -> ReviewedPluginChoices:
+    removed_ids = {
+        *(item.plugin_id for item in receipt.review.removed_local),
+        *receipt.review.removed_builtin_ids,
+    }
+    return ReviewedPluginChoices(
+        disabled_ids=_reviewed_disabled_ids(receipt.review),
+        removed_ids=sorted(removed_ids),
+        operation_id_for=partial(_removed_operation_id, receipt),
+    )
 
 
 def _removed_operation_id(

@@ -42,9 +42,6 @@ from loushang.harness.package_product.product_worker_candidate import (
     _read_product_selected_worker_payload_facts,
     verify_product_selected_worker_candidate,
 )
-from loushang.harness.plugin_management.current_preview import (
-    plugin_package_revision_fingerprint,
-)
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
@@ -103,6 +100,7 @@ from loushang.harness.worker.history._opt_in_store import OptInJournal
 from loushang.harness.worker.history._receipt_store import ReceiptHistory
 from loushang.harness.worker.history._receipts import (
     _ReceiptRecordMethods,
+    is_receipt_fingerprint,
     latest_receipt_record,
 )
 from loushang.harness.worker.history._rooted_supervisor import WorkerHistoryAccess
@@ -135,35 +133,6 @@ MaterialT = TypeVar("MaterialT", bound=ProductWorkerNativeLaunchMaterialFacts)
 MaterialCo = TypeVar(
     "MaterialCo", bound=ProductWorkerNativeLaunchMaterialFacts, covariant=True
 )
-
-
-def _capture_selected_worker_session_file(
-    *,
-    session_manager: _AttachedTranscriptReadPort,
-    transcript_directory: AgentTranscriptDirectoryRuntime,
-    runtime: PackageProductRuntimeBindingV1,
-    product_owner: PosixLocalWheelProductSessionOwner
-    | WindowsLocalWheelProductSessionOwner,
-    invalid_owner: str,
-) -> Path:
-    selected_session_file = session_manager.get_session_file()
-    if (
-        not session_manager.is_persisted()
-        or selected_session_file is None
-        or session_manager.get_header().conversation_id != runtime.session_id
-        or (
-            Path(session_manager.get_cwd()).resolve(strict=True)
-            != product_owner.workspace
-        )
-        or (
-            not (
-                transcript_directory.is_authority_session_file(selected_session_file)
-                or transcript_directory.is_discovery_session_file(selected_session_file)
-            )
-        )
-    ):
-        raise ValueError(invalid_owner)
-    return selected_session_file
 
 
 def _derive_product_selected_worker_policy(
@@ -312,64 +281,6 @@ def _derive_product_selected_worker_policy(
     )
 
 
-def capture_worker_startup_selection(
-    *,
-    runtime: PackageProductRuntimeBindingV1,
-    plugin_id: str,
-    receipt: ProductWorkerActivationReceiptV1,
-    existing_startup: dict[str, object] | None,
-    max_files: int,
-    max_total_bytes: int,
-    failure: Callable[[str], RuntimeError],
-) -> PackageProductSelectedPluginManifestV1:
-    selected_worker = runtime.capture_selected_plugin_manifest_for(
-        plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
-    )
-
-    if (
-        selected_worker.snapshot.root_ref.artifact_digest
-        != receipt.policy.plugin_revision_digest
-    ):
-        raise failure("selection_changed")
-
-    if existing_startup is not None:
-        worker = existing_startup.get("workerSelection")
-        expected_revision = {
-            "pluginId": plugin_id,
-            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
-                selected_worker.snapshot.package_revision
-            ),
-            "instanceRevisionRef": selected_worker.snapshot.instance_revision_ref.to_dict(),
-        }
-        revisions = existing_startup.get("selectedRevisions")
-        if (
-            not isinstance(worker, dict)
-            or not isinstance(revisions, list)
-            or expected_revision not in revisions
-            or (worker.get("pluginId") != receipt.policy.plugin_id)
-            or (
-                worker.get("productPolicyRevision")
-                != receipt.policy.product_policy_revision
-            )
-            or (worker.get("nativeProfileId") != receipt.policy.native_profile_id)
-            or (
-                worker.get("selectedLocatorRevision")
-                != receipt.policy.selected_locator_revision
-            )
-            or (
-                worker.get("selectedLocatorFingerprint")
-                != receipt.policy.selected_locator_fingerprint
-            )
-            or (
-                worker.get("workerConfigurationFingerprint")
-                != receipt.policy.worker_configuration_fingerprint
-            )
-        ):
-            raise failure("startup_selection_changed")
-
-    return selected_worker
-
-
 class ProductNativeClosureReadPort(Protocol):
     @property
     def gc_gate(self) -> PluginPackageGcReservationJournal: ...
@@ -396,10 +307,23 @@ class _ProductWorkerBasePolicyGuard(Protocol):
     def assert_current(self) -> None: ...
 
 
+def _receipt_discovery_matches(
+    reader: ProductSessionDiscoveryReadPort | None,
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    runtime: PackageProductRuntimeBindingV1,
+) -> bool:
+    return reader is None or not (
+        getattr(reader, "gc_gate", None) is not product.gc_gate
+        or getattr(reader, "session_id", None) != runtime.session_id
+        or not callable(getattr(reader, "current_discovery", None))
+    )
+
+
 class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     _product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
     _runtime: PackageProductRuntimeBindingV1
     _selected: PackageProductSelectedPluginManifestV1
+    _session_discovery_reader: ProductSessionDiscoveryReadPort | None
     _opt_in: CurrentOptIn
     _stale_derivation_errors: ClassVar[tuple[type[Exception], ...]]
     _receipt_error: ClassVar[type[RuntimeError]]
@@ -428,6 +352,71 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     _worker_state_store_factory: ClassVar[Callable[..., _ActivationStateStore]]
     _worker_supervisor_factory: ClassVar[Callable[..., WorkerSupervisorJournal]]
     _worker_evidence_type: ClassVar[type[_Evidence]]
+
+    @classmethod
+    def _capture_selected_receipt_inputs(
+        cls,
+        *,
+        session_manager: _AttachedTranscriptReadPort,
+        transcript_directory: AgentTranscriptDirectoryRuntime,
+        runtime: PackageProductRuntimeBindingV1,
+        product_owner: PosixLocalWheelProductSessionOwner
+        | WindowsLocalWheelProductSessionOwner,
+        plugin_id: str,
+    ) -> tuple[PackageProductSelectedPluginManifestV1, Path]:
+        """Capture the attached transcript and manifest under their exact owners."""
+
+        label = cls._receipt_factory_label
+        if not isinstance(plugin_id, str) or not plugin_id or plugin_id != plugin_id.strip():
+            raise ValueError(f"{label} Plugin identity is invalid")
+        posix_owner = isinstance(product_owner, PosixLocalWheelProductSessionOwner)
+        if posix_owner and runtime.session_id is None:
+            raise ValueError(f"{label} Session identity is unavailable")
+        if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
+            raise TypeError(f"{label} requires a Transcript directory owner")
+        if not isinstance(session_manager, cls._receipt_session_type()):
+            raise TypeError(f"{label} requires a {cls._receipt_session_label}")
+        selected_session_file = session_manager.get_session_file()
+        if (
+            not session_manager.is_persisted()
+            or selected_session_file is None
+            or session_manager.get_header().conversation_id != runtime.session_id
+            or (
+                Path(session_manager.get_cwd()).resolve(strict=True)
+                != product_owner.workspace
+            )
+            or (
+                not (
+                    transcript_directory.is_authority_session_file(selected_session_file)
+                    or transcript_directory.is_discovery_session_file(selected_session_file)
+                )
+            )
+        ):
+            raise ValueError(f"{label} selected Session owner changed")
+        if posix_owner:
+            root_reader = cast(
+                PackageProductSelectedRootReader, runtime._selected_root_reader
+            )
+            manifest_reader = runtime._selected_manifest_reader
+            if (
+                not isinstance(root_reader, PackageProductSelectedRootReader)
+                or getattr(manifest_reader, "root_reader", None) is not root_reader
+                or root_reader.desired_state is not product_owner.desired_state
+                or root_reader.bindings is not product_owner.gc_bindings
+                or root_reader.gc_gate is not product_owner.gc_gate
+                or root_reader.product_id != product_owner.policy.product_id
+                or root_reader.scope_id != product_owner.policy.project_scope_id
+            ):
+                raise ValueError(f"{label} Product runtime owners changed")
+        else:
+            windows_owner = cast(WindowsLocalWheelProductSessionOwner, product_owner)
+            windows_owner.assert_session_runtime_current(runtime)
+        selected = runtime.capture_selected_plugin_manifest_for(
+            plugin_id,
+            max_files=cls._receipt_manifest_max_files,
+            max_total_bytes=cls._receipt_manifest_max_bytes,
+        )
+        return selected, selected_session_file
 
     @property
     def product_owner(
@@ -480,7 +469,14 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     def current_selected_manifest(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> PackageProductSelectedPluginManifestV1:
-        raise NotImplementedError("the existing manifest owner is required")
+        """Reread the selected Store manifest under the receipt and GC gate."""
+        with self._product.gc_gate.guard():
+            if (
+                self._provider_native_platform == "windows-amd64"
+                and not isinstance(receipt, ProductWorkerActivationReceiptV1)
+            ) or self.current_witness(receipt) != receipt.authority_witness:
+                raise self._receipt_error(self._error_prefix + "receipt_stale")
+            return self._capture_selected_manifest_under_gc_guard(receipt)
 
     def current_selected_payload(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -604,8 +600,30 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
     ) -> _ReceiptRecordMethods | None:
         raise NotImplementedError
 
+    def _read_derivation_discovery(self) -> SessionDiscoveryMetadata | None:
+        session_discovery = (
+            None
+            if self._session_discovery_reader is None
+            else self._session_discovery_reader.current_discovery()
+        )
+        if self._session_discovery_reader is not None and not isinstance(
+            session_discovery, SessionDiscoveryMetadata
+        ):
+            raise self._receipt_error(self._error_prefix + "session_discovery_invalid")
+        return session_discovery
+
     def _derive(self, opt_in: object) -> ProductWorkerActivationPolicyV1 | None:
         raise NotImplementedError
+
+    def _current_receipt_issuance(
+        self,
+    ) -> tuple[ProductWorkerActivationPolicyV1, _OptInDecisionMethods] | None:
+        """Resolve allowed policy under the caller's existing GC write guard."""
+        decision = self._opt_in.current(self._selected.snapshot.installation_key.plugin_id)
+        if decision is None or decision.action != "allow":
+            return None
+        policy = self._derive(decision.opt_in)
+        return (policy, decision) if policy is not None else None
 
     def current_witness(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -660,17 +678,13 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
                 raise self._receipt_error(self._error_prefix + "receipt_stale")
             return decision.opt_in.owner_id
 
-    def _latch_kill_switch(
-        self,
-        *,
-        expected_generation: int,
-        invalid_generation_message: str,
-        revoke: Callable[[str, str, _OptInDecisionMethods], _OptInDecisionMethods],
-    ) -> int:
+    def latch_kill_switch(self, *, expected_generation: int) -> int:
         """Persist revocation before the coordinator retires future requests."""
 
         if type(expected_generation) is not int or expected_generation < 0:
-            raise ValueError(invalid_generation_message)
+            raise ValueError(
+                f"{self._receipt_factory_label} kill-switch generation is invalid"
+            )
         with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             plugin_id = self._selected.snapshot.installation_key.plugin_id
@@ -699,8 +713,13 @@ class _ProductWorkerReceiptAuthority(Generic[PayloadT]):
                     )
                 ).hexdigest()
             )
-            revoked = revoke(plugin_id, operation_id, decision)
+            revoked = self._revoke_opt_in_for_kill(plugin_id, operation_id, decision)
             return revoked.kill_switch_generation
+
+    def _revoke_opt_in_for_kill(
+        self, plugin_id: str, operation_id: str, decision: _OptInDecisionMethods
+    ) -> _OptInDecisionMethods:
+        raise NotImplementedError
 
     def _capture_selected_manifest_under_gc_guard(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -964,7 +983,6 @@ class _PosixWorkerProductReceiptAuthority(
 
     _product: PosixLocalWheelProductSessionOwner
     _native_closure_reader: ProductNativeClosureReadPort
-    _session_discovery_reader: ProductSessionDiscoveryReadPort | None
     _native_reader_type: type[ProductNativeLaunchReadPort[MaterialT]]
     _native_error: ClassVar[type[Exception]]
     _native_profile_id: ClassVar[str]
@@ -995,17 +1013,8 @@ class _PosixWorkerProductReceiptAuthority(
             or not callable(getattr(native_closure_reader, "current_closure", None))
             or getattr(native_closure_reader, "gc_gate", None)
             is not product_owner.gc_gate
-            or (
-                session_discovery_reader is not None
-                and (
-                    getattr(session_discovery_reader, "gc_gate", None)
-                    is not product_owner.gc_gate
-                    or getattr(session_discovery_reader, "session_id", None)
-                    != runtime.session_id
-                    or not callable(
-                        getattr(session_discovery_reader, "current_discovery", None)
-                    )
-                )
+            or not _receipt_discovery_matches(
+                session_discovery_reader, product_owner, runtime
             )
             or product_owner.policy.product_id != self._product_id
             or runtime.product_id != self._product_id
@@ -1059,53 +1068,12 @@ class _PosixWorkerProductReceiptAuthority(
             raise TypeError(
                 f"{cls._receipt_factory_label} requires an active Product runtime"
             )
-        if (
-            not isinstance(plugin_id, str)
-            or not plugin_id
-            or plugin_id != plugin_id.strip()
-        ):
-            raise ValueError(f"{cls._receipt_factory_label} Plugin identity is invalid")
-        if runtime.session_id is None:
-            raise ValueError(
-                f"{cls._receipt_factory_label} Session identity is unavailable"
-            )
-        if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
-            raise TypeError(
-                f"{cls._receipt_factory_label} requires a Transcript directory owner"
-            )
-        if not isinstance(session_manager, cls._receipt_session_type()):
-            raise TypeError(
-                f"{cls._receipt_factory_label} requires a {cls._receipt_session_label}"
-            )
-        selected_session_file = _capture_selected_worker_session_file(
+        selected, selected_session_file = cls._capture_selected_receipt_inputs(
             session_manager=session_manager,
             transcript_directory=transcript_directory,
             runtime=runtime,
             product_owner=product_owner,
-            invalid_owner=f"{cls._receipt_factory_label} selected Session owner changed",
-        )
-        root_reader = runtime._selected_root_reader
-        manifest_reader = runtime._selected_manifest_reader
-        if not isinstance(root_reader, PackageProductSelectedRootReader):
-            raise ValueError(
-                f"{cls._receipt_factory_label} Product runtime owners changed"
-            )
-        bound_root = cast(PackageProductSelectedRootReader, root_reader)
-        if (
-            getattr(manifest_reader, "root_reader", None) is not bound_root
-            or bound_root.desired_state is not product_owner.desired_state
-            or bound_root.bindings is not product_owner.gc_bindings
-            or bound_root.gc_gate is not product_owner.gc_gate
-            or bound_root.product_id != product_owner.policy.product_id
-            or bound_root.scope_id != product_owner.policy.project_scope_id
-        ):
-            raise ValueError(
-                f"{cls._receipt_factory_label} Product runtime owners changed"
-            )
-        selected = runtime.capture_selected_plugin_manifest_for(
-            plugin_id,
-            max_files=cls._receipt_manifest_max_files,
-            max_total_bytes=cls._receipt_manifest_max_bytes,
+            plugin_id=plugin_id,
         )
         opt_in = cls._receipt_opt_in_journal_type()(
             product_owner.state_root / "worker-opt-in.jsonl",
@@ -1116,7 +1084,7 @@ class _PosixWorkerProductReceiptAuthority(
         discovery = cls._receipt_discovery_type()(
             directory=transcript_directory,
             gc_gate=product_owner.gc_gate,
-            session_id=runtime.session_id,
+            session_id=cast(str, runtime.session_id),
             selected_session_file=selected_session_file,
             attached_session=session_manager if active_session else None,
         )
@@ -1127,6 +1095,20 @@ class _PosixWorkerProductReceiptAuthority(
             opt_in_journal=opt_in,
             native_closure_reader=native_closure_reader,
             session_discovery_reader=discovery,
+        )
+
+    def _revoke_opt_in_for_kill(
+        self, plugin_id: str, operation_id: str, decision: _OptInDecisionMethods
+    ) -> _OptInDecisionMethods:
+        journal = cast(
+            OptInJournal[_OptInDecisionMethods, object, _OptInValue], self._opt_in
+        )
+        return journal.change(
+            plugin_id=plugin_id,
+            operation_id=operation_id,
+            expected_generation=decision.generation,
+            action="revoke",
+            opt_in=None,
         )
 
     def _history_for_product(
@@ -1153,15 +1135,8 @@ class _PosixWorkerProductReceiptAuthority(
 
         with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
-            decision = self._opt_in.current(
-                self._selected.snapshot.installation_key.plugin_id
-            )
-            if decision is None or decision.action != "allow":
-                return None
-            policy = self._derive(decision.opt_in)
-            if policy is None:
-                return None
-            return self._issue_recorded_receipt(policy, decision)
+            issuance = self._current_receipt_issuance()
+            return None if issuance is None else self._issue_recorded_receipt(*issuance)
 
     @contextmanager
     def serialized_admission(self) -> Iterator[None]:
@@ -1302,16 +1277,6 @@ class _PosixWorkerProductReceiptAuthority(
                 decision.opt_in.owner_id,
             )
 
-    def current_selected_manifest(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> PackageProductSelectedPluginManifestV1:
-        """Reread the exact selected manifest under the receipt/GC gate."""
-        with self._product.gc_gate.guard():
-            if self.current_witness(receipt) != receipt.authority_witness:
-                raise self._receipt_error(self._error_prefix + "receipt_stale")
-            selected = self._capture_selected_manifest_under_gc_guard(receipt)
-            return selected
-
     def _derive(self, opt_in: object) -> ProductWorkerActivationPolicyV1 | None:
         if not isinstance(opt_in, self._opt_in_type):
             return None
@@ -1321,15 +1286,7 @@ class _PosixWorkerProductReceiptAuthority(
         native_closure = self._native_closure_reader.current_closure()
         if not isinstance(native_closure, self._native_closure_type):
             raise self._receipt_error(self._error_prefix + "native_closure_invalid")
-        session_discovery = (
-            None
-            if self._session_discovery_reader is None
-            else self._session_discovery_reader.current_discovery()
-        )
-        if self._session_discovery_reader is not None and not isinstance(
-            session_discovery, SessionDiscoveryMetadata
-        ):
-            raise self._receipt_error(self._error_prefix + "session_discovery_invalid")
+        session_discovery = self._read_derivation_discovery()
         return self._derive_domain_policy(
             runtime=self._runtime,
             product_policy=self._product.policy,
@@ -1406,7 +1363,6 @@ class _WindowsWorkerProductReceiptAuthority(
     _product: WindowsLocalWheelProductSessionOwner
     _journal: WindowsReceiptRecords[R]
     _native: ProductNativeClosureReadPort
-    _session_discovery_reader: ProductSessionDiscoveryReadPort | None
 
     _receipt_source_trust_class: str
     _receipt_opt_in_factory: Callable[
@@ -1436,17 +1392,8 @@ class _WindowsWorkerProductReceiptAuthority(
             or runtime.product_runtime_id is None
             or selected.snapshot.installation_key.scope_id
             != product.policy.project_scope_id
-            or (
-                session_discovery_reader is not None
-                and (
-                    getattr(session_discovery_reader, "gc_gate", None)
-                    is not product.gc_gate
-                    or getattr(session_discovery_reader, "session_id", None)
-                    != runtime.session_id
-                    or not callable(
-                        getattr(session_discovery_reader, "current_discovery", None)
-                    )
-                )
+            or not _receipt_discovery_matches(
+                session_discovery_reader, product, runtime
             )
             or not any(
                 binding.source_trust_class == self._receipt_source_trust_class
@@ -1476,6 +1423,8 @@ class _WindowsWorkerProductReceiptAuthority(
         *,
         receipt_fingerprint: str,
     ) -> R | None:
+        if not is_receipt_fingerprint(receipt_fingerprint):
+            raise ValueError(f"{cls._receipt_factory_label} receipt lookup is invalid")
         with product.gc_gate.guard():
             product.assert_root_gc_authority_current()
             journal = cls._receipt_journal_factory(
@@ -1512,32 +1461,12 @@ class _WindowsWorkerProductReceiptAuthority(
             raise TypeError(
                 f"{cls._receipt_factory_label} requires an active Product runtime"
             )
-        if (
-            not isinstance(plugin_id, str)
-            or not plugin_id
-            or plugin_id != plugin_id.strip()
-        ):
-            raise ValueError(f"{cls._receipt_factory_label} Plugin identity is invalid")
-        if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
-            raise TypeError(
-                f"{cls._receipt_factory_label} requires a Transcript directory owner"
-            )
-        if not isinstance(session_manager, cls._receipt_session_type()):
-            raise TypeError(
-                f"{cls._receipt_factory_label} requires a {cls._receipt_session_label}"
-            )
-        selected_session_file = _capture_selected_worker_session_file(
+        selected, selected_session_file = cls._capture_selected_receipt_inputs(
             session_manager=session_manager,
             transcript_directory=transcript_directory,
             runtime=runtime,
             product_owner=product_owner,
-            invalid_owner=f"{cls._receipt_factory_label} selected Session owner changed",
-        )
-        product_owner.assert_session_runtime_current(runtime)
-        selected = runtime.capture_selected_plugin_manifest_for(
-            plugin_id,
-            max_files=cls._receipt_manifest_max_files,
-            max_total_bytes=cls._receipt_manifest_max_bytes,
+            plugin_id=plugin_id,
         )
         discovery = cls._receipt_discovery_type()(
             directory=transcript_directory,
@@ -1551,6 +1480,19 @@ class _WindowsWorkerProductReceiptAuthority(
             runtime=runtime,
             selected=selected,
             session_discovery_reader=discovery,
+        )
+
+    def _revoke_opt_in_for_kill(
+        self, plugin_id: str, operation_id: str, decision: _OptInDecisionMethods
+    ) -> _OptInDecisionMethods:
+        opt_in = cast(
+            _WindowsWorkerProductOptInAuthority[_OptInDecisionMethods, _OptInValue],
+            self._opt_in,
+        )
+        return opt_in.revoke(
+            plugin_id=plugin_id,
+            operation_id=operation_id,
+            expected_generation=decision.generation,
         )
 
     def _read_backend(
@@ -1572,14 +1514,10 @@ class _WindowsWorkerProductReceiptAuthority(
         with self._product.gc_gate.guard(require_write=True):
             self._product.assert_session_runtime_current(self._runtime)
             self._runtime.assert_selected_plugin_manifest_current(self._selected)
-            decision = self._opt_in.current(
-                self._selected.snapshot.installation_key.plugin_id
-            )
-            if decision is None or decision.action != "allow":
+            issuance = self._current_receipt_issuance()
+            if issuance is None:
                 return None
-            policy = self._derive(decision.opt_in)
-            if policy is None:
-                return None
+            policy, decision = issuance
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
             ):
@@ -1627,19 +1565,6 @@ class _WindowsWorkerProductReceiptAuthority(
             ):
                 raise self._receipt_error(self._error_prefix + "receipt_stale")
             return material.expectation
-
-    def current_selected_manifest(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> PackageProductSelectedPluginManifestV1:
-        """Reread exactly the selected Store revision under Product custody."""
-
-        with self._product.gc_gate.guard():
-            if (
-                not isinstance(receipt, ProductWorkerActivationReceiptV1)
-                or self.current_witness(receipt) != receipt.authority_witness
-            ):
-                raise self._receipt_error(self._error_prefix + "receipt_stale")
-            return self._capture_selected_manifest_under_gc_guard(receipt)
 
     def _payload_from_selected(
         self,
@@ -1763,15 +1688,7 @@ class _WindowsWorkerProductReceiptAuthority(
         session_id = self._runtime.session_id
         runtime_id = self._runtime.product_runtime_id
         assert session_id is not None and runtime_id is not None
-        session_discovery = (
-            None
-            if self._session_discovery_reader is None
-            else self._session_discovery_reader.current_discovery()
-        )
-        if self._session_discovery_reader is not None and not isinstance(
-            session_discovery, SessionDiscoveryMetadata
-        ):
-            raise self._receipt_error(self._error_prefix + "session_discovery_invalid")
+        session_discovery = self._read_derivation_discovery()
         return self._derive_domain_policy(
             runtime=self._runtime,
             product_policy=self._product.policy,
@@ -1798,6 +1715,23 @@ class _ProductWorkerOptInPlanning(Generic[P]):
     _opt_in_error: ClassVar[type[RuntimeError]]
     _error_prefix: ClassVar[str]
     _opt_in_type: ClassVar[type[_OptInValue]]
+    _product_id: ClassVar[str]
+    _selection_error_prefix: ClassVar[str]
+    _product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
+
+    def _current_native_closure(self) -> ProductWorkerNativeClosureFacts:
+        raise NotImplementedError("the installed native owner is required")
+
+    def _capture_allowed_candidate(
+        self, plugin_id: str,
+    ) -> tuple[PackageProductLocalWheelBindingV1, PackageProductLocalWorkerAdmissionV1]:
+        binding, admission = _capture_worker_opt_in_selection(
+            self._product, plugin_id, product_id=self._product_id,
+            error_type=self._opt_in_error, error_prefix=self._selection_error_prefix,
+        )
+        if self._current_native_closure().native_platform != admission.native_platform:
+            raise self._opt_in_error(self._error_prefix + "opt_in_native_platform_changed")
+        return binding, admission
 
     def _plan_allow(
         self,
@@ -1852,12 +1786,7 @@ class _PosixWorkerProductOptInAuthority(
 ):
     _product: PosixLocalWheelProductSessionOwner
     _journal: OptInJournal[D, OptInProjectionT, P]
-    _product_id: ClassVar[str]
     _requiredness_error: ClassVar[str]
-    _selection_error_prefix: ClassVar[str]
-
-    def _current_native_closure(self) -> ProductWorkerNativeClosureFacts:
-        raise NotImplementedError("the installed native owner is required")
 
     def current(self, plugin_id: str) -> D | None:
         return self._journal.current(plugin_id)
@@ -1874,18 +1803,7 @@ class _PosixWorkerProductOptInAuthority(
         if type(require_worker) is not bool:
             raise TypeError(self._requiredness_error)
         with self._product.gc_gate.guard(require_write=True):
-            binding, admission = _capture_worker_opt_in_selection(
-                self._product,
-                plugin_id,
-                product_id=self._product_id,
-                error_type=self._opt_in_error,
-                error_prefix=self._selection_error_prefix,
-            )
-            closure = self._current_native_closure()
-            if closure.native_platform != admission.native_platform:
-                raise self._opt_in_error(
-                    self._error_prefix + "opt_in_native_platform_changed"
-                )
+            binding, admission = self._capture_allowed_candidate(plugin_id)
             previous = self._journal.current(plugin_id)
             opt_in = self._plan_allow(
                 previous,
@@ -1926,14 +1844,15 @@ class _WindowsWorkerProductOptInAuthority(
     _journal: WindowsOptInRecords[D, P]
     _opt_in_error: ClassVar[type[RuntimeError]]
     _error_prefix: ClassVar[str]
-    _product_id: ClassVar[str]
     _requiredness_error: ClassVar[str]
-    _selection_error_prefix: ClassVar[str]
 
     def _read_backend(
         self, product: WindowsLocalWheelProductSessionOwner
     ) -> _WindowsBackendInstalledMethods:
         raise NotImplementedError
+
+    def _current_native_closure(self) -> ProductWorkerNativeClosureFacts:
+        return self._read_backend(self._product).native_closure()
 
     def current(self, plugin_id: str) -> D | None:
         with WindowsProductWorkerHistoryAccess(self._product).decision_root() as root:
@@ -1952,18 +1871,7 @@ class _WindowsWorkerProductOptInAuthority(
         if type(require_worker) is not bool:
             raise TypeError(self._requiredness_error)
         with self._product.gc_gate.guard(require_write=True):
-            binding, admission = _capture_worker_opt_in_selection(
-                self._product,
-                plugin_id,
-                product_id=self._product_id,
-                error_type=self._opt_in_error,
-                error_prefix=self._selection_error_prefix,
-            )
-            closure = self._read_backend(self._product).native_closure()
-            if closure.native_platform != admission.native_platform:
-                raise self._opt_in_error(
-                    self._error_prefix + "opt_in_native_platform_changed"
-                )
+            binding, admission = self._capture_allowed_candidate(plugin_id)
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
             ):

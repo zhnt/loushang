@@ -44,6 +44,7 @@ from loushang.harness.worker.product_activation import ProductWorkerActivationRe
 from .product_worker_capability import CodingProductWorkerCapabilityAuthority
 from .product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding,
+    coding_worker_query_capability_provider,
     prepare_coding_selected_worker_provider_candidate,
 )
 from .product_worker_provider_host import (
@@ -103,6 +104,43 @@ _PREPARE_WORKER_SESSION_INPUTS = partial(
     error_prefix="coding_worker",
     invalid_inputs_message="Coding Worker Session composition inputs are invalid",
 )
+
+
+def _resolve_selected_worker_query(
+    *,
+    owner: CapabilityProviderOwnerAuthority,
+    receipt_owner: CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner,
+    receipt: ProductWorkerActivationReceiptV1,
+    plugin_id: str,
+    clock: Callable[[], int],
+    eligibility_duration: int,
+    admission_duration: int,
+    base_policy_binding: CodingWorkerBaseCompositionPolicyBinding | None = None,
+) -> tuple[ResolvedCapabilityProviderSet, int]:
+    """Read the exact selected query candidate before starting its admission clock."""
+    provider = coding_worker_query_capability_provider(plugin_id)
+    candidate = prepare_coding_selected_worker_provider_candidate(
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+        definition=CODING_WORKER_QUERY_DEFINITION,
+        provider=provider,
+        base_policy_binding=base_policy_binding,
+    )
+    evaluated_at = clock()
+    resolved = _WORKER_SESSION_COMPOSITION.select_provider(
+        owner=owner,
+        candidate=candidate,
+        definition=CODING_WORKER_QUERY_DEFINITION,
+        provider_id=lambda: provider.provider_id,
+        policy_revision=lambda: (
+            receipt.policy.product_policy_revision
+            if base_policy_binding is None else base_policy_binding.policy_revision
+        ),
+        evaluated_at=evaluated_at,
+        eligibility_duration=eligibility_duration,
+        admission_duration=admission_duration,
+    )
+    return resolved, evaluated_at
 
 
 def prepare_coding_product_worker_session_inputs(

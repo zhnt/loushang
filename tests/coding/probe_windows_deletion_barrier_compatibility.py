@@ -14,6 +14,9 @@ from loushang.coding.package.private_data_backup_expiry_records import (
 from loushang.coding.package.private_data_restore_records import (
     CodingArchPrivateDataRestorePlanV1,
 )
+from loushang.harness.plugin_management.private_data_deletion import (
+    latest_deleted_target_receipt,
+)
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 CASES = (
@@ -79,7 +82,11 @@ def observe(case, patch):
     restore_plan = CodingArchPrivateDataRestorePlanV1(
         key, backup, deleted_id, "present:source", 7, "absent"
     )
-    latest = journal._latest_deletion_receipt(events, restore_plan)
+    if hasattr(journal, "_latest_deletion_receipt"):
+        latest = journal._latest_deletion_receipt(events, restore_plan)
+    else:
+        receipt = latest_deleted_target_receipt(events, key, restore_plan.source_target_id)
+        latest = None if receipt is None else receipt.receipt_id
     plan = CodingArchPrivateDataBackupExpiryPlanV1(
         key,
         backup,
@@ -115,6 +122,7 @@ def observe(case, patch):
 
     class Restore:
         state_fd = 20
+        _plan_type = CodingArchPrivateDataRestorePlanV1
 
         def _require_active(self):
             trace.append("restore:active")
@@ -185,6 +193,7 @@ def observe(case, patch):
             "loushang.harness.plugin_management._private_data_restore_windows"
         )
         if hasattr(code, "require_windows_expiry_restored_target")
+        or hasattr(code, "require_windows_expiry_recovery_authority")
         else code
     )
     patch.setattr(

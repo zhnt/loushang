@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from loushang.harness.resources.builtin import BuiltInResourcePackage
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
+from loushang.harness.resources.plugins.selection import PluginSelection
 
 
 def bind_product_catalog_receipt(
@@ -40,18 +42,54 @@ def bind_product_catalog_receipt(
     *,
     product_id: str,
     product_label: str,
+    product_scope_id: str | None,
     default_policy_revision: str,
     product_composition: ProductCompositionCompilation | None,
     product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None,
-    resolved_admission_now: int,
-    clock: Callable[[], int],
+    product_selection: PluginSelection | None,
+    package_admission_now: int | None,
+    clock: Callable[[], int] | None,
     include_native_resources: bool,
     include_package_resources: bool,
     include_embedded_resources: bool,
     disabled_skills: Sequence[str],
     reject: Callable[[Sequence[str]], Exception],
+    compile_package: Callable[
+        [ResourceCatalogInputReceipt, str | None, int, PluginSelection | None],
+        ProductCompositionCompilation | None,
+    ],
 ) -> InitialResourceCatalogProductAdapter:
-    """Join one Product's adopted admissions to the existing loader receipt."""
+    """Admit source inputs, compile eligible Packages and bind the loader receipt."""
+    label = f"{product_label} Resource Catalog"
+    if product_scope_id is not None and (
+        not isinstance(product_scope_id, str) or not product_scope_id.strip()
+    ):
+        raise ValueError(f"{label} Product scope is invalid")
+    resolved_clock = clock or (lambda: int(time.time()))
+    if not callable(resolved_clock):
+        raise TypeError(f"{label} clock is invalid")
+    resolved_admission_now = (
+        resolved_clock() if package_admission_now is None else package_admission_now
+    )
+    if product_composition is not None and not isinstance(
+        product_composition, ProductCompositionCompilation,
+    ):
+        raise TypeError(f"{label} Product composition is invalid")
+    if product_selection is not None and not isinstance(product_selection, PluginSelection):
+        raise TypeError(f"{label} Product selection is invalid")
+    if product_composition is not None and product_selection is not None:
+        raise ValueError(f"{label} cannot receive both a composition and selection")
+    if product_snapshot_resources is not None and product_selection is not None:
+        raise ValueError(f"{label} cannot mix Product snapshot and legacy selection")
+    if product_snapshot_resources is not None and product_composition is None:
+        raise ValueError(f"{label} Product snapshot requires a composition")
+    if product_selection is not None and not include_package_resources:
+        raise ValueError(f"{label} source policy excludes Product package selection")
+    if product_composition is None and include_package_resources:
+        product_composition = compile_package(
+            receipt, product_scope_id, resolved_admission_now, product_selection
+        )
+
     admissions = (
         tuple(product_composition.resource_admissions)
         if product_composition is not None
@@ -90,7 +128,7 @@ def bind_product_catalog_receipt(
             disabled_skills=disabled_skills,
             reject=reject,
         ),
-        clock=clock,
+        clock=resolved_clock,
     )
 
 

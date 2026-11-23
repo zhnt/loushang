@@ -105,6 +105,28 @@ def test_a0_3_registry_owns_single_flight_and_dependency_ordered_close() -> None
 def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
     hosted_imports = _imports(HOSTED)
     assert "loushang.appserver.ports" in hosted_imports
+    # AppHost's optional Session integrations use only these protocol values.
+    integration_protocol_values = {
+        APPHOST / "integrations/_canonical_transcript_catalog.py": {
+            "AppErrorCodeV1",
+            "AppServiceError",
+            "SessionAvailabilityV1",
+            "SessionCompatibilityV1",
+            "SessionDiscoveryCandidateV1",
+            "SessionIdentityV1",
+            "SessionOpenSpecV1",
+            "SessionScopeV1",
+        },
+        APPHOST / "integrations/_session_projection.py": {
+            "SessionEventKindV1",
+            "TranscriptRecordKindV1",
+            "TranscriptRecordV1",
+        },
+        APPHOST / "integrations/session_product.py": {
+            "SessionIdentityV1",
+            "SessionOpenSpecV1",
+        },
+    }
     appserver_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -172,22 +194,16 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == APPHOST / "managed/mux_probe.py"
             or consumer.is_relative_to(Path("src/loushang/appservice"))
             or consumer.is_relative_to(Path("src/loushang/harnesstui/mux"))
-            # A80 executes on the same Product catalog in the optional integration.
             or (
-                consumer == APPHOST / "integrations/_canonical_transcript_catalog.py"
+                consumer in integration_protocol_values
                 and {
                     name for name in _imports(consumer)
                     if name == "loushang.appserver"
                     or name.startswith("loushang.appserver.")
                 } <= {
                     "loushang.appserver.protocol",
-                    "loushang.appserver.protocol.AppErrorCodeV1",
-                    "loushang.appserver.protocol.AppServiceError",
-                    "loushang.appserver.protocol.SessionAvailabilityV1",
-                    "loushang.appserver.protocol.SessionCompatibilityV1",
-                    "loushang.appserver.protocol.SessionDiscoveryCandidateV1",
-                    "loushang.appserver.protocol.SessionIdentityV1",
-                    "loushang.appserver.protocol.SessionScopeV1",
+                    *(f"loushang.appserver.protocol.{name}"
+                      for name in integration_protocol_values[consumer]),
                 }
             )
         ), consumer

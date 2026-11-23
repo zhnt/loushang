@@ -35,6 +35,7 @@ from loushang.harness.resources.plugins.declarations import (
     PluginLocalWorkerConfiguration,
 )
 from loushang.harness.session._worker_provider import (
+    PendingWorkerSessionPolicy,
     _abort_worker_provider,
     _BasePolicyGuard,
     _commit_worker_provider,
@@ -217,7 +218,17 @@ async def _scenario(tmp_path: Path, case: str) -> None:
             raise RuntimeError("controlled cleanup failure")
         await supervisor.fence(code="test-handoff-release")
 
-    async def native():
+    preflight = []
+    resume_context = object()
+    resume_settlement = object()
+
+    async def native(**inputs):
+        assert preflight == ["policy", "recovery"]
+        assert inputs["launch_source"] is inputs["activation"] is receipt_owner
+        assert inputs["pending_launch"] is pending_launch
+        assert inputs["receipt"] is receipt
+        assert inputs["resume_parent_context"] is resume_context
+        assert inputs["resume_settlement"] is resume_settlement
         native_tasks.append(asyncio.current_task())
         return _NativeWorkerAttempt(
             request=request,
@@ -226,42 +237,63 @@ async def _scenario(tmp_path: Path, case: str) -> None:
             commit_activation=lambda: events.append("commit"),
         )
 
-    def bind_authority(value):
-        assert value is request
+    def bind_authority(**inputs):
+        assert inputs["request"] is request
+        assert inputs["receipt_owner"] is receipt_owner
+        assert inputs["provider_owner"] is owner
+        assert inputs["binding"] is domain_binding
         return authority
 
     def capture(**values):
         assert values["resolved"] is resolved.entries[0]
+        assert values["receipt_owner"] is receipt_owner
         assert values["capability_authority"] is authority
         assert values["release_attempt"] is release
         return candidate, domain_binding
 
-    policy = SimpleNamespace(
-        capability_id=definition.capability_id,
-        facet_id="hover",
-        bind_authority=bind_authority,
-        capture=capture,
-        read_candidate=lambda value: candidate,
-    )
+    class Prepared(_Prepared):
+        _provider_read_inputs = staticmethod(capture)
+        _provider_read_candidate = staticmethod(lambda **values: candidate)
 
     def clock():
         if case == "clock_error":
             raise StopIteration("controlled clock exhaustion")
         return 150
 
+    receipt_owner = object()
+    pending_launch = SimpleNamespace(identity=request.identity)
     task = asyncio.create_task(
-        _Prepared._prepare_native(
-            prepare_native=native,
-            policy=policy,
-            receipt=receipt,
-            resolved_providers=resolved,
-            expected_admission=expected,
-            graph_generation=1,
-            clock=clock,
-            base_policy_binding=None,
-            renewing_provider_owner=owner,
-            pending_failure=RuntimeError,
-            cleanup_note="cleanup failed: ",
+        Prepared._prepare_pending(
+            SimpleNamespace(
+                receipt_owner=receipt_owner,
+                receipt=receipt,
+                pending_launch=pending_launch,
+                expected_admission=expected,
+                resolved_providers=resolved,
+                provider_owner=owner,
+                binding=domain_binding,
+                base_policy_binding=SimpleNamespace(
+                    assert_current=lambda: preflight.append("policy")
+                ),
+                clock=clock,
+                resume_parent_context=resume_context,
+                resume_settlement=resume_settlement,
+            ),
+            1,
+            native_prepare=native,
+            bind_authority=bind_authority,
+            capability_id=definition.capability_id,
+            facet_id="hover",
+            parent_failure=RuntimeError,
+            require_recovered=lambda: preflight.append("recovery"),
+            policy=PendingWorkerSessionPolicy(
+                invalid_generation="invalid test generation",
+                error_type=RuntimeError,
+                error_prefix="handoff",
+                task_name_prefix="test-handoff-release-",
+                correlation_id="test-handoff",
+                cleanup_note="cleanup failed: ",
+            ),
         )
     )
     try:
@@ -377,7 +409,10 @@ def test_native_failure_before_handoff_closes_original_stack_once(
                     cleanup_note="cleanup failed: ",
                     correlation_id="test-before-handoff",
                 ),
-                policy=SimpleNamespace(),
+                bind_authority=lambda **_: pytest.fail("native attempt did not open"),
+                capability_id="coding.lsp.hover",
+                facet_id="hover",
+                receipt_owner=object(),
                 receipt=_receipt(),
                 resolved_providers=SimpleNamespace(entries=()),
                 expected_admission=None,

@@ -23,10 +23,14 @@ from loushang.harness.plugin_management._private_data_backup_windows import (
     WindowsArchiveExpiryIO,
 )
 from loushang.harness.plugin_management._private_data_expiry import (
+    expiry_event_schema,
     validate_expiry_event,
 )
 from loushang.harness.plugin_management._private_data_expiry_windows import (
     WindowsPrivateExpiryTransaction,
+)
+from loushang.harness.plugin_management._private_data_records import (
+    PrivateDataRecordWire,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_receipts_windows import (
@@ -72,7 +76,7 @@ _MAX_EVENT_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsArchBackupExpiryEventV1:
+class CodingWindowsArchBackupExpiryEventV1(PrivateDataRecordWire):
     revision: int
     phase: Literal["confirmed", "started", "renamed", "completed"]
     plan: CodingArchPrivateDataBackupExpiryPlanV1
@@ -93,50 +97,17 @@ class CodingWindowsArchBackupExpiryEventV1:
             unfinished_receipt_error="Unfinished Windows Coding Arch backup expiry has receipt",
         )
 
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "archive": None if self.archive is None else self.archive.to_dict(),
-            "confirmation": self.confirmation.to_dict(),
-            "phase": self.phase,
-            "plan": self.plan.to_dict(),
-            "receipt": None if self.receipt is None else self.receipt.to_dict(),
-            "recordVersion": self.record_version,
-            "revision": self.revision,
-        }
+    _invalid_fields = "Windows Coding Arch backup expiry event fields changed"
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingWindowsArchBackupExpiryEventV1:
-        if type(value) is not dict or set(value) != {
-            "archive",
-            "confirmation",
-            "phase",
-            "plan",
-            "receipt",
-            "recordVersion",
-            "revision",
-        }:
-            raise ValueError("Windows Coding Arch backup expiry event fields changed")
-        archive = value["archive"]
-        receipt = value["receipt"]
-        return cls(
-            revision=value["revision"],
-            phase=value["phase"],
-            plan=CodingArchPrivateDataBackupExpiryPlanV1.from_dict(value["plan"]),
-            confirmation=CodingArchPrivateDataBackupExpiryConfirmationV1.from_dict(
-                value["confirmation"]
-            ),
-            archive=(
-                None
-                if archive is None
-                else CodingWindowsArchBackupArchiveSnapshotV1.from_dict(archive)
-            ),
-            receipt=(
-                None
-                if receipt is None
-                else CodingArchPrivateDataBackupExpiryReceiptV1.from_dict(receipt)
-            ),
-            record_version=value["recordVersion"],
-        )
+
+_SCHEMA_BACKUP_EXPIRY_EVENT_V1 = expiry_event_schema(
+    CodingWindowsArchBackupExpiryEventV1,
+    plan=CodingArchPrivateDataBackupExpiryPlanV1,
+    confirmation=CodingArchPrivateDataBackupExpiryConfirmationV1,
+    archive=CodingWindowsArchBackupArchiveSnapshotV1,
+    receipt=CodingArchPrivateDataBackupExpiryReceiptV1,
+)
+CodingWindowsArchBackupExpiryEventV1._wire_schema = _SCHEMA_BACKUP_EXPIRY_EVENT_V1
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,40 +140,6 @@ class CodingWindowsArchBackupExpiryTransaction(
     layout: CodingPluginLifecycleStateLayout
     product: WindowsLocalWheelProductSessionOwner
     restore: CodingWindowsArchPrivateDataRestoreTransaction
-
-    def confirm(
-        self,
-        plan: CodingArchPrivateDataBackupExpiryPlanV1,
-        *,
-        actor_id: str,
-        policy_revision: str,
-    ) -> CodingArchPrivateDataBackupExpiryConfirmationV1:
-        if not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1):
-            raise ValueError("Windows Coding Arch backup expiry plan is invalid")
-        self._require_current_plan(plan)
-        return self._confirm_current(
-            plan, actor_id=actor_id, policy_revision=policy_revision
-        )
-
-    def begin(
-        self,
-        plan: CodingArchPrivateDataBackupExpiryPlanV1,
-        confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
-        archive: CodingWindowsArchBackupArchiveSnapshotV1,
-    ) -> CodingWindowsArchBackupExpiryEventV1:
-        if (
-            not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1)
-            or not isinstance(
-                confirmation, CodingArchPrivateDataBackupExpiryConfirmationV1
-            )
-            or confirmation.plan_fingerprint != plan.fingerprint
-            or not isinstance(archive, CodingWindowsArchBackupArchiveSnapshotV1)
-            or archive.root_identity != plan.archive_root_identity
-            or archive.target_id != plan.archive_target_id
-        ):
-            raise ValueError("Windows Coding Arch backup expiry start is invalid")
-        self._require_current_plan(plan)
-        return self._begin_current(plan, confirmation, archive)
 
     def advance(
         self,
@@ -254,6 +191,9 @@ class CodingWindowsArchBackupExpiryTransaction(
             self.layout, self.product, self.restore, plan
         )
 
+    _plan_type = CodingArchPrivateDataBackupExpiryPlanV1
+    _confirmation_type = CodingArchPrivateDataBackupExpiryConfirmationV1
+    _archive_type = CodingWindowsArchBackupArchiveSnapshotV1
     _event_factory = CodingWindowsArchBackupExpiryEventV1
     _confirmation_factory = staticmethod(
         CodingArchPrivateDataBackupExpiryConfirmationV1.create

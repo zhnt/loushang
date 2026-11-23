@@ -9,9 +9,15 @@ from re import Pattern
 from typing import Literal, Protocol
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
+from loushang.harness.plugin_management.operations import (
+    PluginManagementCommandV1,
+    PluginManagementOperationEventV1,
+)
 from loushang.harness.plugin_management.records import (
+    PluginDesiredStateMutationV1,
     PluginInstallationKeyV1,
     PluginInstallationStateV1,
+    PluginPackageRevisionRefV1,
 )
 from loushang.harness.plugin_management.updates import PluginUpdateOperationEventV2
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
@@ -25,7 +31,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductEntrypoint,
-    PackageProductLifecycleIntentV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -52,13 +57,14 @@ from loushang.harness.worker.package_candidate import (
     verify_worker_package_candidate,
 )
 
+from ._plugin_bootstrap import route_project_package
 from .product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
     _LocalWheelSelectedManifestReader,
 )
-from .product_runtime import PackageProductRuntimeRequestV1
+from .product_runtime import hold_local_wheel_product_runtime
 
 
 class ProductWorkerOptInFacts:
@@ -354,6 +360,156 @@ def _capture_worker_opt_in_selection(
     return binding, admission
 
 
+def _observe_installed_worker_candidate(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    plugin_id: str,
+    *,
+    product_id: str,
+    native_platform: WorkerNativeExecutablePlatform,
+    label: str,
+) -> tuple[WorkerPackageCandidateV1, str]:
+    """Verify selected bytes through the existing Product runtime custody."""
+    installed = tuple(
+        item
+        for item in product.desired_state.snapshot().installations
+        if item.installation_key.product_id == product_id
+        and item.installation_key.installation_scope == "workspace"
+        and item.installation_key.plugin_id == plugin_id
+        and item.selection.desired_state == "installed_enabled"
+        and item.selection.package_revision is not None
+    )
+    if len(installed) != 1:
+        raise ValueError(f"{label} candidate selection is unavailable")
+    revision = installed[0].selection.package_revision
+    assert revision is not None
+    bindings = tuple(
+        binding
+        for binding in product.policy.bindings
+        if binding.plugin_id == plugin_id
+        and binding.source_trust_class == "local-worker-candidate"
+        and binding.worker_admission is not None
+        and binding.source_identity == revision.package_source_identity
+        and binding.artifact_digest == revision.package_content_digest
+    )
+    if len(bindings) != 1:
+        raise ValueError(f"{label} candidate selection is unavailable")
+    binding = bindings[0]
+    admission = binding.worker_admission
+    assert admission is not None
+    session_id = f"worker-candidate-selection-{secrets.token_hex(16)}"
+    with hold_local_wheel_product_runtime(
+        product, product_id=product_id, session_id=session_id
+    ) as runtime:
+        selected = runtime.capture_selected_plugin_manifest_for(
+            plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
+        )
+        revision = selected.snapshot.package_revision
+        if (
+            revision.package_source_identity != binding.source_identity
+            or revision.package_content_digest != binding.artifact_digest
+            or selected.snapshot.root_ref.artifact_digest != binding.artifact_digest
+        ):
+            raise ValueError(f"{label} candidate selection changed")
+        candidate = verify_product_selected_worker_candidate(
+            selected,
+            contribution_id=admission.contribution_id,
+            native_platform=native_platform,
+        )
+        if candidate.owner_id != admission.owner_id:
+            raise ValueError(f"{label} candidate owner changed")
+        return candidate, binding.artifact_digest
+
+
+def _capture_worker_candidate_installations(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    plugin_id: str,
+    artifact_digest: str,
+    *,
+    product_id: str,
+    label: str,
+) -> tuple[
+    PackageProductLocalWheelBindingV1,
+    PluginDesiredStateSnapshotV1,
+    tuple[PluginInstallationStateV1, ...],
+]:
+    """Read the admitted candidate and its existing workspace installations."""
+    matches = tuple(
+        binding
+        for binding in product.policy.bindings
+        if binding.source_trust_class == "local-worker-candidate"
+        and binding.plugin_id == plugin_id
+        and binding.artifact_digest == artifact_digest
+    )
+    if len(matches) != 1:
+        raise ValueError(f"{label} candidate is unavailable or ambiguous")
+    snapshot = product.desired_state.snapshot()
+    return (
+        matches[0],
+        snapshot,
+        _worker_candidate_installations(
+            snapshot, product_id=product_id, plugin_id=plugin_id
+        ),
+    )
+
+
+def _worker_candidate_installations(
+    snapshot: PluginDesiredStateSnapshotV1, *, product_id: str, plugin_id: str
+) -> tuple[PluginInstallationStateV1, ...]:
+    return tuple(
+        item
+        for item in snapshot.installations
+        if item.installation_key.plugin_id == plugin_id
+        and item.installation_key.product_id == product_id
+        and item.installation_key.installation_scope == "workspace"
+    )
+
+
+def _worker_candidate_revision_matches(
+    revision: PluginPackageRevisionRefV1 | None,
+    binding: PackageProductLocalWheelBindingV1,
+) -> bool:
+    return (
+        revision is not None
+        and revision.package_source_identity == binding.source_identity
+        and revision.package_content_digest == binding.artifact_digest
+    )
+
+
+def _install_worker_candidate(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    binding: PackageProductLocalWheelBindingV1,
+    snapshot: PluginDesiredStateSnapshotV1,
+    selected: PluginInstallationStateV1 | None,
+    *,
+    product_id: str,
+    plugin_id: str,
+    operation_id: str,
+    label: str,
+    reinstall_removed: bool,
+    refresh_inventory: bool = False,
+) -> tuple[str, int, bool]:
+    """Prove an install replay or install through the existing lifecycle owner."""
+    if selected is not None:
+        revision = selected.selection.package_revision
+        if _worker_candidate_revision_matches(revision, binding):
+            return "installed", snapshot.inventory_revision, True
+        if revision is not None or not reinstall_removed:
+            raise ValueError(f"{label} candidate installation changed")
+    lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
+        product,
+        binding,
+        product_id=product_id,
+        plugin_id=plugin_id,
+        operation_id=operation_id,
+        session_id=f"worker-candidate-install-{secrets.token_hex(16)}",
+        action="install",
+        label=label,
+        entrypoint="cli",
+        refresh_install_inventory=refresh_inventory,
+    )
+    return lifecycle, inventory_revision, False
+
+
 def _run_worker_candidate_lifecycle(
     product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
     binding: PackageProductLocalWheelBindingV1,
@@ -375,27 +531,14 @@ def _run_worker_candidate_lifecycle(
     Callers retain selection/CAS/opt-in preconditions and response formatting.
     Fixed internal inputs come from the already parsed operator command.
     """
-    factory = product.factory_for_session(
-        session_id=session_id, cwd=product.workspace, runtime_id=session_id
-    )
-    try:
-        runtime = factory.create(
-            PackageProductRuntimeRequestV1(
-                product_id=product_id, session_id=session_id, cwd=str(product.workspace)
-            )
-        )
-    except BaseException:
-        factory.dispose_unbound_runtime()
-        raise
-    try:
-        runtime.activate()
-        routed = runtime.lifecycle.route(
-            PackageProductLifecycleIntentV1(
-                operation_id=operation_id,
-                action=action,
-                source=binding.source_identity,
-                scope="project",
-            ),
+    with hold_local_wheel_product_runtime(
+        product, product_id=product_id, session_id=session_id
+    ) as runtime:
+        routed = route_project_package(
+            runtime,
+            operation_id=operation_id,
+            action=action,
+            source=binding.source_identity,
             entrypoint=entrypoint,
         )
         if (
@@ -405,24 +548,18 @@ def _run_worker_candidate_lifecycle(
         ):
             raise ValueError(f"{label} candidate {action} did not settle")
         snapshot = product.desired_state.snapshot()
-        selected = tuple(
-            item
-            for item in snapshot.installations
-            if (
-                item.installation_key == selected_key
-                if action == "update"
-                else item.installation_key.plugin_id == plugin_id
-                and item.installation_key.product_id == product_id
-                and item.installation_key.installation_scope == "workspace"
+        if action == "update":
+            selected = tuple(
+                item
+                for item in snapshot.installations
+                if item.installation_key == selected_key
             )
-        )
-        if (
-            len(selected) != 1
-            or selected[0].selection.package_revision is None
-            or selected[0].selection.package_revision.package_source_identity
-            != binding.source_identity
-            or selected[0].selection.package_revision.package_content_digest
-            != binding.artifact_digest
+        else:
+            selected = _worker_candidate_installations(
+                snapshot, product_id=product_id, plugin_id=plugin_id
+            )
+        if len(selected) != 1 or not _worker_candidate_revision_matches(
+            selected[0].selection.package_revision, binding
         ):
             message = f"{label} candidate {action} selection changed"
             if action == "update" and update_error_type is not None:
@@ -434,8 +571,79 @@ def _run_worker_candidate_lifecycle(
             else snapshot.inventory_revision
         )
         return routed.record.lifecycle, inventory_revision
-    finally:
-        runtime.dispose_runtime()
+
+
+def _change_worker_candidate_lifecycle(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    binding: PackageProductLocalWheelBindingV1,
+    snapshot: PluginDesiredStateSnapshotV1,
+    selected: PluginInstallationStateV1,
+    *,
+    action: Literal["enable", "disable", "remove"],
+    operation_id: str,
+    expected_inventory_revision: int,
+    label: str,
+    unsettled_message: str,
+) -> tuple[dict[str, object], int]:
+    """Submit a validated candidate change or prove the exact removal replay.
+
+    The operator route checks candidate selection and opt-in policy before
+    calling this function. Its original validation order stays at that edge.
+    """
+    if selected.selection.package_revision is None:
+        prior = product.management.operation(operation_id)
+        if (
+            action != "remove"
+            or selected.selection.desired_state != "absent"
+            or not isinstance(prior, PluginManagementOperationEventV1)
+            or prior.command.action != "remove"
+            or prior.command.mutation.installation_key != selected.installation_key
+            or prior.command.mutation.expected_inventory_revision
+            != expected_inventory_revision
+            or prior.status != "terminal"
+            or prior.result is None
+            or prior.result.disposition != "succeeded"
+            or prior.result.transition is None
+            or (
+                previous
+                := prior.result.transition.previous_state.selection.package_revision
+            )
+            is None
+            or previous.package_source_identity != binding.source_identity
+            or previous.package_content_digest != binding.artifact_digest
+        ):
+            raise ValueError(f"{label} candidate removal changed")
+        return prior.to_dict(), snapshot.inventory_revision
+
+    desired_state: Literal["installed_enabled", "installed_disabled", "absent"]
+    if action == "enable":
+        desired_state = "installed_enabled"
+    elif action == "disable":
+        desired_state = "installed_disabled"
+    else:
+        desired_state = "absent"
+    operation = product.management.submit(
+        PluginManagementCommandV1(
+            action=action,
+            mutation=PluginDesiredStateMutationV1(
+                operation_id=operation_id,
+                idempotency_key=operation_id,
+                expected_inventory_revision=expected_inventory_revision,
+                installation_key=selected.installation_key,
+                desired_state=desired_state,
+                package_revision=None,
+                actor_id=product.actor_id,
+                policy_revision=product.desired_policy_revision,
+            ),
+        )
+    )
+    if (
+        operation.status != "terminal"
+        or operation.result is None
+        or operation.result.disposition != "succeeded"
+    ):
+        raise ValueError(unsettled_message)
+    return operation.to_dict(), product.desired_state.snapshot().inventory_revision
 
 
 class _WorkerCandidateUpdateInput(Protocol):

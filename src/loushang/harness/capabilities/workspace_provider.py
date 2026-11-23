@@ -7,8 +7,13 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    ExecutionProfileProvider,
+)
+from loushang.harness.authorization.execution_profile import WorkspaceExecutionSelection
 from loushang.harness.capabilities.contracts import CapabilityContractRange
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -26,12 +31,22 @@ from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_SEARCH_FACET,
     WORKSPACE_WRITE_FACET,
 )
-from loushang.harness.workspace.operations import OperationResult, ToolOperations
+from loushang.harness.workspace.operations import (
+    LOCAL_TOOL_OPERATIONS,
+    OperationResult,
+    ToolOperations,
+)
 from loushang.harness.workspace.process import (
     AuthorizedProcessLauncher,
     ProcessHandle,
     ProcessLaunchRequest,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.tools.process_hosting import (
+        ProcessExecutionScope,
+        ProcessLauncherBinder,
+    )
 
 WorkspaceProviderCleanup = Callable[[], None | Awaitable[None]]
 
@@ -181,6 +196,42 @@ def workspace_profile_binding_fingerprint(
             )
         ).encode("utf-8")
     ).hexdigest()
+
+
+def bind_authorized_workspace(
+    runtime: ProcessLauncherBinder,
+    *,
+    process_scope: ProcessExecutionScope,
+    operations_factory: Callable[
+        [Path, ToolOperations, EffectiveExecutionProfile, ExecutionProfileProvider],
+        ToolOperations,
+    ],
+    provider_id: str,
+    source_id: str,
+    fingerprint_namespace: str,
+) -> CapabilityBundleProviderBinding:
+    """Join admitted process and file operations under the same ceiling."""
+    authority = process_scope.execution_profile_provider
+    if (
+        not isinstance(authority, WorkspaceExecutionSelection)
+        or process_scope.execution_profile_ceiling is not authority.ceiling
+    ):
+        raise TypeError("authorized workspace requires its matching execution authority")
+    process_launcher = runtime.bind_process_launcher(process_scope)
+    workspace_root, ceiling = authority.workspace_root, authority.ceiling
+    fingerprint = workspace_profile_binding_fingerprint(
+        ceiling, namespace=fingerprint_namespace
+    )
+    return workspace_capability_provider_binding(
+        operations=operations_factory(
+            workspace_root, LOCAL_TOOL_OPERATIONS, ceiling, authority.for_workspace_operation
+        ),
+        process_launcher=process_launcher,
+        scope_instance_id=f"workspace:{workspace_root}",
+        binding_input_fingerprint=fingerprint,
+        provider_id=provider_id,
+        source_id=source_id,
+    )
 
 
 def workspace_capability_provider_binding(

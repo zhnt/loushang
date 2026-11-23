@@ -110,19 +110,11 @@ class _StateRecord:
         return cls(revision, document, digest)
 
 
-def _decode_record(value: object) -> _StateRecord:
-    try:
-        return _StateRecord.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Worker activation state record is invalid",
-            code="invalid_worker_activation_state_record",
-        ) from exc
-
-
-_CODEC = FunctionalJournalRecordCodec(
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=_StateRecord.to_dict,
-    decoder=_decode_record,
+    decoder=lambda value: _StateRecord.from_dict(value),
+    message="Worker activation state record is invalid",
+    code="invalid_worker_activation_state_record",
 )
 
 

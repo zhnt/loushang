@@ -876,6 +876,7 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         - {HARNESS_ROOT / "package_product/_worker_product_authority.py"}
     ) == {
         SANDBOX_RUNTIME,
+        HARNESS_ROOT / "cli/worker_candidate.py",
         HARNESS_ROOT / "package_product/product_worker_candidate.py",
         HARNESS_ROOT / "package_product/product_worker_wheel_admission.py",
         Path("src/loushang/harness/package_product/_linux_worker_history.py"),
@@ -889,6 +890,7 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         Path("src/loushang/harness/session/_worker_operator_query.py"),
         Path("src/loushang/harness/session/_worker_provider.py"),
         Path("src/loushang/harness/session/composition_evidence.py"),
+        HARNESS_ROOT / "session/product_composition_assembly.py",
     }
     assert _literal_string_collection(WORKER_PUBLIC, "__all__") == (
         CURRENT_WORKER_PUBLIC_EXPORTS
@@ -980,7 +982,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,
-        CODING_ROOT / "package/worker_preparation_inputs.py",
         CODING_ROOT / "package/product_worker_capability.py",
         CODING_ROOT / "package/product_worker_activation_state_journal.py",
         CODING_ROOT / "package/product_worker_activation_history.py",
@@ -1056,7 +1057,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package/product_worker_windows_history_cutover_record.py",
         CODING_ROOT / "package/product_worker_windows_persisted_bases.py",
         CODING_ROOT / "package/product_worker_windows_checkpoint.py",
-        Path('src/loushang/coding/package/worker_preparation_inputs.py'),
         Path("src/loushang/coding/package/product_worker_gc_references.py"),
         Path("src/loushang/coding/package/product_worker_native_approval.py"),
         Path("src/loushang/coding/package/product_worker_windows_native_approval_owner.py"),
@@ -1081,6 +1081,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package/product_worker_windows_receipt.py",
         CODING_ROOT / "package/product_worker_windows_orphan_review.py",
         CODING_ROOT / "cli/hosted_client.py",
+        CODING_ROOT / "control/sandbox.py",
         APPHOST_ROOT / "launcher.py",
         APPHOST_ROOT / "managed/handoff.py",
         APPHOST_ROOT / "managed/lifecycle.py",

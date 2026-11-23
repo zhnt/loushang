@@ -54,6 +54,29 @@ CreateRuntime = Callable[[OpenedProductCandidateV1], Awaitable[ScopedProductRunt
 BindProfile = Callable[[ProductProfileBindingV1], Awaitable[ProfileLeaseV1]]
 
 
+class _InstalledAdmissionPin:
+    __slots__ = ("_identity",)
+
+    def __init__(self, identity: AdmissionIdentityV1) -> None:
+        self._identity = identity
+
+    @property
+    def identity(self) -> AdmissionIdentityV1:
+        return self._identity
+
+    async def close(self) -> None:
+        # Installed code has no hot replacement lease to release.
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class _InstalledAdmissionSource:
+    _identity: AdmissionIdentityV1
+
+    async def acquire_pin(self) -> _InstalledAdmissionPin:
+        return _InstalledAdmissionPin(self._identity)
+
+
 @dataclass(frozen=True, slots=True)
 class _ProductEntry:
     descriptor: ProductDescriptorV1

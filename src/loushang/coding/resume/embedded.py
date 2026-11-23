@@ -7,26 +7,20 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 from uuid import uuid4
 
 from loushang.agent import ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.coding.composition.bootstrap import BootstrapServices, NoToolsMode
 from loushang.coding.composition.capability_plugins import (
-    prepare_coding_resume_plugin_effect_owners,
     require_coding_resume_plugin_effect_settlement,
-)
-from loushang.coding.composition.product_capability_plugins import (
-    coding_session_plugin_state_relative_path,
 )
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
 )
 from loushang.coding.resume.first_input import (
-    bind_first_input_settlement,
-    build_first_input_attempt,
+    prepare_first_input_effects,
     require_first_input_attempt,
 )
 from loushang.coding.resume.history import (
@@ -45,11 +39,12 @@ from loushang.harness.approval import (
     InteractiveApprovalResolver,
 )
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.permissions import (
-    PermissionProfileScope,
-    PermissionProfileSnapshot,
-    permission_profile,
+from loushang.harness.permissions import PermissionProfileSnapshot
+from loushang.harness.session.approval_interaction import (
+    _apply_permission_action,
+    _open_approval_presentation,
 )
+from loushang.harness.session.facade import ApprovalPresentationLease
 from loushang.harnesstui.conversation.agent_binding import (
     agent_image_parts_from_prompt_attachments,
 )
@@ -59,7 +54,7 @@ from .plugin_effects import (
     require_no_capability_plugin_effects as _require_no_capability_plugin_effects,  # noqa: F401
 )
 from .plugin_effects import (
-    resume_capability_plugins_required as _resume_capability_plugins_required,
+    resume_capability_plugins_required as _resume_capability_plugins_required,  # noqa: F401
 )
 
 
@@ -70,22 +65,6 @@ class EmbeddedResumeStartup:
     target: str | Path
     history: CodingResumeHistoryPreview | CodingResumeRecentPage
     model: Model | ModelSelection | None = None
-
-
-@dataclass(slots=True)
-class _EmbeddedApprovalPresentationLease:
-    interaction: EmbeddedResumeApprovalInteraction
-    generation: int
-    closed: bool = False
-
-    def close(
-        self,
-        reason: str = "Approval presenter closed before approval was resolved",
-    ) -> None:
-        if self.closed:
-            return
-        self.closed = True
-        self.interaction._close_presenter(self.generation)
 
 
 @dataclass(slots=True)
@@ -101,13 +80,15 @@ class EmbeddedResumeApprovalInteraction:
         presenter: Callable[[dict[str, object]], Awaitable[None] | None],
         *,
         dismisser: Callable[[str], Awaitable[None] | None] | None = None,
-    ) -> _EmbeddedApprovalPresentationLease:
+    ) -> ApprovalPresentationLease:
         self._presenter_generation += 1
         generation = self._presenter_generation
-        self.resolver.set_request_presenter(presenter, dismisser=dismisser)
-        self.resolver.open_session()
-        self.resolver.represent_pending_requests()
-        return _EmbeddedApprovalPresentationLease(self, generation)
+        return _open_approval_presentation(
+            self.resolver,
+            presenter,
+            dismisser=dismisser,
+            close_callback=lambda _reason: self._close_presenter(generation),
+        )
 
     async def respond(
         self,
@@ -127,40 +108,17 @@ class EmbeddedResumeApprovalInteraction:
         return self.settings_manager.get_permission_profile_snapshot()
 
     async def apply_permission_action(self, action: str) -> bool:
-        kind, separator, value = action.partition(":")
-        if not separator or not value:
-            return False
-        if kind == "set-profile":
-            scope, scope_separator, profile_id = value.partition(":")
-            if not scope_separator or scope not in {"session", "project", "user"}:
-                return False
-            requested = permission_profile(profile_id).profile_id
-            self.settings_manager.set_permission_profile(
-                requested,
-                scope=cast(PermissionProfileScope, scope),
-            )
-            if scope != "session":
-                self.settings_manager.set_permission_profile(requested, scope="session")
-            return True
-        if kind == "revoke":
-            return self.resolver.revoke_grant(value)
-        if kind == "revoke-policy":
-            return self.resolver.revoke_policy_rule(value)
-        if kind == "reopen":
-            return await self.resolver.represent_request(value)
-        return False
+        return await _apply_permission_action(
+            action,
+            resolver=self.resolver,
+            set_permission_profile=self.settings_manager.set_permission_profile,
+            require_profile_id=False,
+        )
 
     def _close_presenter(self, generation: int) -> None:
         if generation != self._presenter_generation:
             return
         self.resolver.set_request_presenter(None)
-
-
-def _resume_plugin_state_root(
-    runtime: AgentSessionRuntime, *, session_id: str
-) -> Path:
-    relative_path = coding_session_plugin_state_relative_path(session_id)
-    return Path(runtime.session_dir) / relative_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,54 +163,25 @@ class EmbeddedResumeInputCoordinator:
             workspace,
             settings_manager=self.services.settings_manager,
         )
-        plugins_enabled = _resume_capability_plugins_required(
-            plan_set_id=plan.composition_comparison.candidate_set_id,
+        effects = prepare_first_input_effects(
+            plan,
+            history=history,
+            session_dir=Path(self.runtime.session_dir),
             settings_manager=self.services.settings_manager,
             no_tools=self.no_tools,
-            history=history,
-        )
-        plugin_state_root = _resume_plugin_state_root(
-            self.runtime, session_id=plan.session_id
-        )
-        plugin_owners = (
-            prepare_coding_resume_plugin_effect_owners(
-                session_id=plan.session_id,
-                state_root=plugin_state_root,
-            )
-            if plugins_enabled
-            else ()
         )
         worker_owner = (
             self.runtime.embedded_resume_worker_effect_owner(workspace)
             if self.worker_candidate_plugin_id is not None
             else None
         )
-        owners = tuple(
-            sorted(
-                (*plugin_owners, *((worker_owner,) if worker_owner is not None else ())),
-                key=lambda owner: owner.identity,
-            )
-        )
-        attempt = build_first_input_attempt(
-            plan,
+        attempt, settle = effects.bind(
             attempt_id=f"resume-attempt:{self.id_factory()}",
             request_id=f"resume-input:{self.id_factory()}",
             epoch_fingerprint=epoch_fingerprint,
             subject_digest=subject_digest,
-            effect_owners=owners,
-        )
-
-        def admit(observed: CodingActivationAttemptV1) -> None:
-            self.runtime.require_current_embedded_resume_subject(
-                require_first_input_attempt(observed),
-                approval_owner=approval_owner,
-            )
-
-        settle = bind_first_input_settlement(
-            plan,
-            plugin_owners=plugin_owners,
-            plugin_state_root=plugin_state_root,
             clock=self.clock_ms,
+            worker_owner=worker_owner,
             allowed_external_owner_ids=(
                 frozenset({"harness.worker-activation"})
                 if worker_owner is not None
@@ -262,6 +191,12 @@ class EmbeddedResumeInputCoordinator:
                 require_coding_resume_plugin_effect_settlement(*args, **kwargs)
             ),
         )
+
+        def admit(observed: CodingActivationAttemptV1) -> None:
+            self.runtime.require_current_embedded_resume_subject(
+                require_first_input_attempt(observed),
+                approval_owner=approval_owner,
+            )
 
         created_at = self.now()
         if not isinstance(created_at, datetime) or created_at.tzinfo is None:

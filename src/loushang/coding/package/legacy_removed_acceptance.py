@@ -7,12 +7,10 @@ from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.journal import (
-    FunctionalJournalRecordCodec,
-)
 from loushang.harness.package_product._legacy_local_migration import (
     _FirstAcceptanceEnvelope,
     _FirstAcceptanceJournal,
+    _FirstAcceptanceRecord,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -41,47 +39,30 @@ _envelope = _FirstAcceptanceEnvelope(
 
 
 @dataclass(frozen=True, slots=True)
-class CodingLegacyRemovedAcceptanceV1:
+class CodingLegacyRemovedAcceptanceV1(
+    _FirstAcceptanceRecord[CodingLegacyRemovedReviewV1]
+):
     review: CodingLegacyRemovedReviewV1
     acceptance_id: str
     acceptance_version: int = 1
 
-    @classmethod
-    def create(
-        cls, review: CodingLegacyRemovedReviewV1
-    ) -> CodingLegacyRemovedAcceptanceV1:
-        if not isinstance(review, CodingLegacyRemovedReviewV1):
-            raise TypeError("Old local removal review is required")
-        acceptance_id = _envelope.identity(review.review_id)
-        return cls(review=review, acceptance_id=acceptance_id)
+    _envelope = _envelope
+    _review_type = CodingLegacyRemovedReviewV1
+    _review_required = "Old local removal review is required"
 
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "acceptanceId": self.acceptance_id,
-            "acceptanceVersion": self.acceptance_version,
-            "review": self.review.to_dict(),
-        }
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingLegacyRemovedAcceptanceV1:
-        return _envelope.decode(
-            value, CodingLegacyRemovedReviewV1.from_dict, cls.create
-        )
-
-
-_CODEC = FunctionalJournalRecordCodec(
-    encoder=CodingLegacyRemovedAcceptanceV1.to_dict,
-    decoder=CodingLegacyRemovedAcceptanceV1.from_dict,
-)
 
 _acceptance_journal = _FirstAcceptanceJournal(
     filename="legacy-removed-acceptance.jsonl",
-    codec=_CODEC,
+    codec=CodingLegacyRemovedAcceptanceV1._record_codec(),
     error_type=CodingLegacyRemovedAcceptanceError,
     directory_label="Old removal Product state directory",
     posix_read_error_type=CodingLegacyDisabledOnlyAcceptanceError,
     posix_read_label="Disabled-only Product",
     untouched_message="Disabled-only adoption requires an untouched Product Desired State",
+    create=CodingLegacyRemovedAcceptanceV1.create,
+    changed_review="Old removal review ID changed",
+    accept_conflict="Old removal acceptance conflicts with prior review",
+    read_conflict="Old removal acceptance conflicts with first-B review",
     postcheck="combined",
 )
 
@@ -95,19 +76,13 @@ def accept_coding_first_b_removed_local(
 ) -> CodingLegacyRemovedAcceptanceV1:
     """Commit acceptance before the first Product Desired mutation."""
 
-    review = review_coding_first_b_removed_local(
-        lifecycle, epoch_runtime, settings_manager=settings_manager
-    )
     return _acceptance_journal.accept_review(
         epoch_runtime,
         accepted_review_id=accepted_review_id,
-        current_review_id=review.review_id,
-        create=lambda: CodingLegacyRemovedAcceptanceV1.create(review),
-        expected_store_id=lambda: (
-            resolve_coding_package_epoch_layout(lifecycle).store_id
+        review=lambda: review_coding_first_b_removed_local(
+            lifecycle, epoch_runtime, settings_manager=settings_manager
         ),
-        changed_review="Old removal review ID changed",
-        conflict_message="Old removal acceptance conflicts with prior review",
+        expected_store_id=lambda: resolve_coding_package_epoch_layout(lifecycle).store_id,
     )
 
 
@@ -125,8 +100,6 @@ def read_coding_first_b_removed_local_acceptance(
         review=lambda: review_coding_first_b_removed_local(
             lifecycle, epoch_runtime, settings_manager=settings_manager
         ),
-        create=CodingLegacyRemovedAcceptanceV1.create,
-        conflict_message="Old removal acceptance conflicts with first-B review",
     )
 
 

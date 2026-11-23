@@ -56,11 +56,18 @@ from loushang.coding.plugin_manager.lifecycle import (
     matches_coding_workspace_layout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.harness.package_product._application_runtime import handoff_product_open
+from loushang.harness.package_product._private_data_custody import (
+    hold_private_data_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.application import (
     PluginBackupRetentionRecordV1,
+)
+from loushang.harness.plugin_management.private_data_deletion import (
+    PluginPrivateDataDeletionPlanV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -110,6 +117,10 @@ class CodingArchPrivateDataBackupClientV1:
 
         with self._reader() as reader:
             return reader.verify_backup(self.installation_key, backup_id)
+
+    def _preview_deletion(self) -> PluginPrivateDataDeletionPlanV1:
+        with self._reader() as reader:
+            return reader.deletion_preview(self.installation_key)
 
     def restore_preview(self, backup_id: str) -> CodingArchPrivateDataRestorePlanV1:
         """Read a removed Installation's exact restore plan."""
@@ -223,14 +234,10 @@ class CodingArchPrivateDataBackupClientV1:
             runtime_version=version("loushang"),
             runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         )
-        try:
+        with handoff_product_open(
+            application, cleanup_note="Coding Arch backup Product cleanup also failed"
+        ):
             self._assert_workspace_identity()
-        except BaseException as error:
-            try:
-                application.close()
-            except BaseException:
-                error.add_note("Coding Arch backup Product cleanup also failed")
-            raise
         return application
 
     def _assert_workspace_identity(self) -> None:
@@ -262,18 +269,13 @@ class CodingArchPrivateDataBackupClientV1:
 
     @contextmanager
     def _product(self) -> Iterator[PosixLocalWheelProductSessionOwner]:
-        application = self._open_application()
-        try:
-            product = application.runtime_owner.product_owner
-            if not isinstance(
-                product, PosixLocalWheelProductSessionOwner
-            ) or not isinstance(
-                application.epoch_runtime, PackageProductPosixFencedRuntimeOwner
-            ):
-                raise ValueError("Coding Arch backup Product owner is unsupported")
+        with hold_private_data_product(
+            self._open_application(),
+            PosixLocalWheelProductSessionOwner,
+            PackageProductPosixFencedRuntimeOwner,
+            error="Coding Arch backup Product owner is unsupported",
+        ) as product:
             yield product
-        finally:
-            application.close()
 
 
 def _require_backup_product_route(layout: CodingPluginLifecycleStateLayout) -> None:

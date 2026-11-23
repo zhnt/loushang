@@ -2,42 +2,28 @@
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Callable
 from dataclasses import replace
 from secrets import token_hex
 from typing import TYPE_CHECKING, cast
-from uuid import uuid4
 
 from loushang.ai.model import normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost import SessionBindingKeyV1
+from loushang.apphost.integrations._canonical_transcript_catalog import (
+    session_identity_matches_open,
+)
+from loushang.apphost.integrations.session_control import (
+    _ExecutionSessionServiceAdapter,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
-    AppFailureV1,
     AppServiceError,
-    SessionEventKindV1,
-    SessionEventV1,
     SessionModelsV1,
     SessionOpenSpecV1,
-    SessionSnapshotV1,
 )
-from loushang.appservice.execution_contract import (
-    ExecutionContentEventV1,
-    ExecutionObservationV1,
-    ExecutionOutcomeV1,
-    ExecutionRequestV1,
-    ExecutionSourceSnapshotV1,
-    ExecutionStateV1,
-    ExecutionStatusV1,
-    InterruptModeV1,
-)
-from loushang.appservice.execution_guard import ExecutionGuardV1
+from loushang.appservice.execution_contract import ExecutionRequestV1
 from loushang.appservice.execution_registry import ExecutionLimitsV1
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
-from loushang.foundation._owned_tasks import (
-    _observe_task_result as _observe_close,
-)
 
 from ._execution_work import (
     HostedResumeSubjectControl as HostedResumeSubjectControl,
@@ -60,6 +46,7 @@ from .service_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSessionBindingV1,
     CodingHostedSessionV1,
+    CodingHostedSnapshotProjectionV1,
 )
 from .session import CodingHostedHistoryBindingV1, CodingRealHostedSessionV1
 
@@ -81,7 +68,6 @@ def _admit_execution_projection(
     """
     from .application import (
         CodingAppHostHostedSessionResolverV1,
-        _identity_matches_open,
         _LeasedCodingHostedBinding,
     )
 
@@ -98,7 +84,7 @@ def _admit_execution_projection(
             or not resolver.admits(request)
             or owner.identity != replace(original, scope=request.scope,
                                         scope_fingerprint=request.scope_fingerprint)
-            or not _identity_matches_open(request, owner.identity)
+            or not session_identity_matches_open(request, owner.identity)
             or owner._execution_projection is not None or owner._close_task is not None):
         raise ValueError("invalid managed execution projection")
     owner._execution_projection = (
@@ -121,7 +107,11 @@ def _owns_execution_projection(owner: _LeasedCodingHostedBinding, binding: objec
     )
 
 
-class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal):
+class CodingHostedExecutionSessionV1(
+    _ExecutionSessionServiceAdapter[CodingHostedSnapshotProjectionV1, CodingHostedEventProjectionV1],
+    CodingHostedSessionV1,
+    _HostedExecutionGoal,
+):
     """Own the optional capability and the legacy surface on one real binding.
 
     The caller transfers exclusive binding ownership. No second Hosted adapter
@@ -147,11 +137,6 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
                     or owner.identity != binding.identity and not projected):
                 raise ValueError("execution close owner must own the exact Product binding")
         self._product_binding = binding
-        self._content: set[Callable[[ExecutionContentEventV1], None]] = set()
-        self._draft = ""
-        self._truncated = False
-        self._closing = False
-        self._execution_close_task: asyncio.Task[None] | None = None
         if type(binding) is CodingRealHostedSessionV1:
             binding.claim_execution(self._idle_for_interactive_goal)
         try:
@@ -160,18 +145,13 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
             if type(binding) is CodingRealHostedSessionV1:
                 binding.release_failed_execution_claim()
             raise
-        self._projection = binding.project_snapshot()
-        self._guard = ExecutionGuardV1(source_cursor=self._complete_source)
-
-    @property
-    def execution_state(self) -> ExecutionStateV1 | None:
-        return self._guard.state
+        self._start_execution_observation(binding)
 
     def _allows_interactive_goal(self) -> bool:
         return type(self) is CodingHostedExecutionSessionV1
 
     def require_submission_ready(self) -> None:
-        self._require_execution_open()
+        self._require_open()
         if not self._product_binding.execution_available:
             raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
         if self._model_lock.locked() or not is_usable_model_selection(
@@ -188,9 +168,6 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
             ),
         )
 
-    async def wait_execution(self, execution_id: str) -> ExecutionOutcomeV1:
-        return await self._guard.wait(execution_id)
-
     async def _select_model(
         self, model_id: str, thinking_level: str | None = None,
     ) -> SessionModelsV1:
@@ -199,124 +176,6 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1, _HostedExecutionGoal
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         await binding.wait_for_title()
         return await super()._select_model(model_id, thinking_level)
-
-    def subscribe_execution_observation(
-        self, listener: Callable[[ExecutionObservationV1], None]
-    ) -> Callable[[], None]:
-        self._require_execution_open()
-        return self._guard.subscribe_observation(listener)
-
-    def interrupt_execution(self, execution_id: str, mode: InterruptModeV1) -> bool:
-        self._require_execution_open()
-        return self._guard.interrupt(execution_id, mode)
-
-    async def retry_execution_settlement(self, execution_id: str) -> None:
-        await self._guard.retry_settlement(execution_id)
-
-    async def start_turn(self, text: str) -> None:
-        execution_id = "legacy-" + uuid4().hex
-        self.start_execution(ExecutionRequestV1(execution_id, text))
-        outcome = await self.wait_execution(execution_id)
-        if isinstance(outcome.legacy_result, AppFailureV1):
-            raise AppServiceError(outcome.legacy_result.code)
-
-    def interrupt_turn(self) -> bool:
-        self._require_execution_open()
-        state = self._guard.state
-        return state is not None and self._guard.interrupt(
-            state.execution_id, InterruptModeV1.LEGACY_TURN_ONLY
-        )
-
-    async def snapshot_execution(self) -> ExecutionSourceSnapshotV1:
-        self._require_execution_open()
-        projection, observation = self._projection, self._guard.observation
-        return ExecutionSourceSnapshotV1(
-            source=SessionSnapshotV1(
-                identity=self.identity,
-                title=projection.title,
-                cursor=self._cursor,
-                revision=projection.revision,
-                running=observation.status is ExecutionStatusV1.RUNNING,
-                records=projection.records,
-                user_choice=projection.user_choice,
-            ),
-            observation=observation,
-            draft=self._draft
-            if observation.status is ExecutionStatusV1.RUNNING
-            else "",
-            truncated=self._truncated or projection.truncated,
-        )
-
-    def subscribe_execution_content(
-        self, listener: Callable[[ExecutionContentEventV1], None]
-    ) -> Callable[[], None]:
-        self._require_execution_open()
-        if not callable(listener):
-            raise TypeError("execution content listener must be callable")
-        self._content.add(listener)
-        return lambda: self._content.discard(listener)
-
-    def _observe_projection(
-        self, projection: CodingHostedEventProjectionV1, event: SessionEventV1
-    ) -> None:
-        self._projection = self._binding.project_snapshot()
-        if event.kind is SessionEventKindV1.ASSISTANT_DELTA:
-            text = self._draft + (event.text or "")
-            self._truncated |= len(text) > 16_384 or projection.truncated
-            self._draft = text[:16_384]
-        elif event.kind in {
-            SessionEventKindV1.ASSISTANT_MESSAGE,
-            SessionEventKindV1.TURN_STARTED,
-            SessionEventKindV1.TURN_COMPLETED,
-            SessionEventKindV1.TURN_INTERRUPTED,
-        }:
-            self._draft = ""
-            self._truncated = False
-        observation = self._guard.observation
-        envelope = ExecutionContentEventV1(
-            event,
-            observation.execution_id
-            if observation.status is ExecutionStatusV1.RUNNING
-            else None,
-        )
-        for listener in tuple(self._content):
-            try:
-                listener(envelope)
-            except Exception:
-                self._content.discard(listener)
-
-    def _complete_source(self) -> int:
-        self._projection = self._binding.project_snapshot()
-        self._draft = ""
-        self._truncated = False
-        return self._cursor
-
-    async def close(self) -> None:
-        self._closing = True
-        task = self._execution_close_task
-        if task is None or (
-            task.done() and (task.cancelled() or task.exception() is not None)
-        ):
-            task = asyncio.create_task(self._close_execution())
-            task.add_done_callback(_observe_close)
-            self._execution_close_task = task
-        await asyncio.shield(task)
-
-    async def _close_execution(self) -> None:
-        state = self._guard.state
-        if state is not None and not state.status.terminal:
-            self._guard.interrupt(state.execution_id, InterruptModeV1.WHOLE_EXECUTION)
-            await self._guard.retry_settlement(state.execution_id)
-        await super().close()
-        self._content.clear()
-
-    def _require_execution_open(self) -> None:
-        self._require_open()
-
-    def _require_open(self) -> None:
-        super()._require_open()
-        if self._closing:
-            raise RuntimeError("coding_hosted_session_closed")
 
 
 def _select_coding_execution_port(port: object) -> CodingHostedExecutionSessionV1 | None:

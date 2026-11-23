@@ -11,14 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from loushang.harness.journal import FunctionalJournalRecordCodec, JournalCodecError
+from loushang.harness.journal import FunctionalJournalRecordCodec
 from loushang.harness.plugin_management._private_data_expiry import (
     PrivateDataExpiryJournal,
+    expiry_event_schema,
     validate_expiry_event,
 )
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
+from loushang.harness.plugin_management._private_data_records import (
+    PrivateDataRecordWire,
 )
 
 from .private_data_backup_expiry_records import (
@@ -34,7 +34,7 @@ _MAX_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataBackupExpiryEventV1:
+class CodingArchPrivateDataBackupExpiryEventV1(PrivateDataRecordWire):
     revision: int
     phase: Literal["confirmed", "started", "renamed", "completed"]
     plan: CodingArchPrivateDataBackupExpiryPlanV1
@@ -56,29 +56,14 @@ class CodingArchPrivateDataBackupExpiryEventV1:
             unfinished_receipt_error="Unfinished backup expiry cannot claim a receipt",
         )
 
-    def to_dict(self) -> dict[str, object]:
-        return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.encode(self, sort_keys=True)
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingArchPrivateDataBackupExpiryEventV1:
-        if type(value) is not dict or set(value) != _SCHEMA_BACKUP_EXPIRY_EVENT_V1.keys:
-            raise ValueError("Coding Arch backup expiry event fields are invalid")
-        return _SCHEMA_BACKUP_EXPIRY_EVENT_V1.decode(cls, value)
+    _invalid_fields = "Coding Arch backup expiry event fields are invalid"
 
 
-def _decode(value: object) -> CodingArchPrivateDataBackupExpiryEventV1:
-    try:
-        return CodingArchPrivateDataBackupExpiryEventV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Arch backup expiry event is invalid",
-            code="coding_arch_backup_expiry_record_invalid",
-        ) from exc
-
-
-_CODEC = FunctionalJournalRecordCodec(
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=CodingArchPrivateDataBackupExpiryEventV1.to_dict,
-    decoder=_decode,
+    decoder=lambda value: CodingArchPrivateDataBackupExpiryEventV1.from_dict(value),
+    message="Coding Arch backup expiry event is invalid",
+    code="coding_arch_backup_expiry_record_invalid",
 )
 
 
@@ -128,38 +113,14 @@ class CodingArchPrivateDataBackupExpiryJournal(
         return _MAX_BYTES
 
 
-_SCHEMA_BACKUP_EXPIRY_EVENT_V1 = RecordSchema.for_dataclass(
+_SCHEMA_BACKUP_EXPIRY_EVENT_V1 = expiry_event_schema(
     CodingArchPrivateDataBackupExpiryEventV1,
-    lambda value: value,
-    RecordField(
-        "plan",
-        decoder=CodingArchPrivateDataBackupExpiryPlanV1.from_dict,
-        encoder=CodingArchPrivateDataBackupExpiryPlanV1.to_dict,
-    ),
-    RecordField(
-        "confirmation",
-        decoder=CodingArchPrivateDataBackupExpiryConfirmationV1.from_dict,
-        encoder=CodingArchPrivateDataBackupExpiryConfirmationV1.to_dict,
-    ),
-    RecordField(
-        "archive",
-        decoder=lambda item: (
-            None
-            if item is None
-            else CodingArchPrivateDataTargetSnapshotV1.from_dict(item)
-        ),
-        encoder=lambda item: None if item is None else item.to_dict(),
-    ),
-    RecordField(
-        "receipt",
-        decoder=lambda item: (
-            None
-            if item is None
-            else CodingArchPrivateDataBackupExpiryReceiptV1.from_dict(item)
-        ),
-        encoder=lambda item: None if item is None else item.to_dict(),
-    ),
+    plan=CodingArchPrivateDataBackupExpiryPlanV1,
+    confirmation=CodingArchPrivateDataBackupExpiryConfirmationV1,
+    archive=CodingArchPrivateDataTargetSnapshotV1,
+    receipt=CodingArchPrivateDataBackupExpiryReceiptV1,
 )
+CodingArchPrivateDataBackupExpiryEventV1._wire_schema = _SCHEMA_BACKUP_EXPIRY_EVENT_V1
 
 __all__ = [
     "CodingArchPrivateDataBackupExpiryConfirmationV1",

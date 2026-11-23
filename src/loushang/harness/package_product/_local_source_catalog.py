@@ -1,7 +1,7 @@
 """Private Product-owned catalogs over existing Journal and controlled Source IO.
 
 Concrete Products retain record classes, codecs, kind admission and policy.
-These classes share the original namespace/query/publication mechanics only.
+The catalogs share binding identities, namespace checks and Source publication.
 """
 
 from __future__ import annotations
@@ -10,17 +10,29 @@ import json
 import os
 import re
 import stat
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Generic, Literal, Protocol, Self, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    Self,
+    TypeVar,
+    cast,
+)
+
+from packaging.version import Version
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
+    FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalDurabilityProfile,
     JournalFileError,
@@ -52,6 +64,10 @@ from loushang.harness.resources.packages.plugin_lifecycle._controlled_source_io 
 from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source import (
     ExactProductSourceFiles,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     open_regular_no_follow,
 )
@@ -76,6 +92,9 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
+
+if TYPE_CHECKING:
+    from ._legacy_local_migration import _AcceptedSource
 
 
 class _CatalogRecord(Protocol):
@@ -116,6 +135,8 @@ class _LegacyRecord(_CatalogRecord, Protocol):
         self, source_root: Path
     ) -> PackageProductLocalWheelBindingV1: ...
 
+    def _matches_approval(self, accepted: _AcceptedSource) -> bool: ...
+
 
 class _LegacyCandidate(Protocol):
     @property
@@ -131,6 +152,7 @@ class _LegacyCandidate(Protocol):
 CatalogRecordT = TypeVar("CatalogRecordT", bound=_CatalogRecord)
 LegacyRecordT = TypeVar("LegacyRecordT", bound=_LegacyRecord)
 LegacyCandidateT = TypeVar("LegacyCandidateT", bound=_LegacyCandidate)
+LegacyAcceptanceT = TypeVar("LegacyAcceptanceT", bound="_AcceptedSource")
 
 
 class _PluginSourceRecord(_SourceRecord, Protocol):
@@ -147,29 +169,305 @@ class _PluginSourceRecord(_SourceRecord, Protocol):
 _SOURCE_RECORD_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
 
+def _source_binding_scope_matches(
+    record: _SourceRecord,
+    *,
+    require_strings: bool = False,
+) -> bool:
+    return (
+        type(record.record_revision) is int
+        and record.record_revision >= 1
+        and (not require_strings or isinstance(record.store_id, str))
+        and bool(record.store_id)
+        and (not require_strings or isinstance(record.namespace_id, str))
+        and _SOURCE_RECORD_DIGEST.fullmatch(record.namespace_id) is not None
+        and (not require_strings or isinstance(record.scope_id, str))
+        and bool(record.scope_id)
+        and (not require_strings or isinstance(record.original_source, str))
+        and Path(record.original_source).is_absolute()
+        and os.path.normpath(record.original_source) == record.original_source
+    )
+
+
 def plugin_wheel_source_fields_match(
     record: _PluginSourceRecord, match: re.Match[str] | None, *, maximum_filename: int
 ) -> bool:
     """Check shared identity and path fields of a controlled Plugin Wheel."""
-
-    return not (
-        type(record.record_revision) is not int
-        or record.record_revision < 1
-        or not record.store_id
-        or _SOURCE_RECORD_DIGEST.fullmatch(record.namespace_id) is None
-        or not record.scope_id
-        or not Path(record.original_source).is_absolute()
-        or os.path.normpath(record.original_source) != record.original_source
-        or match is None
-        or len(record.wheel_filename) > maximum_filename
-        or record.plugin_id != match["plugin"]
-        or record.version != match["version"]
-        or _SOURCE_RECORD_DIGEST.fullmatch(record.artifact_digest) is None
+    return (
+        _source_binding_scope_matches(record)
+        and match is not None
+        and len(record.wheel_filename) <= maximum_filename
+        and record.plugin_id == match["plugin"]
+        and record.version == match["version"]
+        and _SOURCE_RECORD_DIGEST.fullmatch(record.artifact_digest) is not None
     )
 
 
 RecordT = TypeVar("RecordT", bound=_SourceRecord)
 PluginRecordT = TypeVar("PluginRecordT", bound=_PluginSourceRecord)
+
+
+def local_wheel_bindings_in_source_order(
+    bindings: Iterable[PackageProductLocalWheelBindingV1],
+) -> tuple[PackageProductLocalWheelBindingV1, ...]:
+    return tuple(sorted(bindings, key=lambda item: item.source_identity))
+
+
+def project_local_source_policy_group(
+    policy: PackageProductLocalWheelPolicy,
+    bindings: Iterable[PackageProductLocalWheelBindingV1],
+    *,
+    trust_classes: frozenset[str],
+) -> tuple[
+    tuple[PackageProductLocalWheelBindingV1, ...],
+    tuple[PackageProductLocalWheelBindingV1, ...],
+]:
+    """Return observed bindings and the corresponding existing policy partition."""
+    return local_wheel_bindings_in_source_order(bindings), tuple(
+        item for item in policy.bindings if item.source_trust_class in trust_classes
+    )
+
+
+def wheel_source_binding_digest(document: Mapping[str, object]) -> str:
+    """Hash the canonical record content without the stored digest."""
+    fields = {key: value for key, value in document.items() if key != "recordId"}
+    return sha256(canonical_json_bytes(fields)).hexdigest()
+
+
+class _WheelSourceBindingMethods:
+    """Encode and authenticate a controlled Wheel using its declared wire fields."""
+
+    __slots__ = ()
+    record_id: str
+    _binding_schema: ClassVar[RecordSchema]
+    _binding_label: ClassVar[str]
+    _sort_binding_fields: ClassVar[bool] = False
+
+    @classmethod
+    def _seal_binding(cls, **attributes: object) -> Self:
+        """Seal the declared wire fields before constructing the nominal record."""
+        document: dict[str, object] = {}
+        for field in cls._binding_schema.fields:
+            if field.attribute == "record_id":
+                continue
+            value = attributes[field.attribute]
+            document[field.wire_key] = (
+                value if field.encoder is None else field.encoder(value)
+            )
+        construct: Callable[..., Self] = cls
+        return construct(**attributes, record_id=wheel_source_binding_digest(document))
+
+    def to_dict(self) -> dict[str, object]:
+        return self._binding_schema.encode(self, sort_keys=self._sort_binding_fields)
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        if type(value) is not dict or set(value) != cls._binding_schema.keys:
+            raise ValueError(f"{cls._binding_label} binding record is invalid")
+        return cls._binding_schema.decode(cls, value)
+
+    @classmethod
+    def _record_codec(cls) -> FunctionalJournalRecordCodec[Self]:
+        return FunctionalJournalRecordCodec(encoder=cls.to_dict, decoder=cls.from_dict)
+
+    def _require_binding_identity(self) -> None:
+        if self.record_id != wheel_source_binding_digest(self.to_dict()):
+            raise ValueError(f"{self._binding_label} binding identity changed")
+
+
+class _ExternalWheelBindingMethods(_WheelSourceBindingMethods):
+    """Seal captured Wheel Source metadata before constructing its nominal receipt."""
+
+    __slots__ = ()
+    record_revision: int
+    store_id: str
+    namespace_id: str
+    scope_id: str
+    original_source: str
+    wheel_filename: str
+    artifact_digest: str
+
+    @classmethod
+    def _wheel_identity_fields(cls, wheel_filename: str) -> dict[str, str]:
+        raise NotImplementedError
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        record_revision: int,
+        store_id: str,
+        namespace_id: str,
+        scope_id: str,
+        original_source: str,
+        wheel_filename: str,
+        artifact_digest: str,
+    ) -> Self:
+        return cls._seal_binding(
+            **cls._wheel_identity_fields(wheel_filename),
+            record_revision=record_revision,
+            store_id=store_id,
+            namespace_id=namespace_id,
+            scope_id=scope_id,
+            original_source=original_source,
+            wheel_filename=wheel_filename,
+            artifact_digest=artifact_digest,
+        )
+
+
+class _DataWheelBindingMethods(_ExternalWheelBindingMethods):
+    """Use the controlled Plugin filename as the original binding identity."""
+
+    __slots__ = ()
+    plugin_id: str
+    version: str
+    _wheel_name: ClassVar[re.Pattern[str]]
+    _max_wheel_filename: ClassVar[int]
+    _data_trust_class: ClassVar[str]
+
+    @classmethod
+    def _wheel_identity_fields(cls, wheel_filename: str) -> dict[str, str]:
+        return plugin_wheel_identity_fields(
+            wheel_filename, cls._wheel_name, cls._binding_label
+        )
+
+    def __post_init__(self) -> None:
+        if (
+            not plugin_wheel_source_fields_match(
+                self,
+                self._wheel_name.fullmatch(self.wheel_filename),
+                maximum_filename=self._max_wheel_filename,
+            )
+            or _SOURCE_RECORD_DIGEST.fullmatch(self.record_id) is None
+        ):
+            raise ValueError(f"{self._binding_label} binding is invalid")
+        self._require_binding_identity()
+
+    def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
+        return project_plugin_wheel_binding(
+            self, source_root, trust_class=self._data_trust_class
+        )
+
+
+class _WorkerWheelBindingMethods(_WheelSourceBindingMethods):
+    """Validate and seal an inert Worker Wheel Source and its exact admission."""
+
+    __slots__ = ()
+    record_revision: int
+    store_id: str
+    namespace_id: str
+    scope_id: str
+    original_source: str
+    wheel_filename: str
+    plugin_id: str
+    version: str
+    artifact_digest: str
+    admission: PackageProductLocalWorkerAdmissionV1
+
+    _binding_label = "External Worker Wheel"
+    _sort_binding_fields = True
+    _wheel_name: ClassVar[re.Pattern[str]]
+    _max_wheel_filename: ClassVar[int]
+
+    def __post_init__(self) -> None:
+        if not all(
+            isinstance(getattr(self, field.attribute), str)
+            for field in self._binding_schema.fields
+            if field.attribute not in {"record_revision", "admission"}
+        ):
+            raise ValueError(f"{self._binding_label} binding fields are invalid")
+        match = self._wheel_name.fullmatch(self.wheel_filename)
+        platform = (
+            "windows-amd64"
+            if match is not None and match["tag"] == "win_amd64"
+            else "linux-x86_64"
+        )
+        if (
+            not plugin_wheel_source_fields_match(
+                self, match, maximum_filename=self._max_wheel_filename
+            )
+            or not isinstance(self.admission, PackageProductLocalWorkerAdmissionV1)
+            or self.admission.native_platform != platform
+            or _SOURCE_RECORD_DIGEST.fullmatch(self.record_id) is None
+        ):
+            raise ValueError(f"{self._binding_label} binding is invalid")
+        self._require_binding_identity()
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        record_revision: int,
+        store_id: str,
+        namespace_id: str,
+        scope_id: str,
+        original_source: str,
+        wheel_filename: str,
+        artifact_digest: str,
+        admission: PackageProductLocalWorkerAdmissionV1,
+    ) -> Self:
+        return cls._seal_binding(
+            record_revision=record_revision,
+            store_id=store_id,
+            namespace_id=namespace_id,
+            scope_id=scope_id,
+            original_source=original_source,
+            wheel_filename=wheel_filename,
+            **plugin_wheel_identity_fields(
+                wheel_filename, cls._wheel_name, cls._binding_label
+            ),
+            artifact_digest=artifact_digest,
+            admission=admission,
+        )
+
+    @classmethod
+    def _worker_schema(cls) -> RecordSchema:
+        return RecordSchema.for_dataclass(
+            cls,
+            lambda value: value,
+            RecordField(
+                "admission",
+                decoder=PackageProductLocalWorkerAdmissionV1._from_record_payload,
+                encoder=PackageProductLocalWorkerAdmissionV1._to_record_payload,
+            ),
+        )
+
+    def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
+        return project_plugin_wheel_binding(
+            self,
+            source_root,
+            trust_class="local-worker-candidate",
+            admission=self.admission,
+        )
+
+
+def plugin_wheel_identity_fields(
+    wheel_filename: str,
+    pattern: re.Pattern[str],
+    label: str,
+) -> dict[str, str]:
+    match = pattern.fullmatch(wheel_filename)
+    if match is None:
+        raise ValueError(f"{label} filename is unsupported")
+    return {"plugin_id": match["plugin"], "version": match["version"]}
+
+
+def project_plugin_wheel_binding(
+    record: _PluginSourceRecord,
+    source_root: Path,
+    *,
+    trust_class: str,
+    admission: PackageProductLocalWorkerAdmissionV1 | None = None,
+) -> PackageProductLocalWheelBindingV1:
+    return PackageProductLocalWheelBindingV1(
+        source_identity=str(source_root / record.wheel_filename),
+        requested_package=f"{record.plugin_id}=={record.version}",
+        plugin_id=record.plugin_id,
+        artifact_digest=record.artifact_digest,
+        plugin_manifest_path=f"{record.plugin_id}/plugin.json",
+        source_trust_class=trust_class,
+        worker_admission=admission,
+    )
 
 
 class _SourceCatalogReadScopes(Generic[CatalogRecordT]):
@@ -215,6 +513,7 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
     _label: str
     _path_label: str
     _error_factory: Callable[[str], Exception]
+    _codec: JournalRecordCodec[RecordT]
     _catalog_regular_single_link = False
 
     def __init__(
@@ -257,7 +556,7 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
             return ()
         records = load_jsonl(
             self.path,
-            record_codec=self._record_codec(),
+            record_codec=self._codec,
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._durability,
             load_policy=load_policy or JournalLoadPolicy(partial_tail="raise"),
@@ -287,24 +586,99 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
             raise self._error_factory(f"{self._label} binding file is unsafe")
         return True
 
-    def _record_codec(self) -> JournalRecordCodec[RecordT]:
-        raise NotImplementedError
-
     def _record_key(self, record: RecordT) -> Hashable:
         raise NotImplementedError
 
 
-class _StableWheelSource:
+class _StableWheelSource(Generic[RecordT]):
+    _label: str
     _source_label: str
+    source_root: Path
+    store_id: str
+    namespace_id: str
+    scope_id: str
+    _create_binding: Callable[..., RecordT]
+    _persist_admission = False
+    _binding_limit = 125
     _error_factory: Callable[[str], Exception]
     _source_read_errors: tuple[type[BaseException], ...] = (OSError,)
     _source_read_error_suffix = "Source changed"
+    _wheel_name: re.Pattern[str]
+    _max_wheel_filename: int
 
     def _max_source_bytes(self) -> int:
         raise NotImplementedError
 
     def _validate_source_name(self, filename: str) -> None:
         pass
+
+    def _new_record(
+        self,
+        source: Path,
+        digest: str,
+        revision: int,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1 | None,
+    ) -> RecordT:
+        extra = {"admission": admission} if self._persist_admission else {}
+        return self._create_binding(
+            record_revision=revision,
+            store_id=self.store_id,
+            namespace_id=self.namespace_id,
+            scope_id=self.scope_id,
+            original_source=str(source),
+            wheel_filename=source.name,
+            artifact_digest=digest,
+            **extra,
+        )
+
+    def _is_external_source(self, source: Path) -> bool:
+        return (
+            source.is_absolute()
+            and os.path.normpath(str(source)) == str(source)
+            and not source.is_relative_to(self.source_root)
+        )
+
+    def _require_worker_capture_source(
+        self,
+        source: Path,
+        admission: PackageProductLocalWorkerAdmissionV1,
+        *,
+        native_platform: str,
+        required_suffix: str = "",
+    ) -> None:
+        if (
+            not isinstance(admission, PackageProductLocalWorkerAdmissionV1)
+            or admission.native_platform != native_platform
+            or not isinstance(source, Path)
+            or not self._is_external_source(source)
+            or self._wheel_name.fullmatch(source.name) is None
+            or (required_suffix and not source.name.endswith(required_suffix))
+            or len(source.name) > self._max_wheel_filename
+        ):
+            raise self._error_factory(f"{self._source_label} Source is invalid")
+
+    def _existing_capture(
+        self,
+        records: Sequence[RecordT],
+        source: Path,
+        digest: str,
+        admission: PackageProductLocalWorkerAdmissionV1 | None,
+    ) -> RecordT | None:
+        record = next((item for item in records if item.wheel_filename == source.name), None)
+        if record is None:
+            if len(records) >= self._binding_limit:
+                raise self._error_factory(f"{self._label} binding limit reached")
+        elif (
+            record.artifact_digest != digest
+            or record.original_source != str(source)
+            or (
+                self._persist_admission
+                and cast(_WorkerSourceRecord, record).admission != admission
+            )
+        ):
+            raise self._error_factory(f"{self._label} binding conflicts")
+        return record
 
     def _read_source(self, source: Path) -> tuple[bytes, str]:
         try:
@@ -332,8 +706,29 @@ class _StableWheelSource:
         return body, digest
 
 
-class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource):
-    _binding_limit = 125
+class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource[RecordT]):
+    _read_only_capture_error = "Read-only catalog cannot capture"
+
+    def _admit_capture_source(self, source: Path) -> bool:
+        return self._is_external_source(source)
+
+    def _capture_external(
+        self,
+        source: Path,
+        *,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> RecordT:
+        self._require_capture_epoch(epoch_runtime)
+        if not self._admit_capture_source(source):
+            raise self._error_factory(f"{self._source_label} Source is invalid")
+        return self._capture_validated(source, epoch_runtime=epoch_runtime)
+
+    def _require_capture_epoch(
+        self, epoch_runtime: PackageProductPosixFencedRuntimeOwner
+    ) -> None:
+        if self._read_only:
+            raise self._error_factory(self._read_only_capture_error)
+        self._assert_epoch(epoch_runtime)
 
     def _verify_source_body(self, filename: str, body: bytes) -> None:
         pass
@@ -342,23 +737,6 @@ class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource):
         self, record: RecordT, records: tuple[RecordT, ...]
     ) -> None:
         pass
-
-    def _admission_conflicts(
-        self,
-        record: RecordT,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
-    ) -> bool:
-        return False
-
-    def _new_record(
-        self,
-        source: Path,
-        digest: str,
-        revision: int,
-        *,
-        admission: PackageProductLocalWorkerAdmissionV1 | None,
-    ) -> RecordT:
-        raise NotImplementedError
 
     def _capture_validated(
         self,
@@ -372,20 +750,10 @@ class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource):
         with journal_file_lock(self.path, "exclusive"):
             self._assert_epoch(epoch_runtime)
             records = self._load_unlocked()
-            existing = next(
-                (item for item in records if item.wheel_filename == source.name), None
-            )
+            existing = self._existing_capture(records, source, digest, admission)
             if existing is not None:
-                if (
-                    existing.artifact_digest != digest
-                    or existing.original_source != str(source)
-                    or self._admission_conflicts(existing, admission)
-                ):
-                    raise self._error_factory(f"{self._label} binding conflicts")
                 self._verify_controlled(existing)
                 return existing
-            if len(records) >= self._binding_limit:
-                raise self._error_factory(f"{self._label} binding limit reached")
             record = self._new_record(
                 source, digest, len(records) + 1, admission=admission
             )
@@ -394,7 +762,7 @@ class _WheelSourceCatalog(_PosixSourceCatalog[RecordT], _StableWheelSource):
             append_jsonl_record(
                 self.path,
                 record,
-                record_codec=self._record_codec(),
+                record_codec=self._codec,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._durability,
             )
@@ -476,13 +844,10 @@ class _PluginSourcePolicy(Generic[PluginRecordT]):
         self._check_policy_current()
         return replace(
             base,
-            bindings=tuple(
-                sorted(
-                    (
-                        *base.bindings,
-                        *(item.policy_binding(self.source_root) for item in records),
-                    ),
-                    key=lambda item: item.source_identity,
+            bindings=local_wheel_bindings_in_source_order(
+                (
+                    *base.bindings,
+                    *(item.policy_binding(self.source_root) for item in records),
                 )
             ),
         )
@@ -494,13 +859,64 @@ class _PluginWheelSourceCatalog(
     def _record_key(self, record: PluginRecordT) -> Hashable:
         return record.plugin_id, record.version
 
+
+class _PosixWorkerSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
+    _read_only_capture_error = "Read-only Worker Source cannot capture"
+    _catalog_regular_single_link = True
+    _persist_admission = True
+
+    def capture(
+        self,
+        source: Path,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> PluginRecordT:
+        self._require_capture_epoch(epoch_runtime)
+        self._require_worker_capture_source(
+            source, admission, native_platform="linux-x86_64"
+        )
+        return self._capture_validated(
+            source, epoch_runtime=epoch_runtime, admission=admission
+        )
+
+
+class _DataWheelSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
+    _record_type: type[PluginRecordT]
+    _error_factory: type[Exception]
+
+    def _admit_capture_source(self, source: Path) -> bool:
+        return (
+            super()._admit_capture_source(source)
+            and self._wheel_name.fullmatch(source.name) is not None
+            and len(source.name) <= self._max_wheel_filename
+        )
+
+    def capture(
+        self,
+        source: Path,
+        *,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> PluginRecordT:
+        return self._capture_external(source, epoch_runtime=epoch_runtime)
+
+    def verify_record(self, record: PluginRecordT) -> None:
+        """Prove selection and controlled bytes of one already admitted binding."""
+        if (
+            not isinstance(record, self._record_type)
+            or record.store_id != self.store_id
+            or record.namespace_id != self.namespace_id
+            or record.scope_id != self.scope_id
+            or record not in self.records()
+        ):
+            raise self._error_factory(f"{self._label} binding changed")
+        self._verify_controlled(record)
+
     def project_management_source_snapshot(
         self,
         desired_state: PluginDesiredStateLedger,
         *,
         owner_revision_prefix: str,
-        verify_record: Callable[[PluginRecordT], None],
-        verification_error: type[Exception],
     ) -> PluginManagementSourceSnapshotV1:
         """Project current controlled sources with committed selections preferred."""
 
@@ -529,8 +945,8 @@ class _PluginWheelSourceCatalog(
         for item in latest.values():
             availability: Literal["available", "unavailable"]
             try:
-                verify_record(item)
-            except (verification_error, OSError):
+                self.verify_record(item)
+            except (self._error_factory, OSError):
                 availability = "unavailable"
             else:
                 availability = "available"
@@ -575,6 +991,50 @@ class _DependencySourceRecord(_SourceRecord, Protocol):
     ) -> PackageProductLocalWheelDependencyV1: ...
 
 
+class _DependencyWheelBindingMethods(_ExternalWheelBindingMethods):
+    """Prove that a controlled dependency retains its exact project/version."""
+
+    __slots__ = ()
+    project_name: str
+    version: str
+    _dependency_directory: ClassVar[str]
+
+    @staticmethod
+    def _wheel_identity(wheel_filename: str) -> tuple[str, str]:
+        raise NotImplementedError
+
+    @classmethod
+    def _wheel_identity_fields(cls, wheel_filename: str) -> dict[str, str]:
+        project_name, version = cls._wheel_identity(wheel_filename)
+        return {"project_name": project_name, "version": version}
+
+    def __post_init__(self) -> None:
+        project_name, version = self._wheel_identity(self.wheel_filename)
+        if (
+            not _source_binding_scope_matches(self, require_strings=True)
+            or self.project_name != project_name
+            or self.version != version
+            or not isinstance(self.artifact_digest, str)
+            or _SOURCE_RECORD_DIGEST.fullmatch(self.artifact_digest) is None
+            or not isinstance(self.record_id, str)
+            or _SOURCE_RECORD_DIGEST.fullmatch(self.record_id) is None
+        ):
+            raise ValueError(f"{self._binding_label} binding is invalid")
+        self._require_binding_identity()
+
+    def policy_dependency(
+        self, source_root: Path
+    ) -> PackageProductLocalWheelDependencyV1:
+        return PackageProductLocalWheelDependencyV1(
+            source_identity=str(
+                source_root / self._dependency_directory / self.wheel_filename
+            ),
+            project_name=self.project_name,
+            version=self.version,
+            artifact_digest=self.artifact_digest,
+        )
+
+
 DependencyRecordT = TypeVar("DependencyRecordT", bound=_DependencySourceRecord)
 
 
@@ -583,6 +1043,24 @@ class _DependencyWheelSourceCatalog(_WheelSourceCatalog[DependencyRecordT]):
     _source_read_errors = (OSError, ValueError)
     _source_read_error_suffix = "Source changed or is invalid"
     _binding_limit = 128
+
+    def capture(
+        self,
+        source: Path,
+        *,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> DependencyRecordT:
+        return self._capture_external(source, epoch_runtime=epoch_runtime)
+
+    def _record_key(self, record: DependencyRecordT) -> tuple[str, Version]:
+        return record.project_name, Version(record.version)
+
+    def _require_new_record(
+        self, record: DependencyRecordT, records: tuple[DependencyRecordT, ...]
+    ) -> None:
+        key = self._record_key(record)
+        if any(self._record_key(item) == key for item in records):
+            raise self._error_factory(f"{self._label} version is already bound")
 
     def _directory_name(self) -> str:
         raise NotImplementedError
@@ -651,7 +1129,7 @@ class _DependencyWheelSourceCatalog(_WheelSourceCatalog[DependencyRecordT]):
         )
 
 
-class _WindowsWorkerRecord(_PluginSourceRecord, Protocol):
+class _WorkerSourceRecord(_PluginSourceRecord, Protocol):
     @property
     def admission(self) -> PackageProductLocalWorkerAdmissionV1: ...
     def to_dict(self) -> dict[str, object]: ...
@@ -659,29 +1137,20 @@ class _WindowsWorkerRecord(_PluginSourceRecord, Protocol):
     def from_dict(cls, value: object) -> Self: ...
 
 
-WindowsRecordT = TypeVar("WindowsRecordT", bound=_WindowsWorkerRecord)
+WindowsRecordT = TypeVar("WindowsRecordT", bound=_WorkerSourceRecord)
 
 
 class _WindowsWorkerSourceCatalog(
-    _StableWheelSource, _PluginSourcePolicy[WindowsRecordT]
+    _StableWheelSource[WindowsRecordT], _PluginSourcePolicy[WindowsRecordT]
 ):
     _receipt_io: WindowsPrivateReceiptIO
     _source_files: ExactProductSourceFiles
     _record_type: type[WindowsRecordT]
     _receipt_write_maximum: int
     _publication_label: str
+    _persist_admission = True
 
     def _max_record_bytes(self) -> int:
-        raise NotImplementedError
-
-    def _new_record(
-        self,
-        source: Path,
-        digest: str,
-        revision: int,
-        *,
-        admission: PackageProductLocalWorkerAdmissionV1,
-    ) -> WindowsRecordT:
         raise NotImplementedError
 
     def _check_policy_current(self) -> None:
@@ -718,25 +1187,28 @@ class _WindowsWorkerSourceCatalog(
         self.scope_id = scope_id
         epoch_runtime.assert_current()
 
+    def capture(
+        self,
+        source: Path,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1,
+    ) -> WindowsRecordT:
+        self._assert_epoch()
+        self._require_worker_capture_source(
+            source, admission,
+            native_platform="windows-amd64", required_suffix="-win_amd64.whl",
+        )
+        return self._capture_validated(source, admission=admission)
+
     def _capture_validated(
         self, source: Path, *, admission: PackageProductLocalWorkerAdmissionV1
     ) -> WindowsRecordT:
         body, digest = self._read_source(source)
         records = self._records(allow_pending_stage=True)
-        existing = next(
-            (item for item in records if item.wheel_filename == source.name), None
-        )
+        existing = self._existing_capture(records, source, digest, admission)
         if existing is not None:
-            if (
-                existing.artifact_digest != digest
-                or existing.original_source != str(source)
-                or existing.admission != admission
-            ):
-                raise self._error_factory(f"{self._label} binding conflicts")
             self.verify_record(existing)
             return existing
-        if len(records) >= 125:
-            raise self._error_factory(f"{self._label} binding limit reached")
         record = self._new_record(source, digest, len(records) + 1, admission=admission)
         receipt_bytes = canonical_json_bytes(record.to_dict())
         if len(receipt_bytes) > self._max_record_bytes():
@@ -891,7 +1363,8 @@ __all__: list[str] = []
 
 
 class _LegacyLocalSourceCatalog(
-    _SourceCatalogReadScopes[LegacyRecordT], Generic[LegacyRecordT, LegacyCandidateT]
+    _SourceCatalogReadScopes[LegacyRecordT],
+    Generic[LegacyRecordT, LegacyCandidateT, LegacyAcceptanceT],
 ):
     source_root: Path
     store_id: str
@@ -907,6 +1380,42 @@ class _LegacyLocalSourceCatalog(
     _unlocked_durability: JournalDurabilityProfile
     _load_policy: JournalLoadPolicy
     _read_errors: tuple[type[BaseException], ...] = ()
+
+    _acceptance_type: type[LegacyAcceptanceT]
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        source_root: Path,
+        store_id: str,
+        namespace_id: str,
+        scope_id: str,
+        policy_revision: str,
+        acceptance_reader: Callable[[str], LegacyAcceptanceT | None] | None = None,
+    ) -> None:
+        if not isinstance(path, Path) or not path.is_absolute():
+            raise ValueError("Legacy binding catalog path is invalid")
+        self.path = path
+        self.source_root = source_root
+        self.store_id = store_id
+        self.namespace_id = namespace_id
+        self.scope_id = scope_id
+        self.policy_revision = policy_revision
+        self._acceptance_reader = acceptance_reader
+        self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
+        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+
+    def _require_accepted_binding(self, record: LegacyRecordT) -> None:
+        if self._acceptance_reader is None:
+            raise self._error_factory("Legacy Product binding has no acceptance owner")
+        accepted = self._acceptance_reader(record.plugin_id)
+        if not isinstance(accepted, self._acceptance_type):
+            raise self._error_factory("Legacy Product binding has no accepted review")
+        if not record._matches_approval(accepted):
+            raise self._error_factory(
+                "Legacy Product binding differs from accepted review"
+            )
 
     def publish_accepted_candidate(
         self,
@@ -1115,13 +1624,10 @@ class _LegacyLocalSourceCatalog(
             )
         return replace(
             base,
-            bindings=tuple(
-                sorted(
-                    (
-                        *base.bindings,
-                        *(item.to_policy_binding(self.source_root) for item in records),
-                    ),
-                    key=lambda item: item.source_identity,
+            bindings=local_wheel_bindings_in_source_order(
+                (
+                    *base.bindings,
+                    *(item.to_policy_binding(self.source_root) for item in records),
                 )
             ),
         )
@@ -1164,9 +1670,6 @@ class _LegacyLocalSourceCatalog(
             raise self._error_factory(
                 "Legacy Product binding catalog is corrupt"
             ) from exc
-
-    def _require_accepted_binding(self, record: LegacyRecordT) -> None:
-        raise NotImplementedError
 
     def _record_codec(self) -> JournalRecordCodec[LegacyRecordT]:
         raise NotImplementedError

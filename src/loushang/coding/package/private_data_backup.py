@@ -62,7 +62,7 @@ from .installation_private_data import (
 )
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
-    _ArchBackupCodec,
+    backup_manifest_codec,
     make_backup_receipt,
 )
 from .private_data_backup_records import (
@@ -85,7 +85,7 @@ _open_private_path = _private_io.open_path
 _write_or_verify_file = _private_io.write_file
 
 
-_archive_codec = _ArchBackupCodec()
+_archive_codec = backup_manifest_codec(windows=False)
 
 
 @dataclass(frozen=True, slots=True)

@@ -511,6 +511,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "integrations/_continuity_preparation.py",
         "integrations/_foreground_client_control.py",
         "integrations/_managed_mux_command.py",
+        "integrations/_session_projection.py",
     } == {
         "__init__.py",
         "_ownership.py",
@@ -688,6 +689,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         if any(imported.startswith("loushang.apphost") for imported in _imports(path))
     }
     execution_work = "loushang.apphost.integrations.session_control"
+    session_projection = "loushang.apphost.integrations._session_projection"
     optional_execution_consumers = {
         path for path in reverse_apphost_consumers
         if path in {
@@ -703,11 +705,21 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                 {
                     execution_work + "._DeferredSessionControl",
                     execution_work + "._HostedApprovalPresentation",
+                    session_projection,
+                    session_projection + "._HostedApprovalPresentation",
+                    session_projection + "._project_hosted_approval",
                 }
                 if path == Path('src/loushang/coding/hosted/resume.py')
                 else set()
             )
-        ) <= {execution_work, execution_work + "._HostedAgentExecutionWork"}
+        ) <= {
+            execution_work,
+            execution_work + (
+                "._HostedResumeInputExecutionWork"
+                if path == Path('src/loushang/coding/hosted/resume.py')
+                else "._HostedPromptExecutionWork"
+            ),
+        }
     }
     assert reverse_apphost_consumers - optional_execution_consumers == {
         Path('src/loushang/coding/hosted/client_settings.py'),

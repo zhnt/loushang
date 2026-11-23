@@ -7,6 +7,9 @@ Coding rechecks the selected Product launch material before each domain read.
 
 from __future__ import annotations
 
+from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderOwnerAuthority,
+)
 from loushang.harness.package_product._worker_product_authority import (
     _ProductWorkerCapabilityAuthority,
 )
@@ -17,6 +20,7 @@ from loushang.harness.worker.facet_owner import (
 )
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
+from .product_worker_query_consumer import bind_coding_worker_query_facet_owner
 from .product_worker_receipt import (
     CodingWorkerProductReceiptOwner,
     CodingWorkerSelectedPayloadV1,
@@ -68,6 +72,28 @@ class CodingProductWorkerCapabilityAuthority(
             binding=binding,
             owner_policy=owner_policy,
         )
+
+
+def _bind_query_authority(
+    *,
+    receipt_owner: CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner,
+    receipt: ProductWorkerActivationReceiptV1,
+    request: ManagedWorkerLaunchRequestV1,
+    binding: CapabilityWorkerBindingV1,
+    provider_owner: CapabilityProviderOwnerAuthority,
+) -> CodingProductWorkerCapabilityAuthority:
+    """Use the same exact query facet authority for both Session entry points."""
+    return CodingProductWorkerCapabilityAuthority(
+        receipt_owner=receipt_owner,
+        receipt=receipt,
+        request=request,
+        binding=binding,
+        owner_policy=bind_coding_worker_query_facet_owner(
+            binding=binding,
+            provider_owner=provider_owner,
+            current_owner_snapshot=provider_owner.snapshot,
+        ),
+    )
 
 
 __all__ = [
