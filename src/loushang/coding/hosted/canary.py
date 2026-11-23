@@ -6,15 +6,16 @@ import asyncio
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 from secrets import token_hex
-from typing import Any, Literal, Protocol, cast
+from typing import Literal, cast
 
 from loushang.apphost import (
     AdmissionIdentityV1,
     AppHostAdmissionSubjectKind,
+    AppHostSessionLeaseV1,
     AppHostShutdownBudgetV1,
     ProfileDescriptorV1,
     ProfileRegistrationV1,
@@ -27,12 +28,7 @@ from loushang.apphost import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
-from loushang.apphost._ownership import (
-    AsyncClose,
-    _ConstructionCloseOwner,
-    _settle_owned_closes,
-    _try_settle_owned_closes,
-)
+from loushang.apphost._ownership import _settle_owned_closes
 from loushang.apphost.catalog import _InstalledAdmissionSource
 from loushang.apphost.integrations.session_product import _BorrowedProfileLease
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
@@ -56,22 +52,24 @@ from loushang.coding.hosted.product import (
     CodingAppHostProductBindingV1,
     CodingAppHostWorkerAttemptV1,
 )
+from loushang.foundation._owned_tasks import _try_settle_owned_closes
 from loushang.harness.runtime import await_owned_task
 from loushang.harness.worker import (
     ProductWorkerActivationPolicyV1,
     ProductWorkerActivationReceiptV1,
 )
 from loushang.hosting import (
-    HostingObservation,
-    HostingObservationSink,
-    ProcessHostingPort,
     ProcessLaunchRequest,
-    ProcessLease,
     ProcessStderrMode,
     ProcessStdinMode,
     ProcessStdoutMode,
     ProcessStreamSpec,
     create_process_host,
+)
+from loushang.hosting._process_probe import (
+    _ProcessHostFactory,
+    _ProcessProbe,
+    _ProcessProbeOutputError,
 )
 
 CODING_APPHOST_CANARY_REPORT_VERSION = 1
@@ -216,49 +214,9 @@ class CodingAppHostCanaryReportV1:
         }
 
 
-class _ProcessHostFactory(Protocol):
-    def __call__(
-        self,
-        *,
-        observation_sink: HostingObservationSink | None = None,
-    ) -> ProcessHostingPort: ...
-
-
-class _ObservationSink:
-    __slots__ = ("backend_ids", "overflow", "transitions")
-
-    def __init__(self) -> None:
-        self.backend_ids: list[str] = []
-        self.transitions: list[str] = []
-        self.overflow = False
-
-    def observe(self, observation: HostingObservation) -> None:
-        if type(observation) is not HostingObservation:
-            self.overflow = True
-            return
-        if len(self.transitions) >= CODING_APPHOST_CANARY_MAX_TRANSITIONS:
-            self.overflow = True
-            return
-        self.transitions.append(observation.transition.value)
-        if (
-            observation.backend_id is not None
-            and observation.backend_id not in self.backend_ids
-        ):
-            self.backend_ids.append(observation.backend_id)
-
-    def backend_id(self) -> str | None:
-        return self.backend_ids[0] if len(self.backend_ids) == 1 else None
-
-
-class _PreparationLease:
-    __slots__ = ("_request",)
-
-    def __init__(self, request: ProcessLaunchRequest) -> None:
-        self._request = request
-
-    @property
-    def request(self) -> ProcessLaunchRequest:
-        return self._request
+@dataclass(frozen=True, slots=True)
+class _ProbePreparation:
+    request: ProcessLaunchRequest
 
     async def verify_current(self) -> None:
         return None
@@ -267,23 +225,20 @@ class _PreparationLease:
         return None
 
 
-class _PreparationPort:
-    async def prepare(self, request: ProcessLaunchRequest) -> _PreparationLease:
-        return _PreparationLease(request)
+class _ProbePreparationPort:
+    """Admit the exact Product-owned canary child without extra preparation."""
+
+    async def prepare(self, request: ProcessLaunchRequest) -> _ProbePreparation:
+        return _ProbePreparation(request)
 
 
 class _NativeCanaryAttempt:
     __slots__ = (
-        "_close_lock",
-        "_closed",
         "_cwd",
         "_failure_code",
-        "_host",
-        "_host_factory",
-        "_lease",
         "_nonce",
+        "_probe",
         "_receipt",
-        "_sink",
         "_status",
         "_timeout_seconds",
     )
@@ -295,8 +250,7 @@ class _NativeCanaryAttempt:
         selection_generation: int,
         cwd: Path,
         timeout_seconds: float,
-        host_factory: _ProcessHostFactory,
-        sink: _ObservationSink,
+        probe: _ProcessProbe,
     ) -> None:
         self._nonce = token_hex(16)
         policy = _worker_policy(
@@ -320,13 +274,8 @@ class _NativeCanaryAttempt:
         )
         self._cwd = cwd
         self._timeout_seconds = timeout_seconds
-        self._host_factory = host_factory
-        self._sink = sink
-        self._host: ProcessHostingPort | None = None
-        self._lease: ProcessLease | None = None
+        self._probe = probe
         self._failure_code: str | None = None
-        self._close_lock = asyncio.Lock()
-        self._closed = False
 
     @property
     def status(self) -> CodingProductWorkerCanaryStatusV1:
@@ -356,7 +305,7 @@ class _NativeCanaryAttempt:
         *,
         correlation_id: str,
     ) -> CodingProductWorkerCanaryStatusV1:
-        if not correlation_id or self._closed:
+        if not correlation_id or self._probe.closed:
             self._failure_code = "coding_apphost_canary_attempt_invalid"
             raise CodingAppHostCanaryError(code=self._failure_code)
         # Preserve a virtual-environment launcher path. Resolving its symlink to
@@ -370,7 +319,7 @@ class _NativeCanaryAttempt:
             argv=(
                 str(executable),
                 "-m",
-                'loushang.coding.hosted._canary_child',
+                "loushang.coding.hosted._canary_child",
                 self._nonce,
             ),
             cwd=str(self._cwd),
@@ -382,11 +331,9 @@ class _NativeCanaryAttempt:
             ),
         )
         try:
-            self._host = self._host_factory(observation_sink=self._sink)
-            async with asyncio.timeout(self._timeout_seconds):
-                self._lease = await self._host.start(request, _PreparationPort())
-                output = await _read_protocol_line(self._lease)
-                exited = await self._lease.wait()
+            output, exited = await self._probe.run(
+                request, _ProbePreparationPort(), timeout_seconds=self._timeout_seconds
+            )
             expected = _PROTOCOL_PREFIX + self._nonce.encode("ascii")
             if output not in {expected + b"\n", expected + b"\r\n"}:
                 raise CodingAppHostCanaryError(
@@ -396,10 +343,13 @@ class _NativeCanaryAttempt:
                 raise CodingAppHostCanaryError(
                     code="coding_apphost_canary_child_failed"
                 )
-            if self._sink.overflow or self._sink.backend_id() is None:
+            if self._probe.overflow or self._probe.backend_id() is None:
                 raise CodingAppHostCanaryError(
                     code="coding_apphost_canary_observation_invalid"
                 )
+        except _ProcessProbeOutputError as error:
+            self._failure_code = f"coding_apphost_canary_protocol_{error.reason}"
+            raise CodingAppHostCanaryError(code=self._failure_code) from None
         except TimeoutError as error:
             self._failure_code = "coding_apphost_canary_timeout"
             raise CodingAppHostCanaryError(code=self._failure_code) from error
@@ -412,38 +362,22 @@ class _NativeCanaryAttempt:
         except BaseException as error:
             self._failure_code = "coding_apphost_canary_hosting_unavailable"
             raise CodingAppHostCanaryError(code=self._failure_code) from error
-        self._status = CodingProductWorkerCanaryStatusV1(
-            code="coding_apphost_canary_ready",
-            readiness="ready",
-            required=True,
-            requested_owner="hosting",
-            effective_owner="hosting",
-            receipt_fingerprint=self._receipt.fingerprint,
-            attempt_id=self._nonce,
-            owner_generation=self._receipt.policy.owner_selection_generation,
+        self._status = replace(
+            self._status, code="coding_apphost_canary_ready", readiness="ready"
         )
         return self._status
 
     async def close(self) -> None:
-        async with self._close_lock:
-            if self._closed:
-                return
-            if not await _try_settle_owned_closes(
-                *_canary_close_calls(self._lease, self._host)
-            ):
-                self._failure_code = "coding_apphost_canary_cleanup_incomplete"
-                raise CodingAppHostCanaryError(code=self._failure_code) from None
-            self._closed = True
-            self._lease = None
-            self._host = None
+        if not await self._probe.close():
+            self._failure_code = "coding_apphost_canary_cleanup_incomplete"
+            raise CodingAppHostCanaryError(code=self._failure_code) from None
 
 
 class _AttemptFactory:
     __slots__ = (
         "_cwd",
-        "_host_factory",
+        "_probe",
         "_selection_generation",
-        "_sink",
         "_timeout_seconds",
         "attempt",
     )
@@ -454,14 +388,12 @@ class _AttemptFactory:
         selection_generation: int,
         cwd: Path,
         timeout_seconds: float,
-        host_factory: _ProcessHostFactory,
-        sink: _ObservationSink,
+        probe: _ProcessProbe,
     ) -> None:
         self._selection_generation = selection_generation
         self._cwd = cwd
         self._timeout_seconds = timeout_seconds
-        self._host_factory = host_factory
-        self._sink = sink
+        self._probe = probe
         self.attempt: _NativeCanaryAttempt | None = None
 
     def create_attempt(
@@ -479,8 +411,7 @@ class _AttemptFactory:
             selection_generation=self._selection_generation,
             cwd=self._cwd,
             timeout_seconds=self._timeout_seconds,
-            host_factory=self._host_factory,
-            sink=self._sink,
+            probe=self._probe,
         )
         self.attempt = attempt
         return attempt
@@ -690,16 +621,19 @@ async def _run_native_canary(
     journal: CodingAppHostCanaryControlJournal,
     process_host_factory: _ProcessHostFactory,
 ) -> CodingAppHostCanaryReportV1:
-    sink = _ObservationSink()
+    probe = _ProcessProbe(
+        process_host_factory,
+        max_output_bytes=CODING_APPHOST_CANARY_MAX_PROTOCOL_BYTES,
+        max_transitions=CODING_APPHOST_CANARY_MAX_TRANSITIONS,
+    )
     attempts = _AttemptFactory(
         selection_generation=control.selection_generation,
         cwd=request.cwd,
         timeout_seconds=request.timeout_seconds,
-        host_factory=process_host_factory,
-        sink=sink,
+        probe=probe,
     )
     composition: CodingAppHostCompositionV1 | None = None
-    lease: Any | None = None
+    lease: AppHostSessionLeaseV1 | None = None
     try:
         composition, reference = await _create_canary_composition(
             journal=journal,
@@ -723,9 +657,9 @@ async def _run_native_canary(
         if attempt is None:
             raise CodingAppHostCanaryError(code="coding_apphost_canary_attempt_missing")
         if (
-            sink.overflow
-            or sink.backend_id() is None
-            or not {"published", "exited", "closed"}.issubset(sink.transitions)
+            probe.overflow
+            or probe.backend_id() is None
+            or not {"published", "exited", "closed"}.issubset(probe.transitions)
         ):
             raise CodingAppHostCanaryError(
                 code="coding_apphost_canary_observation_invalid"
@@ -737,12 +671,13 @@ async def _run_native_canary(
             selection_generation=control.selection_generation,
             receipt_fingerprint=binding.receipt_fingerprint,
             attempt_fingerprint=attempt.attempt_fingerprint,
-            hosting_backend_id=sink.backend_id(),
-            hosting_transitions=tuple(sink.transitions),
+            hosting_backend_id=probe.backend_id(),
+            hosting_transitions=tuple(probe.transitions),
         )
     except asyncio.CancelledError:
         await _settle_owned_closes(
-            *_canary_close_calls(lease, composition),
+            None if lease is None else lease.close,
+            None if composition is None else composition.close,
             failure=CodingAppHostCanaryError(
                 code="coding_apphost_canary_cleanup_incomplete"
             ),
@@ -751,7 +686,8 @@ async def _run_native_canary(
         raise
     except BaseException as error:
         cleanup_complete = await _try_settle_owned_closes(
-            *_canary_close_calls(lease, composition)
+            None if lease is None else lease.close,
+            None if composition is None else composition.close,
         )
         attempt = attempts.attempt
         code = (
@@ -774,8 +710,8 @@ async def _run_native_canary(
             attempt_fingerprint=(
                 None if attempt is None else attempt.attempt_fingerprint
             ),
-            hosting_backend_id=sink.backend_id(),
-            hosting_transitions=tuple(sink.transitions),
+            hosting_backend_id=probe.backend_id(),
+            hosting_transitions=tuple(probe.transitions),
         )
 
 
@@ -876,39 +812,6 @@ def _child_environment() -> tuple[tuple[str, str], ...]:
         if value:
             selected[name] = value
     return tuple(sorted(selected.items()))
-
-
-async def _read_protocol_line(lease: ProcessLease) -> bytes:
-    output = bytearray()
-    while b"\n" not in output:
-        remaining = CODING_APPHOST_CANARY_MAX_PROTOCOL_BYTES + 1 - len(output)
-        if remaining <= 0:
-            raise CodingAppHostCanaryError(
-                code="coding_apphost_canary_protocol_oversize"
-            )
-        chunk = await lease.read_stdout(remaining)
-        if not chunk:
-            break
-        output.extend(chunk)
-    if len(output) > CODING_APPHOST_CANARY_MAX_PROTOCOL_BYTES:
-        raise CodingAppHostCanaryError(code="coding_apphost_canary_protocol_oversize")
-    if b"\n" in output and await lease.read_stdout(1):
-        raise CodingAppHostCanaryError(
-            code="coding_apphost_canary_protocol_trailing_data"
-        )
-    return bytes(output)
-
-
-def _canary_close_calls(
-    *owners: _ConstructionCloseOwner | None,
-) -> tuple[AsyncClose, ...]:
-    def close_owned(owner: _ConstructionCloseOwner) -> AsyncClose:
-        async def close() -> None:
-            await owner.close()
-
-        return close
-
-    return tuple(close_owned(owner) for owner in owners if owner is not None)
 
 
 def _control_report(

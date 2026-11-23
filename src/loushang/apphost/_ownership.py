@@ -7,6 +7,8 @@ import inspect
 from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
+from loushang.foundation._owned_tasks import _try_settle_owned_closes
+
 from .contracts import SessionBindingKeyV1, SessionCandidateRefV1
 from .errors import CleanupIncompleteError
 
@@ -324,23 +326,13 @@ async def _settle_failed_product_construction(
     )
 
 
-async def _try_settle_owned_closes(*closes: AsyncClose) -> bool:
-    """Attempt every close in order and report whether all owners settled."""
-    complete = True
-    for close in closes:
-        try:
-            await close()
-        except BaseException:
-            complete = False
-    return complete
-
-
 async def _settle_owned_closes(
-    *closes: AsyncClose,
+    *closes: AsyncClose | None,
     failure: RuntimeError,
     join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
 ) -> None:
     """Attempt every close in order, including when an earlier owner fails."""
+
     async def settle() -> None:
         if not await _try_settle_owned_closes(*closes):
             raise failure from None

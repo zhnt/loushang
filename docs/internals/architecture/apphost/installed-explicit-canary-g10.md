@@ -118,12 +118,13 @@ above remain unchanged; historical imports retain compatibility routes.
 | Component | Owner | Responsibility | Forbidden responsibility |
 | --- | --- | --- | --- |
 | `coding.cli.apphost` | Coding CLI | recognize exact command grammar, lazy-dispatch the operation, render the bounded report | construct AppHost/Hosting owners, read control files directly, expose raw failures |
-| `coding.hosted.canary` | Coding Product | bind explicit request, Product control snapshot, ephemeral Session/profile/admission ports, G9 composition, exact attempt, cleanup, and report | normal Coding bootstrap/session, AppServer/AppService, named mux, implicit selection |
+| `coding.hosted.canary` | Coding Product | bind the explicit request, Product control snapshot, ephemeral Session/profile/admission ports and G9 composition, and interpret the nonce response and settlement evidence | normal Coding bootstrap/session, AppServer/AppService, named mux, implicit selection |
 | `coding.hosted._canary_control` | Coding Product | validate and append monotonic enable/rollback records under one Harness journal lock | generic settings, Session persistence, global Hosting policy |
 | `coding.hosted._canary_child` | Coding Product | execute the bounded nonce challenge over stdout and exit | import AppHost, access Session/config/resources, accept commands, become a daemon |
 | `coding.hosted.composition` | Coding Product/AppHost edge | retain the sole G9 catalog/runtime/composition lifetime and phased settlement | parse CLI or discover Hosting/configuration |
 | AppHost public runtime | AppHost | exact catalog, Product/runtime, profile and Session-lease ownership | process launch, CLI, Product policy, persistence |
 | Hosting public process port | Hosting | shell-free native process launch, bounded stdio, wait/terminate/close, backend observations | interpret canary protocol or Product success |
+| `hosting._process_probe` | Hosting | retain the exact process host and lease, read a bounded stdout response, collect backend observations, and settle both owners | define the child command, expected nonce response, or Product result |
 | Harness JSONL journal | Harness | cross-platform private lock, strict durable append/read mechanics | decide enabled state or selection generation |
 
 Implementation reconciliation (A201): the same Code control object now borrows
