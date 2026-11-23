@@ -303,6 +303,8 @@ export default interface Resources {
       "hostPath": "Absolute AppHost file or folder path in the workspace",
       "image": "Image",
       "invalid": "Choose up to four attachments. Images can be up to 4 MB, and UTF-8 text or source files up to 1 MB.",
+      "open": "Open {{name}} in the default text editor",
+      "openFailed": "Could not open the attachment in the system text editor.",
       "pickUpload": "Upload images or files",
       "preview": "Preview {{name}}",
       "reference": "Add reference",

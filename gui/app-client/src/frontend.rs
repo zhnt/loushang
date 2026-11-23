@@ -69,11 +69,13 @@ impl Backend {
     }
 
     pub fn grant_client_directory(&self, path: PathBuf) -> Result<Value> {
-        let (credential_root, port) = self.tunnel.as_ref().ok_or("operation_unavailable")?;
+        let target = self
+            .host_target(self.configured_record()?)?
+            .ok_or("not_connected")?;
         self.client_directories
             .lock()
             .map_err(|_| "host_unavailable")?
-            .add(Target::Tunnel(credential_root.clone(), *port), path)
+            .add(target, path)
     }
 
     pub fn call(&self, request: Value) -> Result<Value> {
@@ -97,12 +99,30 @@ impl Backend {
         }
     }
 
-    fn host_request(&self, operation: &str, request: &Value) -> Result<Value> {
-        let configured_record = if self.tunnel.is_none() {
-            self.record_root()?
-        } else {
-            None
+    fn configured_record(&self) -> Result<Option<PathBuf>> {
+        if self.tunnel.is_some() {
+            return Ok(None);
+        }
+        self.record_root()
+    }
+
+    fn host_target(&self, configured_record: Option<PathBuf>) -> Result<Option<Target>> {
+        if let Some((root, port)) = &self.tunnel {
+            return Ok(Some(Target::Tunnel(root.clone(), *port)));
+        }
+        let root = match configured_record {
+            Some(path) => Some(path),
+            None => self
+                .managed_record
+                .lock()
+                .map_err(|_| "host_unavailable")?
+                .clone(),
         };
+        Ok(root.map(Target::Local))
+    }
+
+    fn host_request(&self, operation: &str, request: &Value) -> Result<Value> {
+        let configured_record = self.configured_record()?;
         let manager = self
             .manager
             .as_deref()
@@ -110,23 +130,8 @@ impl Backend {
         if let (Some(manager), "manage") = (manager, operation) {
             return self.manage_service(manager, request);
         }
-        let record_root;
-        let target = if let Some((credential_root, forwarded_port)) = &self.tunnel {
-            Some(AppTarget::Tunnel {
-                credential_root,
-                forwarded_port: *forwarded_port,
-            })
-        } else {
-            record_root = match configured_record {
-                Some(path) => Some(path),
-                None => self
-                    .managed_record
-                    .lock()
-                    .map_err(|_| "host_unavailable")?
-                    .clone(),
-            };
-            record_root.as_deref().map(AppTarget::Local)
-        };
+        let host_target = self.host_target(configured_record)?;
+        let target = host_target.as_ref().map(Target::borrow);
         match operation {
             "environment" => Ok(json!({
                 "supported": target.is_some() || manager.is_some(),
@@ -135,14 +140,14 @@ impl Backend {
             "manage" => status(target, field(request, "action")?),
             "workspace" => self.workspace(target.ok_or("not_connected")?, request),
             "live" => self.live(target.ok_or("not_connected")?, request),
-            "revoke-client-directory" if self.tunnel.is_some() => {
+            "revoke-client-directory" => {
                 let selector = field(request, "id")?;
-                let target = Target::from(target.ok_or("not_connected")?);
+                let target = host_target.as_ref().ok_or("not_connected")?;
                 let removed = self
                     .client_directories
                     .lock()
                     .map_err(|_| "host_unavailable")?
-                    .revoke(&target, selector);
+                    .revoke(target, selector);
                 Ok(json!({"removed": removed}))
             }
             _ => Err("unknown_operation".into()),
@@ -200,15 +205,13 @@ impl Backend {
         match action {
             "snapshot" => {
                 let snapshot = view.snapshot()?;
-                if matches!(view.target, Target::Tunnel(..)) {
-                    self.client_directories
-                        .lock()
-                        .map_err(|_| "host_unavailable")?
-                        .serve(view, &snapshot);
-                }
+                self.client_directories
+                    .lock()
+                    .map_err(|_| "host_unavailable")?
+                    .serve(view, &snapshot);
                 Ok(snapshot)
             }
-            "client-directory-reference" if self.tunnel.is_some() => self
+            "client-directory-reference" => self
                 .client_directories
                 .lock()
                 .map_err(|_| "host_unavailable")?

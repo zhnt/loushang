@@ -210,7 +210,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
     {hostReferences ? <dialog ref={hostPathDialog} className="frame-dialog" aria-label={t("attachments.referenceHostPath")}>
       <div className="settings-header">
         <h2>{t("attachments.referenceHostPath")}</h2>
-        <button type="button" className="icon-button" aria-label={t("attachments.close")}
+        <button type="button" className="icon-close" aria-label={t("attachments.close")}
           onClick={() => hostPathDialog.current?.close()}><UiIcon name="close" /></button>
       </div>
       <form className="local-host-card" onSubmit={(event) => {

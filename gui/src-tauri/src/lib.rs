@@ -78,7 +78,8 @@ fn fixture_bridge_handshake(app: tauri::AppHandle) -> Result<FixtureBridgeReceip
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
-        .manage(Arc::new(ConnectionLifecycle::default()));
+        .manage(Arc::new(ConnectionLifecycle::default()))
+        .manage(client_settings::AttachmentFiles::default());
     let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -89,6 +90,7 @@ pub fn run() {
         show_tray_window,
         project_folder::pick_project_folder,
         client_settings::pick_client_directory,
+        client_settings::open_text_attachment,
         fixture_bridge_handshake,
         client_settings::client_settings,
         offline_account::offline_account,
@@ -122,6 +124,7 @@ pub fn run() {
         show_tray_window,
         project_folder::pick_project_folder,
         client_settings::pick_client_directory,
+        client_settings::open_text_attachment,
         client_settings::client_settings,
         offline_account::offline_account,
         live_bridge::live_connection_available,

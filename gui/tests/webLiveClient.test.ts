@@ -1,9 +1,22 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { afterEach, expect, it, vi } from "vitest";
-import { createWebLiveClient } from "../src/client/webLiveClient";
+import { clientDirectoryControls, createWebLiveClient } from "../src/client/webLiveClient";
 import { liveSnapshot } from "./support/liveSnapshot";
 
-vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => false, invoke: vi.fn() }));
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: vi.fn(() => false), invoke: vi.fn() }));
+vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "linux" }));
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); vi.resetAllMocks(); });
+
+it("uses the system directory picker for the local desktop connection", async () => {
+  expect(clientDirectoryControls("local")).toBeUndefined();
+  vi.mocked(isTauri).mockReturnValue(true);
+  const id = "a".repeat(32);
+  vi.mocked(invoke).mockResolvedValueOnce({ id, name: "selected-directory" });
+  const labels = { title: "Share a directory", accept: "Share", cancel: "Cancel" };
+  await expect(clientDirectoryControls("local")?.pickClientDirectory(labels))
+    .resolves.toEqual({ grantId: id, name: "selected-directory" });
+  expect(invoke).toHaveBeenCalledWith("pick_client_directory", { connectionId: "local", ...labels });
+});
 
 it("projects real protocol snapshots and sends only explicit operations", async () => {
   const fetcher = vi.fn(async (_url: string, options: RequestInit) => {
