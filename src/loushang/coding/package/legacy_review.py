@@ -18,6 +18,7 @@ from loushang.harness.package_product._legacy_local_review import (
     LegacyLocalReviewRecord,
     read_live_legacy_local_review,
 )
+from loushang.harness.package_product._plugin_bootstrap import ReviewedPluginChoices
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes as canonical_json_bytes,
 )
@@ -236,6 +237,16 @@ def _reviewed_disabled_ids(
         if item.desired_state == "installed_disabled"
     )
     return disabled
+
+
+def _reviewed_local_builtin_choices(
+    review: CodingLegacyLocalAdoptionReviewV1,
+) -> ReviewedPluginChoices:
+    return ReviewedPluginChoices(
+        disabled_ids=_reviewed_disabled_ids(review),
+        removed_ids=review.removed_builtin_ids,
+        operation_id_for=review.removed_builtin_operation_id,
+    )
 
 
 __all__ = [

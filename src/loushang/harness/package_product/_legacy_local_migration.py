@@ -107,6 +107,7 @@ from ._legacy_inventory import (
 from ._legacy_runtime import _FencedRuntime
 from ._local_source_catalog import wheel_source_binding_digest
 from ._plugin_bootstrap import (
+    ReviewedPluginChoices,
     _PluginBootstrapPolicy,
     _ProductOwner,
     route_project_package,
@@ -1374,6 +1375,15 @@ class _LegacyLocalInstallPolicy:
     session_prefix: str
     error_type: type[Exception]
 
+    def operation_identity(
+        self, accepted: _AcceptedSource, *, scope_id: str, plugin_id: str
+    ) -> tuple[PluginInstallationKeyV1, str, str]:
+        key = PluginInstallationKeyV1.workspace(self.product_id, scope_id, plugin_id)
+        store_id = accepted.review.store_id
+        acceptance_id = accepted.acceptance_id
+        digest = sha256(f"{store_id}\0{acceptance_id}".encode()).hexdigest()
+        return key, self.install_prefix + digest, self.enable_prefix + digest
+
     def replay(
         self,
         application: FencedOrdinaryProductApplication,
@@ -1431,23 +1441,13 @@ class _LegacyLocalInstallPolicy:
                 revision,
             )
 
-    def install_operation_id(self, store_id: str, acceptance_id: str) -> str:
-        return self.install_prefix + self._operation_digest(store_id, acceptance_id)
-
-    def enable_operation_id(self, store_id: str, acceptance_id: str) -> str:
-        return self.enable_prefix + self._operation_digest(store_id, acceptance_id)
-
-    @staticmethod
-    def _operation_digest(store_id: str, acceptance_id: str) -> str:
-        return sha256(f"{store_id}\0{acceptance_id}".encode()).hexdigest()
-
 
 @dataclass(frozen=True)
 class _LegacyLocalInstallation:
     """Replay one approved source through the existing Product Desired owner.
 
-    Admission, trust and historical ID selection stay with the Product. This
-    owner executes the exact install/enable history and runtime lifetime.
+    Products supply admission, trust and operation prefixes. This owner
+    executes the exact install/enable history and holds the runtime lifetime.
     """
 
     product: _ProductOwner
@@ -1482,22 +1482,15 @@ class _LegacyLocalInstallation:
             raise policy.error_type(
                 "Legacy local Installation has no exact Product Source binding"
             )
-        key = PluginInstallationKeyV1(
-            product_id=policy.product_id,
-            installation_scope="workspace",
-            scope_id=scope_id,
-            plugin_id=plugin_id,
+        key, install_id, enable_id = policy.operation_identity(
+            accepted, scope_id=scope_id, plugin_id=plugin_id
         )
         return cls(
             product=product,
             key=key,
             source_identity=sources[0].source_identity,
-            install_operation_id=policy.install_operation_id(
-                review.store_id, accepted.acceptance_id
-            ),
-            enable_operation_id=policy.enable_operation_id(
-                review.store_id, accepted.acceptance_id
-            ),
+            install_operation_id=install_id,
+            enable_operation_id=enable_id,
             error_type=policy.error_type,
             session_id_prefix=policy.session_prefix,
         )
@@ -1627,14 +1620,11 @@ class _LegacyLocalInstallation:
             for transition in self.product.desired_state.transitions()
             if transition.mutation.installation_key == self.key
         )
+        event = _initial_legacy_install_event(transitions, command_id)
         if (
-            not transitions
-            or not isinstance(transitions[0], PluginDesiredStateTransitionV1)
-            or transitions[0].mutation.operation_id != command_id
-            or transitions[0].mutation.actor_id != self.product.actor_id
-            or transitions[0].committed_state.selection.desired_state
-            != "installed_disabled"
-            or transitions[0].committed_state.selection.package_revision != revision
+            event is None
+            or event.mutation.actor_id != self.product.actor_id
+            or event.committed_state.selection.package_revision != revision
         ):
             raise self.error_type("Legacy local Product install was superseded")
         return transitions
@@ -2035,155 +2025,57 @@ class _LegacySourceProjection:
         ).encode("utf-8")
 
 
-@dataclass(frozen=True)
-class _LegacyAdoptionSelection:
-    """Read-only adoption provenance over the original handoff and Desired owners.
+def read_settled_legacy_local_adoption(
+    accepted: _AcceptedSource,
+    *,
+    desired: PluginDesiredStateLedger,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    bindings: Sequence[PackageProductLocalWheelBindingV1],
+    scope_id: str,
+    plugin_id: str,
+    source_trust_class: str,
+    install_policy: _LegacyLocalInstallPolicy,
+    builtin_ids: tuple[str, ...],
+    choices: ReviewedPluginChoices,
+    bootstrap_policy: _PluginBootstrapPolicy,
+    handoff_error: str,
+) -> bool:
+    """Verify initial adoption on the original read-only Product owners."""
+    matches, bound = match_legacy_replay_source(
+        bindings,
+        accepted,
+        plugin_id=plugin_id,
+        trust_classes=(source_trust_class,),
+        expected_trust=source_trust_class,
+    )
+    if not matches or bound is None:
+        return False
+    handoffs = PackageRetentionHandoffJournal(
+        epoch_runtime.control_root / "product-state" / "handoff.jsonl"
+    )
+    key, install_id, enable_id = install_policy.operation_identity(
+        accepted,
+        scope_id=scope_id,
+        plugin_id=plugin_id,
+    )
+    require_enablement = accepted.review.desired_state == "installed_enabled"
+    disabled_ids = frozenset(choices.disabled_ids)
+    removed_operations = {
+        name: choices.operation_id_for(name)
+        for name in builtin_ids
+        if name in choices.removed_ids
+    }
+    before, history = desired.capture_read_only()
+    store_id = epoch_runtime.registry.store_id
 
-    Product choices and historical IDs are supplied as data. Later operator
-    mutations do not erase initial adoption; partial evidence cannot prove it.
-    """
-
-    key: PluginInstallationKeyV1
-    source_identity: str
-    install_operation_id: str
-    enable_operation_id: str | None
-    builtin_ids: tuple[str, ...]
-    disabled_builtin_ids: frozenset[str]
-    removed_builtin_operations: Mapping[str, str]
-
-    def settled(
-        self,
-        desired: PluginDesiredStateLedger,
-        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-        handoffs: PackageRetentionHandoffJournal,
-        bindings: Sequence[PackageProductLocalWheelBindingV1],
-        *,
-        store_id: str,
-        bootstrap_policy: _PluginBootstrapPolicy,
-        handoff_error: str,
-    ) -> bool:
-        before, history = desired.capture_read_only()
-
-        def transitions_for(
-            selected_plugin: str,
-        ) -> tuple[PluginDesiredStateJournalTransition, ...]:
-            key = PluginInstallationKeyV1(
-                product_id=self.key.product_id,
-                installation_scope="workspace",
-                scope_id=self.key.scope_id,
-                plugin_id=selected_plugin,
-            )
-            return tuple(
-                item for item in history if item.mutation.installation_key == key
-            )
-
-        old_install_id = self.install_operation_id
-        command_id = self._settled_command(
-            handoffs,
-            error_message=handoff_error,
-            operation_id=old_install_id,
-            plugin_id=self.key.plugin_id,
-        )
-        old_events = transitions_for(self.key.plugin_id)
-        if not self._initial_install_matches(
-            old_events, command_id, self.source_identity
-        ):
-            return False
-        if self.enable_operation_id is not None:
-            enable_id = self.enable_operation_id
-            if (
-                len(old_events) < 2
-                or not isinstance(old_events[1], PluginDesiredStateTransitionV1)
-                or old_events[1].mutation.operation_id != enable_id
-                or old_events[1].committed_state.selection.desired_state
-                != "installed_enabled"
-                or old_events[1].committed_state.selection.package_revision
-                != old_events[0].committed_state.selection.package_revision
-            ):
-                return False
-
-        for builtin_id in self.builtin_ids:
-            events = transitions_for(builtin_id)
-            if builtin_id in self.removed_builtin_operations:
-                if (
-                    not events
-                    or events[0].mutation.operation_id
-                    != self.removed_builtin_operations[builtin_id]
-                    or events[0].committed_state.selection.desired_state != "absent"
-                    or any(
-                        event.mutation.operation_id.startswith(
-                            bootstrap_policy.operation_id_prefix
-                        )
-                        for event in events[1:]
-                    )
-                ):
-                    return False
-                continue
-            operation_id = bootstrap_policy.operation_id(store_id, builtin_id)
-            command_id = self._settled_command(
-                handoffs,
-                error_message=handoff_error,
-                operation_id=operation_id,
-                plugin_id=builtin_id,
-            )
-            builtin_source = tuple(
-                item.source_identity
-                for item in bindings
-                if item.plugin_id == builtin_id
-            )
-            if len(builtin_source) != 1 or not self._initial_install_matches(
-                events, command_id, builtin_source[0]
-            ):
-                return False
-            if builtin_id in self.disabled_builtin_ids:
-                if any(
-                    event.mutation.operation_id.startswith(
-                        bootstrap_policy.enable_id_prefix
-                    )
-                    for event in events[1:]
-                ):
-                    return False
-            elif (
-                len(events) < 2
-                or not isinstance(events[1], PluginDesiredStateTransitionV1)
-                or events[1].committed_state.selection.desired_state
-                != "installed_enabled"
-                or events[1].committed_state.selection.package_revision
-                != events[0].committed_state.selection.package_revision
-            ):
-                return False
-        after, later_history = desired.capture_read_only()
-        epoch_runtime.assert_current()
-        return before == after and history == later_history
-
-    @staticmethod
-    def _initial_install_matches(
-        events: tuple[PluginDesiredStateJournalTransition, ...],
-        command_id: str | None,
-        source_identity: str,
-    ) -> bool:
-        return (
-            command_id is not None
-            and bool(events)
-            and isinstance(events[0], PluginDesiredStateTransitionV1)
-            and events[0].mutation.operation_id == command_id
-            and events[0].committed_state.selection.desired_state
-            == "installed_disabled"
-            and events[0].committed_state.selection.package_revision is not None
-            and events[
-                0
-            ].committed_state.selection.package_revision.package_source_identity
-            == source_identity
+    def transitions_for(
+        selected: PluginInstallationKeyV1,
+    ) -> tuple[PluginDesiredStateJournalTransition, ...]:
+        return tuple(
+            item for item in history if item.mutation.installation_key == selected
         )
 
-    def _settled_command(
-        self,
-        handoffs: PackageRetentionHandoffJournal,
-        *,
-        operation_id: str,
-        plugin_id: str,
-        error_message: str,
-    ) -> str | None:
+    def command_for(operation_id: str, selected_plugin: str) -> str | None:
         receipt = handoffs.read_operation(operation_id)
         if receipt is None or receipt.state != "settled":
             return None
@@ -2192,9 +2084,103 @@ class _LegacyAdoptionSelection:
             receipt.desired_receipt is None
             or receipt.desired_receipt.request != request
             or request.operation_id != operation_id
-            or request.plugin_id != plugin_id
-            or request.product_id != self.key.product_id
-            or request.scope_id != self.key.scope_id
+            or request.plugin_id != selected_plugin
+            or request.product_id != key.product_id
+            or request.scope_id != key.scope_id
         ):
-            raise ValueError(error_message)
+            raise ValueError(handoff_error)
         return request.command_id
+
+    command_id = command_for(install_id, plugin_id)
+    old_events = transitions_for(key)
+    if not _initial_legacy_install_matches(
+        old_events, command_id, bound.source_identity
+    ):
+        return False
+    if require_enablement and not (
+        _initial_legacy_enablement_matches(old_events, operation_id=enable_id)
+    ):
+        return False
+
+    for builtin_id in builtin_ids:
+        events = transitions_for(
+            PluginInstallationKeyV1.workspace(key.product_id, key.scope_id, builtin_id)
+        )
+        if builtin_id in removed_operations:
+            if (
+                not events
+                or events[0].mutation.operation_id != removed_operations[builtin_id]
+                or events[0].committed_state.selection.desired_state != "absent"
+                or any(
+                    event.mutation.operation_id.startswith(
+                        bootstrap_policy.operation_id_prefix
+                    )
+                    for event in events[1:]
+                )
+            ):
+                return False
+            continue
+        command_id = command_for(
+            bootstrap_policy.operation_id(store_id, builtin_id), builtin_id
+        )
+        builtin_sources = tuple(
+            item.source_identity for item in bindings if item.plugin_id == builtin_id
+        )
+        if len(builtin_sources) != 1 or not _initial_legacy_install_matches(
+            events, command_id, builtin_sources[0]
+        ):
+            return False
+        if builtin_id in disabled_ids:
+            if any(
+                event.mutation.operation_id.startswith(
+                    bootstrap_policy.enable_id_prefix
+                )
+                for event in events[1:]
+            ):
+                return False
+        elif not _initial_legacy_enablement_matches(events):
+            return False
+    after, later_history = desired.capture_read_only()
+    epoch_runtime.assert_current()
+    return before == after and history == later_history
+
+
+def _initial_legacy_install_event(
+    events: tuple[PluginDesiredStateJournalTransition, ...], command_id: str | None
+) -> PluginDesiredStateTransitionV1 | None:
+    if (
+        command_id is None
+        or not events
+        or not isinstance(events[0], PluginDesiredStateTransitionV1)
+        or events[0].mutation.operation_id != command_id
+        or events[0].committed_state.selection.desired_state != "installed_disabled"
+    ):
+        return None
+    return events[0]
+
+
+def _initial_legacy_install_matches(
+    events: tuple[PluginDesiredStateJournalTransition, ...],
+    command_id: str | None,
+    source_identity: str,
+) -> bool:
+    event = _initial_legacy_install_event(events, command_id)
+    if event is None:
+        return False
+    revision = event.committed_state.selection.package_revision
+    return revision is not None and revision.package_source_identity == source_identity
+
+
+def _initial_legacy_enablement_matches(
+    events: tuple[PluginDesiredStateJournalTransition, ...],
+    *,
+    operation_id: str | None = None,
+) -> bool:
+    return (
+        len(events) >= 2
+        and isinstance(events[1], PluginDesiredStateTransitionV1)
+        and (operation_id is None or events[1].mutation.operation_id == operation_id)
+        and events[1].committed_state.selection.desired_state == "installed_enabled"
+        and events[1].committed_state.selection.package_revision
+        == events[0].committed_state.selection.package_revision
+    )

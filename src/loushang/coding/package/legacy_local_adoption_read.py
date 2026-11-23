@@ -8,16 +8,7 @@ from typing import Literal
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager as SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
-    _LegacyAdoptionSelection as _LegacyAdoptionSelection,
-)
-from loushang.harness.package_product._legacy_local_migration import (
-    match_legacy_replay_source,
-)
-from loushang.harness.plugin_management.records import (
-    PluginInstallationKeyV1 as PluginInstallationKeyV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
-    PackageRetentionHandoffJournal as PackageRetentionHandoffJournal,
+    read_settled_legacy_local_adoption,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -38,9 +29,8 @@ from .legacy_data_trust import (
 from .legacy_local_acceptance import (
     reopen_coding_legacy_installed_local_acceptance as reopen_coding_legacy_installed_local_acceptance,
 )
-from .legacy_local_installation import _enable_operation_id as _enable_operation_id
-from .legacy_local_installation import _install_operation_id as _install_operation_id
-from .legacy_review import _reviewed_disabled_ids
+from .legacy_local_installation import _INSTALL_POLICY
+from .legacy_review import _reviewed_local_builtin_choices
 from .legacy_skill_cutover_admission import (
     require_coding_fenced_single_legacy_skill_snapshot as require_coding_fenced_single_legacy_skill_snapshot,
 )
@@ -54,10 +44,11 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
+    _CODING_BUILTIN_PLUGIN_IDS,
+)
+from .product_runtime import (
     CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
 )
-
-_BUILTINS = ("coding.base", "coding.lsp.default", "coding.arch.default")
 
 
 def coding_legacy_local_skill_adoption_settled(
@@ -126,46 +117,17 @@ def coding_legacy_local_data_adoption_settled(
         return False
 
     with CodingFencedProductReadOnlyPreviewOwner.open(lifecycle) as preview:
-        trust_class = trust_class_for_legacy_data_resource(resource_kind)
-        matches, bound = match_legacy_replay_source(
-            preview.policy.bindings,
+        return read_settled_legacy_local_adoption(
             accepted,
+            desired=preview.selected_manifests.root_reader.desired_state,
+            epoch_runtime=preview.epoch_runtime,
+            bindings=preview.policy.bindings,
+            scope_id=lifecycle.scope_id,
             plugin_id=plugin_id,
-            trust_classes=(trust_class,),
-            expected_trust=trust_class,
-        )
-        if not matches or bound is None:
-            return False
-        handoffs = PackageRetentionHandoffJournal(
-            epoch.control_root / "product-state" / "handoff.jsonl"
-        )
-        desired = preview.selected_manifests.root_reader.desired_state
-        disabled_builtins = _reviewed_disabled_ids(accepted.review)
-        selection = _LegacyAdoptionSelection(
-            key=PluginInstallationKeyV1.workspace("coding", lifecycle.scope_id, plugin_id),
-            source_identity=bound.source_identity,
-            install_operation_id=_install_operation_id(
-                accepted.review.store_id, accepted.acceptance_id
-            ),
-            enable_operation_id=(
-                _enable_operation_id(accepted.review.store_id, accepted.acceptance_id)
-                if accepted.review.desired_state == "installed_enabled"
-                else None
-            ),
-            builtin_ids=_BUILTINS,
-            disabled_builtin_ids=frozenset(disabled_builtins),
-            removed_builtin_operations={
-                name: accepted.review.removed_builtin_operation_id(name)
-                for name in _BUILTINS
-                if name in accepted.review.removed_builtin_ids
-            },
-        )
-        return selection.settled(
-            desired,
-            preview.epoch_runtime,
-            handoffs,
-            preview.policy.bindings,
-            store_id=epoch.store_id,
+            source_trust_class=trust_class_for_legacy_data_resource(resource_kind),
+            install_policy=_INSTALL_POLICY,
+            builtin_ids=_CODING_BUILTIN_PLUGIN_IDS,
+            choices=_reviewed_local_builtin_choices(accepted.review),
             bootstrap_policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             handoff_error="Coding legacy adoption handoff changed",
         )

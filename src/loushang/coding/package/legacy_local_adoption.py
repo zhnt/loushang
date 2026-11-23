@@ -66,7 +66,7 @@ from .legacy_removed_acceptance import (
 from .legacy_removed_adoption import (
     adopt_coding_first_b_removed_local as adopt_coding_first_b_removed_local,
 )
-from .legacy_review import _reviewed_disabled_ids
+from .legacy_review import _reviewed_local_builtin_choices
 from .legacy_skill_cutover_admission import (
     require_coding_fenced_single_legacy_data as require_coding_fenced_single_legacy_data,
 )
@@ -260,14 +260,14 @@ def adopt_coding_legacy_local_data_review(
         else None
     )
     with closing(open_application()) as product_owner:
-        disabled_builtins = _reviewed_disabled_ids(acceptance.review)
+        builtin_choices = _reviewed_local_builtin_choices(acceptance.review)
         product = product_owner.runtime_owner.product_owner
         replay_reviewed_product_plugins(
             product,
             _CODING_BUILTIN_PLUGIN_IDS,
-            disabled_ids=disabled_builtins,
-            removed_ids=acceptance.review.removed_builtin_ids,
-            operation_id_for=acceptance.review.removed_builtin_operation_id,
+            disabled_ids=builtin_choices.disabled_ids,
+            removed_ids=builtin_choices.removed_ids,
+            operation_id_for=builtin_choices.operation_id_for,
             removal_label=_REMOVAL_LABEL,
             policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             strict_history=False,

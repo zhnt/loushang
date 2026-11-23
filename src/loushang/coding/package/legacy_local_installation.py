@@ -46,8 +46,6 @@ _INSTALL_POLICY = _LegacyLocalInstallPolicy(
     session_prefix="coding-legacy-local:",
     error_type=CodingLegacyLocalInstallationError,
 )
-_install_operation_id = _INSTALL_POLICY.install_operation_id
-_enable_operation_id = _INSTALL_POLICY.enable_operation_id
 
 
 @dataclass(frozen=True, slots=True)
