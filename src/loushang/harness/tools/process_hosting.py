@@ -49,7 +49,11 @@ from loushang.harness.workspace.process.local import (
     ProcessContainmentPlan,
     ProcessContainmentPlanner,
 )
-from loushang.harness.workspace.process.types import ProcessHandle, ProcessLaunchRequest
+from loushang.harness.workspace.process.types import (
+    AuthorizedProcessLauncher,
+    ProcessHandle,
+    ProcessLaunchRequest,
+)
 
 _PROCESS_START_ACTION = "process.host.start"
 ProcessAuditSink = Callable[
@@ -92,6 +96,15 @@ class ProcessExecutionScope:
     @property
     def actor_id(self) -> str:
         return approval_actor_id(self.approval_resolver)
+
+
+class ProcessLauncherBinder(Protocol):
+    """Bind one authorized launcher to its admitted execution scope."""
+
+    def bind_process_launcher(
+        self,
+        scope: ProcessExecutionScope,
+    ) -> AuthorizedProcessLauncher: ...
 
 
 class HostedProcessContainmentPort(Protocol):

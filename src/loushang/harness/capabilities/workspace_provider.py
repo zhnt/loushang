@@ -43,8 +43,10 @@ from loushang.harness.workspace.process import (
 )
 
 if TYPE_CHECKING:
-    from loushang.harness.sandbox import SandboxExecutionRuntime
-    from loushang.harness.tools.process_hosting import ProcessExecutionScope
+    from loushang.harness.tools.process_hosting import (
+        ProcessExecutionScope,
+        ProcessLauncherBinder,
+    )
 
 WorkspaceProviderCleanup = Callable[[], None | Awaitable[None]]
 
@@ -197,7 +199,7 @@ def workspace_profile_binding_fingerprint(
 
 
 def bind_authorized_workspace(
-    runtime: SandboxExecutionRuntime,
+    runtime: ProcessLauncherBinder,
     *,
     process_scope: ProcessExecutionScope,
     operations_factory: Callable[

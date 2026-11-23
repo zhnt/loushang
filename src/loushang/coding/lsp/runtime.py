@@ -16,16 +16,14 @@ from loushang.coding.lsp.model import (
 from loushang.coding.lsp.ports import PathExists, WorkspaceTextReader
 from loushang.coding.lsp.status import LspSessionStatus
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
+from loushang.harness.tools.process_hosting import (
+    ProcessLauncherBinder as _ProcessLauncherBinder,
+)
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 
-class ProcessLauncherBinder(Protocol):
+class ProcessLauncherBinder(_ProcessLauncherBinder, Protocol):
     """Narrow Sandbox-runtime shape needed by Coding's composition root."""
-
-    def bind_process_launcher(
-        self,
-        scope: ProcessExecutionScope,
-    ) -> AuthorizedProcessLauncher: ...
 
 
 class CodingLspSessionAccess(Protocol):
