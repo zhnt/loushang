@@ -812,6 +812,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
   const workspaceFingerprint = selected?.context.scopeFingerprint;
   const workspaceSessionId = selected?.context.sessionId;
   const temporaryWorkspace = workspaceContext === TEMPORARY_WORKSPACE;
+  const goalNeedsProjectFolder = temporaryWorkspace || Boolean(draft && projectNavigation && !draft.target.workspace)
+    || (logicalWorkspace?.paths?.every((link) => link.status !== "available") ?? (logicalWorkspace?.path === null));
   const readPreview = client.previewWorkspace;
   const previewSource = state.remote.source.kind === "live" ? state.remote.source : null;
   const serviceInstanceId = previewSource?.serviceInstanceId;
@@ -1204,7 +1206,8 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
               <div className="composer-stack">
                 {!showWelcome && hostStart}
                 {draftGoalScope ? <p id={goalPanelId} className="composer-goal-hint"
-                  hidden={!draftGoalOpen} role="status">{t("panels:interactiveGoal.not_ready")}</p> : null}
+                  hidden={!draftGoalOpen} role="status">{t(goalNeedsProjectFolder
+                    ? "panels:interactiveGoal.workspace_required" : "panels:interactiveGoal.draft_not_ready")}</p> : null}
                 {selected && failure ? <div className={failure.pending ? "operation-notice uncertain" : "operation-notice"} role={failure.pending ? "status" : "alert"}>
                   <span><NoticeText notice={failure.notice} /></span>
                   {failure.pending ? <button type="button" className="secondary-button"
@@ -1258,6 +1261,7 @@ export function HarnessGui({ client: attachedClient, account, hostSettings, star
                     epoch={goalEpoch} visible={goalPanelOpen} /> : null}
                   {canControlGoal ? <InteractiveGoal key={goalPanelScope}
                     client={client} session={selected} instanceId={goalSource.serviceInstanceId}
+                    needsProjectFolder={goalNeedsProjectFolder}
                     epoch={goalEpoch} enabled={goalPanelOpen && mutationsAllowed}
                     reviewDiff={reviewDiff} scopeKey={modelScope} setBusyScope={setGoalBusyScope} /> : null}
                 </div> : null}
