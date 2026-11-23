@@ -88,11 +88,27 @@ class LegacyLocalReviewRecord(_LegacyFencedReviewRecord):
         legacy_entry_count: int
         legacy_byte_count: int
         legacy_source_identity: str
+        legacy_desired_journal_digest: str
         wheel_filename: str
         policy_revision: str
         builtin_intent: tuple[_LegacyBuiltinIntent, ...]
         removed_builtin_ids: tuple[str, ...]
         configured_plugin_source_scope: str | None
+
+    def matches_frozen_history(
+        self,
+        evidence: LegacyLocalReviewEvidence,
+        *,
+        scope_id: str,
+        policy_revision: str,
+    ) -> bool:
+        return not (
+            any(getattr(self, key) != value for key, value in evidence.identity.items())
+            or self.scope_id != scope_id
+            or self.legacy_desired_journal_digest
+            != evidence.inventory.desired_journal_digest
+            or self.policy_revision != policy_revision
+        )
 
     def __post_init__(self) -> None:
         label = self._review_label

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import secrets
 import sys
@@ -36,7 +35,6 @@ from loushang.coding.composition.capabilities import (
     coding_lsp_should_defer,
 )
 from loushang.coding.composition.capability_plugins import (
-    CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionError,
     CodingCapabilityPluginCompositionPreparation,
     CodingResumePluginParents,
@@ -53,7 +51,7 @@ from loushang.coding.composition.invocation_profile import (
 )
 from loushang.coding.composition.managed_plugin_preparation import (
     _session_manager_plugin_owner_id,
-    bind_deferred_plugin,
+    prepare_deferred_capability,
     prepare_managed_plugins,
 )
 from loushang.coding.composition.package_catalog import InitialCatalogHandoff
@@ -185,6 +183,9 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.package_product._application_runtime import handoff_product_open
+from loushang.harness.package_product._selected_plugin_revisions import (
+    capture_enabled_plugin_recheck,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
     PosixLocalWheelProductRuntimeFactory,
@@ -213,7 +214,7 @@ from loushang.harness.resources.packages.product_contract import (
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
+from loushang.harness.runtime._owned_tasks import _run_owned_sync
 from loushang.harness.session import (
     AgentProductConstructionBinding,
     AgentSessionServices,
@@ -247,6 +248,7 @@ from loushang.harness.session._cleanup import (
 )
 from loushang.harness.session.bootstrap_construction import (
     PreparationRootCustody,
+    bind_deferred_plugin,
     construct_catalog_session,
     require_catalog_receipt,
 )
@@ -1488,46 +1490,60 @@ def _create_agent_session(
 
                     build_deferred_lsp_assembly = partial(
                         bind_deferred_plugin,
-                        workspace_binding,
-                        session_manager=session_manager,
-                        session_id=session_id,
-                        plugin_id="coding.lsp.default",
-                        managed=managed,
-                        runtime=product_base_runtime,
-                        build_config=build_deferred_lsp_config,
-                        temporary_prefix="loushang-coding-deferred-lsp-",
-                        persistent_root=lambda: _coding_capability_plugin_state_root(
-                            session_manager, session_id=session_id
-                        ) / "deferred-lsp",
-                        legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
-                        clock=coding_plugin_clock,
-                        host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
-                        tool_modes={CODING_LSP_CAPABILITY: "on_demand"},
-                        max_manifest_files=_CATALOG_MANIFEST_MAX_FILES,
-                        max_manifest_bytes=_CATALOG_MANIFEST_MAX_BYTES,
-                        admission_failure=CodingResourceCatalogAdmissionError,
+                        configure=build_deferred_lsp_config,
+                        state_prefix=lambda: (
+                            None
+                            if session_manager.persist
+                            else "loushang-coding-deferred-lsp-"
+                        ),
+                        persistent_root=lambda: (
+                            _coding_capability_plugin_state_root(
+                                session_manager, session_id=session_id
+                            )
+                            / "deferred-lsp"
+                        ),
+                        capture_fenced_selection=(
+                            partial(
+                                capture_enabled_plugin_recheck,
+                                product_base_runtime,
+                                "coding.lsp.default",
+                                max_files=_CATALOG_MANIFEST_MAX_FILES,
+                                max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
+                                admission_failure=CodingResourceCatalogAdmissionError,
+                            )
+                            if product_base_runtime is not None
+                            else None
+                        ),
+                        prepare=partial(
+                            prepare_deferred_capability,
+                            session_manager=session_manager,
+                            session_id=session_id,
+                            plugin_id="coding.lsp.default",
+                            managed=managed,
+                            runtime=product_base_runtime,
+                            legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
+                            clock=coding_plugin_clock,
+                        ),
+                        bind=lambda preparation: preparation.bind_workspace(
+                            workspace_binding=workspace_binding,
+                            host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
+                            tool_modes={CODING_LSP_CAPABILITY: "on_demand"},
+                            clock=coding_plugin_clock,
+                        ),
                     )
 
                     def create_deferred_lsp_generation() -> CodingDeferredLspGeneration:
-                        async def assemble_deferred_lsp(
-                        ) -> CodingCapabilityPluginCompositionAssembly:
-                            task = asyncio.create_task(
-                                asyncio.to_thread(build_deferred_lsp_assembly)
-                            )
-                            assembly, check = await _await_cancellation_atomic(task)
-                            generation.current_selection_check = check
-                            return assembly
-
-                        generation = CodingDeferredLspGeneration(
+                        return CodingDeferredLspGeneration(
                             session_id=session_id,
                             profile_fingerprint=(
                                 session._capability_graph_runtime.profile_fingerprint
                             ),
                             workspace_binding=workspace_binding,
                             registration=session._composition.tool_controller,
-                            assembly_factory=assemble_deferred_lsp,
+                            assembly_factory=partial(
+                                _run_owned_sync, build_deferred_lsp_assembly
+                            ),
                         )
-                        return generation
 
                     session.install_deferred_lsp_slot(
                         DeferredCapabilitySlot(

@@ -93,7 +93,6 @@ from loushang.harness.resources.plugins.selection import (
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
@@ -101,9 +100,8 @@ from loushang.harness.session.capability_composition_inputs import (
 from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
     _PreparationFailureCleanup,
     _PreparedCompositionCleanup,
-    _PublishedCompositionCleanup,
+    _PublishedCapabilityComposition,
 )
-from loushang.harness.session.plugin_lifecycle._publication import _OwnerLeaseSet
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
     ProductContributionOwnerBinding,
@@ -532,7 +530,7 @@ def _bind_default_approval_request_to_plan(
 
 
 @dataclass(slots=True)
-class CodingCapabilityPluginCompositionAssembly(_PublishedCompositionCleanup):
+class CodingCapabilityPluginCompositionAssembly(_PublishedCapabilityComposition):
     """Approved Product closure awaiting bootstrap and Graph ownership transfer."""
 
     _cleanup_label = "Coding Capability"
@@ -587,28 +585,6 @@ class CodingCapabilityPluginCompositionAssembly(_PublishedCompositionCleanup):
             plugin_id: lease.evaluate_management_change()
             for plugin_id, lease in self.management_leases.items()
         }
-
-    def claim_runtime(self, runtime_claim_id: str) -> None:
-        for lease in self.management_leases.values():
-            lease.claim_runtime(runtime_claim_id)
-
-    def prepare_owner_generations(
-        self,
-        receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
-    ) -> None:
-        _OwnerLeaseSet(self.management_leases).prepare_owner_generations(receipts)
-
-    def publish_owner_generations(
-        self,
-        receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
-    ) -> None:
-        _OwnerLeaseSet(self.management_leases).publish_owner_generations(receipts)
-
-    def retire_owner_generations(
-        self,
-        receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
-    ) -> None:
-        _OwnerLeaseSet(self.management_leases).retire_owner_generations(receipts)
 
 
 @dataclass(slots=True)
