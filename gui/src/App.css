@@ -854,3 +854,21 @@ summary.inspection-file-row:focus-visible,
 @media (hover: none) {
   .desktop-shell .composer-attachment > .attachment-remove:enabled { opacity: 1; pointer-events: auto; }
 }
+
+.session-controls {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 32px));
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.session-controls header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.session-controls h2 { margin: 0; }
+.session-controls > .secondary-button { float: none; }
+.session-controls [role="alert"] { color: var(--red); }
+.session-controls-hint, .session-tool-description, .session-tool-list small { color: var(--ink-secondary); }
+.session-tool-list { padding: 0; list-style: none; }
+.session-tool-list li { padding: 10px 0; border-top: 1px solid var(--line); }
+.session-tool-list label { display: flex; align-items: flex-start; gap: 10px; }
+.session-tool-list small { margin-inline-start: 8px; }
+.session-tool-description { display: block; margin-top: 3px; font-size: 12px; }
+.session-controls-progress { margin-top: 16px; }

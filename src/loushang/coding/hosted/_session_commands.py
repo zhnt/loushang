@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING
 
@@ -63,6 +64,8 @@ class CodingHostedSessionCommands:
     def _mode(name: str, args: str = "") -> str | None:
         if name == LSP_SESSION_COMMAND_NAME:
             return "session" if lsp_command_mutates(args) else "read"
+        if name == "tools" and not args.strip():
+            return "read"
         return _HOSTED.get(name)
 
     def _unavailable(self, name: str, source: str) -> str | None:
@@ -272,15 +275,26 @@ def _project_result(result: dict[str, object]) -> SessionCommandResultV1:
             public["summary"] = _text(summary, 4096)
         data["result"] = public
     if isinstance(tools := data.get("available_tools"), list):
-        data["available_tools"] = [
-            {
+        descriptions_left = 4096
+        public_tools: list[dict[str, object]] = []
+        for entry in tools:
+            if not isinstance(entry, dict):
+                continue
+            public_tool = {
                 key: value
                 for key, value in entry.items()
                 if key in {"name", "active", "allowed"}
             }
-            for entry in tools
-            if isinstance(entry, dict)
-        ]
+            if isinstance(description := entry.get("description"), str):
+                description = _text(description, min(256, descriptions_left))
+                if description:
+                    public_tool["description"] = description
+                    descriptions_left -= len(
+                        json.dumps(description, ensure_ascii=False).encode("utf-8")
+                    )
+            descriptions_left = max(0, descriptions_left)
+            public_tools.append(public_tool)
+        data["available_tools"] = public_tools
     if data.get("command") == "extensions":
         data.pop("display", None)
         if isinstance(extensions := data.get("extensions"), list):

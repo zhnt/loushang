@@ -276,6 +276,9 @@ export function createNativeLiveClient(): HarnessClientUiPort {
         return unknown;
       }
     },
+    sessionOperation(scope, operation) {
+      return invoke("live_session_operation", { input: { ...scope, operation } });
+    },
     async sessionResource(sessionId, query) {
       return resourceResult(await invoke("live_session_resource", { sessionId, query }));
     },

@@ -30,7 +30,7 @@ existing reusable routes and the next step where the slash entry is absent.
 | Commands | Declaration and owner | Embedded route and handler | Hosted route and follow-up |
 | --- | --- | --- | --- |
 | `/session` | `harness.session.commands.catalog`, standard Session pack | `execute_standard_session_command_async` reads Session statistics, context and maintenance state | Shared read route for active Sessions, including without a model or while an Execution runs |
-| `/tools [on\|off\|only\|reset]` | Standard Session pack, Session tools | Standard tools handler uses the Session ToolController and refreshes activation through existing Session operations | Guarded shared route and argument completion from allowed tools |
+| `/tools [on\|off\|only\|reset]` | Standard Session pack, Session tools | Standard tools handler uses the Session ToolController and refreshes activation through existing Session operations | Shared read for the inventory, guarded submission for selection changes, and argument completion from allowed tools |
 | `/compact [instructions]` | Standard Session pack, transcript maintenance | Standard handler calls Session compaction with optional instructions | Guarded shared route using the original checkpoint and context refresh |
 | `/rename [name]` | Standard pack and Embedded rename surface | Session metadata update or interactive rename | Guarded standard command. The empty form prepares a name input. Metadata events refresh authoritative Mux titles |
 | `/new`, `/resume`, `/delete` | Standard pack and Embedded lifecycle surfaces | Session creation, replacement or deletion through lifecycle ports | `/new <scope>` opens a member. `/sessions` and `/resume` use discovery and admitted member open. Hosted `/close --yes` uses member close. Session deletion needs its own lifecycle action |
@@ -139,3 +139,5 @@ import or export. Goal and Plugin shortcuts can follow their existing Product
 routes. Extensions that execute work and Prompt or Skill submissions need
 their own policy-aware entry points. GUI can use the existing model operations
 and the four command operations with the same authority and result handling.
+
+See [GUI Session capabilities](gui-session-capabilities.md) for graphical entries and shared ownership.

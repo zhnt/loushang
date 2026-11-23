@@ -82,7 +82,51 @@ pub enum InteractiveGoalReviewDecision {
     Reject,
 }
 
+/// GUI operations backed by the existing Hosted Session Command and Execution APIs.
+#[derive(Deserialize)]
+#[serde(
+    tag = "action",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum SessionOperation {
+    Info,
+    Tools,
+    SetTool {
+        submission_id: String,
+        name: String,
+        active: bool,
+    },
+    ResetTools {
+        submission_id: String,
+    },
+    Compact {
+        submission_id: String,
+    },
+    Lookup {
+        submission_id: String,
+    },
+    Interrupt {
+        execution_id: String,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionOperationInput {
+    pub session_id: String,
+    pub service_instance_id: String,
+    pub connection_epoch: String,
+    pub operation: SessionOperation,
+}
+
 pub enum ControlCommand {
+    SessionOperation {
+        session_id: String,
+        operation: SessionOperation,
+        reply: SyncSender<Result<serde_json::Value, ()>>,
+    },
     CreateSession {
         source_session_id: Option<String>,
         continuity_id: String,
@@ -747,6 +791,22 @@ fn process_controls<R: Read, W: Write>(
                     &submission_id,
                     (&text, resource_refs),
                     &request_id,
+                );
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::SessionOperation {
+                session_id,
+                operation,
+                reply,
+            } => {
+                let result = authority.session_operation(
+                    channel,
+                    &session_id,
+                    operation,
+                    &request_id,
+                    || session.next_control_request_id(),
                 );
                 let failed = result.is_err();
                 let _ = reply.send(result);

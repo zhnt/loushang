@@ -22,6 +22,7 @@ interface ComposerProps {
   readonly buttonDisabled: boolean;
   readonly fixture?: boolean;
   readonly goalAction?: { label: string; run: () => void };
+  readonly toolActions?: { tools: () => void; info: () => void };
   readonly model?: ReactNode;
   readonly notice?: ReactNode;
 }
@@ -32,7 +33,7 @@ function resizeEditor(input: HTMLTextAreaElement) {
 }
 
 export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, disabled,
-  buttonDisabled, fixture, goalAction, model, notice, submitLabel, images = [], onImagesChange, attachmentScope, pickClientDirectory, revokeClientDirectory }: ComposerProps) {
+  buttonDisabled, fixture, goalAction, toolActions, model, notice, submitLabel, images = [], onImagesChange, attachmentScope, pickClientDirectory, revokeClientDirectory }: ComposerProps) {
   const { t } = useTranslation("session");
   const editor = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
@@ -40,7 +41,7 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
   const chooser = useRef<HTMLInputElement>(null);
   const [attachmentError, setAttachmentError] = useState(false);
   const canAttach = Boolean(onImagesChange && !disabled);
-  const hasActions = canAttach || Boolean(goalAction);
+  const hasActions = canAttach || Boolean(goalAction || toolActions);
   const [clientDirectoryError, setClientDirectoryError] = useState(false);
   const picking = useRef(false);
   const attachmentTarget = useRef({ scope: attachmentScope, images, change: onImagesChange, enabled: canAttach });
@@ -183,6 +184,10 @@ export function MessageComposer({ title, text, onChange, onSubmit, onInterrupt, 
               ...(canAttach ? [{ label: t("attachments.addGroup"), items: [
                 { label: t("attachments.addFile"), icon: "paperclip" as const, run: () => chooser.current?.click() },
                 ...(pickClientDirectory ? [{ label: t("attachments.addFolder"), icon: "folder-closed" as const, run: attachClientDirectory }] : []),
+              ] }] : []),
+              ...(toolActions ? [{ label: t("sessionControls.group"), items: [
+                { label: t("sessionControls.tools"), icon: "plugins" as const, run: toolActions.tools },
+                { label: t("sessionControls.info"), icon: "conversation" as const, run: toolActions.info },
               ] }] : []),
               ...(goalAction ? [{ label: t("attachments.modeGroup"), items: [{ ...goalAction, icon: "goal" as const }] }] : []),
             ], true)}><UiIcon name="plus" /></button>
