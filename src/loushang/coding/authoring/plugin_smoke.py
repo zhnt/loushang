@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from hashlib import sha256
 from importlib.metadata import version
@@ -21,9 +21,7 @@ from types import SimpleNamespace
 from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
-from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.prepared_request import PreparedModelRequest
-from loushang.ai.provider.protocol import ProviderRequest
+from loushang.ai.provider._offline_adapter import OfflineModelAdapter
 from loushang.coding.cli.application import run_cli
 from loushang.coding.composition.bootstrap import create_agent_session, create_services
 from loushang.coding.package.pre_b_snapshot import (
@@ -40,7 +38,6 @@ from loushang.coding.ui.plugin_theme import (
 from loushang.harness.capabilities.prompt import expand_prompt_template
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_authoring._offline_smoke import (
-    OfflineAuthoringAdapter,
     capture_authoring_input,
     hold_authoring_home,
 )
@@ -278,21 +275,6 @@ def _run_worker_candidate_command(
     return result
 
 
-class _OfflineAdapter(OfflineAuthoringAdapter):
-    def __init__(self) -> None:
-        super().__init__(f"coding-author-smoke-{token_hex(8)}")
-
-    async def invoke_prepared_raw(
-        self, request: ProviderRequest, prepared: PreparedModelRequest
-    ) -> AsyncIterator[RawPart]:
-        del request
-        prepared.payload_for_transport()
-        yield {"type": "response_start", "response_id": "author-smoke"}
-        yield {"type": "text_delta", "text": "author smoke complete"}
-        yield {"type": "stop_reason", "stop_reason": "stop"}
-        yield {"type": "response_done"}
-
-
 def smoke_coding_data_wheel(
     wheel_path: str | Path,
     *,
@@ -526,7 +508,11 @@ def _prove_new_session_use(
     resource_name: str,
     expected_body: str,
 ) -> None:
-    adapter = _OfflineAdapter()
+    adapter = OfflineModelAdapter(
+        f"coding-author-smoke-{token_hex(8)}",
+        response_id="author-smoke",
+        text="author smoke complete",
+    )
     with adapter.registered():
         session = None
         try:

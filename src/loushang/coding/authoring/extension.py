@@ -6,15 +6,14 @@ import argparse
 import asyncio
 import json
 import re
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import Sequence
 from hashlib import sha256
 from pathlib import Path
 from secrets import token_hex
 from tempfile import TemporaryDirectory
 
-from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.prepared_request import PreparedModelRequest
-from loushang.ai.provider.protocol import ProviderRequest
+from loushang.ai.provider._offline_adapter import OfflineModelAdapter
+from loushang.ai.types import ToolCall
 from loushang.coding.composition.bootstrap import create_agent_session, create_services
 from loushang.coding.package.pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
@@ -26,47 +25,12 @@ from loushang.coding.resources.runtime import CodingResourceLoader
 from loushang.coding.session.manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_authoring._offline_smoke import (
-    OfflineAuthoringAdapter,
     capture_authoring_input,
     hold_authoring_home,
 )
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*\Z")
 _MAX_SOURCE_BYTES = 1024 * 1024
-
-
-
-class _OfflineToolAdapter(OfflineAuthoringAdapter):
-    def __init__(self, tool_name: str, arguments: dict[str, object]) -> None:
-        super().__init__(f"coding-extension-smoke-{token_hex(8)}")
-        self.tool_name = tool_name
-        self.arguments = arguments
-
-    async def invoke_prepared_raw(
-        self, request: ProviderRequest, prepared: PreparedModelRequest
-    ) -> AsyncIterator[RawPart]:
-        prepared.payload_for_transport()
-        yield {"type": "response_start", "response_id": "extension-smoke"}
-        if any(
-            getattr(item, "role", None) == "toolResult"
-            for item in request.context.messages
-        ):
-            yield {"type": "text_delta", "text": "Extension smoke complete."}
-            yield {"type": "stop_reason", "stop_reason": "stop"}
-        else:
-            yield {
-                "type": "tool_call_start",
-                "id": "extension-smoke-call",
-                "name": self.tool_name,
-            }
-            yield {
-                "type": "tool_call_args_delta",
-                "tool_call_id": "extension-smoke-call",
-                "delta": json.dumps(self.arguments),
-            }
-            yield {"type": "tool_call_done", "tool_call_id": "extension-smoke-call"}
-            yield {"type": "stop_reason", "stop_reason": "toolUse"}
-        yield {"type": "response_done"}
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -249,7 +213,14 @@ async def _prove_tool_use(
     report: dict[str, object],
     settings: SettingsManager,
 ) -> None:
-    adapter = _OfflineToolAdapter(tool_name, arguments)
+    adapter = OfflineModelAdapter(
+        f"coding-extension-smoke-{token_hex(8)}",
+        response_id="extension-smoke",
+        text="Extension smoke complete.",
+        tool_call=ToolCall(
+            type="toolCall", id="extension-smoke-call", name=tool_name, arguments=arguments
+        ),
+    )
     with adapter.registered():
         manager = await SessionManager.new(
             session_dir=workspace / ".loushang-sessions", cwd=str(workspace), persist=True
