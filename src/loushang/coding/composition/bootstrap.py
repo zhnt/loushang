@@ -56,10 +56,7 @@ from loushang.coding.composition.managed_plugin_preparation import (
     bind_deferred_plugin,
     prepare_managed_plugins,
 )
-from loushang.coding.composition.package_catalog import (
-    InitialCatalogHandoff,
-    prepare_coding_catalog_projection,
-)
+from loushang.coding.composition.package_catalog import InitialCatalogHandoff
 from loushang.coding.composition.plan import (
     CODING_CAPABILITY_PROFILE,
     CODING_PRODUCT_ID,
@@ -145,6 +142,7 @@ from loushang.coding.resources.catalog import (
     CodingResourceCatalogAdmissionError,
     CodingResourceCatalogSourcePolicy,
     canonical_coding_resource_catalog_source_policy,
+    prepare_coding_catalog_projection,
 )
 from loushang.coding.resources.runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -250,6 +248,7 @@ from loushang.harness.session._cleanup import (
 from loushang.harness.session.bootstrap_construction import (
     PreparationRootCustody,
     construct_catalog_session,
+    require_catalog_receipt,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
@@ -360,13 +359,15 @@ def _create_agent_session_services(
             # excluded Extension merely to discover those flags.
             return ResourceBundle(cwd=resolved_cwd)
         preview_id = hashlib.sha256(str(resolved_cwd).encode("utf-8")).hexdigest()
-        _, bundle = prepare_coding_catalog_projection(
-            loader,
+        evaluated_at = int(time.time())
+        _, projection = prepare_coding_catalog_projection(
+            require_catalog_receipt(loader, resolved_cwd, CodingResourceCatalogAdmissionError),
             cwd=resolved_cwd,
             session_id=f"services-preview:{preview_id}",
+            admission_now=evaluated_at,
             source_policy=resolved_source_policy,
         )
-        return bundle
+        return projection.bundle
 
     def create_cwd_services(resolved_cwd: Path) -> BootstrapServices:
         resolved_settings_manager = settings_manager or SettingsManager(

@@ -40,8 +40,8 @@ from loushang.coding.resources.catalog import (
     CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
     CodingResourceCatalogAdmissionError,
     CodingResourceCatalogSourcePolicy,
-    build_coding_initial_resource_catalog_adapter,
     finalize_coding_package_plugin_plan_seed,
+    prepare_coding_catalog_projection,
     prepare_coding_package_plugin_plan_seed,
 )
 from loushang.harness.capabilities.consumer_requirements import (
@@ -88,45 +88,6 @@ if TYPE_CHECKING:
     )
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.session.bootstrap_services import BootstrapServices
-
-
-def prepare_coding_catalog_projection(
-    resource_loader: ResourceLoader,
-    *,
-    cwd: Path,
-    session_id: str,
-    disabled_skills: tuple[str, ...] | list[str] = (),
-    product_composition: ProductCompositionCompilation | None = None,
-    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None = None,
-    admission_now: int | None = None,
-    clock: Callable[[], int] | None = None,
-    receipt: ResourceCatalogInputReceipt | None = None,
-    source_policy: CodingResourceCatalogSourcePolicy = (
-        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
-    ),
-) -> tuple[InitialResourceCatalogProductAdapter, ResourceBundle]:
-    """Prepare one Catalog adapter and its disposable bootstrap projection."""
-
-    evaluated_at = int(time.time()) if admission_now is None else admission_now
-    resolved_receipt = require_catalog_receipt(
-        resource_loader, cwd, CodingResourceCatalogAdmissionError, receipt
-    )
-    adapter = build_coding_initial_resource_catalog_adapter(
-        resolved_receipt,
-        product_scope_id=session_id,
-        disabled_skills=disabled_skills,
-        product_composition=product_composition,
-        product_snapshot_resources=product_snapshot_resources,
-        package_admission_now=evaluated_at,
-        clock=clock,
-        source_policy=source_policy,
-    )
-    bundle = adapter.prepare_bootstrap_projection(
-        product_id=CODING_PRODUCT_ID,
-        session_id=session_id,
-        cwd=cwd,
-    )
-    return adapter, bundle
 
 
 @dataclass(slots=True)
@@ -211,7 +172,7 @@ class InitialCatalogHandoff:
         )
         reconcile_compatibility()
         adapter, projection = prepare_coding_catalog_projection(
-            loader,
+            receipt,
             cwd=cwd,
             session_id=self.session_id,
             disabled_skills=self.services.settings_manager.get_settings().disabled_skills,
@@ -222,11 +183,10 @@ class InitialCatalogHandoff:
                 else composition.authority_context.evaluated_at
             ),
             clock=clock,
-            receipt=receipt,
             source_policy=self.source_policy,
         )
         self._adapter = adapter
-        return projection
+        return projection.bundle
 
     def prepare_fenced_projection(
         self,
@@ -342,7 +302,7 @@ class InitialCatalogHandoff:
             self._disabled_composition(external) if base is None else None
         )
         adapter, projection = prepare_coding_catalog_projection(
-            loader,
+            receipt,
             cwd=cwd,
             session_id=self.session_id,
             disabled_skills=self.services.settings_manager.get_settings().disabled_skills,
@@ -354,7 +314,6 @@ class InitialCatalogHandoff:
             ),
             admission_now=evaluated_at if base is not None else clock(),
             clock=clock,
-            receipt=receipt,
             source_policy=(
                 self.source_policy
                 if base is not None
@@ -379,7 +338,7 @@ class InitialCatalogHandoff:
         self.external = external
         self.builtin_preparation = builtin
         self._adapter = adapter
-        return projection
+        return projection.bundle
 
     def prepare_refresh(
         self,
@@ -423,8 +382,8 @@ class InitialCatalogHandoff:
                 include_configured=include_configured,
                 require_resource_seed=self.source_policy.include_package_resources,
             )
-        adapter, bundle = prepare_coding_catalog_projection(
-            self.services.resource_loader,
+        adapter, projection = prepare_coding_catalog_projection(
+            receipt,
             cwd=cwd,
             session_id=self.session_id,
             disabled_skills=self.services.settings_manager.get_settings().disabled_skills,
@@ -440,7 +399,6 @@ class InitialCatalogHandoff:
                 if base is not None or compiled is not None or disabled_base
                 else None
             ),
-            receipt=receipt,
             source_policy=(
                 CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
                 if disabled_base and composition is None
@@ -450,7 +408,7 @@ class InitialCatalogHandoff:
         return adapter.prepare_session_bootstrap(
             product_id=CODING_PRODUCT_ID,
             session_id=self.session_id,
-            base_resource_bundle=bundle,
+            base_resource_bundle=projection.bundle,
             catalog_generation=catalog_generation,
         )
 
