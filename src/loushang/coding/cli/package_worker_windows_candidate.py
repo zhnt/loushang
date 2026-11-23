@@ -53,20 +53,12 @@ from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.harness.cli.package_lifecycle import (
-    package_operator_error_code,
-    run_package_operator_command,
-)
 from loushang.harness.cli.worker_candidate import (
-    WORKER_CANDIDATE_CHANGE_ACTIONS,
-    WORKER_CANDIDATE_OPT_IN_ACTIONS,
+    NativeWorkerCandidateOperator,
     NativeWorkerReleaseInput,
     add_native_worker_review_commands,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
-    execute_worker_candidate_capture,
-    execute_worker_candidate_change,
-    execute_worker_candidate_opt_in,
     worker_candidate_selection_document,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -88,6 +80,17 @@ class WindowsWorkerCandidateCommandError(ValueError):
         super().__init__(message)
         self.code = code
 
+
+_CANDIDATE_OPERATOR = NativeWorkerCandidateOperator(
+    product_id="coding",
+    native_platform="windows-amd64",
+    label="Windows Worker",
+    error_type=WindowsWorkerCandidateCommandError,
+    error_prefix="windows_worker",
+    not_directory="Coding workspace must be a directory",
+    refused="Windows Worker candidate refused",
+    failure_code="windows_worker_candidate_recovery_unavailable",
+)
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-worker-windows-candidate")
@@ -154,24 +157,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
 
-    def execute(workspace: Path) -> dict[str, object]:
-        lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-        if args.action == "candidate-capture":
-            return execute_worker_candidate_capture(
-                partial(admit_coding_external_worker_wheel, lifecycle),
-                args,
-                native_platform="windows-amd64",
-            )
-        return _run_product_action(lifecycle, workspace, args)
-
-    return run_package_operator_command(
-        args.workspace,
-        execute,
-        not_directory="Coding workspace must be a directory",
-        refused="Windows Worker candidate refused",
-        failure_reason=partial(
-            package_operator_error_code, fallback="windows_worker_candidate_recovery_unavailable"
-        ),
+    return _CANDIDATE_OPERATOR.run(
+        args,
+        resolve_layout=resolve_coding_plugin_lifecycle_state_layout,
+        admit=lambda layout: partial(admit_coding_external_worker_wheel, layout),
+        execute=_run_product_action,
     )
 
 
@@ -234,19 +224,11 @@ def _execute(
 ) -> dict[str, object]:
     if args.action == "candidate-selection":
         return _read_candidate_selection(product, args.plugin_id)
-    if args.action in WORKER_CANDIDATE_CHANGE_ACTIONS:
-        return execute_worker_candidate_change(
-            product,
-            args,
-            product_id="coding",
-            native_platform="windows-amd64",
-            label="Windows Worker",
-            current_opt_in=lambda plugin_id: CodingWindowsWorkerProductOptInOwner(
-                product
-            ).current(plugin_id),
-            error_type=WindowsWorkerCandidateCommandError,
-            error_prefix="windows_worker",
-        )
+    candidate_result = _CANDIDATE_OPERATOR.execute_candidate_action(
+        product, args, opt_in_owner=lambda: CodingWindowsWorkerProductOptInOwner(product)
+    )
+    if candidate_result is not None:
+        return candidate_result
     if args.action == "list-attempts":
         return {
             "attempts": [
@@ -325,12 +307,6 @@ def _execute(
             "nativeClosure": native_installed.native_closure().to_dict(),
             "approvalGeneration": native_installed.approval_generation,
         }
-    if args.action in WORKER_CANDIDATE_OPT_IN_ACTIONS:
-        return execute_worker_candidate_opt_in(
-            CodingWindowsWorkerProductOptInOwner(product),
-            args,
-            ordinary_session_routing=None,
-        )
     raise ValueError("Windows Worker candidate action is unsupported")
 
 

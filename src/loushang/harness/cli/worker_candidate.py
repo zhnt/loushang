@@ -7,8 +7,9 @@ from argparse import ArgumentParser, Namespace, _SubParsersAction
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol, TypeVar, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -40,6 +41,8 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWorkerAdmissionV1,
 )
 from loushang.harness.worker.package_candidate import WorkerPackageCandidateV1
+
+from .package_lifecycle import package_operator_error_code, run_package_operator_command
 
 _CHANGE_ACTIONS = (
     "candidate-install",
@@ -152,30 +155,8 @@ class _CaptureWorkerCandidate(Protocol):
     ) -> _WorkerCandidateRecord: ...
 
 
-def execute_worker_candidate_capture(
-    admit: _CaptureWorkerCandidate,
-    args: Namespace,
-    *,
-    native_platform: Literal["linux-x86_64", "windows-amd64"],
-) -> dict[str, object]:
-    """Pin the selected Wheel through its Product's unchanged capture authority."""
-    binding = admit(
-        source=Path(args.wheel).expanduser().absolute(),
-        admission=PackageProductLocalWorkerAdmissionV1(
-            contribution_id=args.contribution_id,
-            owner_id=args.owner_id,
-            native_platform=native_platform,
-        ),
-    )
-    document: dict[str, object] = {"workerCandidateBinding": binding.to_dict()}
-    if native_platform == "linux-x86_64":
-        document["candidateCapture"] = "recorded"
-    document.update(productAdmission="not_checked", productUse="not_checked")
-    return document
-
-
 class _OptInAuthority(Protocol):
-    def current(self, plugin_id: str) -> _WorkerCandidateRecord | None: ...
+    def current(self, plugin_id: str) -> _CandidateStatusDecision | None: ...
 
     def allow(
         self,
@@ -189,6 +170,223 @@ class _OptInAuthority(Protocol):
     def revoke(
         self, *, plugin_id: str, operation_id: str, expected_generation: int
     ) -> _WorkerCandidateRecord: ...
+
+
+_LayoutT = TypeVar("_LayoutT")
+
+
+@dataclass(frozen=True, slots=True)
+class NativeWorkerCandidateOperator:
+    """Route native candidate commands through the existing Package CLI owners."""
+
+    product_id: str
+    native_platform: Literal["linux-x86_64", "windows-amd64"]
+    label: str
+    error_type: Callable[[str, str], Exception]
+    error_prefix: str
+    not_directory: str
+    refused: str
+    failure_code: str
+    ordinary_session_routing: str | None = None
+    compact: bool = False
+
+    def run(
+        self,
+        args: Namespace,
+        *,
+        resolve_layout: Callable[[Path], _LayoutT],
+        admit: Callable[[_LayoutT], _CaptureWorkerCandidate],
+        execute: Callable[[_LayoutT, Path, Namespace], dict[str, object]],
+    ) -> int:
+        """Keep inert capture outside the native Product application lifetime."""
+
+        def dispatch(workspace: Path) -> dict[str, object]:
+            layout = resolve_layout(workspace)
+            if args.action != "candidate-capture":
+                return execute(layout, workspace, args)
+            binding = admit(layout)(
+                source=Path(args.wheel).expanduser().absolute(),
+                admission=PackageProductLocalWorkerAdmissionV1(
+                    contribution_id=args.contribution_id,
+                    owner_id=args.owner_id,
+                    native_platform=self.native_platform,
+                ),
+            )
+            document: dict[str, object] = {"workerCandidateBinding": binding.to_dict()}
+            if self.native_platform == "linux-x86_64":
+                document["candidateCapture"] = "recorded"
+            document.update(productAdmission="not_checked", productUse="not_checked")
+            return document
+
+        return run_package_operator_command(
+            args.workspace,
+            dispatch,
+            not_directory=self.not_directory,
+            refused=self.refused,
+            failure_reason=partial(package_operator_error_code, fallback=self.failure_code),
+            compact=self.compact,
+        )
+
+    def execute_candidate_action(
+        self,
+        product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+        args: Namespace,
+        *,
+        opt_in_owner: Callable[[], _OptInAuthority],
+    ) -> dict[str, object] | None:
+        """Execute the common candidate actions before the native operator's own routes."""
+        if args.action in WORKER_CANDIDATE_CHANGE_ACTIONS:
+            return self._change_candidate(product, args, opt_in_owner=opt_in_owner)
+        if args.action not in WORKER_CANDIDATE_OPT_IN_ACTIONS:
+            return None
+        owner = opt_in_owner()
+        decision: _WorkerCandidateRecord | None
+        if args.action == "candidate-status":
+            decision = owner.current(args.plugin_id)
+        elif args.action == "candidate-allow":
+            decision = owner.allow(
+                plugin_id=args.plugin_id,
+                operation_id=args.operation_id,
+                expected_generation=args.expected_generation,
+                require_worker=args.require_worker,
+            )
+        else:
+            decision = owner.revoke(
+                plugin_id=args.plugin_id,
+                operation_id=args.operation_id,
+                expected_generation=args.expected_generation,
+            )
+        return worker_candidate_opt_in_document(
+            decision, ordinary_session_routing=self.ordinary_session_routing
+        )
+
+    def _change_candidate(
+        self,
+        product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+        args: Namespace,
+        *,
+        opt_in_owner: Callable[[], _OptInAuthority],
+    ) -> dict[str, object]:
+        label = self.label
+
+        def require_revoked() -> None:
+            decision = opt_in_owner().current(args.plugin_id)
+            if decision is not None and decision.action == "allow":
+                raise self.error_type(
+                    f"{self.error_prefix}_candidate_opt_in_revoke_required",
+                    f"{label} candidate opt-in must be revoked",
+                )
+
+        windows = self.native_platform == "windows-amd64"
+        binding, snapshot, installed = _capture_worker_candidate_installations(
+            product,
+            args.plugin_id,
+            args.artifact_digest,
+            product_id=self.product_id,
+            label=label,
+        )
+        if (
+            windows
+            and args.action in {"candidate-update", "candidate-disable", "candidate-remove"}
+            and len(installed) != 1
+        ):
+            raise ValueError(f"{label} candidate installation changed")
+        if len(installed) > 1:
+            raise ValueError(f"{label} candidate installation is ambiguous")
+        selected = installed[0] if installed else None
+        revision = None if selected is None else selected.selection.package_revision
+        document: dict[str, object] = (
+            {}
+            if windows
+            else {"productSelection": "not_checked", "productUse": "not_checked"}
+        )
+        if args.action == "candidate-install":
+            lifecycle, inventory_revision, already_installed = _install_worker_candidate(
+                product,
+                binding,
+                snapshot,
+                selected,
+                product_id=self.product_id,
+                plugin_id=args.plugin_id,
+                operation_id=args.operation_id,
+                label=label,
+                reinstall_removed=not windows,
+                refresh_inventory=windows,
+            )
+            install_result = {
+                "pluginId": args.plugin_id,
+                "artifactDigest": args.artifact_digest,
+                "inventoryRevision": inventory_revision,
+                "alreadyInstalled": already_installed,
+            }
+            if not windows:
+                install_result["lifecycle"] = lifecycle
+                document["productAdmission"] = "installed"
+            return {"candidateInstall": install_result, **document}
+        if args.action == "candidate-update":
+            lifecycle, inventory_revision, already_updated = _update_worker_candidate(
+                product,
+                binding,
+                snapshot,
+                selected,
+                args,
+                product_id=self.product_id,
+                label=label,
+                require_revoked=require_revoked,
+                error_type=self.error_type,
+                error_code=f"{self.error_prefix}_candidate_update_selection_stale",
+                post_selection_error_type=None if windows else self.error_type,
+            )
+            update_result = {
+                "pluginId": args.plugin_id,
+                "fromArtifactDigest": args.from_artifact_digest,
+                "artifactDigest": args.artifact_digest,
+                "inventoryRevision": inventory_revision,
+                "alreadyUpdated": already_updated,
+            }
+            if not windows:
+                update_result["lifecycle"] = lifecycle
+                document["productAdmission"] = "installed"
+            return {"candidateUpdate": update_result, **document}
+
+        action = cast(
+            Literal["enable", "disable", "remove"], args.action.removeprefix("candidate-")
+        )
+        if windows and action == "enable" and revision is None:
+            raise ValueError(f"{label} candidate is not installed")
+        if windows and action == "remove":
+            require_revoked()
+        if revision is not None and not _worker_candidate_revision_matches(
+            revision, binding
+        ):
+            changed = "selection" if windows and action == "enable" else "installation"
+            raise ValueError(f"{label} candidate {changed} changed")
+        if not windows and action == "remove":
+            require_revoked()
+        if selected is None:
+            raise ValueError(f"{label} candidate installation changed")
+        operation, inventory_revision = _change_worker_candidate_lifecycle(
+            product,
+            binding,
+            snapshot,
+            selected,
+            action=action,
+            operation_id=args.operation_id,
+            expected_inventory_revision=args.expected_inventory_revision,
+            label=label,
+            unsettled_message=(
+                f"{label} candidate change did not settle"
+                if windows and action != "enable"
+                else f"{label} candidate enable did not settle"
+            ),
+        )
+        if action == "remove":
+            document["packageRetirement"] = "not_checked"
+        return {
+            "candidateManagementOperation": operation,
+            "inventoryRevision": inventory_revision,
+            **document,
+        }
 
 
 def worker_candidate_opt_in_document(
@@ -300,165 +498,4 @@ def read_worker_candidate_status(
         "candidateSelection": selection,
         "candidateOptInAlignment": alignment,
         "productUse": "not_checked",
-    }
-
-
-def execute_worker_candidate_opt_in(
-    owner: _OptInAuthority, args: Namespace, *, ordinary_session_routing: str | None
-) -> dict[str, object]:
-    """Resolve an operator request through the existing native decision authority."""
-    if args.action == "candidate-status":
-        decision = owner.current(args.plugin_id)
-    elif args.action == "candidate-allow":
-        decision = owner.allow(
-            plugin_id=args.plugin_id,
-            operation_id=args.operation_id,
-            expected_generation=args.expected_generation,
-            require_worker=args.require_worker,
-        )
-    elif args.action == "candidate-revoke":
-        decision = owner.revoke(
-            plugin_id=args.plugin_id,
-            operation_id=args.operation_id,
-            expected_generation=args.expected_generation,
-        )
-    else:
-        raise ValueError("Worker candidate opt-in action is unsupported")
-    return worker_candidate_opt_in_document(
-        decision, ordinary_session_routing=ordinary_session_routing
-    )
-
-
-def execute_worker_candidate_change(
-    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
-    args: Namespace,
-    *,
-    product_id: str,
-    native_platform: Literal["linux-x86_64", "windows-amd64"],
-    label: str,
-    current_opt_in: Callable[[str], _CandidateStatusDecision | None],
-    error_type: Callable[[str, str], Exception],
-    error_prefix: str,
-) -> dict[str, object]:
-    """Run the existing lifecycle with the platform's operator contract."""
-
-    def require_revoked() -> None:
-        decision = current_opt_in(args.plugin_id)
-        if decision is not None and decision.action == "allow":
-            raise error_type(
-                f"{error_prefix}_candidate_opt_in_revoke_required",
-                f"{label} candidate opt-in must be revoked",
-            )
-
-    windows = native_platform == "windows-amd64"
-    if args.action not in WORKER_CANDIDATE_CHANGE_ACTIONS:
-        raise ValueError(f"{label} candidate action is unsupported")
-    binding, snapshot, installed = _capture_worker_candidate_installations(
-        product,
-        args.plugin_id,
-        args.artifact_digest,
-        product_id=product_id,
-        label=label,
-    )
-    if (
-        windows
-        and args.action in {"candidate-update", "candidate-disable", "candidate-remove"}
-        and len(installed) != 1
-    ):
-        raise ValueError(f"{label} candidate installation changed")
-    if len(installed) > 1:
-        raise ValueError(f"{label} candidate installation is ambiguous")
-    selected = installed[0] if installed else None
-    revision = None if selected is None else selected.selection.package_revision
-    document: dict[str, object] = (
-        {}
-        if windows
-        else {"productSelection": "not_checked", "productUse": "not_checked"}
-    )
-    if args.action == "candidate-install":
-        lifecycle, inventory_revision, already_installed = _install_worker_candidate(
-            product,
-            binding,
-            snapshot,
-            selected,
-            product_id=product_id,
-            plugin_id=args.plugin_id,
-            operation_id=args.operation_id,
-            label=label,
-            reinstall_removed=not windows,
-            refresh_inventory=windows,
-        )
-        install_result = {
-            "pluginId": args.plugin_id,
-            "artifactDigest": args.artifact_digest,
-            "inventoryRevision": inventory_revision,
-            "alreadyInstalled": already_installed,
-        }
-        if not windows:
-            install_result["lifecycle"] = lifecycle
-            document["productAdmission"] = "installed"
-        return {"candidateInstall": install_result, **document}
-    if args.action == "candidate-update":
-        lifecycle, inventory_revision, already_updated = _update_worker_candidate(
-            product,
-            binding,
-            snapshot,
-            selected,
-            args,
-            product_id=product_id,
-            label=label,
-            require_revoked=require_revoked,
-            error_type=error_type,
-            error_code=f"{error_prefix}_candidate_update_selection_stale",
-            post_selection_error_type=None if windows else error_type,
-        )
-        update_result = {
-            "pluginId": args.plugin_id,
-            "fromArtifactDigest": args.from_artifact_digest,
-            "artifactDigest": args.artifact_digest,
-            "inventoryRevision": inventory_revision,
-            "alreadyUpdated": already_updated,
-        }
-        if not windows:
-            update_result["lifecycle"] = lifecycle
-            document["productAdmission"] = "installed"
-        return {"candidateUpdate": update_result, **document}
-
-    action = cast(
-        Literal["enable", "disable", "remove"], args.action.removeprefix("candidate-")
-    )
-    if windows and action == "enable" and revision is None:
-        raise ValueError(f"{label} candidate is not installed")
-    if windows and action == "remove":
-        require_revoked()
-    if revision is not None and not _worker_candidate_revision_matches(
-        revision, binding
-    ):
-        changed = "selection" if windows and action == "enable" else "installation"
-        raise ValueError(f"{label} candidate {changed} changed")
-    if not windows and action == "remove":
-        require_revoked()
-    if selected is None:
-        raise ValueError(f"{label} candidate installation changed")
-    operation, inventory_revision = _change_worker_candidate_lifecycle(
-        product,
-        binding,
-        snapshot,
-        selected,
-        action=action,
-        operation_id=args.operation_id,
-        expected_inventory_revision=args.expected_inventory_revision,
-        label=label,
-        unsettled_message=(
-            f"{label} candidate change did not settle"
-            if windows and action != "enable"
-            else f"{label} candidate enable did not settle"
-        ),
-    )
-    if action == "remove":
-        document["packageRetirement"] = "not_checked"
-    return {
-        "candidateManagementOperation": operation,
-        "inventoryRevision": inventory_revision,
-        **document,
     }

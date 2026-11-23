@@ -60,22 +60,15 @@ from loushang.coding.package.product_worker_start_gate_recovery import (
     settle_coding_product_worker_gated_attempt,
 )
 from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.harness.cli.package_lifecycle import (
-    package_operator_error_code,
-    run_package_operator_command,
-)
 from loushang.harness.cli.worker_candidate import (
-    WORKER_CANDIDATE_CHANGE_ACTIONS,
-    WORKER_CANDIDATE_OPT_IN_ACTIONS,
+    NativeWorkerCandidateOperator,
     NativeWorkerReleaseInput,
     add_native_worker_review_commands,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
-    execute_worker_candidate_capture,
-    execute_worker_candidate_change,
-    execute_worker_candidate_opt_in,
     read_worker_candidate_status,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -93,6 +86,19 @@ class CodingWorkerNativeCandidateCommandError(ValueError):
         self.code = code
 
 
+_CANDIDATE_OPERATOR = NativeWorkerCandidateOperator(
+    product_id="coding",
+    native_platform="linux-x86_64",
+    label="Coding Worker",
+    error_type=CodingWorkerNativeCandidateCommandError,
+    error_prefix="coding_worker",
+    not_directory="Coding workspace is not a directory",
+    refused="Coding Worker native command refused",
+    failure_code="coding_worker_native_command_unavailable",
+    ordinary_session_routing="python_sdk_explicit_linux",
+    compact=True,
+)
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-worker-native")
     parser.add_argument("--workspace", default=".", help="fenced Coding workspace")
@@ -107,7 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "candidate-disable": "disable one exact installed Worker candidate",
             "candidate-remove": "remove one Worker candidate from Desired State",
         },
-        native_platform_option="linux-x86_64",
+        native_platform_option=_CANDIDATE_OPERATOR.native_platform,
     )
     actions.add_parser("status", help="read the current Product approval decision")
     add_native_worker_review_commands(
@@ -198,49 +204,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write("Coding Worker native command refused: platform_unsupported\n")
         return 1
 
-    def execute(workspace: Path) -> dict[str, object]:
-        lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-        if args.action == "candidate-capture":
-            return execute_worker_candidate_capture(
-                partial(admit_coding_external_worker_wheel, lifecycle),
-                args,
-                native_platform=args.native_platform,
-            )
-        if args.action == "candidate-status":
-            with CodingFencedProductReadOnlyPreviewOwner.open(
-                lifecycle, worker_candidates=True
-            ) as read_owner:
-                return _read_candidate_status_document(read_owner, args.plugin_id)
-        application = open_coding_fenced_product_application_owner(
-            lifecycle,
-            workspace=workspace,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            worker_candidates=True,
-        )
-        with closing(application):
-            product = application.runtime_owner.product_owner
-            if not isinstance(product, PosixLocalWheelProductSessionOwner):
-                raise ValueError("Coding Worker native Product owner is unsupported")
-            return _execute(product, args)
-
-    return run_package_operator_command(
-        args.workspace,
-        execute,
-        not_directory="Coding workspace is not a directory",
-        refused="Coding Worker native command refused",
-        failure_reason=partial(
-            package_operator_error_code, fallback="coding_worker_native_command_unavailable"
-        ),
-        compact=True,
+    return _CANDIDATE_OPERATOR.run(
+        args,
+        resolve_layout=resolve_coding_plugin_lifecycle_state_layout,
+        admit=lambda layout: partial(admit_coding_external_worker_wheel, layout),
+        execute=_run_product_action,
     )
+
+
+def _run_product_action(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    workspace: Path,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    if args.action == "candidate-status":
+        with CodingFencedProductReadOnlyPreviewOwner.open(
+            lifecycle, worker_candidates=True
+        ) as read_owner:
+            return _read_candidate_status_document(read_owner, args.plugin_id)
+    application = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    with closing(application):
+        product = application.runtime_owner.product_owner
+        if not isinstance(product, PosixLocalWheelProductSessionOwner):
+            raise ValueError("Coding Worker native Product owner is unsupported")
+        return _execute(product, args)
 
 
 def _read_candidate_status_document(
     owner: CodingFencedProductReadOnlyPreviewOwner, plugin_id: str
 ) -> dict[str, object]:
     return read_worker_candidate_status(
-        owner, plugin_id, ordinary_session_routing="python_sdk_explicit_linux"
+        owner,
+        plugin_id,
+        ordinary_session_routing=_CANDIDATE_OPERATOR.ordinary_session_routing,
     )
 
 
@@ -261,19 +263,11 @@ def _execute(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    if args.action in WORKER_CANDIDATE_CHANGE_ACTIONS:
-        return execute_worker_candidate_change(
-            product,
-            args,
-            product_id="coding",
-            native_platform="linux-x86_64",
-            label="Coding Worker",
-            current_opt_in=lambda plugin_id: CodingWorkerProductOptInOwner(
-                product
-            ).current(plugin_id),
-            error_type=CodingWorkerNativeCandidateCommandError,
-            error_prefix="coding_worker",
-        )
+    candidate_result = _CANDIDATE_OPERATOR.execute_candidate_action(
+        product, args, opt_in_owner=lambda: CodingWorkerProductOptInOwner(product)
+    )
+    if candidate_result is not None:
+        return candidate_result
     if args.action == "list-gated-attempts":
         return {
             "gatedAttempts": [
@@ -292,12 +286,6 @@ def _execute(
             )
         )
         return {"workerQuery": {"text": answer}}
-    if args.action in WORKER_CANDIDATE_OPT_IN_ACTIONS:
-        return execute_worker_candidate_opt_in(
-            CodingWorkerProductOptInOwner(product),
-            args,
-            ordinary_session_routing="python_sdk_explicit_linux",
-        )
     if args.action in {"review-orphan-runtime", "repair-orphan-runtime"}:
         orphan_review = review_coding_product_worker_orphan_runtime(
             product, attempt_id=args.attempt_id
