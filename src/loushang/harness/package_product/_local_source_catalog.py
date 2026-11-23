@@ -65,6 +65,7 @@ from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source 
     ExactProductSourceFiles,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
     RecordSchema,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
@@ -348,6 +349,98 @@ class _DataWheelBindingMethods(_ExternalWheelBindingMethods):
         )
 
 
+class _WorkerWheelBindingMethods(_WheelSourceBindingMethods):
+    """Validate and seal an inert Worker Wheel Source and its exact admission."""
+
+    __slots__ = ()
+    record_revision: int
+    store_id: str
+    namespace_id: str
+    scope_id: str
+    original_source: str
+    wheel_filename: str
+    plugin_id: str
+    version: str
+    artifact_digest: str
+    admission: PackageProductLocalWorkerAdmissionV1
+
+    _binding_label = "External Worker Wheel"
+    _sort_binding_fields = True
+    _wheel_name: ClassVar[re.Pattern[str]]
+    _max_wheel_filename: ClassVar[int]
+
+    def __post_init__(self) -> None:
+        if not all(
+            isinstance(getattr(self, field.attribute), str)
+            for field in self._binding_schema.fields
+            if field.attribute not in {"record_revision", "admission"}
+        ):
+            raise ValueError(f"{self._binding_label} binding fields are invalid")
+        match = self._wheel_name.fullmatch(self.wheel_filename)
+        platform = (
+            "windows-amd64"
+            if match is not None and match["tag"] == "win_amd64"
+            else "linux-x86_64"
+        )
+        if (
+            not plugin_wheel_source_fields_match(
+                self, match, maximum_filename=self._max_wheel_filename
+            )
+            or not isinstance(self.admission, PackageProductLocalWorkerAdmissionV1)
+            or self.admission.native_platform != platform
+            or _SOURCE_RECORD_DIGEST.fullmatch(self.record_id) is None
+        ):
+            raise ValueError(f"{self._binding_label} binding is invalid")
+        self._require_binding_identity()
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        record_revision: int,
+        store_id: str,
+        namespace_id: str,
+        scope_id: str,
+        original_source: str,
+        wheel_filename: str,
+        artifact_digest: str,
+        admission: PackageProductLocalWorkerAdmissionV1,
+    ) -> Self:
+        return cls._seal_binding(
+            record_revision=record_revision,
+            store_id=store_id,
+            namespace_id=namespace_id,
+            scope_id=scope_id,
+            original_source=original_source,
+            wheel_filename=wheel_filename,
+            **plugin_wheel_identity_fields(
+                wheel_filename, cls._wheel_name, cls._binding_label
+            ),
+            artifact_digest=artifact_digest,
+            admission=admission,
+        )
+
+    @classmethod
+    def _worker_schema(cls) -> RecordSchema:
+        return RecordSchema.for_dataclass(
+            cls,
+            lambda value: value,
+            RecordField(
+                "admission",
+                decoder=PackageProductLocalWorkerAdmissionV1._from_record_payload,
+                encoder=PackageProductLocalWorkerAdmissionV1._to_record_payload,
+            ),
+        )
+
+    def policy_binding(self, source_root: Path) -> PackageProductLocalWheelBindingV1:
+        return project_plugin_wheel_binding(
+            self,
+            source_root,
+            trust_class="local-worker-candidate",
+            admission=self.admission,
+        )
+
+
 def plugin_wheel_identity_fields(
     wheel_filename: str,
     pattern: re.Pattern[str],
@@ -510,6 +603,8 @@ class _StableWheelSource(Generic[RecordT]):
     _error_factory: Callable[[str], Exception]
     _source_read_errors: tuple[type[BaseException], ...] = (OSError,)
     _source_read_error_suffix = "Source changed"
+    _wheel_name: re.Pattern[str]
+    _max_wheel_filename: int
 
     def _max_source_bytes(self) -> int:
         raise NotImplementedError
@@ -550,8 +645,6 @@ class _StableWheelSource(Generic[RecordT]):
         admission: PackageProductLocalWorkerAdmissionV1,
         *,
         native_platform: str,
-        filename: re.Pattern[str],
-        max_filename: int,
         required_suffix: str = "",
     ) -> None:
         if (
@@ -559,9 +652,9 @@ class _StableWheelSource(Generic[RecordT]):
             or admission.native_platform != native_platform
             or not isinstance(source, Path)
             or not self._is_external_source(source)
-            or filename.fullmatch(source.name) is None
+            or self._wheel_name.fullmatch(source.name) is None
             or (required_suffix and not source.name.endswith(required_suffix))
-            or len(source.name) > max_filename
+            or len(source.name) > self._max_wheel_filename
         ):
             raise self._error_factory(f"{self._source_label} Source is invalid")
 
@@ -766,11 +859,31 @@ class _PluginWheelSourceCatalog(
     def _record_key(self, record: PluginRecordT) -> Hashable:
         return record.plugin_id, record.version
 
+
+class _PosixWorkerSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
+    _read_only_capture_error = "Read-only Worker Source cannot capture"
+    _catalog_regular_single_link = True
+    _persist_admission = True
+
+    def capture(
+        self,
+        source: Path,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> PluginRecordT:
+        self._require_capture_epoch(epoch_runtime)
+        self._require_worker_capture_source(
+            source, admission, native_platform="linux-x86_64"
+        )
+        return self._capture_validated(
+            source, epoch_runtime=epoch_runtime, admission=admission
+        )
+
+
 class _DataWheelSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
     _record_type: type[PluginRecordT]
     _error_factory: type[Exception]
-    _wheel_name: re.Pattern[str]
-    _max_wheel_filename: int
 
     def _admit_capture_source(self, source: Path) -> bool:
         return (
@@ -1073,6 +1186,19 @@ class _WindowsWorkerSourceCatalog(
         self.namespace_id = namespace_id
         self.scope_id = scope_id
         epoch_runtime.assert_current()
+
+    def capture(
+        self,
+        source: Path,
+        *,
+        admission: PackageProductLocalWorkerAdmissionV1,
+    ) -> WindowsRecordT:
+        self._assert_epoch()
+        self._require_worker_capture_source(
+            source, admission,
+            native_platform="windows-amd64", required_suffix="-win_amd64.whl",
+        )
+        return self._capture_validated(source, admission=admission)
 
     def _capture_validated(
         self, source: Path, *, admission: PackageProductLocalWorkerAdmissionV1
