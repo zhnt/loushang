@@ -18,6 +18,10 @@ class ExecutionOperationV1(str, Enum):
     INTERRUPT = "execution/interrupt"
     SNAPSHOT = "execution/snapshot"
     EVENTS = "execution/read_events"
+    COMMAND_CATALOG = "session/command_catalog"
+    COMMAND_READ = "session/command_read"
+    COMMAND_SUBMIT = "session/command_submit"
+    COMMAND_RESULT = "session/command_result"
     RESOURCE = "session/resource"
     RESUME_INPUT_LOOKUP = "session/lookup_resume_input"
 

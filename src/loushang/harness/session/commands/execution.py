@@ -100,6 +100,7 @@ class StandardSessionCommandPorts:
     navigate_tree: CommandPort | None = None
     get_active_tool_names: Callable[[], list[str]] | None = None
     get_all_tools: Callable[[], Sequence[object]] | None = None
+    is_tool_allowed: Callable[[str], bool] | None = None
     set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
     get_default_active_tool_names: Callable[[], list[str]] | None = None
     get_extensions: Callable[[], Sequence[object]] | None = None
@@ -325,6 +326,32 @@ def _parse_tree_options(tokens: list[str]) -> dict[str, object]:
     return options
 
 
+_TOOL_ACTIONS = ("on", "off", "only", "reset")
+
+
+def complete_standard_session_arguments(
+    name: str, prefix: str, ports: StandardSessionCommandPorts,
+) -> list[str]:
+    if resolve_standard_session_command_id(name) is not StandardSessionCommandId.TOOLS:
+        return []
+    previous, _, partial = prefix.rpartition(" ")
+    if not previous:
+        return [action + (" " if action != "reset" else "") for action in _TOOL_ACTIONS
+                if action.startswith(partial)]
+    tokens = previous.split()
+    if not tokens or tokens[0] not in _TOOL_ACTIONS[:-1] or ports.get_all_tools is None:
+        return []
+    head, separator, partial = partial.rpartition(",")
+    selected = set(_parse_tool_names([*tokens[1:], head]))
+    names = (_tool_field(tool, "name") for tool in ports.get_all_tools())
+    return [
+        f"{previous} {head}{separator}{name}"
+        for name in names
+        if name and name.startswith(partial) and name not in selected
+        and (ports.is_tool_allowed is None or ports.is_tool_allowed(name))
+    ]
+
+
 async def _execute_tools_command(
     args: str, ports: StandardSessionCommandPorts
 ) -> StandardSessionCommandResult:
@@ -332,9 +359,10 @@ async def _execute_tools_command(
     if ports.get_active_tool_names is None or ports.get_all_tools is None:
         return StandardSessionCommandResult.unavailable(command_id)
     active_tools = list(ports.get_active_tool_names())
-    available_tools = _available_tool_entries(ports.get_all_tools(), active_tools)
+    available_tools = _available_tool_entries(ports.get_all_tools(), active_tools, ports.is_tool_allowed)
     available_names = [
-        name for entry in available_tools if isinstance(name := entry.get("name"), str)
+        name for entry in available_tools
+        if entry.get("allowed", True) and isinstance(name := entry.get("name"), str)
     ]
     tokens = _split_args(args.strip()) if args.strip() else []
     if not tokens:
@@ -353,7 +381,7 @@ async def _execute_tools_command(
             ports.get_default_active_tool_names(), available_names
         )
     else:
-        if action not in {"on", "off", "only"} or ports.set_active_tools is None:
+        if action not in _TOOL_ACTIONS[:-1] or ports.set_active_tools is None:
             return StandardSessionCommandResult.invalid_arguments(
                 command_id, "invalid_tools_arguments"
             )
@@ -361,6 +389,14 @@ async def _execute_tools_command(
         if not requested:
             return StandardSessionCommandResult.invalid_arguments(
                 command_id, "missing_tool_names"
+            )
+        registered = {entry["name"] for entry in available_tools}
+        denied = [
+            name for name in requested if name in registered and name not in available_names
+        ]
+        if denied:
+            return StandardSessionCommandResult.invalid_arguments(
+                command_id, "tool_not_allowed", {"denied": denied},
             )
         unknown = [name for name in requested if name not in available_names]
         if unknown:
@@ -380,11 +416,12 @@ async def _execute_tools_command(
             next_tools = requested
         next_tools = _filter_available_tools(next_tools, available_names)
     await _resolve(ports.set_active_tools(next_tools))
+    active_tools = list(ports.get_active_tool_names())
     return StandardSessionCommandResult.completed(
         command_id,
         _tools_result(
-            next_tools,
-            _available_tool_entries(ports.get_all_tools(), next_tools),
+            active_tools,
+            _available_tool_entries(ports.get_all_tools(), active_tools, ports.is_tool_allowed),
             action=None if action == "reset" else action,
         ),
     )
@@ -520,6 +557,7 @@ def _object_field(value: object, field: str) -> str:
 def _available_tool_entries(
     tools: Sequence[object],
     active_tools: list[str],
+    is_allowed: Callable[[str], bool] | None = None,
 ) -> list[dict[str, object]]:
     active_set = set(active_tools)
     entries: list[dict[str, object]] = []
@@ -532,6 +570,8 @@ def _available_tool_entries(
             "active": name in active_set,
             "description": _tool_field(tool, "description"),
         }
+        if is_allowed is not None:
+            entry["allowed"] = is_allowed(name)
         source_info = _tool_source_info(tool)
         if source_info is not None:
             entry["sourceInfo"] = dict(source_info)

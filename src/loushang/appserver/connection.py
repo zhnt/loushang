@@ -174,6 +174,7 @@ class AppServerConnectionV1:
             self._last_id = number
             control = request.operation in CONTROL_OPERATIONS or request.operation in {
                 ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GET, ExecutionOperationV1.FIND,
+                ExecutionOperationV1.COMMAND_CATALOG, ExecutionOperationV1.COMMAND_READ, ExecutionOperationV1.COMMAND_RESULT,
                 ExecutionOperationV1.RESUME_INPUT_LOOKUP, ExecutionOperationV1.INTERACTIVE_GOAL_STATUS,
                 ExecutionOperationV1.INTERACTIVE_GOAL_COMMAND, ExecutionOperationV1.INTERACTIVE_GOAL_RECOVERY,
                 ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW, ExecutionOperationV1.INTERACTIVE_GOAL_REVIEW_SUBMIT,

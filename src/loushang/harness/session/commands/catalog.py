@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
+from typing import Literal
 
 from loushang.harness.commands import SessionCommandDescriptor, normalize_command_name
 from loushang.harness.resources.source import create_source_info
@@ -39,6 +40,7 @@ class StandardSessionCommandDefinition:
     command_id: StandardSessionCommandId
     description: str
     argument_hint: str | None = None
+    hosted: Literal["read", "session", "model"] | None = None
 
     @property
     def name(self) -> str:
@@ -66,6 +68,7 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
     StandardSessionCommandDefinition(
         StandardSessionCommandId.SESSION,
         "Show session info and stats",
+        hosted="read",
     ),
     StandardSessionCommandDefinition(
         StandardSessionCommandId.CHANGELOG,
@@ -90,6 +93,8 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
     StandardSessionCommandDefinition(
         StandardSessionCommandId.TOOLS,
         "Show or update active tools for this session",
+        "<on|off|only|reset> [tools]",
+        hosted="session",
     ),
     StandardSessionCommandDefinition(
         StandardSessionCommandId.EXTENSIONS,
@@ -102,6 +107,8 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
     StandardSessionCommandDefinition(
         StandardSessionCommandId.COMPACT,
         "Manually compact the session context",
+        "[instructions]",
+        hosted="model",
     ),
     StandardSessionCommandDefinition(
         StandardSessionCommandId.RESUME,

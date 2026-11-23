@@ -141,6 +141,9 @@ class SessionToolRuntime:
     def get_active_tool_names(self) -> list[str]:
         return list(self._activation.snapshot().active_names)
 
+    def get_available_tools(self) -> list[ToolDefinition]:
+        return self._available_definitions()
+
     def get_all_tools(self) -> list[ToolDefinition]:
         return list(self._activation.filter_items(self._available_definitions()))
 
