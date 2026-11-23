@@ -94,7 +94,10 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-from ._application_runtime import FencedOrdinaryProductApplication
+from ._application_runtime import (
+    FencedOrdinaryProductApplication,
+    hold_accepted_product_adoption,
+)
 from ._legacy_inventory import (
     LEGACY_REVIEW_DIGEST,
     LEGACY_REVIEW_ID,
@@ -1321,6 +1324,40 @@ def match_legacy_replay_source(
 _AcceptedT = TypeVar("_AcceptedT", bound=_AcceptedSource)
 
 
+def prepare_legacy_adoption_source(
+    *,
+    open_epoch: Callable[[], PackageProductPosixFencedRuntimeOwner],
+    open_application: Callable[[], FencedOrdinaryProductApplication],
+    accept_and_consume: Callable[
+        [PackageProductPosixFencedRuntimeOwner], tuple[_AcceptedT, bool]
+    ],
+    bind_source: Callable[[PackageProductPosixFencedRuntimeOwner, bool], None],
+    plugin_id: str,
+    trust_classes: Collection[str],
+    expected_trust: Callable[[], str],
+    changed_message: str,
+) -> _AcceptedT:
+    """Open the accepted Product, then finish only a missing Source binding."""
+    with hold_accepted_product_adoption(
+        open_epoch=open_epoch,
+        accept_review=accept_and_consume,
+        open_application=open_application,
+    ) as ((acceptance, admission_checked), application):
+        matches, bound = match_legacy_replay_source(
+            application.runtime_owner.product_owner.policy.bindings,
+            acceptance,
+            plugin_id=plugin_id,
+            trust_classes=trust_classes,
+            expected_trust=expected_trust(),
+        )
+        if not matches:
+            raise RuntimeError(changed_message)
+    if bound is None:
+        with closing(open_epoch()) as epoch:
+            bind_source(epoch, admission_checked)
+    return acceptance
+
+
 class _LegacyLocalInstallationResult(NamedTuple):
     acceptance_id: str
     install_operation_id: str
@@ -1868,6 +1905,69 @@ class _LegacySourceProjection:
                     sources.append(f"{scope}:{key}")
 
         return tuple(disabled), tuple(sources)
+
+    def index_configured_local_sources(
+        self,
+        projection: object,
+        identities: tuple[str, ...],
+        *,
+        required_identity: str | None,
+        max_sources: int,
+        builtin_ids: frozenset[str],
+        disabled_setting: str,
+        configured_source_keys: frozenset[str],
+    ) -> dict[str, _LegacySourceScope]:
+        """Match each approved configured Source against the frozen installed set."""
+        if (
+            type(identities) is not tuple
+            or not 0 < len(identities) <= max_sources
+            or any(
+                type(identity) is not str or not identity.startswith("local:/")
+                for identity in identities
+            )
+            or len(identities) != len(set(identities))
+            or (required_identity is not None and required_identity not in identities)
+        ):
+            raise ValueError("Legacy local data Source set is invalid")
+        disabled, configured_keys = self.classify(
+            projection,
+            disabled_setting=disabled_setting,
+            configured_source_keys=configured_source_keys,
+        )
+        if any(plugin_id not in builtin_ids for _, plugin_id in disabled):
+            raise ValueError("Legacy local data settings need a separate migration")
+        assert isinstance(projection, dict)
+        scopes = projection["scopes"]
+        configured: dict[str, _LegacySourceScope] = {}
+        configured_scopes = 0
+        for scope in _LEGACY_SOURCE_SCOPES:
+            patch = scopes[scope]["sourcePatch"]
+            if set(patch) - {disabled_setting, "plugin_sources"}:
+                raise ValueError("Legacy local data settings need a separate migration")
+            if "plugin_sources" not in patch:
+                continue
+            values = patch["plugin_sources"]
+            if values:
+                configured_scopes += 1
+            for path in values:
+                if (
+                    not isinstance(path, str)
+                    or not Path(path).is_absolute()
+                    or any(part in {".", ".."} for part in path.split("/"))
+                    or f"local:{path}" not in identities
+                ):
+                    raise ValueError(
+                        "Configured Source must be the same installed local Source"
+                    )
+                if path in configured:
+                    raise ValueError("Legacy Skill configured Sources are duplicated")
+                configured[path] = scope
+        if (
+            len(configured) > len(identities)
+            or len(configured_keys) != configured_scopes
+        ):
+            raise ValueError("Legacy local data settings need a separate migration")
+        return configured
 
     def verify_snapshot(
         self,
