@@ -113,8 +113,8 @@ The executable authority gates freeze these production construction sites:
 - `RuntimeCapabilityGraphRuntime`, `RuntimeCapabilityGraphBinder`, and
   `RuntimeCapabilityGraphProjector`: the parent owner is
   `AgentProductSession.__init__`; the additional private LSP graph constructor is
-  `CodingDeferredLspGeneration.prepare`. Its Binder uses a dataclass
-  `default_factory=RuntimeCapabilityGraphBinder`, which is recorded here but
+  `_DeferredSessionCapabilityGeneration.prepare` in Harness Session. Its Binder
+  uses a dataclass `default_factory=RuntimeCapabilityGraphBinder`, recorded here but
   not enumerated by the existing direct-call AST assertion;
 - `RuntimeProfileBinder`: focused construction in
   `_compose_coding_continuity_base`,

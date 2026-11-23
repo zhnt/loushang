@@ -4,9 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from functools import partial
-from typing import ClassVar, Protocol, Self
+from typing import TYPE_CHECKING, ClassVar, Protocol, Self
 
 from loushang.harness.session._cleanup import run_cleanup_steps
+
+from ._publication import OwnerReceiptGroups, _OwnerLeaseSet
+
+if TYPE_CHECKING:
+    from loushang.harness.capabilities.component_host import CapabilityComponentHost
+    from loushang.harness.session.capability_composition_inputs import (
+        SessionCapabilityCompositionInputs,
+    )
+    from loushang.harness.session.tool_owner_binding import _ReservedToolPackOwner
+
+    from ._session_lease import _PluginSessionLease
 
 
 class _Closeable(Protocol):
@@ -286,6 +297,29 @@ class _PublishedCompositionCleanup(_CompositionCleanup):
                 f"{self._cleanup_label} Plugin private state requires retirement evidence"
             )
         self._clean_private_state()
+
+
+class _PublishedCapabilityComposition(_PublishedCompositionCleanup):
+    """Drive the same management leases for initial and on-demand publication."""
+
+    __slots__ = ()
+    management_leases: Mapping[str, _PluginSessionLease]
+    component_host: CapabilityComponentHost
+    session_inputs: SessionCapabilityCompositionInputs
+    tool_owners: Mapping[str, _ReservedToolPackOwner]
+
+    def claim_runtime(self, runtime_claim_id: str) -> None:
+        for lease in self.management_leases.values():
+            lease.claim_runtime(runtime_claim_id)
+
+    def prepare_owner_generations(self, receipts: OwnerReceiptGroups) -> None:
+        _OwnerLeaseSet(self.management_leases).prepare_owner_generations(receipts)
+
+    def publish_owner_generations(self, receipts: OwnerReceiptGroups) -> None:
+        _OwnerLeaseSet(self.management_leases).publish_owner_generations(receipts)
+
+    def retire_owner_generations(self, receipts: OwnerReceiptGroups) -> None:
+        _OwnerLeaseSet(self.management_leases).retire_owner_generations(receipts)
 
 
 def share_startup_cleanup(
