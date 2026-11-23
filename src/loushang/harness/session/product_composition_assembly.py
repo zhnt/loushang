@@ -121,6 +121,67 @@ ProductCapabilityProviderSelector = Callable[
 ]
 
 
+_AGENT_HOST_DEFINITIONS = (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
+    WORKSPACE_CAPABILITY_DEFINITION,
+)
+_AGENT_HOST_CAPABILITY_IDS = tuple(
+    definition.capability_id for definition in _AGENT_HOST_DEFINITIONS
+)
+
+
+def bind_agent_host_session_inputs(
+    compilation: ProductCompositionCompilation,
+    workspace_provider: CapabilityBundleProvider,
+) -> SessionCapabilityCompositionInputs:
+    """Bind a compiled data-only Session to the standard Agent host."""
+    context = compilation.authority_context
+    providers = (workspace_provider,)
+    resolved = ProductCapabilityProviderResolver().resolve(
+        ProductCapabilityProviderSelectionPlanV1(
+            product_id=context.product_id,
+            roots=(),
+            choices=(),
+            policy_revision=context.product_policy_revision,
+        ),
+        definitions=_AGENT_HOST_DEFINITIONS,
+        admissions=(),
+        owner_snapshots=(),
+        evaluated_at=context.evaluated_at,
+        prebound_providers=providers,
+    )
+    validate_session_capability_composition_closure(
+        compilation,
+        resolved,
+        host_capability_ids=_AGENT_HOST_CAPABILITY_IDS,
+        host_providers=providers,
+    )
+    return SessionCapabilityCompositionInputs(
+        product_composition=compilation,
+        resolved_providers=resolved,
+        component_requests=(),
+    )
+
+
+def assemble_agent_data_composition(
+    plan: PluginSelectionPlanV2,
+    candidates: tuple[OwnerContributionCandidateEnvelope, ...],
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+    *,
+    evaluated_at: int,
+) -> ProductCompositionCompilation:
+    """Compile selected data contributions against the standard Agent host."""
+    return _assemble_product_contribution_candidates(
+        plan=plan,
+        candidates=candidates,
+        owner_bindings=owner_bindings,
+        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        definitions=_AGENT_HOST_DEFINITIONS,
+        select_optional_requirements=lambda _: (),
+        evaluated_at=evaluated_at,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _WorkerSessionComposition:
     """Join one admitted Worker without replacing ordinary Session facts.
@@ -186,8 +247,7 @@ class _WorkerSessionComposition:
         definitions = {
             item.capability_id: item
             for item in (
-                MODEL_INPUT_CAPABILITY_DEFINITION,
-                WORKSPACE_CAPABILITY_DEFINITION,
+                *_AGENT_HOST_DEFINITIONS,
                 worker_definition,
                 *(entry.definition for entry in ordinary.resolved_providers.entries),
             )
@@ -515,10 +575,7 @@ class _WorkerSessionComposition:
         validate_session_capability_composition_closure(
             compilation,
             resolved,
-            host_capability_ids=(
-                MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-                WORKSPACE_CAPABILITY_DEFINITION.capability_id,
-            ),
+            host_capability_ids=_AGENT_HOST_CAPABILITY_IDS,
             host_providers=(workspace_binding.provider,),
         )
 
@@ -910,23 +967,19 @@ class ProductPluginCompositionAssemblyRequest:
     ) -> ProductPluginCompositionAssemblyRequest:
         """Compile Plugin contributions against the standard Agent host capabilities."""
 
-        host_definitions = (
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-        )
         return cls(
             contribution_request=ProductCompositionAssemblyRequest(
                 selection=seed.selection,
                 owner_bindings=seed.owner_bindings,
                 owner_candidates=owner_candidates,
                 mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-                definitions=(*host_definitions, *provider_definitions),
+                definitions=(*_AGENT_HOST_DEFINITIONS, *provider_definitions),
             ),
             provider_owner_bindings=provider_owner_bindings,
             provider_roots=tuple(
                 sorted(item.capability_id for item in provider_owner_bindings)
             ),
-            host_capability_ids=tuple(item.capability_id for item in host_definitions),
+            host_capability_ids=_AGENT_HOST_CAPABILITY_IDS,
             select_capability_providers=select_capability_providers,
         )
 

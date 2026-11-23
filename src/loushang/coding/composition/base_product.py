@@ -34,7 +34,6 @@ from loushang.coding.package.legacy_data_trust import (
     permits_external_data_owner as permits_external_data_owner,
 )
 from loushang.harness.capabilities import (
-    MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.capabilities.consumer_requirements import (
@@ -51,10 +50,6 @@ from loushang.harness.capabilities.contribution_admission import (
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
-)
-from loushang.harness.capabilities.provider_selection import (
-    ProductCapabilityProviderResolver,
-    ProductCapabilityProviderSelectionPlanV1,
 )
 from loushang.harness.environment import HostEnvironment
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
@@ -88,7 +83,6 @@ from loushang.harness.resources.plugins.selection import (
 )
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
-    validate_session_capability_composition_closure,
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding as ProductContributionOwnerBinding,
@@ -96,12 +90,11 @@ from loushang.harness.session.product_composition_assembly import (
 from loushang.harness.session.product_composition_assembly import (
     SelectedProductDataDeclaration,
     _rebind_resource_owner_trust,
+    assemble_agent_data_composition,
+    bind_agent_host_session_inputs,
     build_product_data_selection_plan,
     prepare_product_selected_contribution_candidate,
     project_selected_product_data_candidates,
-)
-from loushang.harness.session.product_composition_assembly import (
-    _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
 
@@ -265,39 +258,11 @@ class CodingBaseProductCompilation:
         workspace = workspace_binding.provider
         if workspace.capability_id != WORKSPACE_CAPABILITY_DEFINITION.capability_id:
             raise ValueError("Coding base Product host Provider is not workspace")
-        context = self.product_composition.authority_context
-        resolved = ProductCapabilityProviderResolver().resolve(
-            ProductCapabilityProviderSelectionPlanV1(
-                product_id=context.product_id,
-                roots=(),
-                choices=(),
-                policy_revision=context.product_policy_revision,
-            ),
-            definitions=(
-                MODEL_INPUT_CAPABILITY_DEFINITION,
-                WORKSPACE_CAPABILITY_DEFINITION,
-            ),
-            admissions=(),
-            owner_snapshots=(),
-            evaluated_at=context.evaluated_at,
-            prebound_providers=(workspace,),
-        )
-        validate_session_capability_composition_closure(
-            self.product_composition,
-            resolved,
-            host_capability_ids=(
-                MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-                WORKSPACE_CAPABILITY_DEFINITION.capability_id,
-            ),
-            host_providers=(workspace,),
-        )
         return CodingBaseProductSessionAssembly(
             compilation=self,
             workspace_binding=workspace_binding,
-            session_inputs=SessionCapabilityCompositionInputs(
-                product_composition=self.product_composition,
-                resolved_providers=resolved,
-                component_requests=(),
+            session_inputs=bind_agent_host_session_inputs(
+                self.product_composition, workspace
             ),
         )
 
@@ -360,7 +325,7 @@ def compile_coding_base_product_selection(
         include_theme="resources.theme" in owners,
         include_command="commands.session" in owners,
     )
-    product_composition = _compile_coding_resource_candidates(
+    product_composition = assemble_agent_data_composition(
         plan, candidates, owner_bindings, evaluated_at=evaluated_at
     )
     return CodingBaseProductCompilation(
@@ -424,7 +389,7 @@ def extend_coding_base_product_data_resources(
             key=lambda binding: binding.owner_key,
         )
     )
-    composition = _compile_coding_resource_candidates(
+    composition = assemble_agent_data_composition(
         plan, candidates, owners, evaluated_at=evaluated_at
     )
     return replace(
@@ -499,27 +464,6 @@ def _bind_coding_external_resource_owners(
         if binding.owner_key[0] in trust_by_owner
         else binding
         for binding in bindings
-    )
-
-
-def _compile_coding_resource_candidates(
-    plan: PluginSelectionPlanV2,
-    candidates: tuple[OwnerContributionCandidateEnvelope, ...],
-    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
-    *,
-    evaluated_at: int,
-) -> ProductCompositionCompilation:
-    return _assemble_product_contribution_candidates(
-        plan=plan,
-        candidates=candidates,
-        owner_bindings=owner_bindings,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-        ),
-        select_optional_requirements=lambda _preview: (),
-        evaluated_at=evaluated_at,
     )
 
 

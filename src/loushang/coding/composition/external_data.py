@@ -11,7 +11,6 @@ from loushang.coding.composition.base_product import (
     CodingBaseProductResourceBody,
     _bind_coding_external_resource_owners,
     _capture_external_resource_declarations,
-    _compile_coding_resource_candidates,
 )
 from loushang.coding.composition.base_product import (
     _candidate as _candidate,
@@ -89,6 +88,7 @@ from loushang.harness.session.product_composition_assembly import (
     _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
 )
 from loushang.harness.session.product_composition_assembly import (
+    assemble_agent_data_composition,
     build_product_data_selection_plan,
     project_selected_product_data_candidates,
 )
@@ -165,7 +165,7 @@ def compile_coding_external_data_product_selection(
             for _, reservation, _ in declarations
         },
     )
-    composition = _compile_coding_resource_candidates(
+    composition = assemble_agent_data_composition(
         plan, candidates, bindings, evaluated_at=evaluated_at
     )
     return CodingExternalDataProductCompilation(

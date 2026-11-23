@@ -1288,6 +1288,27 @@ def _tool_owner_authority(plugin_ids: frozenset[str]) -> OwnerContributionAuthor
     )
 
 
+def _matches_default_approval_context(
+    subject: PluginExecutionApprovalSubject | ContributionActivationApprovalSubject,
+    source_trust_policy_revision: str,
+    instance_revision_refs: Mapping[str, PluginInstanceRevisionRef] | None,
+) -> bool:
+    revision = subject.instance_revision_ref
+    return (
+        subject.product_id == CODING_PRODUCT_ID
+        and subject.scope_id.startswith("session:")
+        and subject.scope_id != "session:"
+        and subject.source_trust_class == _SOURCE_TRUST_CLASS
+        and subject.source_trust_policy_revision == source_trust_policy_revision
+        and revision.plugin_id == subject.plugin_id
+        and revision.revision >= 1
+        and (
+            instance_revision_refs is None
+            or revision == instance_revision_refs.get(subject.plugin_id)
+        )
+    )
+
+
 def _validate_default_definition_subject(
     subject: PluginExecutionApprovalSubject,
     *,
@@ -1300,21 +1321,12 @@ def _validate_default_definition_subject(
     if (
         spec is None
         or subject.plugin_id not in plugin_ids
-        or subject.product_id != CODING_PRODUCT_ID
-        or not subject.scope_id.startswith("session:")
-        or subject.scope_id == "session:"
         or subject.policy_revision != product_policy_revision
         or subject.entrypoint != _DEFAULT_DEFINITION_ENTRYPOINT
-        or subject.source_trust_class != _SOURCE_TRUST_CLASS
-        or subject.source_trust_policy_revision != source_trust_policy_revision
         or subject.requested_authorities != spec.requested_authorities
         or subject.allowed_authority_ceiling != ("filesystem", "process")
-        or subject.instance_revision_ref.plugin_id != subject.plugin_id
-        or subject.instance_revision_ref.revision < 1
-        or (
-            instance_revision_refs is not None
-            and subject.instance_revision_ref
-            != instance_revision_refs.get(subject.plugin_id)
+        or not _matches_default_approval_context(
+            subject, source_trust_policy_revision, instance_revision_refs
         )
     ):
         raise CodingCapabilityPluginCompositionError(
@@ -1332,21 +1344,13 @@ def _validate_default_activation_subject(
     instance_revision_refs: Mapping[str, PluginInstanceRevisionRef] | None,
 ) -> None:
     spec = CODING_CAPABILITY_PLUGIN_SPEC_BY_ID.get(subject.plugin_id)
-    if subject.plugin_id not in plugin_ids or spec is None:
-        raise CodingCapabilityPluginCompositionError(
-            "Coding Capability Activation Subject is outside Product policy.",
-            code="coding_capability_activation_subject_rejected",
-        )
     if (
-        subject.capability_id != spec.capability.capability_id
+        spec is None
+        or subject.plugin_id not in plugin_ids
+        or subject.capability_id != spec.capability.capability_id
         or subject.owner_id != spec.capability.owner_id
         or subject.provider_id != spec.provider_id
         or subject.contribution_id != spec.provider_contribution_id
-        or subject.product_id != CODING_PRODUCT_ID
-        or not subject.scope_id.startswith("session:")
-        or subject.scope_id == "session:"
-        or subject.source_trust_class != _SOURCE_TRUST_CLASS
-        or subject.source_trust_policy_revision != source_trust_policy_revision
         or subject.product_policy_revision != product_policy_revision
         or subject.owner_policy_revision != spec.provider_owner_policy_revision
         or subject.revocation_epoch != 0
@@ -1354,12 +1358,8 @@ def _validate_default_activation_subject(
         or subject.effective_authorities
         != tuple(sorted(spec.capability.authority_ceiling))
         or subject.execution_model != "in_process"
-        or subject.instance_revision_ref.plugin_id != subject.plugin_id
-        or subject.instance_revision_ref.revision < 1
-        or (
-            instance_revision_refs is not None
-            and subject.instance_revision_ref
-            != instance_revision_refs.get(subject.plugin_id)
+        or not _matches_default_approval_context(
+            subject, source_trust_policy_revision, instance_revision_refs
         )
     ):
         raise CodingCapabilityPluginCompositionError(
