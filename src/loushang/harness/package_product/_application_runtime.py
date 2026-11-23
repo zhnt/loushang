@@ -884,6 +884,22 @@ class FencedOrdinaryProductApplication(Generic[_SessionManagerT]):
     def close(self) -> None:
         self.epoch_runtime.close()
 
+    def selected_source_catalog_roots(self, scope_id: str) -> FencedSourceCatalogRoots | None:
+        """Observe the selected Product's roots without preparing them again."""
+        product = self.runtime_owner.product_owner
+        switch = self.epoch_runtime.cutover_result.switch_receipt
+        if switch is None:
+            return None
+        return FencedSourceCatalogRoots(
+            product.state_root,
+            SourceCatalogIdentity(
+                source_root=product.policy.source_root,
+                store_id=self.epoch_runtime.registry.store_id,
+                namespace_id=switch.namespace_id,
+                scope_id=scope_id,
+            ),
+        )
+
 
 def repair_ordinary_product_runtime_leases(
     product: _ProductSessionOwner,

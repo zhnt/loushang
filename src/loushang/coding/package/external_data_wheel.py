@@ -69,6 +69,7 @@ class CodingExternalDataWheelCatalog(
     _create_binding = staticmethod(CodingExternalDataWheelBindingV1.create)
     _read_only_capture_error = "Read-only Source catalog cannot capture"
     _product_id = "coding"
+    _product_journal_name = "external-data-wheel-bindings.jsonl"
     _source_label = "External data Wheel"
 
     _record_type = CodingExternalDataWheelBindingV1

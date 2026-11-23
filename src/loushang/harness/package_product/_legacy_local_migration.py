@@ -989,7 +989,7 @@ def verify_accepted_legacy_wheel(
     *,
     desired_state: str,
     inspected_kind: str,
-    error_type: type[Exception],
+    error_type: Callable[[str], Exception],
 ) -> None:
     """Prove that the live artifact still matches the approved selection."""
     review = accepted.review
