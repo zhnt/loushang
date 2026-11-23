@@ -970,16 +970,18 @@ class LegacyProductWorkspace(NamedTuple):
     package_root: Path
 
 
-class FencedProductApplicationSelection(Generic[_ApplicationT, _SettingsT], ABC):
+class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], ABC):
     """Own workspace selection, Resume observation and retained epoch lifetimes."""
 
     _application_label: str
     _resume_epoch_domain: bytes
+    _session_manager_type: type[_SessionManagerT]
 
-    def __init__(self) -> None:
-        self._owners: dict[Path, _ApplicationT] = {}
+    def __init__(self, *, worker_candidates: bool) -> None:
+        self._worker_candidates = worker_candidates
+        self._owners: dict[Path, FencedOrdinaryProductApplication[_SessionManagerT]] = {}
         self._legacy_workspaces: dict[Path, LegacyProductWorkspace] = {}
-        self._retained_owners: list[_ApplicationT] = []
+        self._retained_owners: list[FencedOrdinaryProductApplication[_SessionManagerT]] = []
         self._lock = RLock()
         self._selection_in_progress = False
         self._fenced = False
@@ -988,11 +990,11 @@ class FencedProductApplicationSelection(Generic[_ApplicationT, _SettingsT], ABC)
     def _open_workspace_selection(
         self,
         workspace: Path,
-        owner: _ApplicationT | None,
+        owner: FencedOrdinaryProductApplication[_SessionManagerT] | None,
         *,
         settings_manager: _SettingsT | None,
         require_current_admission: Callable[[], None] | None,
-    ) -> _ApplicationT | LegacyProductWorkspace:
+    ) -> FencedOrdinaryProductApplication[_SessionManagerT] | LegacyProductWorkspace:
         """Apply Product compatibility and opening policy under the selection lock."""
         raise NotImplementedError
 
@@ -1031,7 +1033,7 @@ class FencedProductApplicationSelection(Generic[_ApplicationT, _SettingsT], ABC)
         *,
         settings_manager: _SettingsT | None,
         require_current_admission: Callable[[], None] | None,
-    ) -> _ApplicationT | None:
+    ) -> FencedOrdinaryProductApplication[_SessionManagerT] | None:
         self._require_open()
         previous = self._owners.get(workspace)
         selected = self._open_workspace_selection(
@@ -1052,7 +1054,25 @@ class FencedProductApplicationSelection(Generic[_ApplicationT, _SettingsT], ABC)
         self._owners[workspace] = selected
         return selected
 
-    def _prepare_resume_epoch(
+    def factory_for_session(
+        self, manager: _SessionManagerT, *, settings_manager: _SettingsT | None = None
+    ) -> _ProductSessionFactory | None:
+        """Select workspace storage and issue the Session factory under one lock."""
+        if not isinstance(manager, self._session_manager_type):
+            raise TypeError(
+                f"{self._application_label} Product Session manager is required"
+            )
+        # A legacy Session may name a workspace that has yet to be created.
+        workspace = Path(manager.get_cwd()).resolve(strict=False)
+        with self._workspace_selection_scope():
+            owner = self._select_workspace(
+                workspace,
+                settings_manager=settings_manager,
+                require_current_admission=None,
+            )
+            return owner.factory_for_session(manager) if owner is not None else None
+
+    def prepare_resume_epoch(
         self,
         workspace: Path,
         *,
@@ -1086,6 +1106,45 @@ class FencedProductApplicationSelection(Generic[_ApplicationT, _SettingsT], ABC)
             )
             current()
             return self.resume_epoch_fingerprint(workspace)
+
+    @contextmanager
+    def _hold_selected_worker_product(
+        self, workspace: Path
+    ) -> Iterator[_ProductSessionOwner]:
+        """Recheck the selected Product while deriving a Worker Resume obligation."""
+        label = self._application_label
+        _require_canonical_resume_workspace(
+            workspace, message=f"{label} Resume epoch workspace must be canonical"
+        )
+        with self._lock:
+            owner = self._owners.get(workspace)
+            if self._fenced or owner is None or not self._worker_candidates:
+                raise RuntimeError(f"{label} Worker Product selection is unavailable")
+            product = owner.runtime_owner.product_owner
+            product.assert_root_gc_authority_current()
+            yield product
+
+    def product_owner_for_factory(
+        self, factory: _ProductSessionFactory
+    ) -> _ProductSessionOwner:
+        """Recover only the Product owner that issued this exact Session factory."""
+        label = self._application_label
+        if not isinstance(
+            factory,
+            (PosixLocalWheelProductRuntimeFactory, WindowsLocalWheelProductRuntimeFactory),
+        ):
+            raise TypeError(f"{label} Worker requires a Product Session factory")
+        with self._lock:
+            if self._fenced or not self._worker_candidates:
+                raise RuntimeError(f"{label} Worker Product selection is unavailable")
+            return require_product_owner_for_factory(
+                factory,
+                (
+                    (owner.runtime_owner.product_owner, owner.epoch_runtime)
+                    for owner in (*self._owners.values(), *self._retained_owners)
+                ),
+                owner_changed=f"{label} Worker Product Session owner changed",
+            )
 
     def resume_epoch_fingerprint(self, workspace: Path) -> str:
         """Observe the selected storage without opening or repairing a Product."""

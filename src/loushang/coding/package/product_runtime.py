@@ -40,7 +40,6 @@ from loushang.harness.package_product._application_runtime import (
     hold_accepted_product_adoption,
     open_fenced_product_management_state,
     require_current_product_admission,
-    require_product_owner_for_factory,
 )
 from loushang.harness.package_product._legacy_runtime import (
     matches_epoch_layout,
@@ -324,12 +323,13 @@ class CodingFencedProductApplicationOwner(FencedOrdinaryProductApplication[Sessi
 
 
 class CodingFencedProductApplicationSelection(
-    FencedProductApplicationSelection[CodingFencedProductApplicationOwner, SettingsManager]
+    FencedProductApplicationSelection[SessionManager, SettingsManager]
 ):
     """Preserve existing storage; select B for fresh or already fenced workspaces."""
 
     _application_label = "Coding"
     _resume_epoch_domain = _RESUME_EPOCH_DOMAIN
+    _session_manager_type = SessionManager
 
     def __init__(
         self,
@@ -344,97 +344,22 @@ class CodingFencedProductApplicationSelection(
         if type(worker_candidates) is not bool:
             raise TypeError("Coding Worker candidate selection must be explicit")
         self._windows_candidate = windows_candidate
-        self._worker_candidates = worker_candidates
-        super().__init__()
-
-    def factory_for_session(
-        self,
-        manager: SessionManager,
-        *,
-        settings_manager: SettingsManager | None = None,
-    ) -> (
-        PosixLocalWheelProductRuntimeFactory
-        | WindowsLocalWheelProductRuntimeFactory
-        | None
-    ):
-        if not isinstance(manager, SessionManager):
-            raise TypeError("Coding Product Session manager is required")
-        # A legacy Session may name a workspace that has yet to be created.
-        workspace = Path(manager.get_cwd()).resolve(strict=False)
-        with self._workspace_selection_scope():
-            owner = self._select_workspace(
-                workspace,
-                settings_manager=settings_manager,
-                require_current_admission=None,
-            )
-            return owner.factory_for_session(manager) if owner is not None else None
-
-    def prepare_resume_epoch(
-        self,
-        workspace: Path,
-        *,
-        require_current_admission: Callable[[], None],
-        settings_manager: SettingsManager | None = None,
-    ) -> str:
-        """Select original workspace storage before admitting a Session lease."""
-        return self._prepare_resume_epoch(
-            workspace,
-            require_current_admission=require_current_admission,
-            settings_manager=settings_manager,
-        )
+        super().__init__(worker_candidates=worker_candidates)
 
     def resume_worker_effect_owner(self, workspace: Path) -> CodingResumeEffectOwnerV1:
         """Freeze the selected Product's original Worker C5 obligation."""
 
         from .product_worker_resume import prepare_coding_worker_resume_effect_owner
 
-        if not isinstance(workspace, Path) or not workspace.is_absolute():
-            raise ValueError("Coding Resume epoch workspace must be canonical")
-        if workspace != workspace.resolve(strict=True):
-            raise ValueError("Coding Resume epoch workspace must be canonical")
-        with self._lock:
-            owner = self._owners.get(workspace)
-            if self._fenced or owner is None or not self._worker_candidates:
-                raise RuntimeError("Coding Worker Product selection is unavailable")
-            product = owner.runtime_owner.product_owner
-            product.assert_root_gc_authority_current()
+        with self._hold_selected_worker_product(workspace) as product:
             return prepare_coding_worker_resume_effect_owner(
                 product_id=product.policy.product_id,
                 product_scope_id=product.policy.project_scope_id,
             )
 
-    def product_owner_for_factory(
-        self,
-        factory: (
-            PosixLocalWheelProductRuntimeFactory
-            | WindowsLocalWheelProductRuntimeFactory
-        ),
-    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner:
-        """Recover only the Product owner that issued this exact Session factory."""
-
-        if not isinstance(
-            factory,
-            (
-                PosixLocalWheelProductRuntimeFactory,
-                WindowsLocalWheelProductRuntimeFactory,
-            ),
-        ):
-            raise TypeError("Coding Worker requires a Product Session factory")
-        with self._lock:
-            if self._fenced or not self._worker_candidates:
-                raise RuntimeError("Coding Worker Product selection is unavailable")
-            return require_product_owner_for_factory(
-                factory,
-                (
-                    (owner.runtime_owner.product_owner, owner.epoch_runtime)
-                    for owner in (*self._owners.values(), *self._retained_owners)
-                ),
-                owner_changed="Coding Worker Product Session owner changed",
-            )
-
     @staticmethod
     def _external_bindings_current(
-        owner: CodingFencedProductApplicationOwner,
+        owner: FencedOrdinaryProductApplication[SessionManager],
         *,
         lifecycle: CodingPluginLifecycleStateLayout,
     ) -> bool:
@@ -477,11 +402,11 @@ class CodingFencedProductApplicationSelection(
     def _open_workspace_selection(
         self,
         workspace: Path,
-        owner: CodingFencedProductApplicationOwner | None,
+        owner: FencedOrdinaryProductApplication[SessionManager] | None,
         *,
         settings_manager: SettingsManager | None,
         require_current_admission: Callable[[], None] | None,
-    ) -> CodingFencedProductApplicationOwner | LegacyProductWorkspace:
+    ) -> FencedOrdinaryProductApplication[SessionManager] | LegacyProductWorkspace:
         if owner is not None and self._external_bindings_current(
             owner,
             lifecycle=resolve_coding_plugin_lifecycle_state_layout(workspace),
