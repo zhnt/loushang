@@ -87,3 +87,32 @@ API artifact. Parent guards cover declared programs, not all carriers,
 generated code, globals or child-process provenance. Controlled bindings lack
 native locks and fault ports are not native Windows or real Task cancellation.
 See the [A206 execution record](../coding-responsibility-convergence-progress.md).
+
+## Session entrypoint factory handoff
+
+Implementation agent `/root` accepted this scope against `f106a069f`, using
+local architecture method `0f9bd3f`. The existing fenced Package Product
+selection now transfers a Session-owned factory or lends a factory from the
+application owner. A one-Session selection closes after an empty result or a
+failed transfer. A borrowed factory releases its unbound lease after failed
+construction while the application retains its selection. Coding supplies
+the existing nominal wrappers and admission policy.
+
+SDK admission and Hosted saved-model preflight now protect a supplied
+unbound lease before Session construction starts. The ordinary construction
+guard handles failures after that preflight. Resume still checks current
+admission before selection, before construction, and after construction.
+The pre-construction guard releases the factory and the post-construction
+check leaves failed-candidate disposal with the existing Resume cleanup owner.
+
+Production Python changed by −31 in Coding and +43 in Harness, with a system
+increase of 12. Two private fault probes reproduced omitted releases at the
+baseline and pass on the candidate with one release per failure. The original
+tests and PR gate configuration carry no changes.
+
+Three additional local probes cover empty selection and failure while wrapping
+a lease. Four existing fenced bootstrap, retry, and workspace compatibility
+cases passed, with the native Windows Hosted case skipped on this host.
+The SDK, Hosted, and first-input Resume run passed 182 cases, including the
+two local release regressions. Scoped mypy, Ruff, and the generated dependency
+check passed.
