@@ -111,40 +111,6 @@ class InitialCatalogHandoff(
             details={"reasons": list(error.reasons)},
         )
 
-    def prepare_legacy_projection(
-        self,
-        loader: ResourceLoader,
-        *,
-        cwd: Path,
-        prepare_capabilities: Callable[
-            [ProductPluginPlanSeed | None],
-            CodingCapabilityPluginCompositionPreparation | None,
-        ]
-        | None,
-        reconcile_compatibility: Callable[[], None],
-        use_plugin_clock: bool,
-    ) -> ResourceBundle:
-        receipt = self.require_catalog_input(loader, cwd)
-        clock = self.clock if use_plugin_clock else None
-        evaluated_at = clock() if clock is not None else int(time.time())
-        composition, self.legacy_preparation = self._prepare_legacy_composition(
-            receipt, evaluated_at, prepare_capabilities
-        )
-        reconcile_compatibility()
-        return self.prepare_initial_catalog(
-            self._build_catalog_adapter(
-                receipt,
-                composition=composition,
-                evaluated_at=(
-                    evaluated_at
-                    if composition is None
-                    else composition.authority_context.evaluated_at
-                ),
-                clock=clock,
-            ),
-            cwd=cwd,
-        )
-
     def prepare_fenced_projection(
         self,
         runtime: PackageProductRuntimeBindingV1,
@@ -256,7 +222,7 @@ class InitialCatalogHandoff(
             return self._build_fenced_catalog_adapter(
                 receipt, compiled, self.external, evaluated_at
             )
-        return self._build_catalog_adapter(
+        return self.build_adapter(
             receipt,
             composition=self._refresh_legacy_composition(receipt, evaluated_at),
             evaluated_at=evaluated_at,
@@ -280,7 +246,7 @@ class InitialCatalogHandoff(
                 if disabled_composition is not None
                 else CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
             )
-        return self._build_catalog_adapter(
+        return self.build_adapter(
             receipt,
             composition=base.product_composition if base is not None else disabled_composition,
             snapshot=base if base is not None else external,
@@ -290,12 +256,12 @@ class InitialCatalogHandoff(
             source_policy=policy,
         )
 
-    def _build_catalog_adapter(
+    def build_adapter(
         self,
         receipt: ResourceCatalogInputReceipt,
-        *,
         composition: ProductCompositionCompilation | None,
         evaluated_at: int | None,
+        *,
         clock: Callable[[], int] | None,
         snapshot: CodingBaseProductCompilation | CodingExternalDataProductCompilation | None = None,
         empty_snapshot: bool = False,
@@ -340,15 +306,16 @@ class InitialCatalogHandoff(
             include_configured_resource_plugins=self.include_configured,
         )
 
-    def _prepare_legacy_composition(
+    def compile_legacy_composition(
         self,
         receipt: ResourceCatalogInputReceipt,
         evaluated_at: int,
+        *,
         prepare_capabilities: Callable[
             [ProductPluginPlanSeed | None],
             CodingCapabilityPluginCompositionPreparation | None,
         ] | None,
-    ) -> tuple[ProductCompositionCompilation | None, CodingBasePluginSessionPreparation | None]:
+    ) -> ProductCompositionCompilation | None:
         base = self.base_assembly
         seed = self._legacy_plan_seed(
             receipt, evaluated_at, base.plan_seed if base is not None else None
@@ -358,16 +325,18 @@ class InitialCatalogHandoff(
         if self.supplied is not None:
             if prepare_capabilities is not None:
                 raise CodingResourceCatalogAdmissionError(("peer_product_compilation",))
-            return assemble_product_composition(self.supplied, evaluated_at=evaluated_at), None
+            return assemble_product_composition(self.supplied, evaluated_at=evaluated_at)
         if prepare_capabilities is not None:
             self.preparation = prepare_capabilities(seed)
             if self.preparation is not None:
-                return self.preparation.product_composition, None
+                return self.preparation.product_composition
         if base is None:
-            return None, None
+            return None
         assert seed is not None
         prepared = _bind_base_catalog_plan(base, seed, evaluated_at)
-        return prepared.product_composition, prepared
+        composition = prepared.product_composition
+        self.legacy_preparation = prepared
+        return composition
 
     def _refresh_legacy_composition(
         self, receipt: ResourceCatalogInputReceipt, evaluated_at: int

@@ -661,7 +661,7 @@ def test_cla5_workspace_has_one_product_binding_and_no_direct_session_consumer()
         {
             (
                 Path("src/loushang/harness/capabilities/workspace_provider.py"),
-                "bind_authorized_workspace",
+                "bind_workspace_execution",
             ): 1
         }
     )
