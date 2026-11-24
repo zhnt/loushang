@@ -3,35 +3,28 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
-import os
 import sys
 from collections.abc import Sequence
-from contextlib import redirect_stdout
 from pathlib import Path
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
-from loushang.apphost.continuity import HostedApplicationContinuityRuntimeV1
-from loushang.apphost.foreground import HostedForegroundRuntimeV1
+from loushang.apphost.integrations._foreground_process import run_foreground_process
+from loushang.apphost.integrations._foreground_stdio import _InheritedStdioForeground
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.protocol import AppServiceError
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
-from loushang.appserver.stdio import InheritedStdioTransportV1
 from loushang.coding.hosted.bootstrap import (
     CodingHostedLaunchV1,
     create_coding_hosted_attempt,
     prepare_coding_hosted_session_roots,
 )
 from loushang.coding.hosted.session import CodingHostedProductRuntimeFactoryForSession
-from loushang.foundation._owned_tasks import (
-    _observe_task_result as _observe,
-)
 from loushang.harness.tools.core import ToolDefinition
 
 
-class CodingHostedCommandV1:
+class CodingHostedCommandV1(_InheritedStdioForeground):
     """Publish startup and shutdown ownership before acquiring the G13 lease.
 
     Model/transport and safe-tool overrides are trusted library test seams;
@@ -60,11 +53,7 @@ class CodingHostedCommandV1:
         require_timeout(connection_timeout)
         require_timeout(settlement_timeout)
         self._launch = launch
-        self._connection_timeout = connection_timeout
-        self._settlement_timeout = settlement_timeout
-        self._session_discovery = session_discovery
-        self._session_execution = session_execution
-        self._attempt = create_coding_hosted_attempt(
+        attempt = create_coding_hosted_attempt(
             launch,
             model=model,
             stream_fn=stream_fn,
@@ -75,67 +64,18 @@ class CodingHostedCommandV1:
                 package_product_runtime_factory_for_session
             ),
         )
-        self._application: HostedApplicationContinuityRuntimeV1 | None = None
-        self._transport: InheritedStdioTransportV1 | None = None
-        self._foreground: HostedForegroundRuntimeV1 | None = None
-        self._close_task: asyncio.Task[None] | None = None
-        self._started = False
-        self._closing = False
-        self._settled = False
-
-    @property
-    def cleanup_pending(self) -> bool:
-        return not self._settled
-
-    async def run(self, *, input_fd: int, output_fd: int) -> None:
-        if self._started or self._closing:
-            raise RuntimeError("hosted_command_closed")
-        self._started = True
-        try:
-            if self._session_execution:
-                await asyncio.to_thread(
-                    prepare_coding_hosted_session_roots, self._launch
-                )
-            self._application = await self._attempt.open()
-            self._transport = InheritedStdioTransportV1(
-                input_fd=input_fd, output_fd=output_fd
-            )
-            self._foreground = HostedForegroundRuntimeV1(
-                self._application,
-                self._transport,
-                connection_timeout=self._connection_timeout,
-                settlement_timeout=self._settlement_timeout,
-                session_discovery=self._session_discovery,
-                session_execution=self._session_execution,
-            )
-            await self._foreground.run()
-        finally:
-            await self.close()
-
-    async def close(self) -> None:
-        self._closing = True
-        if self._settled:
-            return
-        task = self._close_task
-        if task is None or (
-            task.done() and (task.cancelled() or task.exception() is not None)
-        ):
-            task = asyncio.create_task(self._close_once())
-            task.add_done_callback(_observe)
-            self._close_task = task
-        await asyncio.shield(task)
-
-    async def _close_once(self) -> None:
-        if self._foreground is not None:
-            await self._foreground.close()
-        else:
-            if self._application is not None:
-                await self._application.close()
-            else:
-                await self._attempt.close()
-            if self._transport is not None:
-                await self._transport.close()
-        self._settled = True
+        super().__init__(
+            attempt,
+            connection_timeout=connection_timeout,
+            settlement_timeout=settlement_timeout,
+            session_discovery=session_discovery,
+            session_execution=session_execution,
+            prepare_session_roots=(
+                (lambda: prepare_coding_hosted_session_roots(self._launch))
+                if session_execution
+                else None
+            ),
+        )
 
 
 def _parser(*, allow_discovery: bool = False) -> argparse.ArgumentParser:
@@ -222,33 +162,16 @@ def _parse_options(
 
 
 def execute_hosted_command(command: CodingHostedCommandV1) -> int:
-    """Process-only runner; an incomplete cleanup is a fatal nonzero exit.
-
-    The outer parent retains terminate/reap authority. Avoid Runner.close's
-    unbounded cancellation join only when our retained cleanup is incomplete;
-    do not claim that an abrupt process exit completed application settlement.
-    """
+    """Run the explicit foreground stdio command and report its exit status."""
     input_fd, output_fd = sys.stdin.fileno(), sys.stdout.fileno()
-    runner = asyncio.Runner()
-    status = 0
-    with redirect_stdout(sys.stderr):
-        try:
-            runner.run(command.run(input_fd=input_fd, output_fd=output_fd))
-        except KeyboardInterrupt:
-            status = 130
-            print("hosted_interrupted", file=sys.stderr)
-        except AppServiceError as error:
-            status = 1
-            print(error.code.value, file=sys.stderr)
-        except Exception:
-            status = 1
-            print("hosted_application_failed", file=sys.stderr)
-        finally:
-            if command.cleanup_pending:
-                print("hosted_cleanup_incomplete", file=sys.stderr, flush=True)
-                os._exit(status or 1)
-            runner.close()
-    return status
+    return run_foreground_process(
+        lambda: command.run(input_fd=input_fd, output_fd=output_fd),
+        lambda: command.cleanup_pending,
+        reportable_errors=(AppServiceError,),
+        interrupted="hosted_interrupted",
+        failed="hosted_application_failed",
+        cleanup_incomplete="hosted_cleanup_incomplete",
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
