@@ -11,6 +11,7 @@ from loushang.coding.composition.base_plugin import CodingBasePluginAssembly
 from loushang.coding.composition.capability_specs import (
     CODING_CAPABILITY_PLUGIN_IDS,
     CODING_CAPABILITY_PLUGIN_SPEC_BY_ID,
+    CODING_CAPABILITY_PLUGIN_SPECS,
     CodingCapabilityPluginConfig,
     CodingCapabilityToolOwner,
     ordered_coding_capability_plugin_specs,
@@ -106,7 +107,6 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
     _PreparedCapabilityComposition,
-    bind_selected_registration_authority,
     build_product_plugin_selection_plan,
 )
 from loushang.harness.session.product_composition_assembly import (
@@ -659,13 +659,24 @@ class CodingCapabilityPluginCompositionPreparation(_PreparedCapabilityCompositio
                 clock=clock,
                 resume_parents=self.resume_parents,
             )
-            tool_owners = _build_tool_owners(
+            tool_owners = plugin_assembly.bind_tool_pack_owners(
                 self.selection,
-                plugin_assembly,
+                (
+                    (
+                        spec.plugin_id,
+                        spec.tool_contribution_id,
+                        spec.capability.capability_id,
+                        spec.tool_owner_factory,
+                    )
+                    for spec in CODING_CAPABILITY_PLUGIN_SPECS
+                ),
                 authority=self.tool_owner_authority,
+                owner_id=_TOOL_OWNER_ID,
+                product_id=CODING_PRODUCT_ID,
                 scope_id=self.scope_id,
                 tool_modes=tool_modes,
                 clock=clock,
+                label="Coding Tool owner",
             )
             return component_host, session_inputs, tool_owners
 
@@ -947,57 +958,6 @@ def _prepare_capability_plugin_plan(
         state_root=state_root,
         resume_parents=resume_parents,
     )
-
-
-def _build_tool_owners(
-    selection: PluginSelection,
-    plugin_assembly: ProductPluginCompositionAssembly,
-    *,
-    authority: OwnerContributionAuthority,
-    scope_id: str,
-    tool_modes: Mapping[str, CapabilityMountMode],
-    clock: Callable[[], int],
-) -> Mapping[str, CodingCapabilityToolOwner]:
-    gate = bind_selected_registration_authority(
-        selection,
-        plugin_assembly,
-        authority=authority,
-        product_id=CODING_PRODUCT_ID,
-        scope_id=scope_id,
-        clock=clock,
-        label="Coding Tool owner",
-    )
-    admissions = plugin_assembly.product_composition.catalog_admissions
-
-    def exact_admission(plugin_id: str, contribution_id: str):
-        matches = tuple(
-            item
-            for item in admissions
-            if item.plugin_id == plugin_id
-            and item.contribution_id == contribution_id
-            and item.owner_id == _TOOL_OWNER_ID
-            and item.contribution_kind == "tool_pack"
-        )
-        if len(matches) != 1:
-            raise ValueError(
-                f"Coding Tool owner requires one exact admission for {plugin_id}"
-            )
-        return matches[0]
-
-    return {
-        spec.plugin_id: spec.tool_owner_factory(
-            admission=exact_admission(
-                spec.plugin_id,
-                spec.tool_contribution_id,
-            ),
-            authority_gate=gate,
-            mode=tool_modes[spec.capability.capability_id],
-            scope_id=scope_id,
-        )
-        for spec in ordered_coding_capability_plugin_specs(
-            set(selection.plan.selected_plugin_ids) & _PLUGIN_IDS
-        )
-    }
 
 
 def _approve_activation_and_bind_inputs(

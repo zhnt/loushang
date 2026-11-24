@@ -158,6 +158,7 @@ ProductCapabilityProviderSelector = Callable[
     [tuple[CapabilityProviderAdmissionRecord, ...]],
     tuple[ProductCapabilityProviderChoice, ...],
 ]
+_ToolPackOwnerT = TypeVar("_ToolPackOwnerT")
 
 
 _AGENT_HOST_DEFINITIONS = (
@@ -1566,6 +1567,52 @@ class ProductPluginCompositionAssembly:
                 )
             )
         return host, self.bind_session_inputs(decision_ids)
+
+    def bind_tool_pack_owners(
+        self,
+        selection: PluginSelection,
+        specs: Iterable[tuple[str, str, str, Callable[..., _ToolPackOwnerT]]],
+        *,
+        authority: OwnerContributionAuthority,
+        owner_id: str,
+        product_id: str,
+        scope_id: str,
+        clock: Callable[[], int],
+        tool_modes: Mapping[str, CapabilityMountMode],
+        label: str,
+    ) -> dict[str, _ToolPackOwnerT]:
+        """Construct the requested Tool owners from one exact compilation."""
+        gate = bind_selected_registration_authority(
+            selection,
+            self,
+            authority=authority,
+            product_id=product_id,
+            scope_id=scope_id,
+            clock=clock,
+            label=label,
+        )
+        selected = frozenset(selection.plan.selected_plugin_ids)
+        owners: dict[str, _ToolPackOwnerT] = {}
+        for plugin_id, contribution_id, capability_id, build_owner in specs:
+            if plugin_id not in selected:
+                continue
+            matches = tuple(
+                admission
+                for admission in self.product_composition.catalog_admissions
+                if admission.plugin_id == plugin_id
+                and admission.contribution_id == contribution_id
+                and admission.owner_id == owner_id
+                and admission.contribution_kind == "tool_pack"
+            )
+            if len(matches) != 1:
+                raise ValueError(f"{label} requires one exact admission for {plugin_id}")
+            owners[plugin_id] = build_owner(
+                admission=matches[0],
+                authority_gate=gate,
+                mode=tool_modes[capability_id],
+                scope_id=scope_id,
+            )
+        return owners
 
 
 @dataclass(frozen=True, slots=True)
