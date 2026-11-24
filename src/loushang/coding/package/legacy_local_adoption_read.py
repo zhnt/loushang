@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.config.agent import SettingsManager as SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
     read_settled_legacy_local_adoption,
 )
@@ -14,12 +13,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
 
-from ..control.settings_store import (
-    default_global_settings_path as default_global_settings_path,
-)
-from ..control.settings_store import (
-    default_project_settings_path as default_project_settings_path,
-)
+from ..control.settings_store import open_coding_workspace_settings
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
@@ -102,10 +96,7 @@ def coding_legacy_local_data_adoption_settled(
                 lifecycle,
                 runtime,
                 accepted,
-                SettingsManager(
-                    global_settings_path=default_global_settings_path(),
-                    project_settings_path=default_project_settings_path(workspace),
-                ),
+                open_coding_workspace_settings(workspace),
             )
         )
     finally:

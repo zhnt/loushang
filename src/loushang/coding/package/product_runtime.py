@@ -50,7 +50,6 @@ from loushang.harness.package_product._plugin_bootstrap import (
     _PluginBootstrapPolicy,
     adopt_reviewed_product_plugins,
     bootstrap_fresh_product_session,
-    bootstrap_product_plugin,
     bootstrap_product_plugins,
     product_bootstrap_completed,
 )
@@ -941,21 +940,6 @@ def is_coding_fresh_first_b_snapshot(
         return False
     classification = classify_coding_legacy_source_configuration(json.loads(raw))
     return not (classification.disabled_plugins or classification.configured_source_keys)
-
-
-def _bootstrap_coding_builtin_plugin(
-    owner: CodingFencedProductApplicationOwner,
-    plugin_id: str,
-    *,
-    enable: bool = True,
-) -> bool:
-    return bootstrap_product_plugin(
-        owner.runtime_owner.product_owner,
-        plugin_id,
-        store_id=owner.epoch_runtime.registry.store_id,
-        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-        enable=enable,
-    )
 
 
 def open_coding_base_product_runtime_owner(

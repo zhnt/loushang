@@ -596,50 +596,36 @@ class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
         epoch_runtime = self.epoch_runtime
         state_root = epoch_runtime.prepare_product_state_root()
         path = self._path(state_root, review.plugin_id)
-        descriptor = os.open(
-            state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        )
-        try:
-            before = os.fstat(descriptor)
-            self._require_private_parent(state_root, before)
-            with RootedFileIO(state_root, descriptor) as file_io:
-                with file_io.bind(path) as target:
-                    target.acquire_lock(exclusive=True, suffix=".lock")
-                    epoch_runtime.assert_current()
-                    try:
-                        raw = target.read_bytes(max_bytes=self.max_acceptance_bytes)
-                    except FileNotFoundError:
-                        raw = None
-                    if raw is not None:
-                        records = self._decode(raw, path)
-                        if len(records) != 1 or records[0] != proposed:
-                            raise self.error_type(
-                                f"{self.label} acceptance conflicts with prior review"
-                            )
-                    else:
-                        desired = target.sibling("desired-state.jsonl")
-                        desired.acquire_lock(exclusive=True, suffix=".lock")
-                        self._require_unseen_installation(
-                            desired,
-                            state_root / "desired-state.jsonl",
-                            review,
-                        )
-                        require_live_resource_kind()
-                        if self.review_live() != review:
-                            raise self.error_type(
-                                f"{self.label} review changed before acceptance"
-                            )
-                        payload = encode_jsonl_record(
-                            proposed,
-                            record_codec=self.record_type._record_codec(),
-                            format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                        )
-                        target.atomic_write(payload, exclusive=True)
-                        epoch_runtime.assert_current()
-                self._require_private_parent_after(state_root, descriptor, before)
-                return proposed
-        finally:
-            os.close(descriptor)
+        with self._bound_receipt(path) as target:
+            assert target is not None
+            target.acquire_lock(exclusive=True, suffix=".lock")
+            epoch_runtime.assert_current()
+            raw = self._read_receipt(target)
+            if raw is not None:
+                records = self._decode(raw, path)
+                if len(records) != 1 or records[0] != proposed:
+                    raise self.error_type(
+                        f"{self.label} acceptance conflicts with prior review"
+                    )
+            else:
+                desired = target.sibling("desired-state.jsonl")
+                desired.acquire_lock(exclusive=True, suffix=".lock")
+                self._require_unseen_installation(
+                    desired, state_root / "desired-state.jsonl", review
+                )
+                require_live_resource_kind()
+                if self.review_live() != review:
+                    raise self.error_type(
+                        f"{self.label} review changed before acceptance"
+                    )
+                payload = encode_jsonl_record(
+                    proposed,
+                    record_codec=self.record_type._record_codec(),
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                )
+                target.atomic_write(payload, exclusive=True)
+                epoch_runtime.assert_current()
+        return proposed
 
     def read_acceptance(
         self, plugin_id: str, *, check_live: bool = False
@@ -650,25 +636,8 @@ class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
         epoch_runtime = self.epoch_runtime
         state_root = epoch_runtime.control_root / "product-state"
         path = self._path(state_root, plugin_id)
-        try:
-            descriptor = os.open(
-                state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-            )
-        except FileNotFoundError:
-            epoch_runtime.assert_current()
-            return None
-        try:
-            before = os.fstat(descriptor)
-            self._require_private_parent(state_root, before)
-            with RootedFileIO(state_root, descriptor) as file_io:
-                with file_io.bind(path) as target:
-                    try:
-                        raw = target.read_bytes(max_bytes=self.max_acceptance_bytes)
-                    except FileNotFoundError:
-                        raw = None
-                self._require_private_parent_after(state_root, descriptor, before)
-        finally:
-            os.close(descriptor)
+        with self._bound_receipt(path, missing_root_ok=True) as target:
+            raw = None if target is None else self._read_receipt(target)
         if raw is None:
             epoch_runtime.assert_current()
             return None
@@ -687,6 +656,36 @@ class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
                 )
             epoch_runtime.assert_current()
         return record
+
+    @contextmanager
+    def _bound_receipt(
+        self, path: Path, *, missing_root_ok: bool = False
+    ) -> Iterator[RootedFile | None]:
+        state_root = path.parent
+        try:
+            descriptor = os.open(
+                state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            )
+        except FileNotFoundError:
+            if not missing_root_ok:
+                raise
+            yield None
+            return
+        try:
+            before = os.fstat(descriptor)
+            self._require_private_parent(state_root, before)
+            with RootedFileIO(state_root, descriptor) as file_io:
+                with file_io.bind(path) as target:
+                    yield target
+                self._require_private_parent_after(state_root, descriptor, before)
+        finally:
+            os.close(descriptor)
+
+    def _read_receipt(self, target: RootedFile) -> bytes | None:
+        try:
+            return target.read_bytes(max_bytes=self.max_acceptance_bytes)
+        except FileNotFoundError:
+            return None
 
     def _require_epoch(self) -> None:
         if not matches_epoch_layout(self.epoch_runtime, self.resolve_epoch()):

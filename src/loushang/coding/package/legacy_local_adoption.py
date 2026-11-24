@@ -19,12 +19,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
 
-from ..control.settings_store import (
-    default_global_settings_path as default_global_settings_path,
-)
-from ..control.settings_store import (
-    default_project_settings_path as default_project_settings_path,
-)
+from ..control.settings_store import open_coding_workspace_settings
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
@@ -155,7 +150,7 @@ def adopt_coding_legacy_local_data_review(
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     replay_coding_posix_legacy_product_cutover(
         lifecycle,
-        partial(_legacy_adoption_settings, workspace),
+        partial(open_coding_workspace_settings, workspace),
         roots=epoch.fenced_runtime_open_kwargs(),
         workspace=workspace,
         runtime_version=runtime_version,
@@ -211,7 +206,7 @@ def adopt_coding_legacy_local_data_review(
             lifecycle,
             epoch_runtime,
             acceptance,
-            _legacy_adoption_settings(workspace),
+            open_coding_workspace_settings(workspace),
         )
         return acceptance, admission_checked
 
@@ -267,13 +262,6 @@ def adopt_coding_legacy_local_data_review(
         acceptance=acceptance,
         installation=installation,
         enablement=enablement,
-    )
-
-
-def _legacy_adoption_settings(workspace: Path) -> SettingsManager:
-    return SettingsManager(
-        global_settings_path=default_global_settings_path(),
-        project_settings_path=default_project_settings_path(workspace),
     )
 
 

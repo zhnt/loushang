@@ -9,13 +9,9 @@ from collections.abc import Callable, Sequence
 from contextlib import closing
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path
 from typing import Literal, cast, overload
 
-from loushang.coding.control.settings_store import (
-    default_global_settings_path,
-    default_project_settings_path,
-)
+from loushang.coding.control.settings_store import open_coding_workspace_settings
 from loushang.coding.package.cutover_backup import inspect_coding_package_cutover_backup
 from loushang.coding.package.epoch_layout import (
     CodingPackageEpochLayoutV1,
@@ -234,7 +230,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             prepare_review = getattr(args, f"prepare_legacy_{kind}_review")
             if not (read_review or prepare_review):
                 continue
-            settings = _cutover_settings(workspace)
+            settings = open_coding_workspace_settings(workspace)
             if prepare_review:
                 _prepare_review_cutover(
                     lifecycle,
@@ -273,7 +269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if prepare_kind is not None:
                 _prepare_review_cutover(
                     lifecycle,
-                    _cutover_settings(workspace),
+                    open_coding_workspace_settings(workspace),
                     epoch,
                     _fresh_coding_product_namespace_id(epoch.store_id),
                     snapshot_admission=partial(
@@ -307,7 +303,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 adopt_review = partial(adopt_coding_first_b_builtin_only, windows_candidate=True)
             receipt = adopt_review(
                 lifecycle,
-                _cutover_settings(workspace),
+                open_coding_workspace_settings(workspace),
                 workspace=workspace,
                 accepted_review_id=accepted_review_id,
                 runtime_version=version("loushang"),
@@ -352,7 +348,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             require_fresh_coding_product_inputs_without_writes(
                 lifecycle, workspace=workspace
             )
-        settings = _cutover_settings(workspace)
+        settings = open_coding_workspace_settings(workspace)
         if has_fence:
             # Preserve the POSIX version lookup before opening the existing fence.
             if not windows:
@@ -408,13 +404,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             "namespaceId": namespace_id,
             "storeId": epoch.store_id,
         },
-    )
-
-
-def _cutover_settings(workspace: Path) -> SettingsManager:
-    return SettingsManager(
-        global_settings_path=default_global_settings_path(),
-        project_settings_path=default_project_settings_path(workspace),
     )
 
 

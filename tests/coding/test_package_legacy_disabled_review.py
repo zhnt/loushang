@@ -24,16 +24,30 @@ from loushang.coding.package.pre_b_snapshot import (
     prepare_coding_package_cutover_roots,
 )
 from loushang.coding.package.product_runtime import (
-    _bootstrap_coding_builtin_plugin,
+    _CODING_BUILTIN_BOOTSTRAP_POLICY,
+    CodingFencedProductApplicationOwner,
     open_coding_fenced_product_application_owner,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product._plugin_bootstrap import bootstrap_product_plugin
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+
+
+def _seed_builtin_package(
+    owner: CodingFencedProductApplicationOwner, plugin_id: str, *, enable: bool = True
+) -> bool:
+    return bootstrap_product_plugin(
+        owner.runtime_owner.product_owner,
+        plugin_id,
+        store_id=owner.epoch_runtime.registry.store_id,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+        enable=enable,
+    )
 
 
 def _snapshot_files(root: Path) -> tuple[tuple[str, bytes], ...]:
@@ -74,9 +88,9 @@ def test_disabled_acceptance_read_refuses_file_swap_after_parent_pin(
             path.symlink_to(redirect)
         return original_open(name, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(acceptance_module.os, "open", swap_before_file_open)
+    monkeypatch.setattr(os, "open", swap_before_file_open)
     with pytest.raises(OSError):
-        acceptance_module._read_private_acceptance(path)
+        acceptance_module._acceptance_journal.read_private(path)
     assert swapped
     assert redirect.read_bytes() == b"must not read\n"
 
@@ -123,9 +137,9 @@ def test_disabled_acceptance_publish_refuses_name_swap(
             follow_symlinks=follow_symlinks,
         )
 
-    monkeypatch.setattr(acceptance_module.os, "link", swap_before_publish)
+    monkeypatch.setattr(os, "link", swap_before_publish)
     with pytest.raises(FileExistsError):
-        acceptance_module._write_private_acceptance(path, receipt)
+        acceptance_module._acceptance_journal.publish(path, receipt)
     assert swapped
     assert redirect.read_bytes() == b"must not write\n"
     assert sorted(item.name for item in state_root.iterdir()) == [path.name]
@@ -384,7 +398,7 @@ def test_disabled_only_acceptance_refuses_product_desired_history(
         runtime_protocol_epoch=2,
     )
     try:
-        assert _bootstrap_coding_builtin_plugin(product_owner, "coding.base")
+        assert _seed_builtin_package(product_owner, "coding.base")
     finally:
         product_owner.close()
     owner = PackageProductPosixFencedRuntimeOwner.open(

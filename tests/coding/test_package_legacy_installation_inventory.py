@@ -86,7 +86,6 @@ from loushang.coding.package.product_preview import (
 )
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
-    _bootstrap_coding_builtin_plugin,
     admit_coding_external_data_wheel,
     open_coding_fenced_product_application_owner,
 )
@@ -122,6 +121,7 @@ from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.transcript.model_input_types import ModelInputSnapshot
 from loushang.harness.transcript.model_input_v2_types import ModelInputSnapshotV2
 from loushang.plugin import build_coding_data_skill_wheel, package, resource
+from tests.coding.test_package_legacy_disabled_review import _seed_builtin_package
 
 _SCOPE = "workspace:" + "a" * 64
 
@@ -228,7 +228,7 @@ def test_prompt_acceptance_binds_type_and_reopens_without_original_source(
         "loushang.coding.cli.package_cutover.version", lambda _package: "2.0.0"
     )
     monkeypatch.setattr(
-        "loushang.coding.cli.package_cutover.default_global_settings_path",
+        "loushang.coding.control.settings_store.default_global_settings_path",
         lambda: tmp_path / "global-settings.json",
     )
     assert (
@@ -344,14 +344,6 @@ def test_prompt_acceptance_binds_type_and_reopens_without_original_source(
         )
     finally:
         reopened.close()
-    monkeypatch.setattr(
-        "loushang.coding.package_legacy_local_adoption.default_global_settings_path",
-        lambda: tmp_path / "global-settings.json",
-    )
-    monkeypatch.setattr(
-        "loushang.coding.package_legacy_local_adoption_read.default_global_settings_path",
-        lambda: tmp_path / "global-settings.json",
-    )
     assert (
         cutover_main(
             (
@@ -456,9 +448,9 @@ def test_prompt_acceptance_binds_type_and_reopens_without_original_source(
             )
         finally:
             selected_runtime.dispose_runtime()
-        _bootstrap_coding_builtin_plugin(product_owner, "coding.base", enable=False)
+        _seed_builtin_package(product_owner, "coding.base", enable=False)
         for builtin_id in ("coding.lsp.default", "coding.arch.default"):
-            _bootstrap_coding_builtin_plugin(product_owner, builtin_id, enable=True)
+            _seed_builtin_package(product_owner, builtin_id, enable=True)
 
         class LegacyPromptAdapter:
             api = "legacy-prompt-product-test"
@@ -941,7 +933,7 @@ def test_old_builtin_intent_is_reviewed_and_selected_after_local_adoption(
         project_settings_path=workspace / ".loushang" / "settings.json",
     )
     monkeypatch.setattr(
-        "loushang.coding.package_legacy_local_adoption.default_global_settings_path",
+        "loushang.coding.control.settings_store.default_global_settings_path",
         lambda: settings_path,
     )
     prepare_and_cutover_coding_package_store_from_legacy(
@@ -1738,7 +1730,7 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
                 ("coding.lsp.default", True),
                 ("coding.arch.default", True),
             ):
-                assert _bootstrap_coding_builtin_plugin(
+                assert _seed_builtin_package(
                     enabled_owner, builtin_id, enable=enable
                 )
             with CodingFencedProductReadOnlyPreviewOwner.open(

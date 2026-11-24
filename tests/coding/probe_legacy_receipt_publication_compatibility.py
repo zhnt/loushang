@@ -111,7 +111,7 @@ def observe(kind, scenario, root, monkeypatch):
         patch.setattr(_rooted_io.RootedFile, "atomic_write", write)
         patch.setattr(_rooted_io.RootedFileIO, "cleanup", cleanup)
         try:
-            module._write_private_acceptance(path, record)
+            module._acceptance_journal.publish(path, record)
         except BaseException as error:
             result = {"error": type(error).__name__, "message": str(error).replace(str(root), "$ROOT")}
             if scenario in EXTRA_SCENARIOS:
@@ -171,9 +171,15 @@ def test_windows_builtin_keeps_original_jsonl_bytes(tmp_path, monkeypatch):
         review=SimpleNamespace(to_dict=lambda: {"label": "旧版é", "nested": [1, True, None]}),
     )
     calls = []
-    monkeypatch.setattr(module, "write_windows_private_receipt", lambda *args: calls.append(args))
+    monkeypatch.setattr(
+        type(module._receipt_io),
+        "write_private_receipt",
+        lambda self, path, payload, *, maximum_bytes: calls.append(
+            (path, payload, maximum_bytes)
+        ),
+    )
     target = tmp_path / "not-published.jsonl"
-    module._write_windows_builtin_acceptance(target, record)
+    module._acceptance_journal.publish(target, record, windows=True)
     prior = json.loads(FIXTURE.read_text())["builtin:success"]["payload"]
-    assert calls == [(target, bytes.fromhex(prior))]
+    assert calls == [(target, bytes.fromhex(prior), 4 * 1024 * 1024)]
     assert not target.exists()  # Encoding test; no claim of native Windows validation.

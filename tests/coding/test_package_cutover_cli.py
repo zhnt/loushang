@@ -48,7 +48,6 @@ from loushang.coding.package.pre_b_snapshot import (
 )
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-    _bootstrap_coding_builtin_plugin,
     open_coding_fenced_product_application_owner,
 )
 from loushang.coding.plugin_manager.lifecycle import (
@@ -108,6 +107,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.plugin import package, resource
 from loushang.tui import LoushangWelcomePanel, RenderConstraints
+from tests.coding.test_package_legacy_disabled_review import _seed_builtin_package
 
 
 def _old_installed_local_source(
@@ -4343,8 +4343,8 @@ def test_product_session_distinguishes_unseen_and_removed_capability(
         runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     )
     try:
-        _bootstrap_coding_builtin_plugin(owner, "coding.base", enable=base_enabled)
-        _bootstrap_coding_builtin_plugin(owner, "coding.lsp.default")
+        _seed_builtin_package(owner, "coding.base", enable=base_enabled)
+        _seed_builtin_package(owner, "coding.lsp.default")
         if arch_recorded:
             product = owner.runtime_owner.product_owner
             removed = product.management.submit(
