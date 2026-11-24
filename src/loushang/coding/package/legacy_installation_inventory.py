@@ -22,50 +22,20 @@ from .legacy_desired_evidence import (
     CodingLegacyDesiredError,
     CodingLegacyDesiredEvidenceV1,
 )
-from .legacy_desired_evidence import (
-    read_coding_legacy_desired_evidence as read_coding_legacy_desired_evidence,
-)
 from .legacy_instance_evidence import (
     CodingLegacyInstanceEvidenceError,
     _management_capture_paths,
-)
-from .legacy_instance_evidence import (
-    parse_coding_legacy_retired_instance_capture as parse_coding_legacy_retired_instance_capture,
 )
 from .legacy_lock_evidence import (
     CodingLegacyLocalBindingEvidenceV1,
     CodingLegacyLockError,
 )
-from .legacy_lock_evidence import (
-    read_coding_legacy_local_binding_heads as read_coding_legacy_local_binding_heads,
-)
 from .legacy_operation_evidence import (
     CodingLegacyOperationEvidenceError,
-)
-from .legacy_operation_evidence import (
-    CodingLegacyRetirementCaptureV1 as CodingLegacyRetirementCaptureV1,
-)
-from .legacy_operation_evidence import (
-    classify_coding_legacy_management_members as classify_coding_legacy_management_members,
-)
-from .legacy_operation_evidence import (
-    parse_coding_legacy_operation_evidence as parse_coding_legacy_operation_evidence,
 )
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
     _snapshot_reader,
-)
-from .legacy_snapshot_member import (
-    CodingLegacyEvidenceDomain as CodingLegacyEvidenceDomain,
-)
-from .legacy_snapshot_member import (
-    CodingLegacyInventoryDomain as CodingLegacyInventoryDomain,
-)
-from .legacy_snapshot_member import (
-    list_coding_first_b_snapshot_domain_members as list_coding_first_b_snapshot_domain_members,
-)
-from .legacy_snapshot_member import (
-    read_coding_first_b_snapshot_member as read_coding_first_b_snapshot_member,
 )
 
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
