@@ -6,7 +6,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Literal, TypeAlias
+from typing import Literal, Protocol, TypeAlias, TypeVar, cast
 
 from loushang.harness.capabilities.contracts import CapabilityRequirement
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
@@ -72,6 +72,56 @@ class CapabilityBundleValue:
             if facet.facet_id == facet_id:
                 return facet.value
         raise KeyError(f"Capability Bundle does not provide facet: {facet_id}")
+
+
+_OwnerT = TypeVar("_OwnerT")
+_OwnerCo = TypeVar("_OwnerCo", covariant=True)
+
+
+class _OwnedFacetView(Protocol[_OwnerCo]):
+    @property
+    def _owner(self) -> _OwnerCo: ...
+
+
+def bind_owned_bundle_facets(
+    owner: _OwnerT,
+    views: tuple[tuple[str, Callable[[_OwnerT], _OwnedFacetView[_OwnerT]]], ...],
+) -> CapabilityBundleValue:
+    return CapabilityBundleValue(
+        tuple(CapabilityFacetBinding(facet_id, view(owner)) for facet_id, view in views)
+    )
+
+
+def require_owned_bundle_runtime(
+    value: CapabilityBundleValue,
+    views: tuple[tuple[str, type[_OwnedFacetView[_OwnerT]]], ...],
+    *,
+    label: str,
+) -> _OwnerT:
+    """Verify the ordered facet types before authorizing runtime disposal."""
+    if not isinstance(value, CapabilityBundleValue):
+        raise TypeError(f"{label} disposer requires a Bundle value")
+    facets = tuple(value.require(facet_id) for facet_id, _ in views)
+    if any(
+        not isinstance(facet, view)
+        for facet, (_, view) in zip(facets, views, strict=True)
+    ):
+        raise TypeError(f"{label} Bundle contains a foreign access view")
+    first, *others = cast(tuple[_OwnedFacetView[_OwnerT], ...], facets)
+    owner = first._owner
+    if any(facet._owner is not owner for facet in others):
+        raise ValueError(f"{label} Bundle facets do not share one runtime")
+    return owner
+
+
+def require_provider_configuration(
+    value: object, *, fields: frozenset[str], name: str, error: type[ValueError]
+) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+        raise error(f"{name} must be an object with exact fields")
+    if frozenset(value) != fields:
+        raise error(f"{name} fields do not match the v1 contract")
+    return cast(Mapping[str, object], value)
 
 
 VisibilityState = Literal["staged", "visible", "retired"]

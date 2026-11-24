@@ -6,7 +6,6 @@ does not expose the future public Plugin author SDK.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Never, cast
@@ -45,8 +44,10 @@ from loushang.harness.capabilities.contracts import (
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleValue,
-    CapabilityFacetBinding,
     CapabilityProviderContext,
+    bind_owned_bundle_facets,
+    require_owned_bundle_runtime,
+    require_provider_configuration,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.capabilities.workspace_contracts import (
@@ -166,10 +167,11 @@ class CodingArchPluginConfigV1:
 
     @classmethod
     def from_mapping(cls, value: object) -> CodingArchPluginConfigV1:
-        document = _exact_mapping(
+        document = require_provider_configuration(
             value,
             fields=_CONFIG_FIELDS,
             name="Coding Arch Plugin configuration",
+            error=CodingArchPluginConfigError,
         )
         for field_name in ("configVersion", "privateStateSchemaVersion"):
             field_value = document[field_name]
@@ -439,6 +441,13 @@ class _CodingArchDiagnosticsView:
         return self._owner.diagnostics()
 
 
+_BUNDLE_VIEWS = (
+    (CODING_ARCH_ANALYSIS_FACET, _CodingArchAnalysisView),
+    (CODING_ARCH_TOOL_RUNTIME_FACET, _CodingArchToolRuntimeView),
+    (CODING_ARCH_DIAGNOSTICS_FACET, _CodingArchDiagnosticsView),
+)
+
+
 def coding_arch_capability_provider() -> CapabilityBundleProvider:
     """Describe the fixed private Provider without constructing live state."""
 
@@ -498,41 +507,16 @@ def create_coding_arch_provider(
         workspace_search=search,
         cache=cache,
     )
-    return CapabilityBundleValue(
-        (
-            CapabilityFacetBinding(
-                CODING_ARCH_ANALYSIS_FACET,
-                _CodingArchAnalysisView(owner),
-            ),
-            CapabilityFacetBinding(
-                CODING_ARCH_TOOL_RUNTIME_FACET,
-                _CodingArchToolRuntimeView(owner),
-            ),
-            CapabilityFacetBinding(
-                CODING_ARCH_DIAGNOSTICS_FACET,
-                _CodingArchDiagnosticsView(owner),
-            ),
-        )
-    )
+    return bind_owned_bundle_facets(owner, _BUNDLE_VIEWS)
 
 
 def dispose_coding_arch_provider(value: CapabilityBundleValue) -> None:
     """Dispose only the owner shared by the exact Arch Bundle facets."""
 
-    if not isinstance(value, CapabilityBundleValue):
-        raise TypeError("Coding Arch Provider disposer requires a Bundle value")
-    analysis = value.require(CODING_ARCH_ANALYSIS_FACET)
-    tools = value.require(CODING_ARCH_TOOL_RUNTIME_FACET)
-    diagnostics = value.require(CODING_ARCH_DIAGNOSTICS_FACET)
-    if (
-        not isinstance(analysis, _CodingArchAnalysisView)
-        or not isinstance(tools, _CodingArchToolRuntimeView)
-        or not isinstance(diagnostics, _CodingArchDiagnosticsView)
-    ):
-        raise TypeError("Coding Arch Provider Bundle contains a foreign access view")
-    if analysis._owner is not tools._owner or analysis._owner is not diagnostics._owner:
-        raise ValueError("Coding Arch Provider Bundle facets do not share one runtime")
-    analysis._owner.dispose()
+    owner = require_owned_bundle_runtime(
+        value, _BUNDLE_VIEWS, label="Coding Arch Provider"
+    )
+    owner.dispose()
 
 
 def _absolute_path(value: object, *, name: str) -> Path:
@@ -551,20 +535,6 @@ def _contained_root(workspace: Path, root: str) -> Path:
     if not resolved.is_relative_to(workspace):
         raise PermissionError("Coding Arch analysis root must stay in the workspace")
     return resolved
-
-
-def _exact_mapping(
-    value: object,
-    *,
-    fields: frozenset[str],
-    name: str,
-) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
-        _reject(f"{name} must be an object with exact fields")
-    actual = frozenset(value)
-    if actual != fields:
-        _reject(f"{name} fields do not match the v1 contract")
-    return cast(Mapping[str, object], value)
 
 
 def _require_callable_member(value: object, member: str, *, name: str) -> None:

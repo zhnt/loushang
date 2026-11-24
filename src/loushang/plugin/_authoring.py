@@ -61,6 +61,31 @@ class CapabilityProviderSpec:
         if type(self.capability) is not str:
             raise TypeError("Capability Provider owner reference must be a string")
 
+    @staticmethod
+    def _from_provider(
+        provider: CapabilityBundleProvider,
+        *,
+        contribution_id: str,
+        factory: str,
+        disposer: str,
+    ) -> CapabilityProviderSpec:
+        """Declare the metadata of a checked-in Provider through the authoring codec."""
+        return capability_provider(
+            contribution_id=contribution_id,
+            capability=provider.capability_id,
+            provider_id=provider.provider_id,
+            implementation_version=provider.implementation_version,
+            contract=(
+                provider.compatible_contract.minimum,
+                provider.compatible_contract.maximum,
+            ),
+            facets=provider.facets,
+            requirements=provider.requirements,
+            authorities=tuple(sorted(provider.required_authorities)),
+            factory=factory,
+            disposer=disposer,
+        )
+
     def _apply(self, builder: PluginDeclarationBuilder) -> PluginDeclaration:
         return builder.add_capability_provider(
             contribution_id=self.contribution_id,

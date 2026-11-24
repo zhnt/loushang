@@ -40,8 +40,10 @@ from loushang.harness.capabilities.contracts import (
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleValue,
-    CapabilityFacetBinding,
     CapabilityProviderContext,
+    bind_owned_bundle_facets,
+    require_owned_bundle_runtime,
+    require_provider_configuration,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.capabilities.workspace_contracts import (
@@ -204,10 +206,11 @@ class CodingLspPluginConfigV1:
 
     @classmethod
     def from_mapping(cls, value: object) -> CodingLspPluginConfigV1:
-        document = _exact_mapping(
+        document = require_provider_configuration(
             value,
             fields=_CONFIG_FIELDS,
             name="Coding LSP Plugin configuration",
+            error=CodingLspPluginConfigError,
         )
         version = document["configVersion"]
         if (
@@ -347,6 +350,13 @@ class _CodingLspDiagnosticsView:
         return self._owner.runtime.diagnostics_snapshot()
 
 
+_BUNDLE_VIEWS = (
+    (CODING_LSP_SEMANTIC_FACET, _CodingLspSessionView),
+    (CODING_LSP_TOOL_RUNTIME_FACET, _CodingLspToolRuntimeView),
+    (CODING_LSP_DIAGNOSTICS_FACET, _CodingLspDiagnosticsView),
+)
+
+
 def coding_lsp_capability_provider() -> CapabilityBundleProvider:
     """Describe the fixed private Provider without constructing live state."""
 
@@ -407,55 +417,16 @@ def create_coding_lsp_provider(
             path_exists=path_exists,
         )
     )
-    return CapabilityBundleValue(
-        (
-            CapabilityFacetBinding(
-                CODING_LSP_SEMANTIC_FACET,
-                _CodingLspSessionView(owner),
-            ),
-            CapabilityFacetBinding(
-                CODING_LSP_TOOL_RUNTIME_FACET,
-                _CodingLspToolRuntimeView(owner),
-            ),
-            CapabilityFacetBinding(
-                CODING_LSP_DIAGNOSTICS_FACET,
-                _CodingLspDiagnosticsView(owner),
-            ),
-        )
-    )
+    return bind_owned_bundle_facets(owner, _BUNDLE_VIEWS)
 
 
 async def dispose_coding_lsp_provider(value: CapabilityBundleValue) -> None:
     """Dispose only the runtime returned by this complete-Bundle factory."""
 
-    if not isinstance(value, CapabilityBundleValue):
-        raise TypeError("Coding LSP Provider disposer requires a Bundle value")
-    session = value.require(CODING_LSP_SEMANTIC_FACET)
-    tools = value.require(CODING_LSP_TOOL_RUNTIME_FACET)
-    diagnostics = value.require(CODING_LSP_DIAGNOSTICS_FACET)
-    if (
-        not isinstance(session, _CodingLspSessionView)
-        or not isinstance(tools, _CodingLspToolRuntimeView)
-        or not isinstance(diagnostics, _CodingLspDiagnosticsView)
-    ):
-        raise TypeError("Coding LSP Provider Bundle contains a foreign access view")
-    if session._owner is not tools._owner or session._owner is not diagnostics._owner:
-        raise ValueError("Coding LSP Provider Bundle facets do not share one runtime")
-    await session._owner.dispose()
-
-
-def _exact_mapping(
-    value: object,
-    *,
-    fields: frozenset[str],
-    name: str,
-) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
-        _reject(f"{name} must be an object with exact fields")
-    actual = frozenset(value)
-    if actual != fields:
-        _reject(f"{name} fields do not match the v1 contract")
-    return cast(Mapping[str, object], value)
+    owner = require_owned_bundle_runtime(
+        value, _BUNDLE_VIEWS, label="Coding LSP Provider"
+    )
+    await owner.dispose()
 
 
 def _string_mapping(value: object, *, name: str) -> dict[str, str]:
