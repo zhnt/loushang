@@ -142,7 +142,6 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
         allowed = set()
         if path in {
             AGENT_PRODUCT_SESSION_PATH,
-            CODING_PACKAGE_CATALOG_PATH,
             SESSION_BOOTSTRAP_CONSTRUCTION_PATH,
         }:
             allowed.add("loushang.harness.resource_catalog.session_bootstrap")
@@ -153,8 +152,13 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
         }:
             allowed.add("loushang.harness.resource_catalog.product_inputs")
         if path == CODING_SHADOW_ADAPTER_PATH:
-            # KD009 §12: the existing Catalog owner binds the loader receipt.
-            allowed.add("loushang.harness.resource_catalog._loader_inputs")
+            # The adapter binds the loader receipt and types its projection result.
+            allowed.update(
+                {
+                    "loushang.harness.resource_catalog._loader_inputs",
+                    "loushang.harness.resource_catalog.bootstrap_projection",
+                }
+            )
         if path == ORCHESTRATION_ROOT / "_loader_inputs.py":
             allowed.update(
                 {
@@ -244,7 +248,6 @@ def test_rcp4_joint_generation_has_one_private_session_bootstrap_adapter() -> No
     assert session_bootstrap_importers == {
         AGENT_PRODUCT_SESSION_PATH,
         PRODUCT_INPUTS_PATH,
-        CODING_PACKAGE_CATALOG_PATH,
         SESSION_BOOTSTRAP_CONSTRUCTION_PATH,
     }
     imports = _imported_modules(JOINT_GENERATION_PATH)
@@ -336,6 +339,8 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
         CODING_SHADOW_ADAPTER_PATH,
         CODING_PACKAGE_CATALOG_PATH,
         Path("src/loushang/coding/composition/managed_plugin_preparation.py"),
+        Path("src/loushang/coding/package/product_worker_ordinary_bootstrap.py"),
+        Path("src/loushang/coding/session/agent_session.py"),
     }
     imports = _imported_modules(PRODUCT_COMPOSITION_ASSEMBLY_PATH)
     assert not imports & {
