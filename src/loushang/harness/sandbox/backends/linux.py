@@ -76,7 +76,6 @@ class LinuxBubblewrapBackend:
         self._local_backend = (
             local_backend if local_backend is not None else LocalExecBackend()
         )
-        self._capture_executor = ExecService(backend=self._local_backend).capture_executor()
         self._resolved_path: Path | None = None
         self._available = False
         self._managed_process_bindings = False
@@ -87,7 +86,10 @@ class LinuxBubblewrapBackend:
 
     @property
     def supports_captured_exec(self) -> bool:
-        return self._capture_executor is not None
+        return self._capture_executor() is not None
+
+    def _capture_executor(self) -> CapturedExecExecutor | None:
+        return ExecService(backend=self._local_backend).capture_executor()
 
     def probe(self, environment: HostEnvironment) -> SandboxBackendStatus:
         self._available = False
@@ -194,7 +196,7 @@ class LinuxBubblewrapBackend:
             bwrap_path=self._resolved_path,
             request=request,
             local_backend=self._local_backend,
-            capture_executor=self._capture_executor,
+            capture_executor=self._capture_executor(),
         )
 
     def _prepare_guarded_command(
