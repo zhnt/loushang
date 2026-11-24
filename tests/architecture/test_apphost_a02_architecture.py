@@ -168,6 +168,8 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
                 {
                     execution_work + "._DeferredSessionControl",
                     execution_work + "._HostedApprovalPresentation",
+                    "loushang.apphost.integrations.resource_access",
+                    "loushang.apphost.integrations.resource_access.HostedResourceAccess",
                 }
                 if path == Path('src/loushang/coding/hosted/resume.py')
                 else set()
@@ -198,10 +200,14 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/session.py'),
+        Path('src/loushang/coding/hosted/_session_commands.py'),
+        Path('src/loushang/coding/hosted/resources.py'),
+        Path('src/loushang/coding/hosted/resource_tools.py'),
         # Stage 1A: validate the original managed lease binding key.
         Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),
         Path("src/loushang/coding/cli/hosted_client.py"),
+        Path("src/loushang/coding/cli/mux.py"),
         Path('src/loushang/coding/hosted/bootstrap.py'),
         Path('src/loushang/coding/hosted/local.py'),
         # Accepted optional lmux deployment composition; never a core edge.
