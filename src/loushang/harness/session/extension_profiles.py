@@ -66,6 +66,24 @@ class SessionExtensionProfileResolution:
         )
 
 
+def prepare_session_resource_candidate(
+    default_profile: ResolvedRuntimeProfile | None = None,
+    *,
+    candidate: StagedResourceCompositionCandidate | None = None,
+    resolution: SessionExtensionProfileResolution | None = None,
+) -> StagedResourceCompositionCandidate:
+    """Finish a borrowed candidate or stage the Session's admitted resources."""
+    if candidate is not None:
+        if resolution is not None:
+            candidate.select_final_profile(resolution.profile)
+        return candidate
+    if resolution is not None:
+        return resolution.bind()
+    if default_profile is None:
+        raise ValueError("Session construction requires a resource profile")
+    return stage_resource_composition_candidate(default_profile)
+
+
 def prepare_extension_profile(
     extensions: Iterable[LoadedExtension],
     plan: ProductRuntimePlan,
