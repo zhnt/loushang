@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar
 
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
@@ -38,7 +38,6 @@ from loushang.coding.session.manager import (
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.runtime.session_operations import SessionOperationResult
 from loushang.harness.session import AgentProductSessionRuntime
 from loushang.harness.session._resume_continuation import (
@@ -83,7 +82,6 @@ if TYPE_CHECKING:
     from loushang.harness.resources.loader import ResourceLoader
 
 SessionFactory = Callable[..., AgentSession]
-_copy_import_file = copy_file_exclusive
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,22 +119,6 @@ _RESUME_HISTORY_VIEW_SCOPE: ContextVar[_ResumeHistoryViewScope | None] = Context
     "coding_resume_history_view_scope",
     default=None,
 )
-
-
-def _copy_session_import(
-    source: Path,
-    destination: Path,
-    *,
-    expected_source_fingerprint: str | None = None,
-) -> None:
-    if expected_source_fingerprint is None:
-        _copy_import_file(source, destination)
-    else:
-        _copy_import_file(
-            source,
-            destination,
-            expected_source_fingerprint=expected_source_fingerprint,
-        )
 
 
 class AgentSessionRuntime(
@@ -206,8 +188,6 @@ class AgentSessionRuntime(
             new_session_header_metadata=new_session_header_metadata,
             current_session=current_session,
             diagnostics_service=diagnostics_service,
-            copy_file=_copy_session_import,
-            verified_copy_file=_copy_session_import,
             before_release=compose_multiagent_before_release(
                 resolve_runtime=lambda session: getattr(
                     session,
@@ -250,11 +230,10 @@ class AgentSessionRuntime(
         if view is None or view.runtime is not self:
             raise PermissionError("Coding Embedded Resume requires its original history input scope")
         if view.require_current_view is not None:
-            result = cast(Callable[[], object], view.require_current_view)()
-            if result is not None:
-                if inspect.iscoroutine(result):
-                    result.close()
-                raise TypeError("Coding Resume view check must return None")
+            require_resume_owner_check(
+                view.require_current_view,
+                invalid_return="Coding Resume view check must return None",
+            )
         return self._current_embedded_resume_subject_digest()
 
     def embedded_resume_approval_owner(self) -> InteractiveApprovalResolver:
