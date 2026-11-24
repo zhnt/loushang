@@ -8,7 +8,7 @@ import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO, cast
+from typing import Any, Concatenate, ParamSpec, TextIO, TypeVar, cast
 
 from loushang.ai.types import ImagePart
 from loushang.coding.diagnostics.debug_status import debug_status_text
@@ -39,6 +39,7 @@ from loushang.harness.session import (
     require_active_session,
     session_operation_resolver,
 )
+from loushang.harness.workspace.paths import WorkspaceOperationGuard
 from loushang.harnesstui.commands.catalog import ConversationCommandCatalog
 from loushang.harnesstui.conversation.action_presentation import (
     ConversationActionPresentationPort,
@@ -59,6 +60,8 @@ from loushang.harnesstui.conversation.intents import (
 )
 
 _LOG = get_log(__name__).bind(component="CodingUiController")
+_PluginArgs = ParamSpec("_PluginArgs")
+_PluginResultT = TypeVar("_PluginResultT")
 _PLUGIN_USAGE = (
     "Usage: /plugins [list | status | explain OPERATION_ID | enable ID | disable ID | "
     "remove ID | repair OPERATION_ID | repair-package ACTION OPERATION_ID]"
@@ -111,6 +114,24 @@ def build_coding_ui_controller(
         if current is not bound_session or current_workspace != workspace:
             raise RuntimeError("Plugin Session workspace changed")
 
+    def bind_plugin_workspace(
+        provided: Callable[_PluginArgs, _PluginResultT] | None,
+        operation: Callable[Concatenate[Path, _PluginArgs], _PluginResultT],
+    ) -> Callable[_PluginArgs, _PluginResultT] | None:
+        if provided is not None or plugin_workspace is None:
+            return provided
+
+        def guarded(
+            *args: _PluginArgs.args, **kwargs: _PluginArgs.kwargs
+        ) -> _PluginResultT:
+            bound_session, workspace = plugin_scope()
+            with WorkspaceOperationGuard(
+                lambda: assert_plugin_scope(bound_session, workspace)
+            ):
+                return operation(workspace, *args, **kwargs)
+
+        return guarded
+
     async def dispatch_session_command(
         intent: object,
     ) -> HostActionResult | None:
@@ -144,17 +165,12 @@ def build_coding_ui_controller(
             if text not in {"/plugins", "/plugins list", "/plugins status"}:
                 words = text.split()
                 if len(words) == 4 and words[1] == "repair-package":
-                    package_command = plugin_package_repair_command
-                    if package_command is None and plugin_workspace is not None:
-                        def package_command(text: str) -> HostActionResult:
-                            bound_session, workspace = plugin_scope()
-                            assert_plugin_scope(bound_session, workspace)
-                            result = execute_coding_package_repair_ui_command(
-                                workspace, text
-                            )
-                            assert_plugin_scope(bound_session, workspace)
-                            return result
-
+                    package_command = bind_plugin_workspace(
+                        plugin_package_repair_command,
+                        lambda workspace, text: execute_coding_package_repair_ui_command(
+                            workspace, text
+                        ),
+                    )
                     if package_command is None:
                         return HostActionResult(
                             error_message="Package repair is unavailable."
@@ -173,20 +189,19 @@ def build_coding_ui_controller(
                         or not operation_id.isprintable()
                     ):
                         return HostActionResult(error_message=_PLUGIN_USAGE)
-                    explain = plugin_operation_explanation
-                    if explain is None and plugin_workspace is not None:
-                        def explain(operation_id: str) -> dict[str, object]:
-                            bound_session, workspace = plugin_scope()
-                            assert_plugin_scope(bound_session, workspace)
-                            result = open_coding_plugin_management_read_client(
-                                workspace
-                            ).explain_operation(
-                                operation_id,
-                                correlation_id="coding:tui:plugins:explain",
-                            )
-                            assert_plugin_scope(bound_session, workspace)
-                            return result
+                    def explain_workspace(
+                        workspace: Path, operation_id: str, /
+                    ) -> dict[str, object]:
+                        return open_coding_plugin_management_read_client(
+                            workspace
+                        ).explain_operation(
+                            operation_id,
+                            correlation_id="coding:tui:plugins:explain",
+                        )
 
+                    explain = bind_plugin_workspace(
+                        plugin_operation_explanation, explain_workspace
+                    )
                     if explain is None:
                         return HostActionResult(
                             error_message="Plugin explanation is unavailable."
@@ -206,17 +221,12 @@ def build_coding_ui_controller(
                     "enable", "disable", "remove", "repair"
                 }:
                     return HostActionResult(error_message=_PLUGIN_USAGE)
-                command = plugin_command
-                if command is None and plugin_workspace is not None:
-                    def command(text: str) -> HostActionResult:
-                        bound_session, workspace = plugin_scope()
-                        assert_plugin_scope(bound_session, workspace)
-                        result = execute_coding_plugin_management_ui_command(
-                            workspace, text
-                        )
-                        assert_plugin_scope(bound_session, workspace)
-                        return result
-
+                command = bind_plugin_workspace(
+                    plugin_command,
+                    lambda workspace, text: execute_coding_plugin_management_ui_command(
+                        workspace, text
+                    ),
+                )
                 if command is None:
                     return HostActionResult(
                         error_message="Plugin commands are unavailable."
@@ -234,44 +244,22 @@ def build_coding_ui_controller(
                 if text == "/plugins list"
                 else plugin_support_status
             )
-            if read is None and plugin_workspace is not None:
+
+            def read_workspace(workspace: Path) -> dict[str, object]:
+                if text == "/plugins list":
+                    current = current_session()
+                    return open_coding_plugin_management_read_client(
+                        workspace
+                    ).management_snapshot(
+                        correlation_id="coding:tui:plugins:list",
+                        settings_manager=getattr(current, "settings_manager", None),
+                    )
+                client = open_coding_plugin_management_read_client(workspace)
                 if text == "/plugins":
+                    return client.preview_current(correlation_id="coding:tui:plugins")
+                return client.support_status(correlation_id="coding:tui:plugins:status")
 
-                    def read() -> dict[str, object]:
-                        bound_session, workspace = plugin_scope()
-                        assert_plugin_scope(bound_session, workspace)
-                        result = open_coding_plugin_management_read_client(
-                            workspace
-                        ).preview_current(correlation_id="coding:tui:plugins")
-                        assert_plugin_scope(bound_session, workspace)
-                        return result
-
-                elif text == "/plugins list":
-
-                    def read() -> dict[str, object]:
-                        bound_session, workspace = plugin_scope()
-                        assert_plugin_scope(bound_session, workspace)
-                        current = current_session()
-                        result = open_coding_plugin_management_read_client(
-                            workspace
-                        ).management_snapshot(
-                            correlation_id="coding:tui:plugins:list",
-                            settings_manager=getattr(current, "settings_manager", None),
-                        )
-                        assert_plugin_scope(bound_session, workspace)
-                        return result
-                else:
-
-                    def read() -> dict[str, object]:
-                        bound_session, workspace = plugin_scope()
-                        assert_plugin_scope(bound_session, workspace)
-                        result = open_coding_plugin_management_read_client(
-                            workspace
-                        ).support_status(
-                            correlation_id="coding:tui:plugins:status"
-                        )
-                        assert_plugin_scope(bound_session, workspace)
-                        return result
+            read = bind_plugin_workspace(read, read_workspace)
             if read is None:
                 return HostActionResult(error_message="Plugin preview is unavailable.")
             try:
