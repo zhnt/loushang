@@ -22,6 +22,7 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleRecordV1,
     canonicalize_package_product_scope,
 )
+from loushang.harness.workspace.paths import require_workspace_directory
 
 if TYPE_CHECKING:
     from loushang.harness.package_product._application_runtime import (
@@ -42,10 +43,7 @@ _RecordT = TypeVar("_RecordT")
 
 
 def package_operator_workspace(value: str, *, not_directory: str) -> Path:
-    workspace = Path(value).expanduser().resolve(strict=True)
-    if not workspace.is_dir():
-        raise ValueError(not_directory)
-    return workspace
+    return require_workspace_directory(value, unavailable=not_directory)
 
 
 def package_operator_error_code(error: Exception, *, fallback: str) -> str:

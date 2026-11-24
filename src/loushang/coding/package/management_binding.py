@@ -63,6 +63,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff impo
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+from loushang.harness.workspace.paths import WorkspaceOperationGuard
 
 from .epoch_layout import (
     coding_fenced_product_exists as coding_fenced_product_exists,
@@ -230,19 +231,16 @@ def repair_coding_fenced_cli_desired_operation(
         raise ValueError("coding_management_workspace_changed")
 
     def assert_workspace_current() -> None:
-        if workspace_guard is not None:
-            workspace_guard()
-        try:
-            current = workspace.lstat()
-            if (current.st_dev, current.st_ino) != (
-                identity.st_dev,
-                identity.st_ino,
-            ) or workspace.resolve(strict=True) != workspace:
-                raise ValueError("coding_management_workspace_changed")
-        except OSError as error:
-            raise ValueError("coding_management_workspace_changed") from error
-        if workspace_guard is not None:
-            workspace_guard()
+        with WorkspaceOperationGuard(workspace_guard):
+            try:
+                current = workspace.lstat()
+                if (current.st_dev, current.st_ino) != (
+                    identity.st_dev,
+                    identity.st_ino,
+                ) or workspace.resolve(strict=True) != workspace:
+                    raise ValueError("coding_management_workspace_changed")
+            except OSError as error:
+                raise ValueError("coding_management_workspace_changed") from error
 
     return resume_plugin_desired_operation(
         build_coding_fenced_product_management_cli_ports(

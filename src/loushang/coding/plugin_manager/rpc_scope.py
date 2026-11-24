@@ -28,6 +28,7 @@ from loushang.coding.plugin_manager.read_sdk import (
 from loushang.coding.plugin_manager.read_sdk import (
     open_coding_plugin_management_read_client as open_coding_plugin_management_read_client,
 )
+from loushang.harness.workspace.paths import WorkspaceOperationGuard
 
 
 class CodingPluginRpcSessionScope:
@@ -99,14 +100,13 @@ class CodingPluginRpcSessionScope:
             witness.assert_current()
         except (OSError, RuntimeError, ValueError) as exc:
             raise _unavailable() from exc
-        client._assert_workspace_identity()
-        try:
-            current = Path(cwd).expanduser().resolve(strict=True)
-        except OSError as exc:
-            raise _unavailable() from exc
-        if current != client.workspace:
-            raise _unavailable()
-        client._assert_workspace_identity()
+        with WorkspaceOperationGuard(client._assert_workspace_identity):
+            try:
+                current = Path(cwd).expanduser().resolve(strict=True)
+            except OSError as exc:
+                raise _unavailable() from exc
+            if current != client.workspace:
+                raise _unavailable()
         try:
             witness.assert_current()
         except (OSError, RuntimeError, ValueError) as exc:

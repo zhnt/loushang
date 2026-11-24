@@ -5,6 +5,7 @@ import stat
 import unicodedata
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from types import TracebackType
 
 PathNormalizer = Callable[[str], str]
 PathVariantProvider = Callable[[Path], Iterable[Path]]
@@ -154,3 +155,23 @@ def assert_workspace_directory_identity(
         or (metadata.st_dev, metadata.st_ino) != identity
     ):
         raise changed()
+
+
+class WorkspaceOperationGuard:
+    """Check the bound workspace before work and before publishing success."""
+
+    def __init__(self, check: Callable[[], None] | None) -> None:
+        self._check = check
+
+    def __enter__(self) -> None:
+        if self._check is not None:
+            self._check()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if exc_type is None and self._check is not None:
+            self._check()
