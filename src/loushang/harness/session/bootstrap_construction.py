@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -20,6 +21,9 @@ from loushang.harness.bootstrap import (
     register_resource_extension_tools,
 )
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionCompilation,
+)
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
@@ -169,6 +173,7 @@ class AgentBootstrapRequest:
     thinking_budgets: object
     max_retry_delay_ms: int | None
     stream_fn: Callable[..., object] | None = None
+    restore_history: bool = False
 
 
 class AgentBootstrapRuntime(Generic[AgentT, SessionT]):
@@ -201,6 +206,12 @@ class AgentBootstrapRuntime(Generic[AgentT, SessionT]):
         if request.stream_fn is not None:
             agent_kwargs["stream_fn"] = request.stream_fn
 
+        if request.restore_history:
+            from loushang.ai.options import CallOptions
+
+            # An interrupted transcript can have unmatched tool calls.
+            agent_kwargs["call_options"] = CallOptions(pairing_mode="repair")
+
         agent = agent_factory(**agent_kwargs)
         setattr(agent, "session_id", request.session_id)
         return session_factory(agent)
@@ -227,6 +238,7 @@ class AgentSessionConstructionRequest(Generic[BundleT, RegistryT]):
     allowed_tool_names: Sequence[str] | ToolSelection | None
     active_tool_names: Sequence[str] | None
     no_tools_mode: NoToolsMode | None
+    restore_history: bool = False
 
 
 class AgentSessionConstructionRuntime(
@@ -304,6 +316,7 @@ class AgentSessionConstructionRuntime(
                 thinking_budgets=request.thinking_budgets,
                 max_retry_delay_ms=request.max_retry_delay_ms,
                 stream_fn=request.stream_fn,
+                restore_history=request.restore_history,
             ),
             agent_factory=agent_factory,
             session_factory=lambda agent: session_factory(
@@ -369,6 +382,7 @@ class AgentProductConstructionRequest(Generic[AgentT, SessionT, StandardExtensio
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
     use_default_model: bool = True
+    restore_history: bool = False
 
 
 @dataclass(frozen=True)
@@ -476,6 +490,7 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
                     allowed_tool_names=request.allowed_tool_names,
                     active_tool_names=request.active_tool_names,
                     no_tools_mode=normalize_no_tools(request.no_tools),
+                    restore_history=request.restore_history,
                 ),
                 agent_factory=request.agent_factory,
                 register_extension_tools=register_extension_tools,
@@ -625,6 +640,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         ],
         set_scoped_models: Callable[[SessionT, Sequence[object]], None],
         use_default_model: bool = True,
+        restore_history: bool = False,
     ) -> AgentProductConstructionResult[SessionT, StandardExtensionT]:
         """Build the canonical request and delegate all execution to its owner."""
 
@@ -854,6 +870,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     append_system_prompt=append_system_prompt,
                     model=model,
                     use_default_model=use_default_model,
+                    restore_history=restore_history,
                     thinking_level=thinking_level,
                     tools=tools,
                     tool_registry=tool_registry,
@@ -1282,6 +1299,32 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
             ),
         )
         return bundle, base, external
+
+    def prepare_legacy_catalog(
+        self,
+        loader: ResourceLoader,
+        *,
+        cwd: Path,
+        clock: Callable[[], int] | None,
+        compile_composition: Callable[
+            [ResourceCatalogInputReceipt, int], ProductCompositionCompilation | None
+        ],
+        reconcile_compatibility: Callable[[], None],
+        build_adapter: Callable[
+            [ResourceCatalogInputReceipt, ProductCompositionCompilation | None, int],
+            InitialResourceCatalogProductAdapter,
+        ],
+    ) -> ResourceBundle:
+        """Settle the selected legacy Plugin plan before staging its Catalog."""
+        receipt = self.require_catalog_input(loader, cwd)
+        evaluated_at = clock() if clock is not None else int(time.time())
+        composition = compile_composition(receipt, evaluated_at)
+        reconcile_compatibility()
+        if composition is not None:
+            evaluated_at = composition.authority_context.evaluated_at
+        return self.prepare_initial_catalog(
+            build_adapter(receipt, composition, evaluated_at), cwd=cwd
+        )
 
     def prepare_initial_catalog(
         self,

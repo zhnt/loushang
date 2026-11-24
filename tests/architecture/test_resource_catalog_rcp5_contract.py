@@ -333,7 +333,7 @@ def test_rcp54_refresh_has_one_async_catalog_publication_authority() -> None:
     assert "build_coding_initial_resource_catalog_adapter(" in coding_catalog
     assert "build_coding_initial_resource_catalog_adapter" in binding_source
     preparation_source = CATALOG_RECEIPT_PREPARATION_PATH.read_text(encoding="utf-8")
-    assert "require_catalog_input(" in coding_catalog
+    assert "self.require_catalog_input(loader, cwd)" in preparation_source
     assert "loader.prepare_catalog_input_receipt(cwd)" in preparation_source
     assert "catalog_generation=catalog_generation" in preparation_source
 
@@ -345,7 +345,6 @@ def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
     coding_runtime = CODING_RESOURCE_RUNTIME_PATH.read_text(encoding="utf-8")
     coding_init = Path("src/loushang/coding/__init__.py").read_text(encoding="utf-8")
     coding_source = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
-    coding_catalog = CODING_PACKAGE_CATALOG_PATH.read_text(encoding="utf-8")
     input_source = CATALOG_INPUT_PREPARATION_PATH.read_text(encoding="utf-8")
     bootstrap_source = CATALOG_BOOTSTRAP_PROJECTION_PATH.read_text(encoding="utf-8")
     product_source = AGENT_PRODUCT_PATH.read_text(encoding="utf-8")
@@ -367,7 +366,7 @@ def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
     assert "CodingSkillLoader" not in coding_runtime
     assert '"SkillLoader"' not in coding_init
     preparation_source = CATALOG_RECEIPT_PREPARATION_PATH.read_text(encoding="utf-8")
-    assert "require_catalog_input(" in coding_catalog
+    assert "self.require_catalog_input(loader, cwd)" in preparation_source
     assert "loader.prepare_catalog_input_receipt(cwd)" in preparation_source
     binding_source = CODING_CATALOG_BINDING_PATH.read_text(encoding="utf-8")
     assert "prepare_bootstrap_projection_with_receipt" in binding_source
