@@ -13,18 +13,18 @@ from datetime import datetime
 from functools import partial
 from typing import Literal
 
-from loushang.ai.types import UserMessage
 from loushang.coding.resume.binding import (
     _ANCESTRY_DOMAIN,
     CodingRuntimeBindingV1,
-    _require_decoded_v1_binding,
+    coding_user_payload_digest,
     inspect_coding_runtime_binding,
     matches_intent,
 )
 from loushang.foundation.json import JSONValue, require_json_mapping
+from loushang.harness.resume_effects import valid_resume_effect_codes
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript._resume_records import SelectedAncestry
-from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND, EXTENSION_DATA_KIND
+from loushang.harness.transcript.kinds import EXTENSION_DATA_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord, ExtensionData
 
 CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE = "coding.activation-attempt/v1"
@@ -32,7 +32,6 @@ CODING_ACTIVATION_ATTEMPT_MAX_BYTES = 4096
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_EFFECT_CODE = re.compile(r"[a-z][a-z0-9._-]{0,63}\Z")
 _FIELDS = frozenset({
     "version", "attemptId", "requestId", "sessionId", "originalLeafId",
     "ancestryDigest", "planFingerprint", "epochFingerprint", "subjectDigest",
@@ -75,13 +74,7 @@ class CodingActivationAttemptV1:
             value = getattr(self, name)
             if type(value) is not str or _DIGEST.fullmatch(value) is None:
                 raise ValueError(f"activation attempt {name} is invalid")
-        codes = self.effect_classes
-        if (
-            type(codes) is not tuple or len(codes) > 16
-            or any(type(code) is not str or _EFFECT_CODE.fullmatch(code) is None
-                   for code in codes)
-            or codes != tuple(sorted(set(codes)))
-        ):
+        if not valid_resume_effect_codes(self.effect_classes):
             raise ValueError("activation attempt effect classes are invalid")
 
     def to_data(self) -> dict[str, JSONValue]:
@@ -167,20 +160,15 @@ def project_coding_activation_attempt_path(
 def _read_legacy_attempt_binding(
     record: AgentTranscriptRecord, pending: Mapping[str, CodingActivationAttemptV1],
 ) -> CodingRuntimeBindingV1 | Literal["unknown_version"] | None:
-    observation = inspect_coding_runtime_binding(record.metadata)
-    if observation.status == "absent":
-        return None
-    payload = record.payload
-    if record.kind != AGENT_MESSAGE_KIND or not isinstance(payload, UserMessage):
-        raise ValueError("activation Binding requires a user message")
-    if observation.status == "unknown_version":
-        return "unknown_version"
-    binding = observation.binding
-    if binding is None:
-        raise ValueError("activation Binding known schema is missing")
-    _require_decoded_v1_binding(
-        record, binding, payload=payload, expected_session_id=binding.session_id,
+    binding = _records.read_legacy_runtime_binding(
+        record,
+        inspect_binding=inspect_coding_runtime_binding,
+        digest=coding_user_payload_digest,
+        payload_error="activation Binding requires a user message",
+        missing_error="activation Binding known schema is missing",
     )
+    if binding is None or isinstance(binding, str):
+        return binding
     attempt = pending.get(binding.session_id)
     if attempt is not None and (
         record.parent_id != attempt.attempt_id
