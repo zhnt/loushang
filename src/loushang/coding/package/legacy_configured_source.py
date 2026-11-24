@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .legacy_classification import _SOURCE_KEYS
+from .legacy_installation_inventory import _BUILTINS
 from .source_snapshot import _LEGACY_DISABLE_SETTING, _source_projection
 
 CodingLegacySourceScope = Literal["global", "project"]
-_BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 
 
 _LEGACY_EVIDENCE_MAX_SOURCES = 16
@@ -43,7 +43,9 @@ def match_coding_legacy_local_skill_configured_source(
     configured = _index_configured_sources(
         projection, identities, required_identity=source_identity
     )
-    return configured.get(source_identity.removeprefix("local:"))
+    path = source_identity.removeprefix("local:")
+    scope = configured.get(path)
+    return None if scope is None else CodingLegacyLocalConfiguredSourceV1(scope, path)
 
 
 def _index_configured_sources(
@@ -51,9 +53,9 @@ def _index_configured_sources(
     identities: tuple[str, ...],
     *,
     required_identity: str | None = None,
-) -> dict[str, CodingLegacyLocalConfiguredSourceV1]:
+) -> dict[str, CodingLegacySourceScope]:
     """Verify every configured source against one exact local installation set."""
-    scoped_paths = _source_projection.index_configured_local_sources(
+    return _source_projection.index_configured_local_sources(
         projection,
         identities,
         required_identity=required_identity,
@@ -62,10 +64,6 @@ def _index_configured_sources(
         disabled_setting=_LEGACY_DISABLE_SETTING,
         configured_source_keys=_SOURCE_KEYS,
     )
-    return {
-        path: CodingLegacyLocalConfiguredSourceV1(scope, path)
-        for path, scope in scoped_paths.items()
-    }
 
 
 __all__ = [
