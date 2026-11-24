@@ -34,7 +34,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from ._private_data_expiry import (
     ExpiryHistoryEvent,
     ExpiryPlan,
+    matches_expiry_archive,
     plan_verified_backup_expiry,
+    require_expiry_restore_history,
 )
 from ._private_data_records import _valid_digest
 from .ledger import PluginDesiredStateSnapshotV1
@@ -778,13 +780,12 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         backup_id: str,
         confirmation_id: str,
         *,
-        completed_restore: Callable[[], tuple[PrivateDataRestoreEvent, str]],
         confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
         create_plan: Callable[..., _ExpiryPlanT],
     ) -> _ExpiryPlanT:
         """Read the completed recovery, its confirmation, and the exact archive."""
         label = self.io.label
-        completion, target_id = completed_restore()
+        completion, target_id = self.completed(backup_id, key)
         confirmation = confirmation_journal().require_current(
             confirmation_id,
             key,
@@ -819,6 +820,51 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             restored_target_id=target_id,
             desired_inventory_revision=desired.inventory_revision,
         )
+
+    def require_current_expiry_archive(
+        self,
+        plan: ExpiryPlan,
+        *,
+        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
+    ) -> _RestoreSourceT:
+        """Recheck the original archive before the first filesystem effect."""
+        key = plan.installation_key
+        completion, target_id = self.completed(plan.backup_id, key)
+        label = self.io.label
+        if (
+            completion.record_digest != plan.restore_completion_digest
+            or target_id != plan.restored_target_id
+        ):
+            raise ValueError(f"{label} backup expiry restore changed")
+        self.require_expiry_recovery(plan, confirmation_journal=confirmation_journal)
+        archive = self.capture_target(self.backup_parent(key) / plan.backup_id)
+        if not matches_expiry_archive(archive, plan):
+            raise ValueError(f"{label} backup expiry archive changed")
+        return archive
+
+    def require_expiry_recovery(
+        self,
+        plan: ExpiryPlan,
+        *,
+        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
+    ) -> None:
+        """Verify retained history and current restored bytes after archive rename."""
+        label, key = self.io.label, plan.installation_key
+        desired = self.desired_snapshot()
+        if (
+            desired.inventory_revision != plan.desired_inventory_revision
+            or desired.installation(key).selection.desired_state != "absent"
+        ):
+            raise ValueError(f"{label} backup expiry Desired State changed")
+        require_expiry_restore_history(
+            plan,
+            confirmations=lambda: confirmation_journal().records(),
+            restores=lambda: self.restore_journal().events(),
+            label=label,
+        )
+        restored = self.capture_target(self.resolve_target(key))
+        if restored.target_id != plan.restored_target_id:
+            raise ValueError(f"{label} backup expiry restored data changed")
 
     def completed(
         self,

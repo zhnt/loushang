@@ -50,7 +50,6 @@ from .private_data_backup import (
 from .private_data_backup import (
     _digest as _digest,
 )
-from .private_data_backup_expiry import _preview_expiry
 from .private_data_backup_expiry_records import CodingArchPrivateDataBackupExpiryPlanV1
 from .private_data_deletion_journal import (
     CodingArchPrivateDataDeletionJournal as CodingArchPrivateDataDeletionJournal,
@@ -68,7 +67,6 @@ from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal,
     CodingArchPrivateDataRestoreConfirmationV1,
 )
-from .private_data_restore_journal import CodingArchPrivateDataRestoreEventV1
 from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
 
 
@@ -172,22 +170,15 @@ class CodingArchPrivateDataReadOwner:
         if not _digest(backup_id):
             raise ValueError("Coding Arch backup expiry ID is invalid")
         with self.offline():
-            return _preview_expiry(
-                self.layout,
-                self.state_root,
+            return self._restore_archive().preview_expiry(
                 key,
                 backup_id,
                 confirmation_id,
-                completed_restore=lambda: self._current_completed_restore(
-                    key, backup_id
+                confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
+                    self.state_root
                 ),
-                desired_snapshot=self._read_desired_snapshot,
+                create_plan=CodingArchPrivateDataBackupExpiryPlanV1,
             )
-
-    def _current_completed_restore(
-        self, key: PluginInstallationKeyV1, backup_id: str
-    ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return self._restore_archive().completed(backup_id, key)
 
     def _read_desired_snapshot(self) -> PluginDesiredStateSnapshotV1:
         return self.desired_state.capture_read_only()[0]

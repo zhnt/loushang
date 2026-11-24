@@ -149,11 +149,6 @@ class CodingArchPrivateDataRestoreOwner:
     def _confirmation_journal(self) -> CodingArchPrivateDataRestoreConfirmationJournal:
         return CodingArchPrivateDataRestoreConfirmationJournal(self.product.state_root)
 
-    def _current_completed_restore(
-        self, key: PluginInstallationKeyV1, backup_id: str
-    ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return self._archive().completed(backup_id, key)
-
     def preview(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> CodingArchPrivateDataRestorePlanV1:
