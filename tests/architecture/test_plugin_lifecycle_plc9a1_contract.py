@@ -211,7 +211,7 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
     projection = _source(CODING_COMPATIBILITY)
     assert "def reconcile(self) -> None:" in projection
-    assert "with _capture_existing_plugin_enablement_state(" in projection
+    assert "capture=lambda: _capture_existing_plugin_enablement_state(" in projection
     assert "journal_file_lock_at(" in capture
     assert "_read_private_state_file(" in capture
     assert "_capture_existing_plugin_enablement_state_portable(" in capture
@@ -240,13 +240,13 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "bind_plugin_enablement_legacy_mutation_guard" in registry
     assert "bind(self, self._assert_legacy_mutation_allowed)" in registry
     assert "authority_id" not in compatibility
-    assert "LegacyPluginCompatibilityProjectionV1(" in projection
+    assert "compatibility = LegacyPluginCompatibilityProjectionV1(" in registry
     assert "self._legacy_plugin_guard_authority" in settings
     assert "if self._legacy_plugin_guard_authority is not authority" in settings
     assert "_CodingPluginEnablementCompatibilityRegistry" in compatibility
     assert (
         old_projection_site in compatibility
-        or "self.projections[self._writer_layout(writer)] = projection" in registry
+        or "self.projections[writer.layout] = projection" in registry
     )
     assert "with self._config.transaction():" in settings
     assert "config_file_transaction_lock(path)" in config_engine

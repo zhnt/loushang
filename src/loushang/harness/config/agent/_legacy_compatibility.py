@@ -10,14 +10,29 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable, Hashable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from threading import Condition, RLock
-from typing import ClassVar, Generic, TypeVar
+from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, TypeVar
 
 from .manager import LegacyPluginCompatibilityProjectionV1
 
+if TYPE_CHECKING:
+    from loushang.harness.plugin_management.enablement_migration import (
+        PluginEnablementCompatibilityProjectionV1,
+    )
+
+
+class _CompatibilityWriter(Protocol):
+    @property
+    def layout(self) -> Hashable: ...
+
+    def _assert_legacy_mutation_allowed(self, plugin_id: str) -> None: ...
+
+
 _CompatibilityKeyT = TypeVar("_CompatibilityKeyT", bound=Hashable)
-_CompatibilityWriterT = TypeVar("_CompatibilityWriterT")
+_CompatibilityWriterT = TypeVar("_CompatibilityWriterT", bound=_CompatibilityWriter)
+_CaptureT = TypeVar("_CaptureT")
 _COMPATIBILITY_BIND_LOCK = RLock()
 
 
@@ -38,17 +53,9 @@ class LegacyPluginCompatibilityRegistry(
     def _make_writer(self, layout: _CompatibilityKeyT) -> _CompatibilityWriterT:
         raise NotImplementedError
 
-    def _writer_layout(self, writer: _CompatibilityWriterT) -> _CompatibilityKeyT:
-        raise NotImplementedError
-
-    def _guard_writer(self, writer: _CompatibilityWriterT, plugin_id: str) -> None:
-        raise NotImplementedError
-
-    writers: dict[_CompatibilityKeyT, _CompatibilityWriterT] = field(
+    writers: dict[Hashable, _CompatibilityWriterT] = field(default_factory=dict)
+    projections: dict[Hashable, LegacyPluginCompatibilityProjectionV1] = field(
         default_factory=dict
-    )
-    projections: dict[_CompatibilityKeyT, LegacyPluginCompatibilityProjectionV1] = (
-        field(default_factory=dict)
     )
     _publish: object | None = field(default=None, init=False, repr=False)
     _pending: deque[_LegacyCompatibilityPublication] = field(
@@ -81,17 +88,52 @@ class LegacyPluginCompatibilityRegistry(
             self.writers[layout] = writer
             return writer
 
+    def reconcile(
+        self,
+        writer: _CompatibilityWriterT,
+        *,
+        capture: Callable[[], AbstractContextManager[_CaptureT | None]],
+        project: Callable[
+            [_CaptureT],
+            tuple[PluginEnablementCompatibilityProjectionV1, frozenset[str]],
+        ],
+        coordination_missing: Callable[[], RuntimeError],
+    ) -> None:
+        """Publish captured canonical state after releasing the source locks."""
+        defer = getattr(
+            self.settings_manager,
+            "defer_plugin_enablement_compatibility_notifications",
+            None,
+        )
+        with defer() if callable(defer) else nullcontext():
+            try:
+                with capture() as state:
+                    if state is None:
+                        return
+                    projection, migrated = project(state)
+                    if not migrated:
+                        return
+                    compatibility = LegacyPluginCompatibilityProjectionV1(
+                        disabled_plugin_ids=projection.disabled_plugin_ids,
+                        migrated_plugin_ids=tuple(sorted(migrated)),
+                        desired_inventory_revision=projection.desired_inventory_revision,
+                        migration_journal_revision=projection.migration_journal_revision,
+                    )
+                self.publish(writer, compatibility)
+            except FileNotFoundError:
+                raise coordination_missing()
+
     def publish(
         self,
         writer: _CompatibilityWriterT,
         projection: LegacyPluginCompatibilityProjectionV1,
     ) -> None:
         with self._condition:
-            if self.writers.get(self._writer_layout(writer)) is not writer:
+            if self.writers.get(writer.layout) is not writer:
                 raise RuntimeError(
                     f"{self._product_label} Plugin compatibility writer is unbound"
                 )
-            current = self.projections.get(self._writer_layout(writer))
+            current = self.projections.get(writer.layout)
             if current is not None and (
                 projection.desired_inventory_revision
                 < current.desired_inventory_revision
@@ -99,7 +141,7 @@ class LegacyPluginCompatibilityRegistry(
                 < current.migration_journal_revision
             ):
                 return
-            self.projections[self._writer_layout(writer)] = projection
+            self.projections[writer.layout] = projection
             aggregate = LegacyPluginCompatibilityProjectionV1(
                 disabled_plugin_ids=tuple(
                     sorted(
@@ -171,7 +213,7 @@ class LegacyPluginCompatibilityRegistry(
         with self._condition:
             writers = tuple(self.writers.values())
         for writer in writers:
-            self._guard_writer(writer, plugin_id)
+            writer._assert_legacy_mutation_allowed(plugin_id)
 
 
 def bind_legacy_plugin_compatibility_registry(
