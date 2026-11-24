@@ -41,9 +41,8 @@ from loushang.coding.package.private_data_windows_backup_client import (
     open_coding_windows_arch_backup_candidate_client,
 )
 from loushang.coding.package.product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     CodingFencedProductApplicationOwner,
-    open_coding_fenced_product_application_owner,
+    _open_installed_product,
     open_coding_package_product_state,
 )
 from loushang.coding.plugin_manager.lifecycle import (
@@ -179,12 +178,7 @@ def _run_posix_product_action(
     layout: CodingPluginLifecycleStateLayout,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    application = open_coding_fenced_product_application_owner(
-        layout,
-        workspace=workspace,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-    )
+    application = _open_installed_product(layout, workspace=workspace)
     with hold_private_data_product(
         application, PosixLocalWheelProductSessionOwner, PackageProductPosixFencedRuntimeOwner,
         error="Coding private-data Product owner is unsupported",

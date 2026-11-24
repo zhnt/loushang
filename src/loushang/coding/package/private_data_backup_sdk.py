@@ -12,7 +12,6 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from importlib.metadata import version
 from pathlib import Path
 
 from loushang.coding.package.epoch_layout import (
@@ -47,9 +46,8 @@ from loushang.coding.package.private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationV1,
 )
 from loushang.coding.package.product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     CodingFencedProductApplicationOwner,
-    open_coding_fenced_product_application_owner,
+    _open_installed_product,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -228,12 +226,7 @@ class CodingArchPrivateDataBackupClientV1:
     def _open_application(self) -> CodingFencedProductApplicationOwner:
         self._assert_workspace_identity()
         _require_backup_product_route(self.layout)
-        application = open_coding_fenced_product_application_owner(
-            self.layout,
-            workspace=self.workspace,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-        )
+        application = _open_installed_product(self.layout, workspace=self.workspace)
         with handoff_product_open(
             application, cleanup_note="Coding Arch backup Product cleanup also failed"
         ):

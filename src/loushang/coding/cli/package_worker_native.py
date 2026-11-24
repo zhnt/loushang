@@ -9,16 +9,14 @@ import sys
 from collections.abc import Sequence
 from contextlib import closing
 from functools import partial
-from importlib.metadata import version
 from pathlib import Path
 
 from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
 )
 from loushang.coding.package.product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    _open_installed_product,
     admit_coding_external_worker_wheel,
-    open_coding_fenced_product_application_owner,
 )
 from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalJournal,
@@ -152,11 +150,9 @@ def _run_product_action(
             lifecycle, worker_candidates=True
         ) as read_owner:
             return _read_candidate_status_document(read_owner, args.plugin_id)
-    application = open_coding_fenced_product_application_owner(
+    application = _open_installed_product(
         lifecycle,
         workspace=workspace,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         worker_candidates=True,
     )
     with closing(application):

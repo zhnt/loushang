@@ -429,11 +429,9 @@ class CodingFencedProductApplicationSelection(
             if legacy is not None:
                 return legacy
 
-        return open_coding_fenced_product_application_owner(
+        return _open_installed_product(
             lifecycle,
             workspace=workspace,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             worker_candidates=self._worker_candidates,
             windows_candidate=self._windows_candidate,
             require_current_admission=require_current_admission,
@@ -565,6 +563,26 @@ def open_coding_fenced_product_application_owner(
             worker_candidates=worker_candidates,
         )
         return CodingFencedProductApplicationOwner(epoch_runtime, runtime_owner)
+
+
+def _open_installed_product(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    *,
+    workspace: Path,
+    worker_candidates: bool = False,
+    windows_candidate: bool = False,
+    require_current_admission: Callable[[], None] | None = None,
+) -> CodingFencedProductApplicationOwner:
+    """Open the current Coding distribution with its deployed runtime protocol."""
+    return open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=worker_candidates,
+        windows_candidate=windows_candidate,
+        require_current_admission=require_current_admission,
+    )
 
 
 def admit_coding_external_data_wheel(
