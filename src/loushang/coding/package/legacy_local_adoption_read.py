@@ -44,9 +44,6 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
-    _CODING_BUILTIN_PLUGIN_IDS,
-)
-from .product_runtime import (
     CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
 )
 
@@ -126,7 +123,6 @@ def coding_legacy_local_data_adoption_settled(
             plugin_id=plugin_id,
             source_trust_class=trust_class_for_legacy_data_resource(resource_kind),
             install_policy=_INSTALL_POLICY,
-            builtin_ids=_CODING_BUILTIN_PLUGIN_IDS,
             choices=_reviewed_local_builtin_choices(accepted.review),
             bootstrap_policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             handoff_error="Coding legacy adoption handoff changed",

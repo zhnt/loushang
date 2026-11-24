@@ -32,9 +32,6 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
-    _CODING_BUILTIN_PLUGIN_IDS,
-)
-from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
 
@@ -85,7 +82,6 @@ def adopt_coding_first_b_builtin_only(
             removed_ids=receipt.review.removed_builtin_ids,
             operation_id_for=receipt.review.removed_builtin_operation_id,
         ),
-        plugin_ids=_CODING_BUILTIN_PLUGIN_IDS,
         policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
         removal_label=_REMOVAL_LABEL,
         history_label="Coding builtin-only Product",

@@ -1514,7 +1514,6 @@ def adopt_legacy_local_data(
     install: Callable[[], _InstallationReceiptT],
     enable: Callable[[], _EnablementReceiptT],
     reviewed_choices: Callable[[_AcceptedT], ReviewedPluginChoices],
-    builtin_plugin_ids: tuple[str, ...],
     bootstrap_policy: _PluginBootstrapPolicy,
     removal_label: str,
 ) -> tuple[_AcceptedT, _InstallationReceiptT, _EnablementReceiptT | None]:
@@ -1542,7 +1541,6 @@ def adopt_legacy_local_data(
         choices = reviewed_choices(acceptance)
         replay_reviewed_product_plugins(
             application.runtime_owner.product_owner,
-            builtin_plugin_ids,
             choices=choices,
             removal_label=removal_label,
             policy=bootstrap_policy,
@@ -2256,7 +2254,6 @@ def read_settled_legacy_local_adoption(
     plugin_id: str,
     source_trust_class: str,
     install_policy: _LegacyLocalInstallPolicy,
-    builtin_ids: tuple[str, ...],
     choices: ReviewedPluginChoices,
     bootstrap_policy: _PluginBootstrapPolicy,
     handoff_error: str,
@@ -2283,7 +2280,7 @@ def read_settled_legacy_local_adoption(
     disabled_ids = frozenset(choices.disabled_ids)
     removed_operations = {
         name: choices.operation_id_for(name)
-        for name in builtin_ids
+        for name in bootstrap_policy.plugin_ids
         if name in choices.removed_ids
     }
     before, history = desired.capture_read_only()
@@ -2323,7 +2320,7 @@ def read_settled_legacy_local_adoption(
     ):
         return False
 
-    for builtin_id in builtin_ids:
+    for builtin_id in bootstrap_policy.plugin_ids:
         events = transitions_for(
             PluginInstallationKeyV1.workspace(key.product_id, key.scope_id, builtin_id)
         )
