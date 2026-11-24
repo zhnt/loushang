@@ -128,7 +128,7 @@ def prepare_coding_product_arch_private_data_root(
     root = coding_arch_session_private_data_root(layout, key, session_id=session_id)
     if os.name == "nt":
         installation_root = coding_arch_installation_private_data_root(layout, key)
-        _windows_root_lineage().prepare_child(
+        _windows_root_lineage.prepare_child(
             key,
             installation_root,
             root,
@@ -165,7 +165,7 @@ def _bind_windows_arch_installation_root(
 ) -> tuple[int, int]:
     """Bind the current Installation root generation to Product state."""
     installation_root = coding_arch_installation_private_data_root(layout, key)
-    return _windows_root_lineage().bind(
+    return _windows_root_lineage.bind(
         key, installation_root, state_root=state_root, package_root=layout.package_root
     )
 
@@ -180,7 +180,7 @@ def inspect_coding_windows_arch_installation_root(
     installation_root = _require_windows_state_root(
         layout, key, state_root, changed="Coding Arch private-data Product state root changed"
     )
-    return _windows_root_lineage().inspect(
+    return _windows_root_lineage.inspect(
         key, installation_root, state_root=state_root, package_root=layout.package_root
     )
 
@@ -200,7 +200,7 @@ def _prepare_windows_arch_restore_generation_intent(
     root = _require_windows_state_root(
         layout, key, state_root, changed="Coding Arch restore Product state root changed"
     )
-    return _windows_root_lineage().prepare_restore_intent(
+    return _windows_root_lineage.prepare_restore_intent(
         key,
         root,
         state_root=state_root,
@@ -222,7 +222,7 @@ def _publish_windows_arch_restored_root_receipt(
     root = _require_windows_state_root(
         layout, key, state_root, changed="Coding Arch restore Product state root changed"
     )
-    return _windows_root_lineage().publish_restored_receipt(
+    return _windows_root_lineage.publish_restored_receipt(
         key,
         root,
         state_root=state_root,
@@ -230,71 +230,6 @@ def _publish_windows_arch_restored_root_receipt(
         generation_number=generation_number,
         deletion_receipt_id=deletion_receipt_id,
         expected_identity=expected_identity,
-    )
-
-
-def _windows_arch_generation_paths(
-    installation_root: Path, state_root: Path, number: int
-) -> tuple[Path, Path]:
-    return _windows_root_lineage().generation_paths(
-        installation_root, state_root, number
-    )
-
-
-def _windows_arch_current_root_generation(
-    key: PluginInstallationKeyV1,
-    installation_root: Path,
-    state_root: Path,
-    package_root_identity: tuple[int, int],
-    *,
-    recover_stage: bool = False,
-    allow_pending: bool = False,
-) -> _WindowsArchRootGeneration:
-    return _windows_root_lineage().current_generation(
-        key,
-        installation_root,
-        state_root,
-        package_root_identity,
-        recover_stage=recover_stage,
-        allow_pending=allow_pending,
-    )
-
-
-def _validate_windows_root_generation_names(
-    names: tuple[str, ...], installation_root: Path, current_number: int
-) -> None:
-    return _windows_root_lineage().validate_generation_names(
-        names, installation_root, current_number
-    )
-
-
-def _windows_arch_generation_intent_payload(
-    key: PluginInstallationKeyV1,
-    installation_root: Path,
-    package_root_identity: tuple[int, int],
-    number: int,
-    predecessor_receipt_id: str | None,
-) -> bytes:
-    return _windows_root_lineage().generation_intent_payload(
-        key, installation_root, package_root_identity, number, predecessor_receipt_id
-    )
-
-
-def _windows_arch_generation_receipt_payload(
-    key: PluginInstallationKeyV1,
-    installation_root: Path,
-    parent_identity: tuple[int, int],
-    identity: tuple[int, int],
-    number: int,
-    predecessor_receipt_id: str | None,
-) -> bytes:
-    return _windows_root_lineage().generation_receipt_payload(
-        key,
-        installation_root,
-        parent_identity,
-        identity,
-        number,
-        predecessor_receipt_id,
     )
 
 
@@ -315,16 +250,18 @@ def _windows_deletion_records_type() -> type[_DeletionRecords]:
     return CodingWindowsArchPrivateDataDeletionTransaction
 
 
-def _windows_root_lineage() -> _WindowsInstallationRootLineage[
-    _WindowsArchRootGeneration
-]:
-    return _WindowsInstallationRootLineage(
-        label="Coding Arch",
-        receipt_prefix="arch-private-root-",
-        maximum_receipt_bytes=_WINDOWS_ROOT_RECEIPT_MAX_BYTES,
-        maximum_write_bytes=4 * 1024 * 1024,
-        receipt_io=lambda: _receipts._receipt_io,
-        receipt_error_type=lambda: CodingWindowsPrivateReceiptError,
-        deletion_type=_windows_deletion_records_type,
-        generation_type=lambda: _WindowsArchRootGeneration,
-    )
+_windows_root_lineage = _WindowsInstallationRootLineage(
+    label="Coding Arch",
+    receipt_prefix="arch-private-root-",
+    maximum_receipt_bytes=_WINDOWS_ROOT_RECEIPT_MAX_BYTES,
+    maximum_write_bytes=4 * 1024 * 1024,
+    receipt_io=lambda: _receipts._receipt_io,
+    receipt_error_type=CodingWindowsPrivateReceiptError,
+    deletion_type=_windows_deletion_records_type,
+    generation_type=_WindowsArchRootGeneration,
+)
+_windows_arch_current_root_generation = _windows_root_lineage.current_generation
+_windows_arch_generation_paths = _windows_root_lineage.generation_paths
+_windows_arch_generation_intent_payload = _windows_root_lineage.generation_intent_payload
+_windows_arch_generation_receipt_payload = _windows_root_lineage.generation_receipt_payload
+_validate_windows_root_generation_names = _windows_root_lineage.validate_generation_names
