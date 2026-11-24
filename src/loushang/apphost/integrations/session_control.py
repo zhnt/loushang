@@ -28,6 +28,21 @@ from loushang.apphost.contracts import (
 from loushang.apphost.integrations._session_projection import (
     _HostedApprovalPresentation as _HostedApprovalPresentation,
 )
+from loushang.apphost.integrations.resource_access import (
+    SUBMISSION_DIGEST,
+    SUBMISSION_ID,
+    HostedResourceAccess,
+)
+from loushang.appserver.execution.model import ExecutionInputV1, ResourceRefV1
+from loushang.appserver.execution.resources import (
+    SessionResourceQueryV1,
+    SessionResourceResultV1,
+)
+from loushang.appserver.execution.session_commands import (
+    SessionCommandCatalogV1,
+    SessionCommandInvocationV1,
+    SessionCommandResultV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -83,6 +98,9 @@ from loushang.harness.session.model_selection import (
 if TYPE_CHECKING:
     from loushang.agent import AbortSignal
     from loushang.agent.types import AgentEvent
+    from loushang.ai.model import Model
+    from loushang.apphost.integrations._session_commands import HostedSessionCommands
+    from loushang.appservice.execution_guard import ExecutionWorkV1
     from loushang.harness.session._resume_continuation import _ResumeContinuationSession
     from loushang.harness.session.agent_product import AgentProductSession
 
@@ -423,13 +441,39 @@ class _SessionServiceAdapter(Generic[SnapshotT, EventT]):
         _require_hosted_binding(binding, label=cls._product_label)
 
 
-class _ExecutionSessionServiceAdapter(_SessionServiceAdapter[SnapshotT, EventT]):
+class _HostedExecutionBinding(Protocol):
+    @property
+    def execution_available(self) -> bool: ...
+
+    @property
+    def current_model(self) -> Model | None: ...
+
+    async def wait_for_title(self) -> None: ...
+
+    def create_resource_access(self) -> HostedResourceAccess: ...
+
+    def create_execution_work(
+        self, text: str, cancel_requested: Callable[[], bool],
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
+    ) -> ExecutionWorkV1: ...
+
+
+_ExecutionBindingT = TypeVar("_ExecutionBindingT", bound=_HostedExecutionBinding)
+
+
+class _ExecutionSessionServiceAdapter(
+    _SessionServiceAdapter[SnapshotT, EventT],
+    Generic[SnapshotT, EventT, _ExecutionBindingT],
+):
     """Publish and settle the optional execution stream on one Hosted Session."""
 
     _legacy_turns = True
 
     if TYPE_CHECKING:
-        def start_execution(self, request: ExecutionRequestV1) -> None: ...
+        _product_binding: _ExecutionBindingT
+
+        def _session_commands(self) -> HostedSessionCommands[AgentProductSession] | None: ...
 
     def __init__(
         self,
@@ -437,6 +481,7 @@ class _ExecutionSessionServiceAdapter(_SessionServiceAdapter[SnapshotT, EventT])
         *,
         execution_submission: bool = False,
     ) -> None:
+        self._resource_access: HostedResourceAccess | None = None
         self._content: set[Callable[[ExecutionContentEventV1], None]] = set()
         self._draft = ""
         self._truncated = False
@@ -447,6 +492,79 @@ class _ExecutionSessionServiceAdapter(_SessionServiceAdapter[SnapshotT, EventT])
     def _start_execution_observation(self, source: _HostedBinding[SnapshotT, EventT]) -> None:
         self._projection = source.project_snapshot()
         self._guard = ExecutionGuardV1(source_cursor=self._complete_source)
+
+    def require_submission_ready(self) -> None:
+        self._require_open()
+        if not self._product_binding.execution_available:
+            raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
+        if self._model_lock.locked() or not is_usable_model_selection(
+            normalize_model_selection(self._product_binding.current_model)
+        ):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
+    def _resources(self) -> HostedResourceAccess:
+        if self._resource_access is None:
+            self._resource_access = self._product_binding.create_resource_access()
+        return self._resource_access
+
+    def resource_submission_digest(self, submission_id: str) -> str | None:
+        try:
+            return self._resources().submission_digest(submission_id)
+        except (ValueError, OSError):
+            raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from None
+
+    def require_resource_input(self, refs: tuple[ResourceRefV1, ...]) -> None:
+        model = self._product_binding.current_model
+        if self._resources().images(refs) and (not model or not model.supports_image_input):
+            raise AppServiceError(AppErrorCodeV1.IMAGE_INPUT_UNSUPPORTED)
+
+    def session_resource(self, query: SessionResourceQueryV1) -> SessionResourceResultV1:
+        self._require_open()
+        return self._resources().exchange(query)
+
+    async def session_command_catalog(self, prefix: str) -> SessionCommandCatalogV1:
+        self._require_open()
+        commands = self._session_commands()
+        if commands is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await commands.catalog(prefix)
+
+    async def read_session_command(self, invocation: SessionCommandInvocationV1) -> SessionCommandResultV1:
+        self._require_open()
+        commands = self._session_commands()
+        if commands is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await commands.read(invocation)
+
+    def require_command_ready(self, invocation: SessionCommandInvocationV1) -> None:
+        self._require_open()
+        commands = self._session_commands()
+        if commands is None or not self._product_binding.execution_available or self._model_lock.locked():
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        commands.require_ready(invocation)
+
+    def start_execution(self, request: ExecutionRequestV1) -> None:
+        if request.command is not None:
+            self.require_command_ready(request.command)
+            commands = self._session_commands()
+            assert commands is not None
+            self._guard.start(request, commands.create_work(request.command, self._product_binding.wait_for_title))
+            return
+        self.require_submission_ready()
+        metadata = {
+            SUBMISSION_ID: request.submission_id,
+            SUBMISSION_DIGEST: ExecutionInputV1(request.text, request.resource_refs).digest(),
+            **self._resources().input_metadata(request.resource_refs),
+        } if request.resource_refs and request.submission_id is not None else None
+        images = self._resources().images(request.resource_refs) if request.resource_refs else None
+        text = request.text if request.text or images else "Use the attached Session resources."
+        self._guard.start(
+            request,
+            self._product_binding.create_execution_work(
+                text, lambda: self._guard.interrupt_requested, images,
+                metadata
+            ),
+        )
 
     @property
     def execution_state(self) -> ExecutionStateV1 | None:
@@ -586,6 +704,8 @@ class _ExecutionSessionServiceAdapter(_SessionServiceAdapter[SnapshotT, EventT])
 
     def _release_execution_resources(self) -> None:
         """Drop retained Product work references after the Session closes successfully."""
+        if self._resource_access is not None:
+            self._resource_access.close()
 
     def _require_open(self) -> None:
         super()._require_open()

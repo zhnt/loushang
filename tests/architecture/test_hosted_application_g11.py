@@ -212,9 +212,6 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         ("loushang.apphost.integrations._canonical_transcript_catalog", [
             "session_identity_matches_open",
         ]),
-        ("loushang.apphost.integrations.resource_access", [
-            "SUBMISSION_DIGEST", "SUBMISSION_ID", "HostedResourceAccess",
-        ]),
         ("loushang.apphost.integrations.session_control", ["_ExecutionSessionServiceAdapter"]),
     ]
     # The foreground owner may select the optional adapter, but only within
