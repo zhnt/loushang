@@ -72,6 +72,7 @@ from .legacy_operation_evidence import (
 from .legacy_operation_evidence import (
     parse_coding_legacy_operation_evidence as parse_coding_legacy_operation_evidence,
 )
+from .legacy_reacquisition import _reacquire_source
 from .legacy_reacquisition import (
     reacquire_coding_legacy_installed_local_source as reacquire_coding_legacy_installed_local_source,
 )
@@ -204,11 +205,9 @@ def require_coding_fenced_single_legacy_data(
     require_coding_fenced_single_legacy_skill_snapshot(
         lifecycle, epoch_runtime, plugin_id=plugin_id
     )
-    reacquired = reacquire_coding_legacy_installed_local_source(
-        lifecycle, epoch_runtime, plugin_id=plugin_id
-    )
-    inspected = inspect_coding_legacy_local_data_wheel(reacquired.wheel)
-    if inspected.resource_kind != resource_kind:
+    _, _, wheel = _reacquire_source(lifecycle, epoch_runtime, plugin_id=plugin_id)
+    inspected_kind, _ = _inspect_legacy_local_data_wheel(wheel)
+    if inspected_kind != resource_kind:
         raise ValueError("Legacy data Resource type changed")
     epoch_runtime.assert_current()
 
