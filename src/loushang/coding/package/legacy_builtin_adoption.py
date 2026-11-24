@@ -9,7 +9,6 @@ from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateL
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
     ReviewedPluginChoices,
-    adopt_reviewed_product_plugins,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -30,6 +29,9 @@ from .legacy_builtin_acceptance import (
 from .legacy_review import _reviewed_disabled_ids
 from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
+)
+from .product_runtime import (
+    _adopt_coding_reviewed_plugins,
 )
 from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
@@ -56,35 +58,23 @@ def adopt_coding_first_b_builtin_only(
         raise RuntimeError("Windows builtin migration candidate is not admitted")
     if os.name != "nt" and windows_candidate:
         raise ValueError("Windows builtin migration candidate requires Windows")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
     epoch_owner_type = (
         PackageProductWindowsFencedRuntimeOwner
         if os.name == "nt"
         else PackageProductPosixFencedRuntimeOwner
     )
-    return adopt_reviewed_product_plugins(
-        open_epoch=lambda: epoch_owner_type.open(**epoch.fenced_runtime_open_kwargs()),
-        accept_review=lambda epoch_runtime: accept_coding_first_b_builtin_only(
-            lifecycle,
-            epoch_runtime,
-            settings_manager=settings_manager,
-            accepted_review_id=accepted_review_id,
-        ),
-        open_application=lambda: open_coding_fenced_product_application_owner(
-            lifecycle,
-            workspace=workspace,
-            runtime_version=runtime_version,
-            runtime_protocol_epoch=runtime_protocol_epoch,
-            windows_candidate=windows_candidate,
-        ),
+    return _adopt_coding_reviewed_plugins(
+        lifecycle, settings_manager, workspace=workspace, accepted_review_id=accepted_review_id,
+        runtime_version=runtime_version, runtime_protocol_epoch=runtime_protocol_epoch,
+        windows_candidate=windows_candidate, open_epoch=epoch_owner_type.open,
+        open_application=open_coding_fenced_product_application_owner,
+        accept_review=accept_coding_first_b_builtin_only,
+        removal_label=_REMOVAL_LABEL,
         reviewed_choices=lambda receipt: ReviewedPluginChoices(
             disabled_ids=_reviewed_disabled_ids(receipt.review),
             removed_ids=receipt.review.removed_builtin_ids,
             operation_id_for=receipt.review.removed_builtin_operation_id,
         ),
-        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-        removal_label=_REMOVAL_LABEL,
-        history_label="Coding builtin-only Product",
     )
 
 
