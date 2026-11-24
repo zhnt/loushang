@@ -13,12 +13,6 @@ from loushang.harness.capabilities.consumer_requirements import (
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionKind,
 )
-from loushang.harness.capabilities.model_input_contracts import (
-    MODEL_INPUT_CAPABILITY_DEFINITION,
-)
-from loushang.harness.capabilities.workspace_contracts import (
-    WORKSPACE_CAPABILITY_DEFINITION,
-)
 from loushang.harness.resource_catalog._loader_inputs import (
     bind_product_catalog_receipt,
 )
@@ -55,11 +49,6 @@ if TYPE_CHECKING:
 
 _CATALOG_PRODUCT_ID = "coding"
 _CATALOG_PRODUCT_LABEL = "Coding"
-_PACKAGE_CATALOG_REQUIRED_ROOTS = (MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,)
-_PACKAGE_CATALOG_DEFINITIONS = (
-    MODEL_INPUT_CAPABILITY_DEFINITION,
-    WORKSPACE_CAPABILITY_DEFINITION,
-)
 _CODING_RESOURCE_CATALOG_POLICY_REVISION = "coding-resource-catalog-v3"
 _CODING_PACKAGE_TRUST_CLASS = "coding-configured-published"
 _CODING_PACKAGE_TRUST_POLICY_REVISION = "coding-resource-package-trust-v1"
@@ -285,12 +274,7 @@ def _compile_package_composition(
         return None
     seed = finalize_coding_package_plugin_plan_seed(plan_seed)
     return assemble_product_composition(
-        ProductCompositionAssemblyRequest(
-            selection=seed.selection,
-            owner_bindings=seed.owner_bindings,
-            mandatory_roots=_PACKAGE_CATALOG_REQUIRED_ROOTS,
-            definitions=_PACKAGE_CATALOG_DEFINITIONS,
-        ),
+        ProductCompositionAssemblyRequest.for_agent_session(seed),
         evaluated_at=evaluated_at,
     )
 

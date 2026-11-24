@@ -163,6 +163,7 @@ _AGENT_HOST_DEFINITIONS = (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+_AGENT_HOST_REQUIRED_ROOTS = (MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,)
 _AGENT_HOST_CAPABILITY_IDS = tuple(
     definition.capability_id for definition in _AGENT_HOST_DEFINITIONS
 )
@@ -411,7 +412,7 @@ def assemble_agent_data_composition(
         plan=plan,
         candidates=candidates,
         owner_bindings=owner_bindings,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        mandatory_roots=_AGENT_HOST_REQUIRED_ROOTS,
         definitions=_AGENT_HOST_DEFINITIONS,
         select_optional_requirements=lambda _: (),
         evaluated_at=evaluated_at,
@@ -1007,6 +1008,23 @@ class ProductCompositionAssemblyRequest:
         compare=False,
     )
 
+    @classmethod
+    def for_agent_session(
+        cls,
+        seed: ProductPluginSelectionSeed,
+        *,
+        provider_definitions: tuple[CapabilityDefinition, ...] = (),
+        owner_candidates: tuple[OwnerContributionCandidateEnvelope, ...] | None = None,
+    ) -> ProductCompositionAssemblyRequest:
+        """Compile an exact selection against the standard Agent host."""
+        return cls(
+            selection=seed.selection,
+            owner_bindings=seed.owner_bindings,
+            owner_candidates=owner_candidates,
+            mandatory_roots=_AGENT_HOST_REQUIRED_ROOTS,
+            definitions=(*_AGENT_HOST_DEFINITIONS, *provider_definitions),
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.selection, PluginSelection):
             raise TypeError("Product composition assembly requires PluginSelection")
@@ -1348,12 +1366,10 @@ class ProductPluginCompositionAssemblyRequest:
         """Compile Plugin contributions against the standard Agent host capabilities."""
 
         return cls(
-            contribution_request=ProductCompositionAssemblyRequest(
-                selection=seed.selection,
-                owner_bindings=seed.owner_bindings,
+            contribution_request=ProductCompositionAssemblyRequest.for_agent_session(
+                seed,
+                provider_definitions=provider_definitions,
                 owner_candidates=owner_candidates,
-                mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-                definitions=(*_AGENT_HOST_DEFINITIONS, *provider_definitions),
             ),
             provider_owner_bindings=provider_owner_bindings,
             provider_roots=tuple(
