@@ -84,12 +84,11 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
-    _CODING_BUILTIN_PLUGIN_IDS,
-    bootstrap_coding_accepted_disabled_only_product_plugins,
-    bootstrap_coding_builtin_product_plugins,
+    CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
 )
 from .product_runtime import (
-    CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+    bootstrap_coding_accepted_disabled_only_product_plugins,
+    bootstrap_coding_builtin_product_plugins,
 )
 from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
@@ -261,7 +260,6 @@ def adopt_coding_legacy_local_data_review(
             resource_kind=resource_kind,
         ),
         reviewed_choices=lambda accepted: _reviewed_local_builtin_choices(accepted.review),
-        builtin_plugin_ids=_CODING_BUILTIN_PLUGIN_IDS,
         bootstrap_policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
         removal_label=_REMOVAL_LABEL,
     )

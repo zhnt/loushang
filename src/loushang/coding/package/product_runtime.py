@@ -48,9 +48,9 @@ from loushang.harness.package_product._legacy_runtime import (
 )
 from loushang.harness.package_product._plugin_bootstrap import (
     _PluginBootstrapPolicy,
+    bootstrap_fresh_product_session,
     bootstrap_product_plugin,
     bootstrap_product_plugins,
-    fresh_product_bootstrap_pending,
     product_bootstrap_completed,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -179,22 +179,16 @@ from .source_snapshot import _source_projection
 CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH = 2
 CODING_PACKAGE_PRODUCT_POLICY_REVISION = "coding-product-package-policy:1"
 
-_CODING_BUILTIN_PLUGIN_IDS = (
-    "coding.base",
-    "coding.lsp.default",
-    "coding.arch.default",
-)
-
 _CODING_BUILTIN_BOOTSTRAP_POLICY = _PluginBootstrapPolicy(
     product_id="coding",
     operation_id_prefix="coding-builtin-bootstrap:",
     enable_id_prefix="coding-builtin-bootstrap-enable:",
     error_prefix="Coding builtin Product bootstrap",
+    plugin_ids=("coding.base", "coding.lsp.default", "coding.arch.default"),
 )
 
 _fresh_coding_builtin_bootstrap_completed = partial(
     product_bootstrap_completed,
-    plugin_ids=_CODING_BUILTIN_PLUGIN_IDS,
     policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 
@@ -690,7 +684,6 @@ def bootstrap_coding_builtin_product_plugins(
     with closing(owner):
         return bootstrap_product_plugins(
             owner.runtime_owner.product_owner,
-            _CODING_BUILTIN_PLUGIN_IDS,
             policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             require_current_admission=partial(
                 _require_current_coding_product_admission, require_current_admission
@@ -729,7 +722,6 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
     ) as (receipt, owner):
         bootstrap_product_plugins(
             owner.runtime_owner.product_owner,
-            _CODING_BUILTIN_PLUGIN_IDS,
             policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             disabled_ids={item.plugin_id for item in receipt.review.disabled_plugins},
         )
@@ -836,12 +828,6 @@ def _fresh_coding_bootstrap_settings(
     )
 
 
-def _native_coding_fresh_route(windows_candidate: bool) -> bool:
-    return (os.name == "posix" and sys.platform.startswith("linux")) or (
-        os.name == "nt" and windows_candidate
-    )
-
-
 def _bootstrap_coding_product_for_session(
     lifecycle: CodingPluginLifecycleStateLayout,
     *,
@@ -851,68 +837,50 @@ def _bootstrap_coding_product_for_session(
     require_current_admission: Callable[[], None] | None,
     initial: bool,
 ) -> None:
-    """Start a fresh offline cutover or resume its interrupted builtin replay."""
-    if initial:
-        require_fresh_coding_product_inputs_without_writes(
-            lifecycle, workspace=workspace, settings_manager=settings_manager
+    """Bind Coding's inputs and default packages to the shared startup route."""
+
+    def bootstrap() -> None:
+        settings = _fresh_coding_bootstrap_settings(
+            lifecycle, workspace, settings_manager,
+            initial=initial, require_current_admission=require_current_admission,
         )
-    if not _native_coding_fresh_route(windows_candidate):
+        install: Callable[..., object] = bootstrap_coding_builtin_product_plugins
         if initial:
-            raise RuntimeError(
-                "Coding native automatic B Session route is not yet admitted"
+            epoch = resolve_coding_package_epoch_layout(lifecycle)
+            namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
+            from loushang.coding.package.pre_b_snapshot import (
+                cutover_and_bootstrap_coding_package_product,
             )
-        return
 
-    if initial:
-        if not workspace.is_dir():
-            raise ValueError("Coding Product workspace must be an existing directory")
-    else:
-        epoch = resolve_coding_package_epoch_layout(lifecycle)
-        _require_current_coding_product_admission(require_current_admission)
-        if not fresh_product_bootstrap_pending(
-            epoch.fenced_runtime_open_kwargs(),
-            windows=os.name == "nt",
-            verify_snapshot=partial(is_coding_fresh_first_b_snapshot, lifecycle),
-            open_application=lambda: open_coding_fenced_product_application_owner(
-                lifecycle,
-                workspace=workspace,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                windows_candidate=windows_candidate,
-                require_current_admission=require_current_admission,
-            ),
-            plugin_ids=_CODING_BUILTIN_PLUGIN_IDS,
-            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-        ):
-            return
+            install = partial(cutover_and_bootstrap_coding_package_product, namespace_id=namespace_id)
+        install(
+            lifecycle, settings, workspace=workspace,
+            runtime_version=version("loushang"),
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+            windows_candidate=windows_candidate,
+            require_current_admission=require_current_admission,
+        )
 
-    settings = _fresh_coding_bootstrap_settings(
-        lifecycle,
+    bootstrap_fresh_product_session(
         workspace,
-        settings_manager,
         initial=initial,
-        require_current_admission=require_current_admission,
-    )
-    bootstrap: Callable[..., object] = bootstrap_coding_builtin_product_plugins
-    if initial:
-        epoch = resolve_coding_package_epoch_layout(lifecycle)
-        namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-        # The cutover owner also uses this module's Product bootstrap.
-        from loushang.coding.package.pre_b_snapshot import (
-            cutover_and_bootstrap_coding_package_product,
-        )
-
-        bootstrap = partial(
-            cutover_and_bootstrap_coding_package_product, namespace_id=namespace_id
-        )
-    bootstrap(
-        lifecycle,
-        settings,
-        workspace=workspace,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         windows_candidate=windows_candidate,
+        product_label="Coding",
+        require_fresh_inputs=partial(
+            require_fresh_coding_product_inputs_without_writes,
+            lifecycle, workspace=workspace, settings_manager=settings_manager,
+        ),
+        resolve_roots=lambda: resolve_coding_package_epoch_layout(lifecycle).fenced_runtime_open_kwargs(),
+        verify_snapshot=partial(is_coding_fresh_first_b_snapshot, lifecycle),
+        open_application=lambda: open_coding_fenced_product_application_owner(
+            lifecycle, workspace=workspace, runtime_version=version("loushang"),
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+            windows_candidate=windows_candidate,
+            require_current_admission=require_current_admission,
+        ),
         require_current_admission=require_current_admission,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+        bootstrap=bootstrap,
     )
 
 
