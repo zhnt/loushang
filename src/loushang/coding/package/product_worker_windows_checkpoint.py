@@ -9,22 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.harness.package_product._windows_worker_history import (
-    publish_windows_product_worker_checkpoint,
-    read_current_windows_product_worker_checkpoint_under_guard,
-    read_windows_product_worker_checkpoint,
+    WindowsProductWorkerHistoryCommands,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationSnapshotV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
-    PackageWindowsRuntimeQuiescenceV1,
 )
 from loushang.harness.worker.history._base_codec import _unchanged
 from loushang.harness.worker.history._windows_checkpoint import (
@@ -33,32 +25,29 @@ from loushang.harness.worker.history._windows_checkpoint import (
 from loushang.harness.worker.history._windows_sources import (
     WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES,
 )
-from loushang.harness.worker.history._windows_sources import (
-    WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME as _CHECKPOINT_NAME,
-)
 
-from .legacy_windows_receipt import _receipt_io
+from .product_backup_types import observe_coding_worker_backup_references_under_gc_guard
 from .product_worker_native_approval import CodingWorkerNativeApprovalDecisionV1
 from .product_worker_windows_history_join import (
     CodingWindowsWorkerHistorySemanticJoinV1,
 )
 from .product_worker_windows_history_preparation import (
     CodingWindowsWorkerHistoryPreparationV1,
+    _receipt_io,
 )
 from .product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
     CodingWindowsWorkerHistorySourceSnapshotV1,
+    _capture_coding_windows_worker_semantics_under_gc_guard,
 )
 from .product_worker_windows_native_approval_journal import (
     CodingWindowsWorkerNativeApprovalJournal,
 )
 from .product_worker_windows_package_references import (
     CodingWindowsWorkerPackageReferenceReviewV1,
-    _review_coding_windows_worker_package_references_under_guard,
 )
 
 _MAX_BYTES = WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES
-_PREPARATION_NAME = "worker-history-preparation-v1.json"
 _BASE_NAMES = (
     "optIn",
     "receipt",
@@ -139,26 +128,17 @@ CodingWindowsWorkerHistoryCheckpointV1._wire_schema = RecordSchema.for_dataclass
 )
 
 
-def _current_checkpoint_under_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    quiescence: PackageWindowsRuntimeQuiescenceV1,
-    gc_snapshot: PluginPackageGcReservationSnapshotV1,
-    allow_checkpoint_stage: bool,
-    allow_base_stage: bool = False,
-) -> CodingWindowsWorkerHistoryCheckpointV1:
-    return read_current_windows_product_worker_checkpoint_under_guard(
-        product,
-        record_type=CodingWindowsWorkerHistoryCheckpointV1,
-        review_references=_review_coding_windows_worker_package_references_under_guard,
-        approval_journal=CodingWindowsWorkerNativeApprovalJournal,
-        io=_receipt_io,
-        preparation_name=_PREPARATION_NAME,
-        quiescence=quiescence,
-        gc_snapshot=gc_snapshot,
-        allow_checkpoint_stage=allow_checkpoint_stage,
-        allow_base_stage=allow_base_stage,
-    )
+_HISTORY_COMMANDS = WindowsProductWorkerHistoryCommands(
+    product_id="coding",
+    preparation_type=CodingWindowsWorkerHistoryPreparationV1,
+    reference_type=CodingWindowsWorkerPackageReferenceReviewV1,
+    checkpoint_type=CodingWindowsWorkerHistoryCheckpointV1,
+    capture_semantic=_capture_coding_windows_worker_semantics_under_gc_guard,
+    observe_backup=observe_coding_worker_backup_references_under_gc_guard,
+    approval_journal=CodingWindowsWorkerNativeApprovalJournal,
+    io=_receipt_io,
+)
+_current_checkpoint_under_guard = _HISTORY_COMMANDS.checkpoint_under_guard
 
 
 def read_coding_windows_worker_history_checkpoint(
@@ -166,14 +146,7 @@ def read_coding_windows_worker_history_checkpoint(
 ) -> CodingWindowsWorkerHistoryCheckpointV1:
     """Reprove published checkpoint bytes against the current guarded Product."""
 
-    return read_windows_product_worker_checkpoint(
-        product,
-        product_id="coding",
-        record_type=CodingWindowsWorkerHistoryCheckpointV1,
-        review_checkpoint=_current_checkpoint_under_guard,
-        io=_receipt_io,
-        name=_CHECKPOINT_NAME,
-    )
+    return _HISTORY_COMMANDS.read_checkpoint(product)
 
 
 def publish_coding_windows_worker_history_checkpoint(
@@ -185,14 +158,7 @@ def publish_coding_windows_worker_history_checkpoint(
     when its full record still equals the freshly joined Product state.
     """
 
-    return publish_windows_product_worker_checkpoint(
-        product,
-        product_id="coding",
-        record_type=CodingWindowsWorkerHistoryCheckpointV1,
-        review_checkpoint=_current_checkpoint_under_guard,
-        io=_receipt_io,
-        name=_CHECKPOINT_NAME,
-    )
+    return _HISTORY_COMMANDS.publish_checkpoint(product)
 
 
 __all__ = [

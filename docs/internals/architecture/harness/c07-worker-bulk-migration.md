@@ -838,3 +838,25 @@ Worker StartGate 持有完整追加入口。Coding 给出候选拒绝政策，�
 Coding −42 行，Harness +33 行，系统生产 Python −9 行。定向回归 81 项通过，
 C54/C51 架构检查 17 项通过。三个工作区用例受本机测试路径权限影响，C51 的现有
 消费者清单有一项差异。四项失败在干净的 `c8c48d300` 上复现。
+
+### Windows Worker 历史准备、引用核验与基底发布
+
+实施 agent `/root` 以 `16597be99` 为本批基线，采用本地架构方法 `0f9bd3f`。
+现有 Package Product Windows 历史模块用一份不可变绑定连接准备记录、引用核验、
+检查点读写与六份基底的复核和发布。锁内调用由原模块直接串接。Coding 保留名义记录、
+wire 预算、Product 标识以及稳定入口。切换预检继续使用同一锁内检查点证明，保留其
+复读故障注入点。准备记录与检查点的磁盘名称由原 Worker History 共享。
+
+守卫与 IO 仍由原 runtime quiescence、Product GC、根描述符和 WindowsPrivateReceiptIO
+持有。普通读取沿用其原有读写权限配置。准备、检查点和基底的 staged retry 条件以及
+错误顺序分别保持。新命令绑定只保存这些既有组件与类型。
+
+生产 Python 本批 Coding −111、Harness −40、Hosting 与其他不变，系统 −151。
+候选 Coding 为 86,576 行，系统为 657,249 行。测试源码零改动。与前一提交逐项
+比较 337 组真实 Coding 入口的受控观察，含 321 组注入故障，锁取还、读写顺序、
+结果与最终记录字节相符。这些观察使用惰性 Windows 端口。
+
+本地组合为 345 passed、2 skipped、1 deselected、3 failed。三项既有架构失败
+在 `16597be99` 重现，涉及 Worker 装配消费者清单以及 LPAC canary 标记。
+C50/C54 另有 16 项通过。Ruff、六文件 mypy、架构依赖事实和文档检查通过。
+原生 Windows 路线仍待验证。
