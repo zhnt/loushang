@@ -116,6 +116,16 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             "SessionIdentityV1",
             "SessionOpenSpecV1",
             "SessionScopeV1",
+            # Existing Workspace wire values now projected by the same catalog.
+            "WorkspaceInfoV1",
+            "WorkspaceRequestV1",
+            "WorkspaceResultV1",
+            "workspace_preview",
+            "workspace_preview.WorkspaceDirectoryPreviewV1",
+            "workspace_preview.WorkspaceFilePreviewV1",
+            "workspace_preview.WorkspacePreviewEntryV1",
+            "workspace_preview.WorkspacePreviewRequestV1",
+            "workspace_preview.WorkspacePreviewV1",
         },
         APPHOST / "integrations/_session_projection.py": {
             "SessionEventKindV1",

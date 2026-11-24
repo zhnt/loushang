@@ -354,6 +354,18 @@ Source, local fault and real persistent-test evidence is tracked in the
 [A202 execution record](../coding-responsibility-convergence-progress.md).
 
 
+## Workspace Request Routing and Preview
+
+2026-11-23. Codex reviewed AppHost's optional canonical Transcript catalog and
+its Coding and AppServer consumers against main at `a4bf76666`. The same
+workspace catalog now owns request routing, registered scope checks for reads,
+history deletion routing, and projection of the existing Workspace protocol
+values. Coding supplies the inspection report and retains its repository and
+recorded tool-effect policy. This supersedes A202's placement of the Workspace
+reply adapter. The existing import test admits the exact Workspace values only
+in the optional integration. AppServer's wire schema and AppHost core
+dependencies are unchanged.
+
 ## A209 Complete History Custody Trial: Current Shape Not Adopted
 
 2026-11-15 evaluates the remaining three candidate/source classes and four history
