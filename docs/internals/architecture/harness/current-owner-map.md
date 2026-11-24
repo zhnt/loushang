@@ -872,6 +872,16 @@ private Manager annotations/MRO/method source changes are bounded compatibility
 limits. See the [boundary](product-transcript-session-boundary.md#opt-in-resume-continuation-profile)
 and [KD009 implementation](key-designs/startup-session-assembly-convergence.md#19-a58恢复首输入提交与发布边界的完整候选).
 
+The existing [Transcript records owner](../../../../src/loushang/harness/transcript/_resume_records.py)
+decodes the common V1/V2 binding fields, proves the legacy record and payload
+association, projects the selected legacy epoch, and builds the first-input record.
+Coding supplies version and namespace rules, nominal constructors, digests and
+intent matching. The existing [Resume effect owner](../../../../src/loushang/harness/resume_effects.py)
+validates and encodes owner obligations, while Coding retains the public frozen
+value and decides which obligations to select. These readers and constructors
+feed the existing Embedded and Hosted continuation paths under their original
+admission and publication rules.
+
 ## Ordinary Worker Preparation And Windows Attempt Custody
 
 The implemented internal [Session Worker integration](../../../../src/loushang/harness/session/_worker_provider.py)

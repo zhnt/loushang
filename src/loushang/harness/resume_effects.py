@@ -9,14 +9,19 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import ClassVar, Self, cast
+
+from loushang.foundation.json import JSONValue
 
 RESUME_EFFECT_PARENT_CONTEXT_VERSION = 1
 RESUME_EFFECT_PARENT_CONTEXT_MAX_BYTES = 2048
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_EFFECT_CODE = re.compile(r"[a-z][a-z0-9._-]{0,63}\Z")
 _CONTEXT_DOMAIN = b"loushang.harness.resume-parent-context/v1\0"
+_OWNER_FIELDS = {"ownerId", "scopeDigest", "contractDigest", "phases", "effectClasses"}
 _FIELDS = frozenset(
     {
         "contextVersion",
@@ -30,6 +35,71 @@ _FIELDS = frozenset(
         "contractDigest",
     }
 )
+
+
+def valid_resume_effect_codes(value: tuple[str, ...], *, required: bool = False) -> bool:
+    return (
+        type(value) is tuple
+        and len(value) <= 16
+        and (not required or bool(value))
+        and all(type(code) is str and _EFFECT_CODE.fullmatch(code) is not None for code in value)
+        and value == tuple(sorted(set(value)))
+    )
+
+
+class _ResumeEffectOwnerFields:
+    """Validation and wire values for a Product's nominal frozen obligation."""
+
+    __slots__ = ()
+    _effect_owner_label: ClassVar[str]
+    owner_id: str
+    scope_digest: str
+    contract_digest: str
+    phases: tuple[str, ...]
+    effect_classes: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        label = self._effect_owner_label
+        if type(self.owner_id) is not str or _IDENTIFIER.fullmatch(self.owner_id) is None:
+            raise ValueError(f"{label} effect owner id is invalid")
+        for value in (self.scope_digest, self.contract_digest):
+            if type(value) is not str or _DIGEST.fullmatch(value) is None:
+                raise ValueError(f"{label} owner digest is invalid")
+        if not valid_resume_effect_codes(self.phases, required=True):
+            raise ValueError(f"{label} owner phases must be bounded, sorted and unique")
+        if not valid_resume_effect_codes(self.effect_classes):
+            raise ValueError(f"{label} owner effect classes must be bounded, sorted and unique")
+
+    @property
+    def identity(self) -> tuple[str, str, str]:
+        return self.owner_id, self.scope_digest, self.contract_digest
+
+    def to_data(self) -> dict[str, JSONValue]:
+        return {
+            "ownerId": self.owner_id,
+            "scopeDigest": self.scope_digest,
+            "contractDigest": self.contract_digest,
+            "phases": list(self.phases),
+            "effectClasses": list(self.effect_classes),
+        }
+
+    @classmethod
+    def from_data(cls, raw: object) -> Self:
+        label = cls._effect_owner_label
+        if type(raw) is not dict or set(raw) != _OWNER_FIELDS:
+            raise ValueError(f"{label} effect owner fields are invalid")
+        if type(raw["phases"]) is not list or type(raw["effectClasses"]) is not list:
+            raise ValueError(f"{label} owner codes require arrays")
+        construct = cast(
+            Callable[[str, str, str, tuple[str, ...], tuple[str, ...]], Self], cls
+        )
+        return construct(
+            cast(str, raw["ownerId"]),
+            cast(str, raw["scopeDigest"]),
+            cast(str, raw["contractDigest"]),
+            tuple(raw["phases"]),
+            tuple(raw["effectClasses"]),
+        )
 
 
 @dataclass(frozen=True, slots=True)

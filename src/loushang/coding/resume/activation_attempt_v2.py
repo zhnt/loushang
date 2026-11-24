@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from typing import cast
 
 from loushang.coding.resume.activation_attempt import (
     _FIELDS,
@@ -15,36 +13,24 @@ from loushang.coding.resume.activation_attempt import (
     _require_v1_budget,
 )
 from loushang.foundation.json import JSONValue
-from loushang.harness.resume_effects import ResumeEffectParentContextV1
+from loushang.harness.resume_effects import (
+    ResumeEffectParentContextV1,
+    _ResumeEffectOwnerFields,
+)
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript.kinds import EXTENSION_DATA_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord, ExtensionData
 
 CODING_ACTIVATION_ATTEMPT_V2_EXTENSION_TYPE = "coding.activation-attempt/v2"
 CODING_ACTIVATION_ATTEMPT_V2_MAX_BYTES = 8192
-_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_CODE = re.compile(r"[a-z][a-z0-9._-]{0,63}\Z")
-_OWNER_FIELDS = {"ownerId", "scopeDigest", "contractDigest", "phases", "effectClasses"}
 _INTENT_FIELDS = _FIELDS | {"effectOwners"}
 
 
 _bytes = partial(_records.canonical_binding_bytes, name="Coding Resume intent v2")
 
 
-def _codes(value: tuple[str, ...], *, name: str, required: bool = False) -> None:
-    if (
-        type(value) is not tuple
-        or len(value) > 16
-        or (required and not value)
-        or any(type(code) is not str or _CODE.fullmatch(code) is None for code in value)
-        or value != tuple(sorted(set(value)))
-    ):
-        raise ValueError(f"Coding Resume {name} must be bounded, sorted and unique")
-
-
 @dataclass(frozen=True, slots=True)
-class CodingResumeEffectOwnerV1:
+class CodingResumeEffectOwnerV1(_ResumeEffectOwnerFields):
     """Frozen lookup obligations, validated again by the selected original owner."""
 
     owner_id: str
@@ -52,42 +38,7 @@ class CodingResumeEffectOwnerV1:
     contract_digest: str
     phases: tuple[str, ...]
     effect_classes: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        if type(self.owner_id) is not str or _ID.fullmatch(self.owner_id) is None:
-            raise ValueError("Coding Resume effect owner id is invalid")
-        for value in (self.scope_digest, self.contract_digest):
-            if type(value) is not str or _DIGEST.fullmatch(value) is None:
-                raise ValueError("Coding Resume owner digest is invalid")
-        _codes(self.phases, name="owner phases", required=True)
-        _codes(self.effect_classes, name="owner effect classes")
-
-    @property
-    def identity(self) -> tuple[str, str, str]:
-        return self.owner_id, self.scope_digest, self.contract_digest
-
-    def to_data(self) -> dict[str, JSONValue]:
-        return {
-            "ownerId": self.owner_id,
-            "scopeDigest": self.scope_digest,
-            "contractDigest": self.contract_digest,
-            "phases": list(self.phases),
-            "effectClasses": list(self.effect_classes),
-        }
-
-    @classmethod
-    def from_data(cls, raw: object) -> CodingResumeEffectOwnerV1:
-        if type(raw) is not dict or set(raw) != _OWNER_FIELDS:
-            raise ValueError("Coding Resume effect owner fields are invalid")
-        if type(raw["phases"]) is not list or type(raw["effectClasses"]) is not list:
-            raise ValueError("Coding Resume owner codes require arrays")
-        return cls(
-            cast(str, raw["ownerId"]),
-            cast(str, raw["scopeDigest"]),
-            cast(str, raw["contractDigest"]),
-            tuple(raw["phases"]),
-            tuple(raw["effectClasses"]),
-        )
+    _effect_owner_label = "Coding Resume"
 
 
 @dataclass(frozen=True, slots=True)

@@ -45,6 +45,8 @@ def make_resume_record(
 class _ResumeMessageBinding(Protocol):
     @property
     def record_id(self) -> str: ...
+    @property
+    def payload_digest(self) -> str: ...
 
     def to_message_metadata(self) -> dict[str, JSONValue]: ...
 
@@ -58,9 +60,14 @@ def make_resume_user_record(
     resource_metadata: Mapping[str, JSONValue] | None,
     evidence_name: str,
     metadata_conflict: str,
+    digest: Callable[[UserMessage], str],
+    payload_error: str,
+    validate: Callable[[AgentTranscriptRecord], object],
     reserved_prefix: str | None = None,
 ) -> AgentTranscriptRecord:
-    """Build an ordinary UserMessage record with detached resource evidence."""
+    """Build and verify one ordinary UserMessage with detached resource evidence."""
+    if digest(message) != binding.payload_digest:
+        raise ValueError(payload_error)
     evidence = require_json_mapping(
         {} if resource_metadata is None else dict(resource_metadata), name=evidence_name
     )
@@ -71,7 +78,7 @@ def make_resume_user_record(
     binding_metadata = binding.to_message_metadata()
     if reserved_prefix is None and evidence.keys() & binding_metadata.keys():
         raise ValueError(metadata_conflict)
-    return make_resume_record(
+    record = make_resume_record(
         AGENT_MESSAGE_KIND,
         message,
         record_id=binding.record_id,
@@ -79,6 +86,8 @@ def make_resume_user_record(
         created_at=created_at,
         metadata={**evidence, **binding_metadata},
     )
+    validate(record)
+    return record
 
 
 def freeze_user_message(message: UserMessage) -> UserMessage:
@@ -158,9 +167,150 @@ class _HistoricalBinding(Protocol):
     def input_id(self) -> str: ...
 
 
+class _RuntimeBinding(_HistoricalBinding, _ResumeMessageBinding, Protocol):
+    pass
+
+
 _IntentT = TypeVar("_IntentT", bound="_ResumeIntentRead")
 _BindingT = TypeVar("_BindingT", bound=_HistoricalBinding)
+_LegacyBindingT = TypeVar("_LegacyBindingT", bound=_RuntimeBinding)
+_LegacyBindingCo = TypeVar("_LegacyBindingCo", bound=_RuntimeBinding, covariant=True)
 _ResultT = TypeVar("_ResultT")
+
+
+class _LegacyBindingObservation(Protocol[_LegacyBindingCo]):
+    @property
+    def status(self) -> Literal["absent", "known", "unknown_version"]: ...
+    @property
+    def binding(self) -> _LegacyBindingCo | None: ...
+
+
+def _binding_text(document: Mapping[str, object], key: str) -> str:
+    value = document[key]
+    if type(value) is not str:
+        raise ValueError(f"RuntimeBinding {key} is invalid")
+    return value
+
+
+def decode_resume_binding_document(
+    raw: Mapping[str, object],
+    *,
+    construct: Callable[..., _LegacyBindingT],
+    construct_origin: Callable[[str, str], object],
+) -> _LegacyBindingT:
+    """Read the shared fields after the Product selects its historical wire schema."""
+    document = require_json_mapping(dict(raw), name="RuntimeBinding metadata")
+    origin = document["originEvidence"]
+    if not isinstance(origin, dict):
+        raise ValueError("RuntimeBinding origin evidence is invalid")
+    if origin == {"kind": "legacy_unknown"}:
+        provenance = None
+    elif set(origin) == {"kind", "setId", "planFingerprint"} and origin.get("kind") == "composition":
+        provenance = construct_origin(
+            _binding_text(origin, "setId"), _binding_text(origin, "planFingerprint")
+        )
+    else:
+        raise ValueError("RuntimeBinding origin evidence is invalid")
+    differences = document["differenceCodes"]
+    if not isinstance(differences, list) or any(
+        type(value) is not str for value in differences
+    ):
+        raise ValueError("RuntimeBinding difference codes are invalid")
+    return construct(
+        attempt_id=_binding_text(document, "attemptId"),
+        input_id=_binding_text(document, "inputId"),
+        record_id=_binding_text(document, "recordId"),
+        session_id=_binding_text(document, "sessionId"),
+        original_leaf_id=(
+            None if document["originalLeafId"] is None else _binding_text(document, "originalLeafId")
+        ),
+        ancestry_digest=_binding_text(document, "ancestryDigest"),
+        subject_digest=_binding_text(document, "subjectDigest"),
+        origin_composition=provenance,
+        planned_fingerprint=_binding_text(document, "plannedFingerprint"),
+        actual_fingerprint=_binding_text(document, "actualFingerprint"),
+        payload_digest=_binding_text(document, "payloadDigest"),
+        difference_codes=tuple(differences),
+    )
+
+
+def require_legacy_resume_user_payload(
+    record: AgentTranscriptRecord, *, error: str = "RuntimeBinding requires an agent UserMessage record"
+) -> UserMessage:
+    payload = record.payload
+    if record.kind != AGENT_MESSAGE_KIND or not isinstance(payload, UserMessage):
+        raise ValueError(error)
+    return payload
+
+
+def require_legacy_resume_binding(
+    record: AgentTranscriptRecord,
+    binding: _RuntimeBinding,
+    *,
+    payload: UserMessage,
+    expected_session_id: str,
+    digest: Callable[[UserMessage], str],
+) -> None:
+    if binding.record_id != record.record_id or binding.session_id != expected_session_id:
+        raise ValueError("RuntimeBinding record or Session identity differs")
+    if binding.payload_digest != digest(payload):
+        raise ValueError("RuntimeBinding payload digest differs from the message")
+
+
+def read_legacy_runtime_binding(
+    record: AgentTranscriptRecord,
+    *,
+    inspect_binding: Callable[[Mapping[str, object]], _LegacyBindingObservation[_LegacyBindingT]],
+    digest: Callable[[UserMessage], str],
+    payload_error: str = "RuntimeBinding requires an agent UserMessage record",
+    missing_error: str = "RuntimeBinding known schema has no binding",
+) -> _LegacyBindingT | Literal["unknown_version"] | None:
+    observation = inspect_binding(record.metadata)
+    if observation.status == "absent":
+        return None
+    payload = require_legacy_resume_user_payload(record, error=payload_error)
+    if observation.status == "unknown_version":
+        return "unknown_version"
+    binding = observation.binding
+    if binding is None:
+        raise ValueError(missing_error)
+    require_legacy_resume_binding(
+        record, binding, payload=payload, expected_session_id=binding.session_id, digest=digest,
+    )
+    return binding
+
+
+def project_legacy_runtime_binding(
+    records: Iterable[AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+    ancestry: SelectedAncestry,
+    inspect_binding: Callable[
+        [Mapping[str, object]], _LegacyBindingObservation[_LegacyBindingT]
+    ],
+    digest: Callable[[UserMessage], str],
+    construct: Callable[..., _ResultT],
+) -> _ResultT:
+    """Verify all legacy bindings and retain only the current Session's epoch."""
+    status: Literal["none", "bound", "unknown_version"] = "none"
+    selected_binding: _LegacyBindingT | None = None
+    selected_record_id: str | None = None
+    for record in records:
+        ancestry.require_next(
+            record, error="RuntimeBinding projection requires a complete parent-linked path"
+        )
+        ancestry.advance(record, canonical_binding_bytes)
+        binding = read_legacy_runtime_binding(record, inspect_binding=inspect_binding, digest=digest)
+        if binding is None:
+            continue
+        if isinstance(binding, str):
+            status, selected_binding, selected_record_id = "unknown_version", None, record.record_id
+            continue
+        if binding.session_id == current_session_id and status != "unknown_version":
+            status, selected_binding, selected_record_id = "bound", binding, record.record_id
+    return construct(
+        status, ancestry.hexdigest(), binding=selected_binding, record_id=selected_record_id
+    )
 
 
 def decode_attempt_record_fields(

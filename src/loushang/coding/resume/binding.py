@@ -10,14 +10,14 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal, cast
+from functools import partial
+from typing import TYPE_CHECKING, Literal
 
 from loushang.ai.types import UserMessage
 from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
-from loushang.foundation.json import JSONValue, require_json_mapping
+from loushang.foundation.json import JSONValue
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript._resume_records import SelectedAncestry
-from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 if TYPE_CHECKING:
@@ -148,37 +148,13 @@ def project_coding_runtime_binding_path(
     """
 
     _require_identifier(current_session_id, name="current Session id")
-    status: Literal["none", "bound", "unknown_version"] = "none"
-    selected_binding: CodingRuntimeBindingV1 | None = None
-    selected_record_id: str | None = None
-    ancestry = SelectedAncestry(_ANCESTRY_DOMAIN)
-    for record in records:
-        ancestry.require_next(
-            record, error="RuntimeBinding projection requires a complete parent-linked path"
-        )
-        ancestry.advance(record, _canonical_bytes)
-        observation = inspect_coding_runtime_binding(record.metadata)
-        if observation.status == "absent":
-            continue
-        payload = _require_v1_user_payload(record)
-        if observation.status == "unknown_version":
-            status = "unknown_version"
-            selected_binding = None
-            selected_record_id = record.record_id
-            continue
-        binding = observation.binding
-        if binding is None:
-            raise ValueError("RuntimeBinding known schema has no binding")
-        _require_decoded_v1_binding(
-            record, binding, payload=payload, expected_session_id=binding.session_id,
-        )
-        if binding.session_id == current_session_id and status != "unknown_version":
-            status = "bound"
-            selected_binding = binding
-            selected_record_id = record.record_id
-    return CodingRuntimeBindingPathProjection(
-        status, ancestry.hexdigest(),
-        binding=selected_binding, record_id=selected_record_id,
+    return _records.project_legacy_runtime_binding(
+        records,
+        current_session_id=current_session_id,
+        ancestry=SelectedAncestry(_ANCESTRY_DOMAIN),
+        inspect_binding=inspect_coding_runtime_binding,
+        digest=coding_user_payload_digest,
+        construct=CodingRuntimeBindingPathProjection,
     )
 
 
@@ -203,41 +179,15 @@ def inspect_coding_runtime_binding(
         return CodingRuntimeBindingObservation("unknown_version")
     if type(version) is not int or version != CODING_RUNTIME_BINDING_VERSION:
         raise ValueError("RuntimeBinding metadata version is invalid")
+    return CodingRuntimeBindingObservation("known", _decode_runtime_binding_fields(raw))
+
+
+def _decode_runtime_binding_fields(raw: Mapping[str, object]) -> CodingRuntimeBindingV1:
     if set(raw) != _FIELDS:
         raise ValueError("RuntimeBinding metadata fields are invalid")
-    document = require_json_mapping(dict(raw), name="RuntimeBinding metadata")
-    origin = document["originEvidence"]
-    if not isinstance(origin, dict):
-        raise ValueError("RuntimeBinding origin evidence is invalid")
-    provenance: CodingCompositionProvenanceV1 | None
-    if origin == {"kind": "legacy_unknown"}:
-        provenance = None
-    elif set(origin) == {"kind", "setId", "planFingerprint"} and origin.get("kind") == "composition":
-        provenance = CodingCompositionProvenanceV1(
-            _text(origin, "setId"), _text(origin, "planFingerprint"),
-        )
-    else:
-        raise ValueError("RuntimeBinding origin evidence is invalid")
-    differences = document["differenceCodes"]
-    if not isinstance(differences, list) or any(
-        type(value) is not str for value in differences
-    ):
-        raise ValueError("RuntimeBinding difference codes are invalid")
-    binding = CodingRuntimeBindingV1(
-        attempt_id=_text(document, "attemptId"),
-        input_id=_text(document, "inputId"),
-        record_id=_text(document, "recordId"),
-        session_id=_text(document, "sessionId"),
-        original_leaf_id=_optional_text(document, "originalLeafId"),
-        ancestry_digest=_text(document, "ancestryDigest"),
-        subject_digest=_text(document, "subjectDigest"),
-        origin_composition=provenance,
-        planned_fingerprint=_text(document, "plannedFingerprint"),
-        actual_fingerprint=_text(document, "actualFingerprint"),
-        payload_digest=_text(document, "payloadDigest"),
-        difference_codes=cast(tuple[str, ...], tuple(differences)),
+    return _records.decode_resume_binding_document(
+        raw, construct=CodingRuntimeBindingV1, construct_origin=CodingCompositionProvenanceV1
     )
-    return CodingRuntimeBindingObservation("known", binding)
 
 
 def matches_intent(
@@ -295,9 +245,7 @@ def prepare_coding_resume_user_record(
 
     if not isinstance(binding, CodingRuntimeBindingV1):
         raise TypeError("RuntimeBinding record requires a Coding binding")
-    if coding_user_payload_digest(message) != binding.payload_digest:
-        raise ValueError("RuntimeBinding payload digest does not match the message")
-    record = _records.make_resume_user_record(
+    return _records.make_resume_user_record(
         message,
         binding,
         parent_id=commit_parent_id,
@@ -305,11 +253,12 @@ def prepare_coding_resume_user_record(
         resource_metadata=resource_metadata,
         evidence_name="Resume resource evidence metadata",
         metadata_conflict="Resume metadata key conflict",
+        digest=coding_user_payload_digest,
+        payload_error="RuntimeBinding payload digest does not match the message",
+        validate=lambda record: validate_coding_runtime_binding_record(
+            record, expected_session_id=binding.session_id
+        ),
     )
-    validate_coding_runtime_binding_record(
-        record, expected_session_id=binding.session_id,
-    )
-    return record
 
 
 def validate_coding_runtime_binding_record(
@@ -328,24 +277,10 @@ def validate_coding_runtime_binding_record(
     return binding
 
 
-def _require_v1_user_payload(record: AgentTranscriptRecord) -> UserMessage:
-    payload = record.payload
-    if record.kind != AGENT_MESSAGE_KIND or not isinstance(payload, UserMessage):
-        raise ValueError("RuntimeBinding requires an agent UserMessage record")
-    return payload
-
-
-def _require_decoded_v1_binding(
-    record: AgentTranscriptRecord,
-    binding: CodingRuntimeBindingV1,
-    *,
-    payload: UserMessage,
-    expected_session_id: str,
-) -> None:
-    if binding.record_id != record.record_id or binding.session_id != expected_session_id:
-        raise ValueError("RuntimeBinding record or Session identity differs")
-    if binding.payload_digest != coding_user_payload_digest(payload):
-        raise ValueError("RuntimeBinding payload digest differs from the message")
+_require_v1_user_payload = _records.require_legacy_resume_user_payload
+_require_decoded_v1_binding = partial(
+    _records.require_legacy_resume_binding, digest=coding_user_payload_digest
+)
 
 
 _canonical_bytes = _records.canonical_binding_bytes
@@ -364,20 +299,6 @@ def _require_identifier(value: object, *, name: str) -> None:
 def _require_digest(value: object, *, name: str) -> None:
     if type(value) is not str or _DIGEST.fullmatch(value) is None:
         raise ValueError(f"RuntimeBinding {name} is invalid")
-
-
-def _text(document: Mapping[str, object], key: str) -> str:
-    value = document[key]
-    if type(value) is not str:
-        raise ValueError(f"RuntimeBinding {key} is invalid")
-    return value
-
-
-def _optional_text(document: Mapping[str, object], key: str) -> str | None:
-    value = document[key]
-    if value is None:
-        return None
-    return _text(document, key)
 
 
 __all__ = [
