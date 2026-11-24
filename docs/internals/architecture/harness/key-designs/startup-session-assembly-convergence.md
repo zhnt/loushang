@@ -1134,3 +1134,18 @@ Coding 继续解析配置，核实 Product 路线，获取早期租约并建立�
 
 现有启动、生命周期和架构回归 96 项通过，1 项因本机支持安全目录相对暂存而跳过。
 CLI 和 TUI 入口回归另有 5 项通过。受影响文件的 Ruff 和 mypy、依赖事实和文档检查通过。
+
+## Catalog 启动与 Session 共用状态
+
+以 `d0c52b408` 为基线，技术复核采用本地 archmethod `0f9bd3f`。Coding 的
+`InitialCatalogHandoff` 直接使用原 Harness `SessionStartupCustody` 状态。
+legacy 与 fenced 启动、首次 Catalog 投影、临时根移交、Session 构造及失败清理
+现在持有同一个启动对象。既有 Catalog、Package Product 和批准入口继续执行原步骤。
+
+完整 fenced 投影协调的试作减少 Coding 37 行，增加 Harness 106 行，系统净增
+69 行。试作增加了多项编译绑定，且没有消除第二份执行程序，因此撤回；最终保留
+共同启动状态，Coding 和系统生产 Python 各减 5 行。更大范围的 Catalog 选择与
+编译链路仍待收敛。
+
+58 项现有启动、Catalog、托管入口与失败清理回归通过。另有 2 项会话持久化、
+恢复和取消冒烟通过。Ruff、mypy、依赖图和文档检查通过。
