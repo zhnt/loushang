@@ -179,19 +179,15 @@ from loushang.harness.environment import LocalHostEnvironmentProbe
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
-from loushang.harness.package_product._application_runtime import handoff_product_open
 from loushang.harness.package_product._selected_plugin_revisions import (
     capture_enabled_plugin_recheck,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
-    PosixLocalWheelProductRuntimeFactory,
-    WindowsLocalWheelProductRuntimeFactory,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
-    dispose_unbound_factory_after_failure,
     guard_unbound_factory,
 )
 from loushang.harness.policy import PolicyEvaluator
@@ -1712,15 +1708,11 @@ def _select_direct_coding_product_factory(
         worker_candidates=worker_candidates,
         windows_candidate=windows_candidate,
     )
-    with handoff_product_open(selection, cleanup_note="Coding Product owner cleanup also failed"):
-        factory = selection.factory_for_session(
-            manager,
-            settings_manager=(None if services is None else services.settings_manager),
-        )
-    if factory is None:
-        selection.close()
-        return None
-    return CodingSessionOwnedProductRuntimeFactory(factory, selection)
+    return selection.transfer_factory_for_session(
+        manager,
+        read_settings=lambda: None if services is None else services.settings_manager,
+        own_factory=CodingSessionOwnedProductRuntimeFactory,
+    )
 
 
 async def _create_resume_agent_session(
@@ -1777,15 +1769,17 @@ async def _create_resume_agent_session(
     )
     admission.require(session_manager, composition)
     selected_factory = (
-        _borrow_application_coding_product_factory(
-            product_owner_selection, session_manager, services=services,
-            worker_candidates=include_worker_candidates,
+        product_owner_selection.borrow_factory_for_session(
+            session_manager,
+            settings_manager=None if services is None else services.settings_manager,
+            worker_factory=(
+                CodingApplicationWorkerProductRuntimeFactory if include_worker_candidates else None
+            ),
         ) if product_owner_selection is not None else _select_direct_coding_product_factory(
             session_manager, services=services, windows_candidate=sys.platform == "win32",
         )
     )
-    session: AgentSession | None = None
-    try:
+    with guard_unbound_factory(selected_factory):
         admission.require(session_manager, composition)
         session = _create_agent_session(
             session_manager=session_manager, composition_set=composition,
@@ -1802,16 +1796,14 @@ async def _create_resume_agent_session(
             _resume_worker_parent=resume_worker_parent,
             _resume_effect_owner_ids=resume_effect_owner_ids,
         )
+    try:
         admission.require(session_manager, composition)
-        return session
     except BaseException as error:
-        if session is not None:
-            await discard_candidate(
-                session, error, cleanup_note="Coding Resume candidate cleanup also failed: "
-            )
-        else:
-            dispose_unbound_factory_after_failure(selected_factory, error)
+        await discard_candidate(
+            session, error, cleanup_note="Coding Resume candidate cleanup also failed: "
+        )
         raise
+    return session
 
 
 def create_agent_session(
@@ -1898,16 +1890,17 @@ def select_ordinary_coding_session_factory(
     worker_candidate_plugin_id: str | None = None,
 ) -> PackageProductRuntimeFactoryPort | None:
     """Admit the ordinary Session before selecting or transferring its Product factory."""
-    session_manager.require_no_unsettled_resume_activation()
-    if worker_candidate_plugin_id is not None and (
-        not isinstance(worker_candidate_plugin_id, str)
-        or not worker_candidate_plugin_id
-        or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
-        or not session_manager.is_persisted()
-    ):
-        raise CodingWorkerOrdinaryBootstrapError(
-            "coding_worker_ordinary_transcript_not_materialized"
-        )
+    with guard_unbound_factory(package_product_runtime_factory):
+        session_manager.require_no_unsettled_resume_activation()
+        if worker_candidate_plugin_id is not None and (
+            not isinstance(worker_candidate_plugin_id, str)
+            or not worker_candidate_plugin_id
+            or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
+            or not session_manager.is_persisted()
+        ):
+            raise CodingWorkerOrdinaryBootstrapError(
+                "coding_worker_ordinary_transcript_not_materialized"
+            )
     return (
         package_product_runtime_factory
         if package_product_runtime_factory is not None
@@ -2116,35 +2109,6 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
 )
 
 
-def _borrow_application_coding_product_factory(
-    selection: CodingFencedProductApplicationSelection,
-    manager: SessionManager,
-    *,
-    services: BootstrapServices | None,
-    worker_candidates: bool = False,
-) -> PackageProductRuntimeFactoryPort | None:
-    factory = selection.factory_for_session(
-        manager, settings_manager=None if services is None else services.settings_manager,
-    )
-    selected_factory: PackageProductRuntimeFactoryPort | None = factory
-    if worker_candidates:
-        if not isinstance(
-            factory,
-            (
-                PosixLocalWheelProductRuntimeFactory,
-                WindowsLocalWheelProductRuntimeFactory,
-            ),
-        ):
-            error = TypeError("Coding Worker requires Product selection")
-            dispose_unbound_factory_after_failure(factory, error)
-            raise error
-        selected_factory = CodingApplicationWorkerProductRuntimeFactory(
-            factory=factory,
-            selection=selection,
-        )
-    return selected_factory
-
-
 def _build_with_package_product_selection(
     selection: CodingFencedProductApplicationSelection,
     manager: SessionManager,
@@ -2153,8 +2117,12 @@ def _build_with_package_product_selection(
     worker_candidates: bool = False,
 ) -> AgentSession:
     manager.require_no_unsettled_resume_activation()
-    selected_factory = _borrow_application_coding_product_factory(
-        selection, manager, services=services, worker_candidates=worker_candidates,
+    selected_factory = selection.borrow_factory_for_session(
+        manager,
+        settings_manager=services.settings_manager,
+        worker_factory=(
+            CodingApplicationWorkerProductRuntimeFactory if worker_candidates else None
+        ),
     )
     with guard_unbound_factory(selected_factory):
         return build(selected_factory)

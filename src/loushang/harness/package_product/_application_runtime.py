@@ -18,6 +18,7 @@ from typing import (
     Literal,
     NamedTuple,
     Protocol,
+    Self,
     TypedDict,
     TypeVar,
     Unpack,
@@ -99,6 +100,7 @@ from .product_local_wheel_runtime import (
     _repair_ordinary_windows_runtime_leases,
     bind_read_only_product_desired_state,
 )
+from .product_runtime import PackageProductRuntimeFactoryPort, guard_unbound_factory
 
 _GC_RESERVATIONS_NAME = "gc-reservations.jsonl"
 _GC_BINDINGS_NAME = "gc-bindings.jsonl"
@@ -821,6 +823,7 @@ _SessionManagerT = TypeVar("_SessionManagerT", bound=_ProductSessionIdentity)
 _ProductSessionFactory = (
     PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory
 )
+_OwnedFactoryT = TypeVar("_OwnedFactoryT", bound=PackageProductRuntimeFactoryPort)
 
 
 class OrdinaryProductSessionOwner(Generic[_SessionManagerT]):
@@ -1095,6 +1098,46 @@ class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], A
                 historical_origin=self._historical_workspace(manager),
             )
             return owner.factory_for_session(manager) if owner is not None else None
+
+    def transfer_factory_for_session(
+        self,
+        manager: _SessionManagerT,
+        *,
+        read_settings: Callable[[], _SettingsT | None],
+        own_factory: Callable[[_ProductSessionFactory, Self], _OwnedFactoryT],
+    ) -> _OwnedFactoryT | None:
+        """Transfer this one-Session selection alongside its native factory."""
+
+        with handoff_product_open(
+            self, cleanup_note=f"{self._application_label} Product owner cleanup also failed"
+        ):
+            factory = self.factory_for_session(manager, settings_manager=read_settings())
+            if factory is not None:
+                with guard_unbound_factory(factory):
+                    return own_factory(factory, self)
+        self.close()
+        return None
+
+    def borrow_factory_for_session(
+        self,
+        manager: _SessionManagerT,
+        *,
+        settings_manager: _SettingsT | None,
+        worker_factory: Callable[[_ProductSessionFactory, Self], PackageProductRuntimeFactoryPort]
+        | None = None,
+    ) -> PackageProductRuntimeFactoryPort | None:
+        """Borrow a factory lease while the application retains its selection."""
+
+        factory = self.factory_for_session(manager, settings_manager=settings_manager)
+        if worker_factory is None:
+            return factory
+        with guard_unbound_factory(factory):
+            if not isinstance(
+                factory,
+                (PosixLocalWheelProductRuntimeFactory, WindowsLocalWheelProductRuntimeFactory),
+            ):
+                raise TypeError(f"{self._application_label} Worker requires Product selection")
+            return worker_factory(factory, self)
 
     def _session_workspace(self, manager: _SessionManagerT) -> Path:
         return Path(manager.get_cwd())

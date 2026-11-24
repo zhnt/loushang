@@ -540,20 +540,21 @@ class CodingRealHostedSessionFactoryV1:
                 runtime_factory = self._default_product_factory_for_session(
                     manager, services
                 )
-            created = opaque_session_binding.created
-            model = self._model
-            if not created and model is not None:
-                model = _resolve_hosted_saved_model(
-                    manager.build_session_context().model, services.model_registry, model,
+            with guard_unbound_factory(runtime_factory):
+                created = opaque_session_binding.created
+                model = self._model
+                if not created and model is not None:
+                    model = _resolve_hosted_saved_model(
+                        manager.build_session_context().model, services.model_registry, model,
+                    )
+                tool_policy = (
+                    PolicyEvaluatorChain(
+                        tuple(p for p in (workspace_policy, policy.policy_engine) if p is not None),
+                        strategy="most_restrictive",
+                    )
+                    if workspace_policy is not None
+                    else policy.policy_engine
                 )
-            tool_policy = (
-                PolicyEvaluatorChain(
-                    tuple(p for p in (workspace_policy, policy.policy_engine) if p is not None),
-                    strategy="most_restrictive",
-                )
-                if workspace_policy is not None
-                else policy.policy_engine
-            )
             selected_factory = select_ordinary_coding_session_factory(
                 manager,
                 services=services,
