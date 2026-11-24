@@ -13,6 +13,7 @@ async function simulateDesktop(page: Page, managed = false) {
       resizeRequests: [] as unknown[],
       devtoolsRequests: [] as string[],
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
+      __TAURI_OS_PLUGIN_INTERNALS__: { platform: "linux" },
       __TAURI_INTERNALS__: {
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
         transformCallback: () => 1,
