@@ -410,3 +410,16 @@ API脚本只校验__file__而无compiled runtime guard，未序列化live Produc
 三独立实际视角与完整证据在树外a210-windows-backup-retention；本批技术接受仅限该
 读事务与上述验证范围。完整Code108526/系统661050，距15K仍93526；整C08及P1–P4开放。
 具体运行失败/更正和全成本见[执行记录](../coding-responsibility-convergence-progress.md)。
+
+## POSIX 恢复与确认
+
+现有 Plugin Management 的 `PosixPrivateDataRestore` 统一执行恢复所需的 Desired State 与删除历史复核、
+档案关联、计划生成、完成回执验证和确认。SDK 的只读预览与确认复核仍使用原只读文件守卫和 Desired 快照。
+恢复与确认写入仍由 Coding 的离线写入守卫授权。Coding 继续提供 Arch 路径、名义记录和持久 ID。
+
+本批复用原删除与恢复日志，沿用原校验顺序及持久格式。Windows 事务继续由原 owner 处理，
+两平台共享恢复计划的四个结构字段。实施 agent `/root` 在 `8d107c7fe` 基线上技术接受上述职责边界，
+所用架构方法为本地 `archmethod` 的 `0f9bd3ff51`。
+
+Linux 上 48 项现有回归通过，覆盖 CLI、SDK、恢复重放、确认、过期和删除，以及 Windows 日志和预览的合同测试。
+Windows 原生文件发布未在本地运行。生产 Python 为 Coding −99 行、Harness +87 行、系统 −12 行。
