@@ -175,6 +175,10 @@ from loushang.harness.environment import LocalHostEnvironmentProbe
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.package_product._application_runtime import (
+    is_explicit_worker_plugin_id,
+    select_resume_worker_candidates,
+)
 from loushang.harness.package_product._selected_plugin_revisions import (
     capture_enabled_plugin_recheck,
 )
@@ -683,9 +687,7 @@ def _create_agent_session(
     )
     if worker_candidate_plugin_id is not None and (
         sys.platform not in {"linux", "win32"}
-        or not isinstance(worker_candidate_plugin_id, str)
-        or not worker_candidate_plugin_id
-        or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
+        or not is_explicit_worker_plugin_id(worker_candidate_plugin_id)
         or not product_base_requested
         or not isinstance(
             package_product_runtime_factory,
@@ -1725,21 +1727,13 @@ async def _create_resume_agent_session(
         product_owner_selection, CodingFencedProductApplicationSelection,
     ):
         raise TypeError("Coding Resume Product application owner is invalid")
-    if (
-        type(worker_candidates) is not bool
-        or (
-            worker_candidate_plugin_id is not None
-            and (
-                not isinstance(worker_candidate_plugin_id, str)
-                or not worker_candidate_plugin_id
-                or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
-            )
-        )
-        or ((worker_candidates or worker_candidate_plugin_id is not None) and product_owner_selection is None)
-        or (resume_worker_parent is not None and worker_candidate_plugin_id is None)
-    ):
-        raise ValueError("Coding Resume Worker requires its application Product owner")
-    include_worker_candidates = worker_candidates or worker_candidate_plugin_id is not None
+    include_worker_candidates = select_resume_worker_candidates(
+        worker_candidates,
+        worker_candidate_plugin_id,
+        has_application_owner=product_owner_selection is not None,
+        require_selected_plugin=resume_worker_parent is not None,
+        invalid="Coding Resume Worker requires its application Product owner",
+    )
     composition = _canonical_coding_composition_set(composition_set)
     admission = _CodingResumeBootstrapAdmission(
         session_manager, attempt_id, composition, require_current_admission,
@@ -1870,9 +1864,7 @@ def select_ordinary_coding_session_factory(
     with guard_unbound_factory(package_product_runtime_factory):
         session_manager.require_no_unsettled_resume_activation()
         if worker_candidate_plugin_id is not None and (
-            not isinstance(worker_candidate_plugin_id, str)
-            or not worker_candidate_plugin_id
-            or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
+            not is_explicit_worker_plugin_id(worker_candidate_plugin_id)
             or not session_manager.is_persisted()
         ):
             raise CodingWorkerOrdinaryBootstrapError(
@@ -2138,9 +2130,7 @@ def _create_agent_session_runtime(
     invocation_product_profile: CodingAgentInvocationProductProfile | None = None,
 ) -> AgentSessionRuntime:
     if worker_candidate_plugin_id is not None and (
-        not isinstance(worker_candidate_plugin_id, str)
-        or not worker_candidate_plugin_id
-        or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
+        not is_explicit_worker_plugin_id(worker_candidate_plugin_id)
         or not persist
     ):
         raise CodingWorkerOrdinaryBootstrapError(

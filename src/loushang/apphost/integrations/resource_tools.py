@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart, ToolCall
@@ -14,6 +14,7 @@ from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     constrain_execution_profile,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.policy import (
     PolicyDecision,
     PolicyEvaluator,
@@ -44,6 +45,9 @@ from loushang.harness.workspace.operations import (
 
 from ._resource_client_reference import ClientDirectoryOffline
 from .resource_access import HostedResourceAccess
+
+if TYPE_CHECKING:
+    from loushang.harness.session.bootstrap_utils import NoToolsMode
 
 SESSION_FILES = "session_files"
 
@@ -130,6 +134,28 @@ def hosted_resource_tools(
     if host_paths:
         tools.extend(_host_reference_tool(operation, get_access) for operation in HOST_RESOURCE_TOOLS)
     return tools
+
+
+def bind_hosted_session_tools(
+    access: HostedResourceAccess,
+    tools: list[ToolDefinition] | None,
+    *,
+    workspace_tools: bool,
+    resource_tools: bool,
+    allowed: list[str] | None = None,
+) -> tuple[list[ToolDefinition] | None, NoToolsMode | None, list[str] | ToolSelection]:
+    """Apply one tool selection to a newly opened or resumed hosted Session."""
+    if resource_tools:
+        tools = [
+            *(tools or ()),
+            *hosted_resource_tools(lambda: access, host_paths=workspace_tools),
+        ]
+    allowed_names = ToolSelection.ALL if allowed is None else allowed
+    if workspace_tools:
+        return tools, None, allowed_names
+    if resource_tools:
+        return tools, "builtin", [SESSION_FILES]
+    return tools, "all", allowed_names
 
 
 def _host_reference_tool(

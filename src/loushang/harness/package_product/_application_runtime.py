@@ -140,6 +140,34 @@ def require_current_product_admission(
         )
 
 
+def is_explicit_worker_plugin_id(plugin_id: object) -> bool:
+    return not (
+        not isinstance(plugin_id, str)
+        or not plugin_id
+        or plugin_id != plugin_id.strip()
+    )
+
+
+def select_resume_worker_candidates(
+    include_candidates: bool,
+    plugin_id: str | None,
+    *,
+    has_application_owner: bool,
+    require_selected_plugin: bool = False,
+    invalid: str,
+) -> bool:
+    """Select the Worker-capable factory only with its application owner."""
+    selected = plugin_id is not None
+    if (
+        type(include_candidates) is not bool
+        or (selected and not is_explicit_worker_plugin_id(plugin_id))
+        or ((include_candidates or selected) and not has_application_owner)
+        or (require_selected_plugin and not selected)
+    ):
+        raise ValueError(invalid)
+    return include_candidates or selected
+
+
 class SourceCatalogIdentity(TypedDict):
     source_root: Path
     store_id: str

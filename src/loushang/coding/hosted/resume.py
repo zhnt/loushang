@@ -18,9 +18,8 @@ from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.types import ImagePart
 from loushang.apphost.integrations.resource_access import HostedResourceAccess
 from loushang.apphost.integrations.resource_tools import (
-    SESSION_FILES,
     HostReferencePolicy,
-    hosted_resource_tools,
+    bind_hosted_session_tools,
 )
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
@@ -82,7 +81,6 @@ from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
-from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.journal._owned_io import settled_io
@@ -177,18 +175,19 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._services = services
         self._model = model
         self._stream_fn = stream_fn
-        self._tools = tools
         self._hosted_workspace = hosted_workspace
         self._workspace = hosted_workspace.cwd if hosted_workspace is not None else source.record.scope.cwd
-        self._workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
-        self._resource_tools = resource_tools
+        workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
         self._resource_access = HostedResourceAccess(
             self.identity.session_id, self._source.record.scope.session_dir,
             self._resource_records, self._hosted_workspace,
         )
-        if resource_tools:
-            access = self.create_resource_access()
-            self._tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=self._workspace_tools)]
+        self._tools, self._no_tools, self._allowed_tool_names = bind_hosted_session_tools(
+            self.create_resource_access() if resource_tools else self._resource_access,
+            tools,
+            workspace_tools=workspace_tools,
+            resource_tools=resource_tools,
+        )
         self._workspace_policy = workspace_policy
         self._user_choice_enabled = user_choice_enabled
         self._output_capture_factory = output_capture_factory
@@ -529,7 +528,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             require_subject()
             effects = prepare_first_input_effects(
                 plan,
-                no_tools=None if self._workspace_tools else "builtin" if self._resource_tools else "all",
+                no_tools=self._no_tools,
                 history=self._source.history,
                 session_dir=self._source.record.scope.session_dir,
                 settings_manager=self._services.settings_manager,
@@ -580,8 +579,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 tools=self._tools,
                 output_capture_factory=self._output_capture_factory,
                 approval_resolver=self._approval,
-                no_tools=None if self._workspace_tools else "builtin" if self._resource_tools else "all",
-                allowed_tool_names=[SESSION_FILES] if self._resource_tools and not self._workspace_tools else ToolSelection.ALL,
+                no_tools=self._no_tools,
+                allowed_tool_names=self._allowed_tool_names,
                 tool_policy_evaluator=HostReferencePolicy(effective_policy),
                 _hosted_workspace=self._hosted_workspace,
                 observe_input_identity=self._observe_input_identity,

@@ -31,7 +31,7 @@ from loushang.apphost.integrations.resource_access import HostedResourceAccess
 from loushang.apphost.integrations.resource_tools import (
     SESSION_FILES,
     HostReferencePolicy,
-    hosted_resource_tools,
+    bind_hosted_session_tools,
 )
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -86,7 +86,6 @@ from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
-from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.effects import FilesystemEffect, ProcessEffect
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.journal._owned_io import settled_io
@@ -521,12 +520,16 @@ class CodingRealHostedSessionFactoryV1:
         async with close_unpublished_candidate(lambda: opaque_session_binding.close()):
             approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
             manager._hosted_workspace = hosted_workspace
-            tools = self._tools
             access = HostedResourceAccess(
                 identity.session_id, manager.session_dir, lambda: manager.entries, hosted_workspace,
             )
-            if resource_tools:
-                tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=workspace_tools)]
+            tools, no_tools, allowed_tool_names = bind_hosted_session_tools(
+                access,
+                self._tools,
+                workspace_tools=workspace_tools,
+                resource_tools=resource_tools,
+                allowed=self._session_allowed_tools,
+            )
             services = self._services_factory(settings_cwd)
             policy = workspace_tool_runtime_settings(services.settings_manager)
             runtime_factory = None
@@ -568,16 +571,11 @@ class CodingRealHostedSessionFactoryV1:
                     stream_fn=self._stream_fn,
                     services=services,
                     tools=tools,
-                    no_tools=None if workspace_tools else "builtin" if resource_tools else "all",
+                    no_tools=no_tools,
                     approval_resolver=approval,
                     tool_policy_evaluator=HostReferencePolicy(tool_policy) if tool_policy else None,
                     active_tool_names=self._session_active_tools,
-                    allowed_tool_names=(
-                        [SESSION_FILES] if resource_tools and not workspace_tools
-                        else self._session_allowed_tools
-                        if self._session_allowed_tools is not None
-                        else ToolSelection.ALL
-                    ),
+                    allowed_tool_names=allowed_tool_names,
                     system_prompt=self._session_system_prompt,
                     output_capture_factory=self._output_capture_factory,
                     package_product_runtime_factory=selected_factory,
