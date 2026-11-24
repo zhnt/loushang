@@ -510,7 +510,16 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
     _path_label: str
     _error_factory: Callable[[str], Exception]
     _codec: JournalRecordCodec[RecordT]
+    _product_journal_name: str
     _catalog_regular_single_link = False
+
+    @classmethod
+    def for_roots(cls, roots: FencedSourceCatalogRoots, *, read_only: bool = False) -> Self:
+        return cls(
+            roots.state_root / cls._product_journal_name,
+            **roots.identity,
+            read_only=read_only,
+        )
 
     def __init__(
         self,
@@ -880,15 +889,6 @@ class _PosixWorkerSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
 class _DataWheelSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
     _record_type: type[PluginRecordT]
     _error_factory: type[Exception]
-    _product_journal_name: str
-
-    @classmethod
-    def for_roots(cls, roots: FencedSourceCatalogRoots, *, read_only: bool = False) -> Self:
-        return cls(
-            roots.state_root / cls._product_journal_name,
-            **roots.identity,
-            read_only=read_only,
-        )
 
     def project_policy_group(
         self, policy: PackageProductLocalWheelPolicy, *, trust_class: str

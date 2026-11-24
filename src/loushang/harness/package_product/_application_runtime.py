@@ -244,6 +244,30 @@ def fenced_source_catalog_scope(
         )
 
 
+_SourceRecordT_co = TypeVar("_SourceRecordT_co", covariant=True)
+_SourceRecordT = TypeVar("_SourceRecordT")
+
+
+class _InertPosixSourceCatalog(Protocol[_SourceRecordT_co]):
+    def capture(
+        self, source: Path, *, epoch_runtime: PackageProductPosixFencedRuntimeOwner
+    ) -> _SourceRecordT_co: ...
+
+
+def capture_fenced_posix_source(
+    source: Path,
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    scope_id: str,
+    no_namespace: str,
+    catalog: Callable[[FencedSourceCatalogRoots], _InertPosixSourceCatalog[_SourceRecordT]],
+) -> _SourceRecordT:
+    """Pin one inert Source through its Catalog in the current POSIX epoch."""
+    runtime = PackageProductPosixFencedRuntimeOwner.open(**roots)
+    with fenced_source_catalog_scope(runtime, scope_id=scope_id, no_namespace=no_namespace) as bound:
+        return catalog(bound).capture(source, epoch_runtime=runtime)
+
+
 class FencedProductManagementState(NamedTuple):
     state_root: Path
     gc_gate: PluginPackageGcReservationJournal

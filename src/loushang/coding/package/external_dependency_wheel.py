@@ -106,6 +106,7 @@ class CodingExternalDependencyWheelCatalog(
 
     _source_label = "Dependency Wheel"
     _product_id = "coding"
+    _product_journal_name = "external-dependency-wheel-bindings.jsonl"
 
     def _directory_name(self) -> str:
         return _DIRECTORY

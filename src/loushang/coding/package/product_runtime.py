@@ -13,7 +13,7 @@ from hashlib import sha256
 from importlib.metadata import version as version
 from pathlib import Path
 from threading import Lock
-from typing import Literal, TypeVar, cast
+from typing import TypeVar
 
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -34,6 +34,7 @@ from loushang.harness.package_product._application_runtime import (
     LegacyProductWorkspace,
     OrdinaryProductSessionOwner,
     bind_fenced_product_session_owner,
+    capture_fenced_posix_source,
     fenced_source_catalog_scope,
     handoff_product_open,
     open_fenced_product_management_state,
@@ -584,9 +585,12 @@ def admit_coding_external_data_wheel(
 ) -> CodingExternalDataWheelBindingV1:
     """Capture one local data Wheel under the current fenced Product Source root."""
 
-    return cast(
-        "CodingExternalDataWheelBindingV1",
-        _capture_coding_inert_source(lifecycle, source=source, kind="data"),
+    return capture_fenced_posix_source(
+        source,
+        resolve_coding_package_epoch_layout(lifecycle).fenced_runtime_open_kwargs(),
+        scope_id=lifecycle.scope_id,
+        no_namespace="Coding Package Product root is not fenced",
+        catalog=CodingExternalDataWheelCatalog.for_roots,
     )
 
 
@@ -597,9 +601,12 @@ def admit_coding_external_dependency_wheel(
 ) -> CodingExternalDependencyWheelBindingV1:
     """Pin inert dependency bytes; no Coding Plugin profile may use them yet."""
 
-    return cast(
-        "CodingExternalDependencyWheelBindingV1",
-        _capture_coding_inert_source(lifecycle, source=source, kind="dependency"),
+    return capture_fenced_posix_source(
+        source,
+        resolve_coding_package_epoch_layout(lifecycle).fenced_runtime_open_kwargs(),
+        scope_id=lifecycle.scope_id,
+        no_namespace="Coding Package Product root is not fenced",
+        catalog=CodingExternalDependencyWheelCatalog.for_roots,
     )
 
 
@@ -622,37 +629,9 @@ def admit_coding_external_worker_wheel(
             return CodingWindowsExternalWorkerWheelCatalog(
                 epoch_runtime=epoch_runtime, state_root=roots.state_root, **roots.identity
             ).capture(source, admission=admission)
-        return CodingExternalWorkerWheelCatalog(
-            roots.state_root / "external-worker-wheel-bindings.jsonl",
-            **roots.identity,
-        ).capture(source, admission=admission, epoch_runtime=epoch_runtime)
-
-
-def _capture_coding_inert_source(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    *,
-    source: Path,
-    kind: Literal["data", "dependency"],
-) -> CodingExternalDataWheelBindingV1 | CodingExternalDependencyWheelBindingV1:
-    """Capture one inert source through the original epoch and catalog owners."""
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
-    )
-    with fenced_source_catalog_scope(
-        epoch_runtime,
-        scope_id=lifecycle.scope_id,
-        no_namespace="Coding Package Product root is not fenced",
-    ) as roots:
-        catalog = (
-            CodingExternalDataWheelCatalog.for_roots(roots)
-            if kind == "data"
-            else CodingExternalDependencyWheelCatalog(
-                roots.state_root / "external-dependency-wheel-bindings.jsonl",
-                **roots.identity,
-            )
+        return CodingExternalWorkerWheelCatalog.for_roots(roots).capture(
+            source, admission=admission, epoch_runtime=epoch_runtime
         )
-        return catalog.capture(source, epoch_runtime=epoch_runtime)
 
 
 def bootstrap_coding_builtin_product_plugins(
@@ -1109,10 +1088,8 @@ def _compose_coding_product_source_policy(
         roots, read_only=read_only
     ).extend_policy(policy)
     if isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
-        policy = CodingExternalDependencyWheelCatalog(
-            state_root / "external-dependency-wheel-bindings.jsonl",
-            **roots.identity,
-            read_only=read_only,
+        policy = CodingExternalDependencyWheelCatalog.for_roots(
+            roots, read_only=read_only
         ).extend_policy(policy)
     if include_worker_candidates:
         worker_catalog = (
@@ -1120,11 +1097,7 @@ def _compose_coding_product_source_policy(
                 epoch_runtime=epoch_runtime, state_root=state_root, **roots.identity
             )
             if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-            else CodingExternalWorkerWheelCatalog(
-                state_root / "external-worker-wheel-bindings.jsonl",
-                **roots.identity,
-                read_only=read_only,
-            )
+            else CodingExternalWorkerWheelCatalog.for_roots(roots, read_only=read_only)
         )
         policy = worker_catalog.extend_policy(policy)
     return policy, host
