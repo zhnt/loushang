@@ -460,7 +460,6 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
             "loushang.harness.runtime.RuntimeProfileResolver",
         },
         Path('src/loushang/coding/composition/bootstrap.py'): {
-            "loushang.coding.composition.runtime_admission.bind_coding_side_question",
             "loushang.coding.composition.runtime_admission.resolve_coding_capability_profile",
             "loushang.coding.composition.plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.stage_resource_composition_candidate",

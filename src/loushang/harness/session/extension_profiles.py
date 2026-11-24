@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Set
+from dataclasses import dataclass
 
 from loushang.harness.capabilities.composition_runtime import (
     RESOURCE_CAPABILITY_SLOT_KEYS,
+    StagedResourceCompositionCandidate,
     resource_capability_profile,
+    stage_resource_composition_candidate,
 )
 from loushang.harness.capabilities.effective_runtime import runtime_profile_fingerprint
 from loushang.harness.extensions.declarations import (
@@ -30,6 +33,10 @@ from loushang.harness.runtime import (
     RuntimeProfileLayerGrant,
     RuntimeProfileResolver,
 )
+from loushang.harness.session.legacy_side_question import (
+    LegacySideQuestionBinding,
+    bind_legacy_side_question,
+)
 
 _SIDE_QUESTION_SLOTS = frozenset({SIDE_QUESTION_PROVIDER_SLOT.key})
 _GRAPH_SLOT_GROUPS = (
@@ -37,6 +44,26 @@ _GRAPH_SLOT_GROUPS = (
     ("harness.session", _SIDE_QUESTION_SLOTS),
 )
 _GRAPH_SLOTS = RESOURCE_CAPABILITY_SLOT_KEYS | _SIDE_QUESTION_SLOTS
+
+
+@dataclass(frozen=True)
+class SessionExtensionProfileResolution:
+    """One admitted profile and its matching executable factories."""
+
+    profile: ResolvedRuntimeProfile
+    implementations: tuple[RuntimeCapabilityImplementation, ...]
+
+    def bind(self) -> StagedResourceCompositionCandidate:
+        return stage_resource_composition_candidate(
+            self.profile,
+            additional_implementations=self.implementations,
+        )
+
+    def bind_side_question(self) -> LegacySideQuestionBinding:
+        return bind_legacy_side_question(
+            self.profile,
+            additional_implementations=self.implementations,
+        )
 
 
 def prepare_extension_profile(

@@ -74,7 +74,6 @@ from loushang.coding.composition.provenance import (
     historical_startup_composition_record,
 )
 from loushang.coding.composition.runtime_admission import (
-    bind_coding_side_question,
     resolve_coding_capability_profile,
 )
 from loushang.coding.composition.sets import (
@@ -96,6 +95,7 @@ from loushang.coding.lsp._provider_api import (
     CodingLspPluginConfigV1,
 )
 from loushang.coding.lsp.discovery import (
+    ConfigPath,
     coding_lsp_config_paths,
     default_lsp_environment,
     discover_lsp_catalog,
@@ -844,18 +844,34 @@ def _create_agent_session(
         )
     if lsp_enabled_for_session and lsp_read_text is not None:
         raise ValueError("Coding LSP reads only through harness.workspace")
+
+    def read_lsp_definitions(
+        global_config: ConfigPath,
+        project_config: ConfigPath,
+    ) -> tuple[LspServerDefinition, ...]:
+        return discover_lsp_catalog(
+            workspace_root=session_manager.get_cwd(),
+            baseline_environment=resolved_lsp_environment,
+            explicit_definitions=explicit_lsp_definitions,
+            global_config_path=global_config,
+            project_config_path=project_config,
+        ).definitions
+
+    def lsp_configuration(
+        definitions: tuple[LspServerDefinition, ...],
+    ) -> CodingLspPluginConfigV1:
+        return CodingLspPluginConfigV1.from_runtime_inputs(
+            workspace_root=session_manager.get_cwd(),
+            definitions=definitions,
+            baseline_environment=resolved_lsp_environment,
+        )
+
     global_lsp_config, project_lsp_config = coding_lsp_config_paths(
         services.settings_manager,
         workspace_root=session_manager.get_cwd(),
     )
     resolved_lsp_definitions = (
-        discover_lsp_catalog(
-            workspace_root=session_manager.get_cwd(),
-            baseline_environment=resolved_lsp_environment,
-            explicit_definitions=explicit_lsp_definitions,
-            global_config_path=global_lsp_config,
-            project_config_path=project_lsp_config,
-        ).definitions
+        read_lsp_definitions(global_lsp_config, project_lsp_config)
         if eager_lsp_enabled_for_session
         else ()
     )
@@ -1019,12 +1035,8 @@ def _create_agent_session(
             CodingLspPluginConfigV1 | CodingArchPluginConfigV1,
         ] = {}
         if lsp_enabled:
-            configurations["coding.lsp.default"] = (
-                CodingLspPluginConfigV1.from_runtime_inputs(
-                    workspace_root=session_manager.get_cwd(),
-                    definitions=resolved_lsp_definitions,
-                    baseline_environment=resolved_lsp_environment,
-                )
+            configurations["coding.lsp.default"] = lsp_configuration(
+                resolved_lsp_definitions
             )
         if arch_enabled:
             configurations["coding.arch.default"] = (
@@ -1433,17 +1445,8 @@ def _create_agent_session(
                             services.settings_manager,
                             workspace_root=session_manager.get_cwd(),
                         )
-                        definitions = discover_lsp_catalog(
-                            workspace_root=session_manager.get_cwd(),
-                            baseline_environment=resolved_lsp_environment,
-                            explicit_definitions=explicit_lsp_definitions,
-                            global_config_path=global_config,
-                            project_config_path=project_config,
-                        ).definitions
-                        return CodingLspPluginConfigV1.from_runtime_inputs(
-                            workspace_root=session_manager.get_cwd(),
-                            definitions=definitions,
-                            baseline_environment=resolved_lsp_environment,
+                        return lsp_configuration(
+                            read_lsp_definitions(global_config, project_config)
                         )
 
                     build_deferred_lsp_assembly = partial(
@@ -2079,9 +2082,8 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
     source_identity_check=_source_identity_startup_check,
     list_tool_definitions=lambda runner: runner.list_tool_definitions(),
     get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
-    bind_session_side_question=bind_coding_side_question,
     resolve_session_capability_profile=lambda runner: (
-        resolve_coding_capability_profile(runner.active_extensions).profile
+        resolve_coding_capability_profile(runner.active_extensions)
     ),
     product_tool_pack_id="coding.registry",
     extension_tool_pack_id="coding.extensions",
