@@ -245,7 +245,9 @@ def test_historical_snapshot_distinguishes_a_clipped_row_from_omitted_rows(tmp_p
             omitted = snapshot()
             assert omitted.truncated
             assert omitted.records[0].text.startswith("Earlier messages omitted")
-            assert omitted.records[1:] == clipped.records
+            assert omitted.records[1].text == clipped.records[0].text
+            assert omitted.records[1].record_id != clipped.records[0].record_id
+            assert omitted.records[2:] == clipped.records[1:]
         finally:
             await binding.close()
 

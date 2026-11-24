@@ -97,13 +97,13 @@ def test_real_product_projection_matches_recipe_window(last):
             finally:
                 await response.aclose()
         # Exercise the real pure projection without opening a Session/store.
-        owner = SimpleNamespace(
-            _session=SimpleNamespace(messages=messages, session_name="History", is_streaming=False),
-            _projection=SimpleNamespace(revision=last + 1),
-            _user_choice=SimpleNamespace(pending=None),
-            identity=SimpleNamespace(continuity_id="history-recipe"),
+        owner = object.__new__(CodingRealHostedSessionV1)
+        owner._session = SimpleNamespace(
+            messages=messages, session_name="History", is_streaming=False, session_manager=None,
         )
-        snapshot = CodingRealHostedSessionV1.project_snapshot(owner)
+        owner._projection = SimpleNamespace(revision=last + 1)
+        owner._user_choice = SimpleNamespace(pending=None)
+        snapshot = owner.project_snapshot()
         assert snapshot.title == "History"
         records = [[record.kind.value, record.text] for record in snapshot.records]
         validate_history_window(records, last)

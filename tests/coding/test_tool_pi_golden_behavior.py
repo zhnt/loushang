@@ -12,7 +12,7 @@ def _tool_context_provider(*, cwd: str):
     return _provider
 
 
-def test_bash_provider_schema_is_pi_style_while_internal_schema_stays_enhanced() -> (
+def test_bash_provider_schema_exposes_working_directory_and_keeps_internal_options_private() -> (
     None
 ):
     from loushang.harness.tools.workspace import create_tool_definition
@@ -33,6 +33,7 @@ def test_bash_provider_schema_is_pi_style_while_internal_schema_stays_enhanced()
         "type": "object",
         "properties": {
             "command": {"type": "string"},
+            "cwd": {"type": "string"},
             "timeout": {"type": "number"},
         },
         "required": ["command"],
