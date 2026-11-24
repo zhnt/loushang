@@ -7,6 +7,7 @@ import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from loushang.coding.package.epoch_layout import (
@@ -93,17 +94,11 @@ def prepare_coding_package_cutover_roots(
 ) -> CodingPackageEpochLayoutV1:
     """Prepare only missing private roots for an offline first B cutover."""
 
-    if os.name not in {"posix", "nt"}:
-        raise RuntimeError("Native Package cutover preparation is required")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    prepare_legacy_product_cutover_roots(
+    return prepare_legacy_product_cutover_roots(
         lifecycle,
-        control_root=epoch.control_root,
-        snapshot_root=epoch.snapshot_root,
-        epochs_root=epoch.epochs_root,
+        resolve_epoch=partial(resolve_coding_package_epoch_layout, lifecycle),
         label="Coding Package",
     )
-    return epoch
 
 
 def prepare_and_cutover_coding_package_store_from_legacy(

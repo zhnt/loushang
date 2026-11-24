@@ -10,7 +10,7 @@ from contextlib import closing
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Literal, overload
+from typing import Literal, cast, overload
 
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
@@ -119,6 +119,41 @@ def _selected_local_action(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    review_routes = (
+        (
+            "disabled",
+            (
+                "read the first-B snapshot's scoped disabled-only migration review",
+                "commit the offline first-B fence and return a disabled-only review",
+                "accept exactly one reviewed snapshot and seed Product Desired State",
+            ),
+            review_coding_first_b_disabled_only,
+            None,
+            bootstrap_coding_accepted_disabled_only_product_plugins,
+        ),
+        (
+            "builtin",
+            (
+                "read a fenced old builtin Desired State review",
+                "fence an eligible builtin-only old Desired State and return its review",
+                "accept one reviewed old builtin Desired State into Product",
+            ),
+            review_coding_first_b_builtin_only,
+            admit_coding_builtin_only_snapshot,
+            adopt_coding_first_b_builtin_only,
+        ),
+        (
+            "removed",
+            (
+                "read a fenced old local Plugin removal review",
+                "fence an eligible old local removal set and return its review",
+                "accept one reviewed old local removal set into Product",
+            ),
+            review_coding_first_b_removed_local,
+            admit_coding_removed_local_snapshot,
+            adopt_coding_first_b_removed_local,
+        ),
+    )
     parser = argparse.ArgumentParser(prog="loushang-package-cutover")
     parser.add_argument("--workspace", default=".", help="existing Coding workspace")
     parser.add_argument(
@@ -132,62 +167,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="read the current cutover snapshot owner's verified status",
     )
-    read_actions.add_argument(
-        "--review-legacy-disabled-only",
-        action="store_true",
-        help="read the first-B snapshot's scoped disabled-only migration review",
-    )
-    read_actions.add_argument(
-        "--review-legacy-builtin-only",
-        action="store_true",
-        help="read a fenced old builtin Desired State review",
-    )
-    read_actions.add_argument(
-        "--review-legacy-removed-only",
-        action="store_true",
-        help="read a fenced old local Plugin removal review",
-    )
+    for kind, (read_help, _, _), *_handlers in review_routes:
+        read_actions.add_argument(
+            f"--review-legacy-{kind}-only", action="store_true", help=read_help,
+        )
     read_actions.add_argument(
         "--review-legacy-local-plugin",
         metavar="PLUGIN_ID",
         help="read one installed local Plugin review under an existing first-B fence",
     )
-    read_actions.add_argument(
-        "--prepare-legacy-disabled-review",
-        action="store_true",
-        help="commit the offline first-B fence and return a disabled-only review",
-    )
-    read_actions.add_argument(
-        "--prepare-legacy-builtin-review",
-        action="store_true",
-        help="fence an eligible builtin-only old Desired State and return its review",
-    )
-    read_actions.add_argument(
-        "--prepare-legacy-removed-review",
-        action="store_true",
-        help="fence an eligible old local removal set and return its review",
-    )
+    for kind, (_, prepare_help, _), *_handlers in review_routes:
+        read_actions.add_argument(
+            f"--prepare-legacy-{kind}-review", action="store_true", help=prepare_help,
+        )
     for kind, label in _LEGACY_DATA_ROUTES:
         read_actions.add_argument(
             f"--prepare-legacy-local-{kind}-review",
             metavar="PLUGIN_ID",
             help=f"fence eligible old local {label}s and review one Plugin",
         )
-    read_actions.add_argument(
-        "--adopt-legacy-disabled-review",
-        metavar="REVIEW_ID",
-        help="accept exactly one reviewed snapshot and seed Product Desired State",
-    )
-    read_actions.add_argument(
-        "--adopt-legacy-builtin-review",
-        metavar="REVIEW_ID",
-        help="accept one reviewed old builtin Desired State into Product",
-    )
-    read_actions.add_argument(
-        "--adopt-legacy-removed-review",
-        metavar="REVIEW_ID",
-        help="accept one reviewed old local removal set into Product",
-    )
+    for kind, (_, _, adopt_help), *_handlers in review_routes:
+        read_actions.add_argument(
+            f"--adopt-legacy-{kind}-review", metavar="REVIEW_ID", help=adopt_help,
+        )
     for kind, label in _LEGACY_DATA_ROUTES:
         read_actions.add_argument(
             f"--adopt-legacy-local-{kind}-review",
@@ -231,27 +233,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
         elif args.windows_candidate:
             raise ValueError("Windows Product candidate requires Windows")
-        review_routes = (
-            (
-                args.review_legacy_removed_only,
-                args.prepare_legacy_removed_review,
-                review_coding_first_b_removed_local,
-                admit_coding_removed_local_snapshot,
-            ),
-            (
-                args.review_legacy_builtin_only,
-                args.prepare_legacy_builtin_review,
-                review_coding_first_b_builtin_only,
-                admit_coding_builtin_only_snapshot,
-            ),
-            (
-                args.review_legacy_disabled_only,
-                args.prepare_legacy_disabled_review,
-                review_coding_first_b_disabled_only,
-                None,
-            ),
-        )
-        for read_review, prepare_review, project_review, admit_snapshot in review_routes:
+        for kind, _, project_review, admit_snapshot, _adopt in reversed(review_routes):
+            read_review = getattr(args, f"review_legacy_{kind}_only")
+            prepare_review = getattr(args, f"prepare_legacy_{kind}_review")
             if not (read_review or prepare_review):
                 continue
             settings = _cutover_settings(workspace)
@@ -272,20 +256,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                         else None
                     ),
                 )
-            if windows:
-                # The Windows gate admits only the builtin review route.
-                with closing(open_native_fenced_product_epoch(
-                    windows=True, **epoch.fenced_runtime_open_kwargs()
-                )) as windows_owner:
+            with closing(open_native_fenced_product_epoch(
+                windows=windows, posix_read_only=True, **epoch.fenced_runtime_open_kwargs()
+            )) as owner:
+                if windows:
+                    # The Windows gate admits only the builtin review route.
                     document = review_coding_first_b_builtin_only(
-                        lifecycle, windows_owner, settings_manager=settings
+                        lifecycle, owner, settings_manager=settings
                     ).to_dict()
-                return write_package_operator_result(document)
-            with PackageProductPosixFencedRuntimeOwner.open(
-                **epoch.fenced_runtime_open_kwargs(), read_only=True
-            ) as owner:
-                review = project_review(lifecycle, owner, settings_manager=settings)
-            return write_package_operator_result(review.to_dict())
+                else:
+                    review = project_review(
+                        lifecycle,
+                        cast(PackageProductPosixFencedRuntimeOwner, owner),
+                        settings_manager=settings,
+                    )
+            return write_package_operator_result(document if windows else review.to_dict())
 
         prepare_kind, review_plugin_id = (
             local_prepare
@@ -321,21 +306,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             return write_package_operator_result(local_review.to_dict())
 
-        adoption_routes = (
-            (
-                args.adopt_legacy_disabled_review,
-                bootstrap_coding_accepted_disabled_only_product_plugins,
-            ),
-            (
-                args.adopt_legacy_builtin_review,
-                partial(adopt_coding_first_b_builtin_only, windows_candidate=True)
-                if windows else adopt_coding_first_b_builtin_only,
-            ),
-            (args.adopt_legacy_removed_review, adopt_coding_first_b_removed_local),
-        )
-        for accepted_review_id, adopt_review in adoption_routes:
+        for kind, _, _review, _admission, adopt_review in review_routes:
+            accepted_review_id = getattr(args, f"adopt_legacy_{kind}_review")
             if accepted_review_id is None or (not windows and not accepted_review_id):
                 continue
+            if windows:
+                # The Windows gate admits only builtin adoption.
+                adopt_review = partial(adopt_coding_first_b_builtin_only, windows_candidate=True)
             receipt = adopt_review(
                 lifecycle,
                 _cutover_settings(workspace),
