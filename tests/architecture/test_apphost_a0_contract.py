@@ -406,6 +406,7 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path('src/loushang/coding/hosted/method_application.py'),
         # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
         Path('src/loushang/coding/hosted/goal_application.py'),
+        Path('src/loushang/coding/hosted/goal_commands.py'),
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/session.py'),

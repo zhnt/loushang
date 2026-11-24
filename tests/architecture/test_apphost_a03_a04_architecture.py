@@ -172,6 +172,12 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             },
             "protocol": {"AppErrorCodeV1", "AppServiceError"},
         },
+        APPHOST / "integrations/_goal_commands.py": {
+            "execution.goal_model": {
+                "InteractiveGoalCommandStatusV1", "InteractiveGoalCommandV1",
+                "InteractiveGoalCommandViewV1", "InteractiveGoalReviewSubmissionV1",
+            },
+        },
     }
     hosted_contract_imports = {
         path: {

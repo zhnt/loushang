@@ -8,10 +8,8 @@ from loushang.coding.hosted._goal_config import HostedGoalSetup
 from loushang.coding.hosted._repository_config import (
     CodingHostedRepositoryGoalV1 as CodingHostedRepositoryGoalV1,
 )
-from loushang.coding.hosted.bootstrap import (
-    CodingHostedLaunchV1,
-    _create_coding_scoped_work_application,
-)
+from loushang.coding.hosted.application import _create_coding_scoped_work_application
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
 from loushang.coding.hosted.goal import create_coding_goal_service_binding
 
 

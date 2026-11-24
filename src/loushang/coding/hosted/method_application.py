@@ -5,10 +5,8 @@ from __future__ import annotations
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
 from loushang.apphost.application import HostedApplicationRuntimeV1
-from loushang.coding.hosted.bootstrap import (
-    CodingHostedLaunchV1,
-    _create_coding_scoped_work_application,
-)
+from loushang.coding.hosted.application import _create_coding_scoped_work_application
+from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
 from loushang.coding.hosted.method import (
     CodingHostedMethodV1,
     create_coding_method_service_binding,

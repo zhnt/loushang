@@ -510,7 +510,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "integrations/_canonical_transcript_catalog.py",
         "integrations/_continuity_preparation.py",
         "integrations/_foreground_client_control.py",
+        "integrations/_goal_commands.py",
         "integrations/_managed_mux_command.py",
+        "integrations/user_choice.py",
         "integrations/_resource_client_reference.py",
         "integrations/_resource_host_reference.py",
         "integrations/_session_commands.py",
@@ -750,6 +752,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path('src/loushang/coding/hosted/method_application.py'),
         # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
         Path('src/loushang/coding/hosted/goal_application.py'),
+        Path('src/loushang/coding/hosted/goal_commands.py'),
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/session.py'),

@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
-from collections.abc import Callable
-from dataclasses import dataclass, field, replace
-from functools import partial
+from dataclasses import dataclass, field
 from importlib.metadata import version
 from pathlib import Path
 from secrets import token_hex
@@ -23,10 +21,7 @@ from loushang.apphost import (
     AppHostAdmissionSubjectKind,
     AppHostShutdownBudgetV1,
 )
-from loushang.apphost.application import (
-    HostedApplicationActivationV1,
-    HostedApplicationRuntimeV1,
-)
+from loushang.apphost.application import HostedApplicationActivationV1
 from loushang.apphost.catalog import _InstalledAdmissionSource
 from loushang.apphost.continuity import HostedApplicationContinuityActivationV1
 from loushang.appserver.protocol import SessionScopeV1
@@ -37,12 +32,10 @@ from loushang.appservice.discovery_ports import (
     HostedSessionDiscoveryBindingV1,
     HostedSessionDiscoveryScopeV1,
 )
-from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.coding.hosted.application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     CodingForegroundHostedApplicationRequestV1,
-    create_coding_foreground_hosted_application,
 )
 from loushang.coding.hosted.catalog import (
     CODING_HOSTED_COMPATIBILITY_ID,
@@ -67,8 +60,6 @@ from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 if TYPE_CHECKING:
-    from loushang.coding.hosted._goal_config import HostedGoalSetup
-    from loushang.coding.hosted.method import CodingHostedMethodV1
     from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
 
 
@@ -175,42 +166,6 @@ def prepare_coding_hosted_session_roots(launch: CodingHostedLaunchV1) -> None:
         raise TypeError("invalid hosted launch")
     for scope in launch.scopes:
         prepare_private_directory_chain(scope.session_dir)
-
-
-async def _create_coding_scoped_work_application(
-    launch: CodingHostedLaunchV1,
-    *,
-    execution: Callable[[str], HostedExecutionServiceBindingV1],
-    model: Model | ModelSelection | None,
-    stream_fn: StreamFn | None,
-    tools: list[ToolDefinition] | None = None,
-    method: CodingHostedMethodV1 | None = None,
-    goal: HostedGoalSetup | None = None,
-    tool_policy: PolicyEvaluator | None = None,
-    active_tools: list[str] | None = None,
-    allowed_tools: list[str] | None = None,
-    system_prompt: str | None = None,
-) -> HostedApplicationRuntimeV1:
-    request = _coding_foreground_request(
-        application_id=launch.application_id,
-        catalog=CodingHostedSessionCatalogV1(launch.scopes),
-        generation=token_hex(16),
-        model=model,
-        stream_fn=stream_fn,
-        tools=tools,
-        session_discovery=False,
-        owned_transcripts=False,
-        profile_id=CODING_HOSTED_APPLICATION_PROFILE_ID,
-        session_tool_policy=tool_policy,
-        session_active_tools=active_tools,
-        session_allowed_tools=allowed_tools,
-        session_system_prompt=system_prompt,
-    )
-    application = await create_coding_foreground_hosted_application(
-        replace(request, method=method, goal=goal, execution=execution(launch.application_id))
-    )
-    await application._publish_client_scopes(partial(prepare_coding_hosted_session_roots, launch))
-    return application
 
 
 def _create_coding_attempt(
