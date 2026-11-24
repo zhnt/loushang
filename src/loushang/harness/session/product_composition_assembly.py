@@ -1892,7 +1892,7 @@ def _assemble_product_contribution_candidates(
         for item in candidates
     )
     trust_by_id = {item.plugin_id: item for item in plan.source_trust_snapshots}
-    instance_by_id = {item.plugin_id: item for item in context.instance_revision_refs}
+    instance_by_id = context.instance_revisions_by_plugin()
     if len(candidate_refs) != len(set(candidate_refs)) or any(
         ref not in selected_refs
         or candidate.product_id != context.product_id
@@ -2325,7 +2325,7 @@ def _prepare_catalog_plugin_plan_seed(
         else f"session:{receipt.cwd}"
     )
     seed_instance_refs = (
-        {item.plugin_id: item for item in seed_plan.context.instance_revision_refs}
+        seed_plan.context.instance_revisions_by_plugin()
         if seed_plan is not None
         else {}
     )

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 
 from loushang.coding.composition.base_plugin import CodingBasePluginAssembly
 from loushang.coding.composition.capability_specs import (
@@ -74,7 +74,10 @@ from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
 )
 from loushang.harness.config.agent import CapabilityMountMode
-from loushang.harness.plugin_authoring.host import PluginDeclarationHost
+from loushang.harness.plugin_authoring.host import (
+    PluginDeclarationHost,
+    bind_selected_approval_instances,
+)
 from loushang.harness.plugin_management.assembly import (
     _ManagedPluginErrors,
     _resolve_managed_plugin_runtimes,
@@ -150,17 +153,6 @@ class CodingCapabilityPluginApprovalOwner(Protocol):
         journal: PluginActivationDecisionJournal,
         subject: ContributionActivationApprovalSubject,
     ) -> PluginActivationDecisionRecordV1: ...
-
-
-class _CodingCapabilityApprovalInstanceBinder(Protocol):
-    """Optional neutral port for issuers that bind exact managed instances."""
-
-    def bind_selected_instances(
-        self,
-        *,
-        selected_plugin_ids: frozenset[str],
-        instance_revision_refs: Mapping[str, PluginInstanceRevisionRef],
-    ) -> CodingCapabilityPluginApprovalOwner: ...
 
 
 class CodingCapabilityPluginCompositionError(RuntimeError):
@@ -388,36 +380,22 @@ class _CodingDefaultCapabilityPluginApprovalOwner:
         selected_plugin_ids: frozenset[str],
         instance_revision_refs: Mapping[str, PluginInstanceRevisionRef],
     ) -> CodingCapabilityPluginApprovalOwner:
-        selected = selected_plugin_ids & self.plugin_ids
-        if not selected:
-            raise CodingCapabilityPluginCompositionError(
-                "Coding Capability approval has no selected managed instance.",
-                code="coding_capability_approval_selection_empty",
-            )
-        selected_refs = {
-            plugin_id: instance_revision_refs[plugin_id]
-            for plugin_id in selected
-            if plugin_id in instance_revision_refs
-        }
-        if frozenset(selected_refs) != selected:
-            raise CodingCapabilityPluginCompositionError(
-                "Coding Capability approval lacks an exact managed instance.",
-                code="coding_capability_approval_instance_missing",
-            )
-        if self.instance_revision_refs is not None:
-            if dict(self.instance_revision_refs) != selected_refs:
-                raise CodingCapabilityPluginCompositionError(
-                    "Coding Capability approval instance changed after binding.",
-                    code="coding_capability_approval_instance_changed",
-                )
+        selected_refs = bind_selected_approval_instances(
+            selected_plugin_ids & self.plugin_ids,
+            instance_revision_refs,
+            bound=self.instance_revision_refs,
+            label="Coding Capability",
+            error_prefix="coding_capability",
+            reject=lambda message, code: CodingCapabilityPluginCompositionError(
+                message, code=code
+            ),
+        )
+        if selected_refs is None:
             return self
-        return _CodingDefaultCapabilityPluginApprovalOwner(
-            clock=self.clock,
-            plugin_ids=selected,
+        return replace(
+            self,
+            plugin_ids=frozenset(selected_refs),
             instance_revision_refs=selected_refs,
-            approval_source=self.approval_source,
-            product_policy_revision=self.product_policy_revision,
-            source_trust_policy_revision=self.source_trust_policy_revision,
         )
 
     def approve_definition(
@@ -511,16 +489,10 @@ def _bind_default_approval_request_to_plan(
     binder = getattr(request.approval_owner, "bind_selected_instances", None)
     if not callable(binder):
         return request
-    instance_revision_refs = {
-        item.plugin_id: item for item in seed.plan.context.instance_revision_refs
-    }
-    instance_binder = cast(
-        _CodingCapabilityApprovalInstanceBinder, request.approval_owner
-    )
     return CodingCapabilityPluginCompositionRequest(
-        approval_owner=instance_binder.bind_selected_instances(
+        approval_owner=binder(
             selected_plugin_ids=frozenset(seed.plan.selected_plugin_ids),
-            instance_revision_refs=instance_revision_refs,
+            instance_revision_refs=seed.plan.context.instance_revisions_by_plugin(),
         )
     )
 

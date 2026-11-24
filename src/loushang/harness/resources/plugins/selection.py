@@ -223,6 +223,10 @@ class PluginPreflightContextV1:
         ):
             raise ValueError("Plugin instance revision refs must be unique")
 
+    def instance_revisions_by_plugin(self) -> dict[str, PluginInstanceRevisionRef]:
+        """Index the exact instance evidence from this validated context."""
+        return {item.plugin_id: item for item in self.instance_revision_refs}
+
 
 @dataclass(frozen=True, order=True, slots=True)
 class PluginSourceTrustSnapshotV1:
@@ -429,6 +433,17 @@ class PluginSelectionPlanV2:
             self.allowed_authority_ceiling,
             name="allowed authority ceiling",
         )
+
+    def provenance_for(
+        self, plugin_id: str,
+    ) -> tuple[PluginInstanceRevisionRef, PluginSourceTrustSnapshotV1] | None:
+        """Read the selected instance and source trust together for admission."""
+        instance = self.context.instance_revisions_by_plugin().get(plugin_id)
+        trust = next(
+            (item for item in self.source_trust_snapshots if item.plugin_id == plugin_id),
+            None,
+        )
+        return None if instance is None or trust is None else (instance, trust)
 
 
 @dataclass(frozen=True, slots=True)
@@ -989,9 +1004,7 @@ class PluginPreflightProposal:
             raise ValueError(
                 "Plugin proposal configuration does not cover source closures"
             )
-        instance_refs = {
-            item.plugin_id: item for item in self.plan.context.instance_revision_refs
-        }
+        instance_refs = self.plan.context.instance_revisions_by_plugin()
         for source in sources:
             disposition = source.source_disposition
             if isinstance(disposition, PluginDeclarationExecutionSubjectDisposition):
@@ -2015,9 +2028,7 @@ class PluginSelectionResolver:
                 or preflight_use_id in self._terminal
             ):
                 preflight_use_id = secrets.token_hex(24)
-            instance_refs = {
-                item.plugin_id: item for item in plan.context.instance_revision_refs
-            }
+            instance_refs = plan.context.instance_revisions_by_plugin()
             source_groups = tuple(
                 _accepted_source_group(
                     source_proposal,
@@ -2768,9 +2779,9 @@ def _build_execution_approval_subject(
         allowed_authority_ceiling=plan.allowed_authority_ceiling,
         reservation_closure_fingerprint=_reservation_closure_fingerprint(closure),
         source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,
-        instance_revision_ref={
-            item.plugin_id: item for item in plan.context.instance_revision_refs
-        }[package.manifest.name],
+        instance_revision_ref=plan.context.instance_revisions_by_plugin()[
+            package.manifest.name
+        ],
     )
 
 

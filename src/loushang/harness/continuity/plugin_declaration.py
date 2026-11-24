@@ -133,19 +133,13 @@ def prepare_continuity_provider_component_candidate(
         ) from exc
 
     plugin_id = candidate.package.manifest.name
-    instance_by_plugin = {
-        item.plugin_id: item for item in selection.plan.context.instance_revision_refs
-    }
-    trust_by_plugin = {
-        item.plugin_id: item for item in selection.plan.source_trust_snapshots
-    }
-    instance = instance_by_plugin.get(plugin_id)
-    trust = trust_by_plugin.get(plugin_id)
-    if instance is None or trust is None:
+    provenance = selection.plan.provenance_for(plugin_id)
+    if provenance is None:
         raise CapabilityComponentAdmissionError(
             "Continuity Provider Product provenance is incomplete.",
             code="continuity_provider_selection_provenance_missing",
         )
+    instance, trust = provenance
     declaration = candidate.declaration
     return CapabilityComponentCandidate(
         definition=CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
