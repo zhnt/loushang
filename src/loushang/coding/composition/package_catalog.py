@@ -18,7 +18,6 @@ from loushang.coding.composition.base_plugin import (
 from loushang.coding.composition.base_product import (
     CODING_BASE_PLUGIN_ID,
     CodingBaseProductCompilation,
-    extend_coding_base_product_data_resources,
 )
 from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginCompositionPreparation,
@@ -26,7 +25,7 @@ from loushang.coding.composition.capability_plugins import (
 )
 from loushang.coding.composition.external_data import (
     CodingExternalDataProductCompilation,
-    compile_coding_external_data_product_selection,
+    compile_coding_selected_data_resources,
 )
 from loushang.coding.composition.product_capability_plugins import (
     CodingBuiltinProductCompositionPreparation,
@@ -129,22 +128,6 @@ class InitialCatalogHandoff(
         ],
         resume_parents: CodingResumePluginParents | None,
     ) -> ResourceBundle:
-        def compile_data(
-            base: CodingBaseProductCompilation | None,
-            selected: tuple[PackageProductSelectedPluginManifestV1, ...],
-            evaluated_at: int,
-        ) -> tuple[CodingBaseProductCompilation | None, CodingExternalDataProductCompilation | None]:
-            if base is not None:
-                return extend_coding_base_product_data_resources(
-                    base, selected, evaluated_at=evaluated_at
-                ), None
-            return None, compile_coding_external_data_product_selection(
-                selected,
-                composition_set=composition_set,
-                session_id=self.session_id,
-                evaluated_at=evaluated_at,
-            )
-
         builtin = None
 
         def prepare_capabilities(
@@ -194,7 +177,10 @@ class InitialCatalogHandoff(
             max_total_bytes=max_total_bytes,
             clock=self.clock,
             compile_base=compile_base,
-            compile_data=compile_data,
+            compile_data=partial(
+                compile_coding_selected_data_resources,
+                composition_set=composition_set, session_id=self.session_id,
+            ),
             prepare_capabilities=prepare_capabilities,
             build_adapter=partial(
                 self._build_fenced_catalog_adapter,

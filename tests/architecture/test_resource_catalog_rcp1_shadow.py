@@ -161,8 +161,8 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
         # Existing Product preview/discovery consume immutable Catalog data.
         Path("src/loushang/coding/package/product_preview.py"),
         Path("src/loushang/coding/plugin_manager/local_discovery.py"),
-        # Original Session fingerprints its selected snapshot for Resume use.
-        Path("src/loushang/coding/session/agent_session.py"),
+        # Resume fingerprints the selected Catalog snapshot in Harness.
+        Path("src/loushang/harness/session/_resume_continuation.py"),
         Path('src/loushang/coding/resources/catalog.py'),
         # Product-selected Store bytes enter through this explicit Catalog source.
         Path("src/loushang/harness/resource_catalog/product_snapshot_source.py"),

@@ -27,6 +27,9 @@ from loushang.coding.composition.external_data import (
 from loushang.coding.composition.external_data import (
     compile_coding_external_data_product_selection as compile_coding_external_data_product_selection,
 )
+from loushang.coding.composition.external_data import (
+    compile_coding_selected_data_resources,
+)
 from loushang.coding.composition.sets import (
     resolve_coding_composition_set as resolve_coding_composition_set,
 )
@@ -56,9 +59,6 @@ from loushang.harness.package_product._application_runtime import (
 from loushang.harness.package_product._legacy_runtime import (
     open_read_only_fenced_product,
 )
-from loushang.harness.package_product._selected_plugin_revisions import (
-    capture_selected_manifests,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductHostInputs as PosixLocalWheelProductHostInputs,
 )
@@ -73,7 +73,8 @@ from loushang.harness.package_product.product_worker_candidate import (
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentCompositionPreviewV1,
     PluginCurrentResourceAdmissionV1,
-    observe_current_product_composition,
+    _InstalledResourceCompilation,
+    preview_fenced_product_resources,
 )
 from loushang.harness.plugin_management.current_preview import (
     project_current_product_resource_facts as project_current_product_resource_facts,
@@ -86,6 +87,12 @@ from loushang.harness.plugin_management.package_gc_reservation import (
 )
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1 as PluginInstallationKeyV1,
+)
+from loushang.harness.resource_catalog.bootstrap_projection import (
+    ResourceCatalogBootstrapResult,
+)
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -197,60 +204,53 @@ class CodingFencedProductReadOnlyPreviewOwner:
             not isinstance(item, str) or not item for item in disabled_skills
         ):
             raise ValueError("Coding Product preview disabled Skills are invalid")
-        desired = self.selected_manifests.root_reader.desired_state
-        before, _ = desired.capture_read_only()
-        base_key = PluginInstallationKeyV1.workspace(
-            self.policy.product_id, self.policy.project_scope_id, "coding.base"
-        )
-        base_state = before.installation(base_key).selection.desired_state
-        base_disabled = base_state == "installed_disabled"
-        external_ids = self.selected_manifests.selected_external_data_plugin_ids()
-        evaluated_at = int(time.time())
-        capture_manifests = partial(
-            capture_selected_manifests,
-            self.selected_manifests.capture_selected_manifest_for_plugin,
-            max_files=_RESOURCE_PREVIEW_MAX_FILES,
-            max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
-        )
-        compiled: (
-            CodingBaseProductCompilation | CodingExternalDataProductCompilation | None
-        ) = None
-        compiled_plugin_ids: tuple[str, ...] = ()
-        preview = partial(
-            observe_current_product_composition,
+
+        def prepare_catalog(
+            compiled: _InstalledResourceCompilation | None, evaluated_at: int
+        ) -> tuple[
+            ResourceCatalogBootstrapResult, tuple[ProductSelectedResourceInput, ...]
+        ]:
+            loader = CodingResourceLoader(workspace_root=workspace)
+            receipt = loader.prepare_catalog_input_receipt(workspace)
+            inputs = compiled.product_resource_inputs() if compiled is not None else ()
+            _, result = prepare_coding_catalog_projection(
+                receipt,
+                product_id=self.policy.product_id,
+                session_id="plugin-preview-current",
+                cwd=workspace,
+                product_composition=compiled.product_composition
+                if compiled is not None
+                else None,
+                product_snapshot_resources=inputs if compiled is not None else None,
+                admission_now=evaluated_at,
+                disabled_skills=disabled_skills or (),
+                source_policy=(
+                    CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
+                    if compiled is None
+                    else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+                ),
+            )
+            return result, inputs
+
+        return preview_fenced_product_resources(
+            self.epoch_runtime,
             self.policy,
-            desired,
-            before,
-            epoch=self.epoch_runtime,
+            self.selected_manifests,
+            base_plugin_id="coding.base",
+            composition_set_id=composition_set.set_id,
             requested_plugin_ids=tuple(
                 item.plugin_id for item in composition_set.plugin_requests
             ),
+            disabled_skills_known=disabled_skills is not None,
             executable_trust_classes=frozenset(
                 {"host-equivalent-local", "legacy-local-reacquired"}
             ),
-            excluded_plugin_id="coding.base",
+            max_files=_RESOURCE_PREVIEW_MAX_FILES,
+            max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
+            evaluation_clock=time.time,
             observe_clock=time.time_ns,
-            composition_set_id=composition_set.set_id,
-            disabled_skills_known=disabled_skills is not None,
-        )
-        try:
-            if base_state == "absent":
-                raise CodingBasePluginAssemblyError(
-                    "Coding Product base Plugin is not installed",
-                    code="product_requested_base_not_installed",
-                )
-            if base_disabled:
-                if external_ids:
-                    compiled_plugin_ids = external_ids
-                    compiled = compile_coding_external_data_product_selection(
-                        capture_manifests(external_ids),
-                        composition_set=composition_set,
-                        session_id="plugin-preview-current",
-                        evaluated_at=evaluated_at,
-                    )
-            else:
-                (base,) = capture_manifests(("coding.base",))
-                base_compiled = compile_coding_base_product_selection(
+            compile_base=lambda base, evaluated_at: (
+                compile_coding_base_product_selection(
                     base,
                     composition_set,
                     installation_key=base.snapshot.installation_key,
@@ -258,52 +258,18 @@ class CodingFencedProductReadOnlyPreviewOwner:
                     host_environment=LocalHostEnvironmentProbe().detect(),
                     evaluated_at=evaluated_at,
                 )
-                compiled_plugin_ids = base_compiled.plan.selected_plugin_ids
-                if external_ids:
-                    compiled_plugin_ids = tuple(
-                        sorted((*compiled_plugin_ids, *external_ids))
-                    )
-                    base_compiled = extend_coding_base_product_data_resources(
-                        base_compiled,
-                        capture_manifests(external_ids),
-                        evaluated_at=evaluated_at,
-                    )
-                    compiled_plugin_ids = base_compiled.plan.selected_plugin_ids
-                compiled = base_compiled
-        except (
-            CodingBasePluginAssemblyError,
-            ProductCompositionError,
-        ) as exc:
-            return preview(compiled_plugin_ids=compiled_plugin_ids, blocker=exc)
-        loader = CodingResourceLoader(workspace_root=workspace)
-        receipt = loader.prepare_catalog_input_receipt(workspace)
-        product_inputs = (
-            compiled.product_resource_inputs() if compiled is not None else ()
-        )
-        _, catalog_result = prepare_coding_catalog_projection(
-            receipt,
-            product_id=self.policy.product_id,
-            session_id="plugin-preview-current",
-            cwd=workspace,
-            product_composition=(
-                compiled.product_composition if compiled is not None else None
             ),
-            product_snapshot_resources=(
-                product_inputs if compiled is not None else None
+            compile_data=partial(
+                compile_coding_selected_data_resources,
+                composition_set=composition_set,
+                session_id="plugin-preview-current",
             ),
-            admission_now=evaluated_at,
-            disabled_skills=disabled_skills or (),
-            source_policy=(
-                CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
-                if compiled is None
-                else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+            prepare_catalog=prepare_catalog,
+            base_missing=lambda: CodingBasePluginAssemblyError(
+                "Coding Product base Plugin is not installed",
+                code="product_requested_base_not_installed",
             ),
-        )
-        return preview(
-            compiled_plugin_ids=compiled_plugin_ids,
-            catalog_projection=(catalog_result.bundle, catalog_result.catalog),
-            product_inputs=product_inputs,
-            compiled=compiled,
+            composition_errors=(CodingBasePluginAssemblyError, ProductCompositionError),
         )
 
     @classmethod
