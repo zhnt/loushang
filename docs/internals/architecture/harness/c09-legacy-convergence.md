@@ -178,3 +178,19 @@ Package 根。允许缺失目录的入口只跳过直接观察为不存在的根
 
 本批 Coding −49 行、Harness +46 行，系统生产 Python −3 行。Linux 上与 cutover
 和普通会话相关的 161 项通过，4 个 Windows 原生用例跳过。旧字段库存检查通过。
+
+### Legacy 首 B 审阅证据与记录构造
+
+本批基线为 `05e78966a`，采用本地架构方法 `0f9bd3f`。实现 agent `/root`
+接受已认证库存到名义审阅记录的边界。Package Product 在 builtin-only 的
+pre-B 准入与首次 fence 后审阅时校验同一套库存条件。removed-local 在受管快照上
+证明最后安装或更新头及移除证据，以同一份版本校验构造审阅条目。local、removed
+和 builtin-only 审阅共用 builtin Intent 投影。Coding 保留可审阅的插件集合、
+Source 匹配政策和现有名义类型；审阅结果仍经既有批准与重放入口使用。
+
+生产 Python 为 Coding −71 行、Harness +139 行、系统 +68 行。本批将原中间
+Inventory DTO 与 Removal DTO 的构造退出审阅内部路径，接收端保留名义构造和类型约束。
+PLC9 仅同步两个旧禁用字段使用点的精确归属，原断言和 PR 路线沿用。
+四组受控记录与基线对照，覆盖 builtin-only 和 removed-local v1/v2，审阅 wire、
+字段、slots 和 pickle 字节相同。公开 `from_evidence` 的签名和解析后注解相同。
+最终源码上的切换、v1/v2 审阅、重放及 PLC9 组合为 30 项通过。
