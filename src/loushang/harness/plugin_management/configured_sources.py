@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -91,6 +91,58 @@ def resolve_configured_plugin_local_path(
                 base = Path(root).expanduser().resolve()
             break
     return ((base or Path(cwd)) / path).expanduser().resolve()
+
+
+def configured_plugin_strings(
+    raw: object,
+    *,
+    invalid: Callable[[], Exception],
+    trim: bool = False,
+) -> tuple[str, ...]:
+    """Validate a settings list with the caller's whitespace contract."""
+    if not isinstance(raw, (list, tuple)):
+        raise invalid()
+    result: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            raise invalid()
+        value = item.strip() if trim else item
+        if not value:
+            raise invalid()
+        result.append(value)
+    return tuple(result)
+
+
+def read_configured_plugin_selection(
+    settings_manager: object | None,
+    *,
+    cwd: str | Path,
+    invalid: Callable[[str], Exception],
+) -> tuple[tuple[str, ...], frozenset[str]]:
+    """Resolve ordered source input and disabled ids from one settings snapshot."""
+    get_settings = getattr(settings_manager, "get_settings", None)
+    if not callable(get_settings):
+        return (), frozenset()
+    settings = get_settings()
+    raw_sources = getattr(settings, "plugin_sources", ())
+    raw_disabled = getattr(settings, "disabled_plugins", ())
+    sources = configured_plugin_strings(
+        raw_sources, trim=True, invalid=lambda: invalid("plugin_sources_invalid")
+    )
+    disabled = configured_plugin_strings(
+        raw_disabled, trim=True, invalid=lambda: invalid("disabled_plugins_invalid")
+    )
+    resolved = dict.fromkeys(
+        source
+        if is_remote_plugin_source(source)
+        else str(
+            resolve_configured_plugin_local_path(
+                source, cwd, settings_manager=settings_manager
+            )
+        )
+        for source in sources
+    )
+    return tuple(resolved), frozenset(disabled)
 
 
 def project_configured_plugin_sources(

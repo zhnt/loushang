@@ -7,13 +7,12 @@ adapter supplies Product policy, durable paths, and configuration preflight.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import secrets
 import sys as sys
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -65,6 +64,9 @@ from loushang.harness.approval.plugin_execution import (
     PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
 )
+from loushang.harness.continuity._binding_lifetime import (
+    configured_continuity_request_fingerprint,
+)
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
 )
@@ -74,7 +76,7 @@ from loushang.harness.continuity.plugin_runtime import (
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.plugin_management.configured_sources import (
-    resolve_configured_plugin_local_path,
+    read_configured_plugin_selection,
 )
 from loushang.harness.resources.packages._private_directory import (
     prepare_private_directory,
@@ -93,7 +95,6 @@ from loushang.harness.resources.plugins import (
     PluginSourceBinding,
     PluginSourceTrustSnapshotV1,
     PublishedPluginPackage,
-    is_remote_plugin_source,
 )
 from loushang.harness.session.plugin_lifecycle._continuity_installed_plugins import (
     InstalledContinuityLifecycle,
@@ -292,18 +293,7 @@ async def bind_coding_configured_continuity(
         )
 
     configured_count = len(sources)
-    common_layout: CodingPluginLifecycleStateLayout | None = None
-    existing: CodingContinuityComposition | None = None
-    compatibility = None
-    owns_early_startup_lease = False
-
-    def release_early_startup_lease() -> None:
-        nonlocal owns_early_startup_lease
-        if owns_early_startup_lease and common_layout is not None:
-            _release_process_startup_lease(
-                common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
-            )
-            owns_early_startup_lease = False
+    startup_lease = ExitStack()
 
     def record_ready(plugin_count: int, provider_count: int, recovered_count: int) -> None:
         _record_ready_status(
@@ -321,8 +311,7 @@ async def bind_coding_configured_continuity(
         )
         result.configured_request_fingerprint = request_fingerprint
         record_ready(0, 0, 0)
-        if compatibility is None:
-            release_early_startup_lease()
+        startup_lease.close()
         return result
 
     try:
@@ -340,9 +329,15 @@ async def bind_coding_configured_continuity(
                 or settings_manager is not None
                 or (existing is not None and existing.plugin_publication is not None)
             )
-        ):
-            owns_early_startup_lease = _hold_process_startup_lease(
+            and _hold_process_startup_lease(
                 common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
+            )
+            and (existing is None or existing.plugin_publication is None)
+        ):
+            startup_lease.callback(
+                _release_process_startup_lease,
+                common_layout,
+                startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
             )
         compatibility = (
             None
@@ -353,6 +348,8 @@ async def bind_coding_configured_continuity(
             )
         )
         if compatibility is not None:
+            # The settings writer now owns the pre-fence registration.
+            startup_lease.pop_all()
             compatibility.reconcile()
             sources, disabled_plugins = _configured_sources(
                 settings_manager,
@@ -367,36 +364,25 @@ async def bind_coding_configured_continuity(
         )
 
         if existing is not None:
-            if existing.configured_request_fingerprint == request_fingerprint:
-                _restore_ready_status(runtime, diagnostics_service)
-                if existing.plugin_publication is None and compatibility is None:
-                    release_early_startup_lease()
-                return existing
-            if (
-                not sources
-                and existing.plugin_publication is None
-                and existing.configured_request_fingerprint is None
-                and existing.binding_cwd
-                == str(Path(cwd).expanduser().resolve(strict=False))
-                and existing.all_sessions == all_sessions
+            if existing.admit_configured_reentry(
+                request_fingerprint,
+                has_sources=bool(sources),
+                cwd=cwd,
+                all_sessions=all_sessions,
+                conflict=lambda: CodingContinuityBootstrapError(
+                    code=_CONTINUITY_ALREADY_BOUND, retryable=False
+                ),
             ):
-                existing.configured_request_fingerprint = request_fingerprint
+                _restore_ready_status(runtime, diagnostics_service)
+            else:
                 record_ready(0, 0, 0)
-                if compatibility is None:
-                    release_early_startup_lease()
-                return existing
-            raise CodingContinuityBootstrapError(
-                code=_CONTINUITY_ALREADY_BOUND,
-                retryable=False,
-            )
+            startup_lease.close()
+            return existing
 
         if not sources:
             return finish_base_binding()
     except BaseException as error:
-        if compatibility is None and (
-            existing is None or existing.plugin_publication is None
-        ):
-            release_early_startup_lease()
+        startup_lease.close()
         if (
             isinstance(error, CodingContinuityBootstrapError)
             and error.code == _CONTINUITY_ALREADY_BOUND
@@ -408,7 +394,6 @@ async def bind_coding_configured_continuity(
             runtime, diagnostics_service, error, configured_source_count=configured_count
         )
 
-    lifecycle_started = False
     try:
         resolved_runtime_id = runtime_id or _new_runtime_id()
         if materializer is not None:
@@ -419,7 +404,8 @@ async def bind_coding_configured_continuity(
         _prepare_private_state_layout(layout)
         _prepare_private_runtime_roots(layout)
         lifecycle = _build_lifecycle(layout)
-        lifecycle_started = True
+        # Installed lifecycle recovery owns the process startup lease now.
+        startup_lease.pop_all()
         return await bind_installed_continuity(
             sources,
             lifecycle,
@@ -461,8 +447,7 @@ async def bind_coding_configured_continuity(
             record_ready=record_ready,
         )
     except BaseException as error:
-        if not lifecycle_started and compatibility is None:
-            release_early_startup_lease()
+        startup_lease.close()
         _raise_bootstrap_failure(
             runtime, diagnostics_service, error, configured_source_count=configured_count
         )
@@ -532,39 +517,11 @@ def _configured_sources(
     *,
     cwd: str | Path,
 ) -> tuple[tuple[str, ...], frozenset[str]]:
-    get_settings = getattr(settings_manager, "get_settings", None)
-    if not callable(get_settings):
-        return (), frozenset()
-    settings = get_settings()
-    raw_sources = getattr(settings, "plugin_sources", ())
-    raw_disabled = getattr(settings, "disabled_plugins", ())
-    if not isinstance(raw_sources, tuple | list) or any(
-        not isinstance(item, str) or not item.strip() for item in raw_sources
-    ):
-        raise CodingContinuityBootstrapError(
-            code="coding_continuity_plugin_sources_invalid",
-            retryable=False,
-        )
-    if not isinstance(raw_disabled, tuple | list) or any(
-        not isinstance(item, str) or not item.strip() for item in raw_disabled
-    ):
-        raise CodingContinuityBootstrapError(
-            code="coding_continuity_disabled_plugins_invalid",
-            retryable=False,
-        )
-    sources = tuple(
-        dict.fromkeys(
-            source
-            if is_remote_plugin_source(source)
-            else str(
-                resolve_configured_plugin_local_path(
-                    source, cwd, settings_manager=settings_manager
-                )
-            )
-            for source in (item.strip() for item in raw_sources)
-        )
+    return read_configured_plugin_selection(
+        settings_manager,
+        cwd=cwd,
+        invalid=partial(_continuity_lifecycle_error, retryable=False),
     )
-    return sources, frozenset(item.strip() for item in raw_disabled)
 
 
 def _bootstrap_request_fingerprint(
@@ -574,29 +531,14 @@ def _bootstrap_request_fingerprint(
     cwd: str | Path,
     all_sessions: bool,
 ) -> str:
-    workspace = Path(cwd).expanduser().resolve(strict=False)
-    digest = hashlib.sha256()
-    digest.update(b"loushang.coding-continuity-bootstrap-request/v2\0")
-
-    def update_value(label: str, value: str) -> None:
-        label_bytes = label.encode("ascii")
-        encoded = value.encode("utf-8", errors="surrogatepass")
-        digest.update(len(label_bytes).to_bytes(4, "big"))
-        digest.update(label_bytes)
-        digest.update(len(encoded).to_bytes(8, "big"))
-        digest.update(encoded)
-
-    update_value("policyRevision", _PRODUCT_POLICY_REVISION)
-    update_value("workspace", str(workspace))
-    update_value("listingScope", "all" if all_sessions else "workspace")
-    update_value("sourceCount", str(len(sources)))
-    for source in sources:
-        update_value("source", source)
-    ordered_disabled = tuple(sorted(disabled_plugins))
-    update_value("disabledPluginCount", str(len(ordered_disabled)))
-    for plugin_id in ordered_disabled:
-        update_value("disabledPlugin", plugin_id)
-    return digest.hexdigest()
+    return configured_continuity_request_fingerprint(
+        sources,
+        disabled_plugins=disabled_plugins,
+        cwd=cwd,
+        all_sessions=all_sessions,
+        policy_revision=_PRODUCT_POLICY_REVISION,
+        digest_domain=b"loushang.coding-continuity-bootstrap-request/v2\0",
+    )
 
 
 def _require_continuity_package_authority(

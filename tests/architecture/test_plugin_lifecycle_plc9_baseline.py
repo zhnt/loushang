@@ -78,9 +78,11 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/harness/config/agent/_settings_patch.py"),
     Path("src/loushang/harness/config/agent/manager.py"),
     Path("src/loushang/harness/config/agent/types.py"),
+    Path("src/loushang/harness/continuity/_binding_lifetime.py"),
     Path("src/loushang/harness/package_product/_legacy_inventory.py"),
     Path("src/loushang/harness/package_product/_legacy_local_review.py"),
     Path("src/loushang/harness/package_product/_legacy_removed_review.py"),
+    Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/packages/catalog.py"),
     Path("src/loushang/harness/resources/packages/projection.py"),
     Path("src/loushang/harness/resources/packages/roots.py"),
@@ -141,15 +143,19 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "_bootstrap_request_fingerprint",
-        ): 2,
+        ): 3,
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "bind_coding_configured_continuity",
         ): 6,
         (
-            Path("src/loushang/coding/composition/continuity.py"),
-            "_configured_sources",
+            Path("src/loushang/harness/plugin_management/configured_sources.py"),
+            "read_configured_plugin_selection",
         ): 1,
+        (
+            Path("src/loushang/harness/continuity/_binding_lifetime.py"),
+            "configured_continuity_request_fingerprint",
+        ): 2,
         (
             Path("src/loushang/coding/cli/application.py"),
             "_run_list_packages.fallback_records",
