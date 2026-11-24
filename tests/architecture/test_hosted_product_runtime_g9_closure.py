@@ -564,7 +564,6 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     expected_imports = {
         "__future__",
         "asyncio",
-        "contextlib",
         "dataclasses",
         "inspect",
         "loushang.apphost",
@@ -575,7 +574,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "typing",
     }
     composition_imports = _imports(TARGET_COMPOSITION)
-    # AppHost owns settlement of an unpublished Product during construction.
+    # AppHost owns construction and the explicit composition lifecycle.
     assert composition_imports - {
         "loushang.apphost._ownership",
         "loushang.foundation._owned_tasks",
