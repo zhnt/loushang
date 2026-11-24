@@ -240,7 +240,6 @@ from loushang.harness.session._cleanup import (
     guard_session_construction_handoff,
 )
 from loushang.harness.session.bootstrap_construction import (
-    SessionStartupCustody,
     bind_deferred_plugin,
     require_catalog_receipt,
 )
@@ -1003,19 +1002,27 @@ def _create_agent_session(
     def coding_plugin_clock() -> int:
         return time.time_ns() // 1_000_000
 
-    preparation_custody: SessionStartupCustody[
-        CodingCapabilityPluginCompositionPreparation
-    ] = SessionStartupCustody(
+    initial_catalog = InitialCatalogHandoff(
+        services=services,
         product_id=CODING_PRODUCT_ID,
         product_label="Coding",
         session_id=session_id,
         admission_failure=CodingResourceCatalogAdmissionError,
+        source_policy=resource_catalog_source_policy,
+        base_assembly=coding_base_plugin_assembly,
+        supplied=initial_resource_catalog_product_composition_assembly,
+        include_configured=(
+            resolved_invocation_profile.include_configured_resource_plugins
+            if resolved_invocation_profile is not None
+            else resource_catalog_source_policy.include_package_resources
+        ),
+        clock=coding_plugin_clock,
     )
 
     def prepare_capability_roots(
         state_prefix: str, private_prefix: str, *, arch_enabled: bool
     ) -> Path:
-        return preparation_custody.prepare_roots(
+        return initial_catalog.prepare_roots(
             state_prefix=None if session_manager.persist else state_prefix,
             private_prefix=(
                 private_prefix if arch_enabled and not session_manager.persist else None
@@ -1046,8 +1053,8 @@ def _create_agent_session(
                 CodingArchPluginConfigV1.from_runtime_inputs(
                     workspace_root=session_manager.get_cwd(),
                     private_data_root=(
-                        Path(preparation_custody.private_root.name)
-                        if preparation_custody.private_root is not None
+                        Path(initial_catalog.private_root.name)
+                        if initial_catalog.private_root is not None
                         else make_arch_root()
                     ),
                 )
@@ -1058,7 +1065,7 @@ def _create_agent_session(
         plan_seed: ProductPluginPlanSeed | None = None,
     ) -> CodingCapabilityPluginCompositionPreparation | None:
 
-        preparation_custody.begin_once(
+        initial_catalog.begin_once(
             "Coding Capability Plugins were already prepared"
         )
         state_root = prepare_capability_roots(
@@ -1105,27 +1112,14 @@ def _create_agent_session(
                 management_cleanup=capability_management_state_cleanup,
                 base=coding_base_plugin_assembly,
                 plan_seed=plan_seed,
-                state_cleanup=preparation_custody.state_cleanup,
-                private_state_cleanup=preparation_custody.private_cleanup,
+                state_cleanup=initial_catalog.state_cleanup,
+                private_state_cleanup=initial_catalog.private_cleanup,
             )
         except CodingCapabilityPluginCompositionError as error:
             if error.code != "coding_capability_plugins_management_disabled":
                 raise
             return None
 
-    initial_catalog = InitialCatalogHandoff(
-        services=services,
-        custody=preparation_custody,
-        source_policy=resource_catalog_source_policy,
-        base_assembly=coding_base_plugin_assembly,
-        supplied=initial_resource_catalog_product_composition_assembly,
-        include_configured=(
-            resolved_invocation_profile.include_configured_resource_plugins
-            if resolved_invocation_profile is not None
-            else resource_catalog_source_policy.include_package_resources
-        ),
-        clock=coding_plugin_clock,
-    )
     selected_plugin_packages = (
         (
             SelectedPluginPackageInput(
@@ -1153,7 +1147,7 @@ def _create_agent_session(
                 compatibility.reconcile()
 
         try:
-            preparation_custody.require_catalog_unprepared(
+            initial_catalog.require_catalog_unprepared(
                 "Initial Resource Catalog projection was already prepared"
             )
             _reject_peer_coding_exact_tools(
@@ -1184,7 +1178,7 @@ def _create_agent_session(
     ) -> ResourceBundle:
         if not product_base_requested or initial_catalog.base is not None:
             raise RuntimeError("Coding Product base Catalog was already prepared")
-        preparation_custody.require_catalog_unprepared("Coding Product base cannot mix Catalog routes")
+        initial_catalog.require_catalog_unprepared("Coding Product base cannot mix Catalog routes")
         _reject_peer_coding_exact_tools(
             tool_registry=session_tool_registry,
             tools=construction_tools,
@@ -1264,14 +1258,14 @@ def _create_agent_session(
         package_product_inventory: PackageProductLifecycleInventoryPort | None,
         package_product_lifecycle_mode: PackageProductLifecycleMode,
     ) -> AgentSession:
-        resource_catalog_adapter = preparation_custody.take_catalog_adapter()
-        catalog_selection = preparation_custody.catalog_selection
+        resource_catalog_adapter = initial_catalog.take_catalog_adapter()
+        catalog_selection = initial_catalog.catalog_selection
         product_base_compilation = initial_catalog.base
         product_base_runtime = catalog_selection.runtime
         catalog_selection.require_current(product_label="Coding")
 
         prepare_resource_catalog_refresh = partial(
-            preparation_custody.prepare_catalog_refresh,
+            initial_catalog.prepare_catalog_refresh,
             loader=services.resource_loader,
             get_cwd=session_manager.get_cwd,
             prepare_adapter=initial_catalog.build_refresh_adapter,
@@ -1286,7 +1280,7 @@ def _create_agent_session(
             delegated_execution_profile=delegated_execution_profile,
             tool_policy_evaluator=tool_policy_evaluator,
             approval_resolver=approval_resolver,
-            audit_sink=preparation_custody.emit_workspace_audit,
+            audit_sink=initial_catalog.emit_workspace_audit,
         )
 
         capability_tool_modes = (
@@ -1296,10 +1290,10 @@ def _create_agent_session(
                     CODING_ARCH_CAPABILITY: arch_mode,
                 }[capability_id]
                 for capability_id in (
-                    preparation_custody.preparation.provider_owner_authorities
+                    initial_catalog.preparation.provider_owner_authorities
                 )
             }
-            if preparation_custody.preparation is not None
+            if initial_catalog.preparation is not None
             else {}
         )
         (
@@ -1309,7 +1303,7 @@ def _create_agent_session(
         ) = bind_workspace_plugins(
             workspace_binding,
             builtin_product_preparation=initial_catalog.builtin_preparation,
-            capability_preparation=preparation_custody.preparation,
+            capability_preparation=initial_catalog.preparation,
             base_plugin_session_preparation=initial_catalog.legacy_preparation,
             product_base_compilation=product_base_compilation,
             host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
@@ -1542,7 +1536,7 @@ def _create_agent_session(
                 worker_turn_tool.bind_session(session)
             return session
 
-        return preparation_custody.construct_catalog_session(
+        return initial_catalog.construct_catalog_session(
             resource_catalog_adapter,
             bundle=bundle,
             construct=construct_child_session,
@@ -1560,7 +1554,7 @@ def _create_agent_session(
         _CODING_AGENT_PRODUCT_CONSTRUCTION,
         default_system_prompt=coding_kernel_prompt,
     )
-    with preparation_custody.guard_startup(
+    with initial_catalog.guard_startup(
         read_failure_custodian=coding_capability_plugin_failure_custodian,
         management_cleanup=capability_management_state_cleanup,
         private_label="Coding Arch private-state cleanup",

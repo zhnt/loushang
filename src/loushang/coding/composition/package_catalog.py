@@ -82,12 +82,13 @@ if TYPE_CHECKING:
     from loushang.harness.session.bootstrap_services import BootstrapServices
 
 
-@dataclass(slots=True)
-class InitialCatalogHandoff:
+@dataclass(slots=True, kw_only=True)
+class InitialCatalogHandoff(
+    SessionStartupCustody[CodingCapabilityPluginCompositionPreparation]
+):
     """Keep startup Catalog projection and its Session intake in one place."""
 
     services: BootstrapServices
-    custody: SessionStartupCustody[CodingCapabilityPluginCompositionPreparation]
     source_policy: CodingResourceCatalogSourcePolicy
     base_assembly: CodingBasePluginAssembly | None
     supplied: ProductCompositionAssemblyRequest | None
@@ -112,7 +113,7 @@ class InitialCatalogHandoff:
             error=str(error),
             phase="startup",
             source="bootstrap",
-            session_id=self.custody.session_id,
+            session_id=self.session_id,
             details={"reasons": list(error.reasons)},
         )
 
@@ -129,14 +130,14 @@ class InitialCatalogHandoff:
         reconcile_compatibility: Callable[[], None],
         use_plugin_clock: bool,
     ) -> ResourceBundle:
-        receipt = self.custody.require_catalog_input(loader, cwd)
+        receipt = self.require_catalog_input(loader, cwd)
         clock = self.clock if use_plugin_clock else None
         evaluated_at = clock() if clock is not None else int(time.time())
         composition, self.legacy_preparation = self._prepare_legacy_composition(
             receipt, evaluated_at, prepare_capabilities
         )
         reconcile_compatibility()
-        return self.custody.prepare_initial_catalog(
+        return self.prepare_initial_catalog(
             self._build_catalog_adapter(
                 receipt,
                 composition=composition,
@@ -188,14 +189,14 @@ class InitialCatalogHandoff:
                 external = compile_coding_external_data_product_selection(
                     capture_manifests(external_ids),
                     composition_set=composition_set,
-                    session_id=self.custody.session_id,
+                    session_id=self.session_id,
                     evaluated_at=clock(),
                 )
         else:
             (selected,) = capture_manifests((CODING_BASE_PLUGIN_ID,))
             evaluated_at = clock()
             base = compile_base(selected, evaluated_at)
-            receipt = self.custody.require_catalog_input(loader, cwd)
+            receipt = self.require_catalog_input(loader, cwd)
 
         enabled, selections = observe_requested_plugins(
             runtime, requested_capabilities, CodingResourceCatalogAdmissionError
@@ -205,10 +206,10 @@ class InitialCatalogHandoff:
             state_root, configurations = prepare_capability_inputs(enabled)
             if base is None:
                 try:
-                    self.custody.preparation = (
+                    self.preparation = (
                         prepare_coding_product_capability_plugin_composition(
                             runtime,
-                            session_id=self.custody.session_id,
+                            session_id=self.session_id,
                             configurations=configurations,
                             state_root=state_root,
                             clock=clock,
@@ -216,14 +217,14 @@ class InitialCatalogHandoff:
                         )
                     )
                 except BaseException:
-                    self.custody.cleanup_roots_sequentially()
+                    self.cleanup_roots_sequentially()
                     raise
             else:
                 try:
                     builtin = prepare_coding_builtin_product_composition(
                         runtime,
                         base_compilation=base,
-                        session_id=self.custody.session_id,
+                        session_id=self.session_id,
                         configurations=configurations,
                         external_data_plugin_ids=runtime.selected_external_data_plugin_ids(),
                         state_root=state_root,
@@ -231,14 +232,14 @@ class InitialCatalogHandoff:
                         resume_parents=resume_parents,
                     )
                 except BaseException as error:
-                    self.custody.cleanup_roots_with_notes(
+                    self.cleanup_roots_with_notes(
                         error,
                         state_label="Coding Product Capability state cleanup",
                         private_label="Coding Product Arch private-state cleanup",
                     )
                     raise
-                self.custody.preparation = builtin.capability_preparation
-            self.custody.attach_cleanup(self.custody.preparation)
+                self.preparation = builtin.capability_preparation
+            self.attach_cleanup(self.preparation)
             if builtin is not None:
                 base = builtin.base_compilation
         elif resume_parents is not None:
@@ -255,11 +256,11 @@ class InitialCatalogHandoff:
                     evaluated_at=evaluated_at,
                 )
         if receipt is None:
-            receipt = self.custody.require_catalog_input(loader, cwd)
+            receipt = self.require_catalog_input(loader, cwd)
         disabled_composition = (
             self._disabled_composition(external) if base is None else None
         )
-        bundle = self.custody.prepare_initial_catalog(
+        bundle = self.prepare_initial_catalog(
             self._build_catalog_adapter(
                 receipt,
                 composition=base.product_composition if base is not None else disabled_composition,
@@ -277,7 +278,7 @@ class InitialCatalogHandoff:
             ),
             cwd=cwd,
         )
-        self.custody.catalog_selection = ProductCatalogSelection(
+        self.catalog_selection = ProductCatalogSelection(
             runtime=runtime,
             capability_selections=selections,
             disabled_base=disabled_base,
@@ -300,7 +301,7 @@ class InitialCatalogHandoff:
     ) -> InitialResourceCatalogProductAdapter:
         base, clock = self.base_assembly, self.clock
         compiled = self.base
-        disabled_base = self.custody.catalog_selection.disabled_base is not None
+        disabled_base = self.catalog_selection.disabled_base is not None
         evaluated_at = (
             compiled.product_composition.authority_context.evaluated_at
             if compiled is not None
@@ -348,7 +349,7 @@ class InitialCatalogHandoff:
             evaluated_at = clock() if clock is not None else int(time.time())
         return build_coding_initial_resource_catalog_adapter(
             receipt,
-            product_scope_id=self.custody.session_id,
+            product_scope_id=self.session_id,
             disabled_skills=disabled_skills,
             product_composition=composition,
             product_snapshot_resources=resources,
@@ -362,7 +363,7 @@ class InitialCatalogHandoff:
     ) -> ProductCompositionCompilation | None:
         if external is not None:
             return external.product_composition
-        preparation = self.custody.preparation
+        preparation = self.preparation
         return preparation.product_composition if preparation is not None else None
 
     def _legacy_plan_seed(
@@ -373,7 +374,7 @@ class InitialCatalogHandoff:
     ) -> ProductPluginPlanSeed | None:
         return prepare_coding_package_plugin_plan_seed(
             receipt,
-            product_scope_id=self.custody.session_id,
+            product_scope_id=self.session_id,
             evaluated_at=evaluated_at,
             plan_seed=base_seed,
             include_configured_resource_plugins=self.include_configured,
@@ -399,9 +400,9 @@ class InitialCatalogHandoff:
                 raise CodingResourceCatalogAdmissionError(("peer_product_compilation",))
             return assemble_product_composition(self.supplied, evaluated_at=evaluated_at), None
         if prepare_capabilities is not None:
-            self.custody.preparation = prepare_capabilities(seed)
-            if self.custody.preparation is not None:
-                return self.custody.preparation.product_composition, None
+            self.preparation = prepare_capabilities(seed)
+            if self.preparation is not None:
+                return self.preparation.product_composition, None
         if base is None:
             return None, None
         assert seed is not None
