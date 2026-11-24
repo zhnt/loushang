@@ -1074,3 +1074,17 @@ format稿178至165仅稿间布局/操作体形式差，不计生产收益。最�
 合同，非独立否决理由；单一具体evidence接缝尚未建立，不发明新planner/框架或拆小片。
 当前仍A214的Code108172/系统661330/15K差93172，2063源全SHA与行不变，Goal开放。
 后续按[大块优先队列](../coding-responsibility-priority.md)核完整deferred-control状态寿命。
+
+## 34. Catalog 交接与刷新准备
+
+实施 agent `/root` 完成技术评审与接受，范围覆盖 Coding 装配与 Harness Session
+的共同构造边界，基线为 `862888481`，采用本地架构方法 `0f9bd3f`。
+
+Harness 的 `SessionStartupCustody` 绑定一次 Product 与 Session 身份。兼容和 fenced
+启动经同一入口交接已投影的 Catalog adapter。刷新先复核启动选定的证据，再按当前
+cwd 读取 Loader 回执、投影及准备下一代 bootstrap。发布与回滚继续由现有 Session
+资源代际事务处理。Coding 提供 legacy 与 fenced 的来源、编译和时钟政策，首次
+legacy 计划与刷新共用 seed 绑定。
+
+本批 Coding −74 行，Harness +44 行，系统生产 Python −30 行。Linux 上与启动、
+fenced 插件选择、刷新和失败回滚相关的 282 项通过，会话持久化与恢复冒烟通过。

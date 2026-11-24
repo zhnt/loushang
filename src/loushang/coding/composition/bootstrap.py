@@ -1009,12 +1009,11 @@ def _create_agent_session(
 
     preparation_custody: SessionStartupCustody[
         CodingCapabilityPluginCompositionPreparation
-    ] = SessionStartupCustody()
-    initial_catalog = InitialCatalogHandoff(
-        services=services,
+    ] = SessionStartupCustody(
+        product_id=CODING_PRODUCT_ID,
+        product_label="Coding",
         session_id=session_id,
-        custody=preparation_custody,
-        source_policy=resource_catalog_source_policy,
+        admission_failure=CodingResourceCatalogAdmissionError,
     )
 
     def prepare_capability_roots(
@@ -1118,13 +1117,18 @@ def _create_agent_session(
                 raise
             return None
 
-    catalog_product_composition_assembly = (
-        initial_resource_catalog_product_composition_assembly
-    )
-    include_configured_catalog_plugins = (
-        resolved_invocation_profile.include_configured_resource_plugins
-        if resolved_invocation_profile is not None
-        else resource_catalog_source_policy.include_package_resources
+    initial_catalog = InitialCatalogHandoff(
+        services=services,
+        custody=preparation_custody,
+        source_policy=resource_catalog_source_policy,
+        base_assembly=coding_base_plugin_assembly,
+        supplied=initial_resource_catalog_product_composition_assembly,
+        include_configured=(
+            resolved_invocation_profile.include_configured_resource_plugins
+            if resolved_invocation_profile is not None
+            else resource_catalog_source_policy.include_package_resources
+        ),
+        clock=coding_plugin_clock,
     )
     selected_plugin_packages = (
         (
@@ -1163,20 +1167,14 @@ def _create_agent_session(
             return initial_catalog.prepare_legacy_projection(
                 loader,
                 cwd=resolved_cwd,
-                base=coding_base_plugin_assembly,
-                supplied=catalog_product_composition_assembly,
-                include_configured=include_configured_catalog_plugins,
                 prepare_capabilities=(
                     prepare_capability_plugins
                     if eager_capability_plugins_enabled_for_session
                     else None
                 ),
                 reconcile_compatibility=reconcile_compatibility,
-                clock=(
-                    coding_plugin_clock
-                    if coding_base_plugin_assembly is not None
-                    or capability_plugins_enabled_for_session
-                    else None
+                use_plugin_clock=(
+                    coding_base_plugin_assembly is not None or capability_plugins_enabled_for_session
                 ),
             )
         except CodingResourceCatalogAdmissionError as error:
@@ -1247,7 +1245,6 @@ def _create_agent_session(
             requested_capabilities=requested_capabilities,
             max_files=_CATALOG_MANIFEST_MAX_FILES,
             max_total_bytes=_CATALOG_MANIFEST_MAX_BYTES,
-            clock=coding_plugin_clock,
             compile_base=compile_base,
             prepare_capability_inputs=prepare_capability_inputs,
             resume_parents=_resume_plugin_parents,
@@ -1272,18 +1269,16 @@ def _create_agent_session(
         package_product_lifecycle_mode: PackageProductLifecycleMode,
     ) -> AgentSession:
         resource_catalog_adapter = preparation_custody.take_catalog_adapter()
-        catalog_selection = initial_catalog.selection
+        catalog_selection = preparation_custody.catalog_selection
         product_base_compilation = initial_catalog.base
         product_base_runtime = catalog_selection.runtime
         catalog_selection.require_current(product_label="Coding")
 
         prepare_resource_catalog_refresh = partial(
-            initial_catalog.prepare_refresh,
+            preparation_custody.prepare_catalog_refresh,
+            loader=services.resource_loader,
             get_cwd=session_manager.get_cwd,
-            base=coding_base_plugin_assembly,
-            supplied=catalog_product_composition_assembly,
-            include_configured=include_configured_catalog_plugins,
-            clock=coding_plugin_clock,
+            prepare_adapter=initial_catalog.build_refresh_adapter,
         )
 
         sandbox_runtime, workspace_binding = bind_session_workspace(
@@ -1295,9 +1290,7 @@ def _create_agent_session(
             delegated_execution_profile=delegated_execution_profile,
             tool_policy_evaluator=tool_policy_evaluator,
             approval_resolver=approval_resolver,
-            audit_sink=partial(
-                preparation_custody.emit_workspace_audit, product_label="Coding"
-            ),
+            audit_sink=preparation_custody.emit_workspace_audit,
         )
 
         capability_tool_modes = (
@@ -1555,8 +1548,6 @@ def _create_agent_session(
 
         return preparation_custody.construct_catalog_session(
             resource_catalog_adapter,
-            product_id=CODING_PRODUCT_ID,
-            session_id=session_id,
             bundle=bundle,
             construct=construct_child_session,
             abort_unpublished=(
@@ -1576,7 +1567,6 @@ def _create_agent_session(
     with preparation_custody.guard_startup(
         read_failure_custodian=coding_capability_plugin_failure_custodian,
         management_cleanup=capability_management_state_cleanup,
-        product_label="Coding",
         private_label="Coding Arch private-state cleanup",
         before=(
             "Deferred Coding LSP management-state cleanup",

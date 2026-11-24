@@ -31,6 +31,7 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.package_product._selected_plugin_revisions import (
     ProductAdmissionFailure,
+    ProductCatalogSelection,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
@@ -1172,16 +1173,64 @@ class PreparationRootCustody(Generic[_PreparationT]):
 _StartupSessionT = TypeVar("_StartupSessionT", bound="AgentProductSession")
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
     """Hand prepared Catalog and Plugin owners to one original Session."""
 
+    product_id: str
+    product_label: str
+    session_id: str
+    admission_failure: ProductAdmissionFailure
     catalog_adapter: InitialResourceCatalogProductAdapter | None = field(
         default=None, init=False, repr=False
+    )
+    catalog_selection: ProductCatalogSelection = field(
+        default_factory=ProductCatalogSelection, init=False, repr=False
     )
     _constructed_session: AgentProductSession | None = field(
         default=None, init=False, repr=False
     )
+
+    def prepare_initial_catalog(
+        self,
+        adapter: InitialResourceCatalogProductAdapter,
+        *,
+        cwd: Path,
+    ) -> ResourceBundle:
+        """Stage only an adapter whose synchronous Catalog projection succeeded."""
+        bundle = adapter.prepare_bootstrap_projection(
+            product_id=self.product_id, session_id=self.session_id, cwd=cwd
+        )
+        self.catalog_adapter = adapter
+        return bundle
+
+    def prepare_catalog_refresh(
+        self,
+        catalog_generation: int,
+        *,
+        loader: ResourceLoader,
+        get_cwd: Callable[[], str],
+        prepare_adapter: Callable[
+            [ResourceCatalogInputReceipt], InitialResourceCatalogProductAdapter
+        ],
+    ) -> InitialSessionResourceCatalogBootstrap:
+        """Read and prepare a replacement only after rechecking startup evidence."""
+        self.catalog_selection.require_current(
+            product_label=self.product_label, refresh_failure=self.admission_failure
+        )
+        cwd = Path(get_cwd())
+        adapter = prepare_adapter(self.require_catalog_input(loader, cwd))
+        return adapter.prepare_session_bootstrap(
+            product_id=self.product_id,
+            session_id=self.session_id,
+            base_resource_bundle=adapter.prepare_bootstrap_projection(
+                product_id=self.product_id, session_id=self.session_id, cwd=cwd
+            ),
+            catalog_generation=catalog_generation,
+        )
+
+    def require_catalog_input(self, loader: ResourceLoader, cwd: Path) -> ResourceCatalogInputReceipt:
+        return require_catalog_receipt(loader, cwd, self.admission_failure)
 
     def require_catalog_unprepared(self, error: str) -> None:
         if self.catalog_adapter is not None:
@@ -1198,8 +1247,6 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         self,
         adapter: InitialResourceCatalogProductAdapter,
         *,
-        product_id: str,
-        session_id: str,
         bundle: ResourceBundle,
         construct: Callable[[InitialSessionResourceCatalogBootstrap], _StartupSessionT],
         abort_unpublished: CleanupStep | None = None,
@@ -1207,8 +1254,8 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         # The Catalog rolls back its inputs before the outer Plugin handoff.
         try:
             session = adapter.construct_session(
-                product_id=product_id,
-                session_id=session_id,
+                product_id=self.product_id,
+                session_id=self.session_id,
                 base_resource_bundle=bundle,
                 construct=construct,
             )
@@ -1219,12 +1266,10 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         self._constructed_session = session
         return session
 
-    async def emit_workspace_audit(
-        self, event: Mapping[str, object], *, product_label: str
-    ) -> None:
+    async def emit_workspace_audit(self, event: Mapping[str, object]) -> None:
         session = self._constructed_session
         if session is None:
-            raise RuntimeError(f"{product_label} workspace Session is not yet bound")
+            raise RuntimeError(f"{self.product_label} workspace Session is not yet bound")
         await session.emit_product_tool_audit_event(event)
 
     @contextmanager
@@ -1233,7 +1278,6 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         *,
         read_failure_custodian: Callable[[BaseException], _PreparationFailureCleanup | None],
         management_cleanup: Callable[[], None] | None,
-        product_label: str,
         private_label: str,
         before: tuple[str, Callable[[], None] | None],
         base_preparation: _PreparedCompositionCleanup | None,
@@ -1247,17 +1291,17 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
                 raise
             failure_custodian = read_failure_custodian(error)
             after = (
-                f"{product_label} base Plugin cleanup",
+                f"{self.product_label} base Plugin cleanup",
                 base_preparation.close if base_preparation is not None else None,
             )
             # A retained failure custodian settles its own leases and roots.
             preparation = self.preparation if failure_custodian is None else failure_custodian
-            preparation_label = f"{product_label} Capability Plugin preparation cleanup"
+            preparation_label = f"{self.product_label} Capability Plugin preparation cleanup"
             steps: tuple[tuple[str, Callable[[], None] | None], ...]
             if preparation is None:
                 steps = (
                     (
-                        f"{product_label} Capability Plugin management-state cleanup",
+                        f"{self.product_label} Capability Plugin management-state cleanup",
                         management_cleanup,
                     ),
                     (preparation_label, self.state_cleanup),
