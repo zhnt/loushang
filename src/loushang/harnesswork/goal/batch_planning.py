@@ -25,6 +25,79 @@ class BatchPlanningPolicy:
 
     rejection_error: type[ValueError]
 
+    @staticmethod
+    def _goal_batches(basis, facts):
+        return (batch for batch in facts.batches if batch.goal_id == basis.goal.id)
+
+    def _observation_runs(self, basis, facts):
+        for batch in self._goal_batches(basis, facts):
+            yield batch, self._run(batch, facts), None
+
+    def _planning_call_failure(self, batch, run):
+        return None
+
+    def _validate_observed_proposal(self, batch, proposal, evidence):
+        pass
+
+    def _observed_work(self, basis, batch, run, evidence, knowledge, context):
+        raise NotImplementedError
+
+    def _project_observations(self, basis, facts):
+        """Project original Work in order and apply the domain's progress rules."""
+        evidence, routes, rejections = [], [], []
+        planning = invalid = stalled = 0
+        knowledge = {}
+        for batch, run, context in self._observation_runs(basis, facts):
+            phase = batch.source.get("phase")
+            planning += phase == "planning"
+            if run is None:
+                continue
+            if phase == "planning":
+                if run.status == "cancelled":
+                    continue
+                failure = self._planning_call_failure(batch, run)
+                if failure is not None:
+                    evidence.append({
+                        "id": batch.operation_id,
+                        "phase": "planning_call_failure",
+                        "revision": batch.revision,
+                        "epoch": batch.epoch,
+                        "error_code": failure,
+                    })
+                    continue
+                try:
+                    proposal = self._proposal(batch, run)
+                    self._validate_observed_proposal(batch, proposal, evidence)
+                    routes.append(
+                        {"proposal_id": batch.operation_id, "proposal": proposal.data()}
+                    )
+                except self.rejection_error as error:
+                    invalid += 1
+                    rejections.append(
+                        {"proposal_id": batch.operation_id, "reason": str(error)}
+                    )
+                continue
+            item, progress = self._observed_work(
+                basis, batch, run, evidence, knowledge, context
+            )
+            if item is not None:
+                invalid = 0
+                evidence.append(item)
+                if progress is not None:
+                    stalled = 0 if progress else stalled + 1
+        return evidence, routes, rejections, planning, invalid, stalled
+
+    @staticmethod
+    def _implementation_observation(batch, run):
+        return {
+            "id": batch.operation_id,
+            "phase": batch.source.get("phase"),
+            "status": run.status,
+            "revision": batch.revision,
+            "epoch": batch.epoch,
+            "action": plain(batch.source.get("action")),
+        }
+
     def trace(self, basis, facts):
         """One read-only projection for live and detached original records."""
         if facts.busy or facts.unresolved:
