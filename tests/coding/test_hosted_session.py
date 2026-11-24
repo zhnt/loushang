@@ -581,6 +581,7 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     from loushang.harness.resource_catalog.session_bootstrap import (
         InitialSessionResourceCatalogBootstrap,
     )
+    from loushang.harness.session.bootstrap_construction import SessionStartupCustody
 
     began = time.perf_counter()
     durations: list[tuple[str, float, float]] = []
@@ -645,11 +646,10 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
         timed_sync("agent-session-construction", hosted_module.create_agent_session),
     )
     monkeypatch.setattr(
-        package_catalog_module,
-        "prepare_coding_catalog_projection",
+        SessionStartupCustody,
+        "prepare_initial_catalog",
         timed_sync(
-            "product-catalog-projection",
-            package_catalog_module.prepare_coding_catalog_projection,
+            "product-catalog-projection", SessionStartupCustody.prepare_initial_catalog
         ),
     )
     monkeypatch.setattr(
