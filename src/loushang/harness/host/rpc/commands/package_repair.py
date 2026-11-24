@@ -6,6 +6,7 @@ import re
 from collections.abc import Callable
 from typing import Any, Protocol, cast
 
+from loushang.harness.host.rpc.arguments import request_exact_string
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.routing import LegacyRpcHandler
 from loushang.harness.resources.packages.product_contract import (
@@ -77,10 +78,10 @@ class RpcPackageRepairCommands:
     async def repair_plugin_package(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        correlation = _request_string(payload.get("correlationId", command_id))
-        product_id = _request_string(payload.get("productId"))
-        scope_id = _request_string(payload.get("scopeId"))
-        operation_id = _request_string(payload.get("operationId"))
+        correlation = request_exact_string(payload.get("correlationId", command_id))
+        product_id = request_exact_string(payload.get("productId"))
+        scope_id = request_exact_string(payload.get("scopeId"))
+        operation_id = request_exact_string(payload.get("operationId"))
         action = payload.get("action")
         if (
             correlation is None
@@ -120,12 +121,6 @@ class RpcPackageRepairCommands:
         self._output.error(
             command=_COMMAND, request_id=command_id, error=code, code=code
         )
-
-
-def _request_string(value: object) -> str | None:
-    return (
-        value if isinstance(value, str) and value and value == value.strip() else None
-    )
 
 
 def _safe_result(
