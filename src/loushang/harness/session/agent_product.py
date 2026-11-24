@@ -1301,9 +1301,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     navigate_tree=self._navigate_tree_from_extension,
                     import_session=self._extension_replacement_controller.import_session,
                     get_active_tool_names=self.get_active_tool_names,
-                    get_all_tools=lambda: (
-                        self._composition.tool_controller.get_available_tool_infos()
-                    ),
+                    get_all_tools=self._get_command_tool_infos,
                     is_tool_allowed=lambda name: self._composition.tool_controller.is_tool_allowed(name),
                     set_active_tools=self.set_active_tools,
                     get_default_active_tool_names=self._default_active_tool_names,
@@ -1411,6 +1409,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 turn_performance=self._turn_start_performance,
             ),
         )
+
+    def _get_command_tool_infos(self) -> list[dict[str, object]]:
+        return self._composition.tool_controller.get_available_tool_infos()
 
     def get_context_usage(self):
         return serialize_context_usage_payload(super().get_context_usage())

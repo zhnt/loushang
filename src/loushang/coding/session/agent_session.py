@@ -368,7 +368,14 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         await super().set_active_tools(tool_names)
 
     def get_all_tool_infos(self) -> list[dict[str, object]]:
-        infos = super().get_all_tool_infos()
+        return self._with_dormant_lsp_tools(super().get_all_tool_infos())
+
+    def _get_command_tool_infos(self) -> list[dict[str, object]]:
+        return self._with_dormant_lsp_tools(super()._get_command_tool_infos())
+
+    def _with_dormant_lsp_tools(
+        self, infos: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
         slot = self._deferred_lsp_slot
         if slot is None or slot.active is not None:
             return infos
