@@ -47,9 +47,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
     windows_listdir_at,
     windows_stat_at,
 )
-from loushang.harness.resources.plugins.declarations import (
-    PluginLocalWorkerConfiguration,
-)
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.worker._native_profile_bridge import (
     _WINDOWS_LPAC_PROFILE_ID,
@@ -87,8 +84,11 @@ from loushang.harness.worker.history._windows_sources import (
     WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
     WINDOWS_WORKER_HISTORY_CUTOVER_MAX_BYTES,
     WINDOWS_WORKER_HISTORY_CUTOVER_NAME,
+    WINDOWS_WORKER_LAUNCH_INTENT_NAME,
+    WINDOWS_WORKER_LAUNCH_INTENT_PREFIX,
     WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES,
     WindowsHistoryNames,
+    windows_worker_launch_intent_name,
 )
 from loushang.harness.worker.history._windows_stage_review_wire import (
     WINDOWS_STAGE_REVIEW_MAX_BYTES,
@@ -380,56 +380,15 @@ class WindowsWorkerRetirementRecords(Generic[_RetirementReviewT, IntentT]):
         product.assert_root_gc_authority_current()
 
 
-class _PayloadSelection(Protocol):
-    @property
-    def digest(self) -> str: ...
-
-    @property
-    def configuration(self) -> PluginLocalWorkerConfiguration: ...
-
-    @property
-    def body(self) -> bytes: ...
-
-
-class _SelectedPayloadAuthority(Protocol):
-    def current_selected_payload(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> _PayloadSelection: ...
-
-    def current_worker_owner_id(
-        self, receipt: ProductWorkerActivationReceiptV1
-    ) -> str: ...
-
-
-class _LaunchPayload(Protocol):
-    @property
-    def payload_digest(self) -> str: ...
-
-    @property
-    def owner_id(self) -> str: ...
-
-
-class _MarkerVerifier(Protocol):
-    def __call__(self, *, entrypoint: str) -> None: ...
-
-
 @dataclass(frozen=True, slots=True)
 class WindowsProductWorkerIntentRecords(Generic[IntentT]):
-    """Logical record operations using original IO; no cached path/epoch.
+    """Publish and read the exact launch intent using the current Product root."""
 
-    read/inspect require the caller's original GC scope. commit acquires the
-    original write guard. Layout/decoder/bounds are Product bindings; path and
-    maximum getters run at the old operation points, inside the borrowed root.
-    """
-
-    _product: WindowsLocalWheelProductSessionOwner
+    _product_id: str
     _io: WindowsPrivateReceiptIO
     _record_type: type[IntentT]
-    _path: Callable[[str], Path]
-    _prefix: str
-    _name_pattern: re.Pattern[str]
-    _maximum_bytes: Callable[[], int]
-    _maximum_attempts: Callable[[], int]
+    _maximum_bytes: int
+    _maximum_attempts: int
     _error_type: type[RuntimeError]
     _error_prefix: str
     _write_maximum_bytes: int
@@ -437,14 +396,41 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
     def _failure(self, suffix: str) -> RuntimeError:
         return self._error_type(self._error_prefix + "_" + suffix)
 
+    def _require_product(self, product: WindowsLocalWheelProductSessionOwner) -> None:
+        if not is_windows_product(product, self._product_id, os.name):
+            raise OSError("Windows Worker launch intent requires a Product owner")
+
+    @staticmethod
+    def _require_attempt(attempt_id: str) -> None:
+        if not is_attempt_id(attempt_id):
+            raise ValueError("Windows Worker launch intent attempt ID is invalid")
+
+    def _path(
+        self, product: WindowsLocalWheelProductSessionOwner, attempt_id: str
+    ) -> Path:
+        self._require_attempt(attempt_id)
+        return product.state_root / windows_worker_launch_intent_name(attempt_id)
+
     def read(
-        self, attempt_id: str, *, allow_unpublished_stage: bool = False
+        self, product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
     ) -> IntentT | None:
-        self._product.assert_root_gc_authority_current()
-        with self._product.epoch_runtime.borrow_product_state_root_descriptor():
+        self._require_product(product)
+        self._require_attempt(attempt_id)
+        with product.gc_gate.read_guard():
+            return self.read_under_guard(product, attempt_id)
+
+    def read_under_guard(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        attempt_id: str,
+        *,
+        allow_unpublished_stage: bool = False,
+    ) -> IntentT | None:
+        product.assert_root_gc_authority_current()
+        with product.epoch_runtime.borrow_product_state_root_descriptor():
             raw = self._io.read_private_receipt(
-                self._path(attempt_id),
-                maximum_bytes=self._maximum_bytes(),
+                self._path(product, attempt_id),
+                maximum_bytes=self._maximum_bytes,
                 allow_unpublished_stage=allow_unpublished_stage,
             )
         intent = (
@@ -457,77 +443,47 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
                 invalid_error=lambda: self._failure("invalid"),
             )
         )
-        self._product.assert_root_gc_authority_current()
+        product.assert_root_gc_authority_current()
         return intent
 
-    def inspect(self) -> tuple[IntentT, ...]:
-        self._product.assert_root_gc_authority_current()
-        with self._product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+    def inspect(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> tuple[IntentT, ...]:
+        self._require_product(product)
+        with product.gc_gate.read_guard():
+            return self.inspect_under_guard(product)
+
+    def inspect_under_guard(
+        self, product: WindowsLocalWheelProductSessionOwner
+    ) -> tuple[IntentT, ...]:
+        product.assert_root_gc_authority_current()
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
             names = windows_listdir_at(root)
             prefixed = {
-                name for name in names if name.casefold().startswith(self._prefix)
+                name for name in names
+                if name.casefold().startswith(WINDOWS_WORKER_LAUNCH_INTENT_PREFIX)
             }
             histories = {
-                name for name in prefixed if self._name_pattern.fullmatch(name)
+                name for name in prefixed if WINDOWS_WORKER_LAUNCH_INTENT_NAME.fullmatch(name)
             }
-            if prefixed != histories or len(histories) > self._maximum_attempts():
+            if prefixed != histories or len(histories) > self._maximum_attempts:
                 raise self._failure("inventory_unsafe")
             intents = []
             for name in sorted(histories):
-                match = self._name_pattern.fullmatch(name)
+                match = WINDOWS_WORKER_LAUNCH_INTENT_NAME.fullmatch(name)
                 assert match is not None
-                intent = self.read(match.group(1))
+                intent = self.read_under_guard(product, match.group(1))
                 if intent is None:
                     raise self._failure("inventory_unsafe")
                 intents.append(intent)
             if set(windows_listdir_at(root)) != set(names):
                 raise self._failure("inventory_changed")
-        self._product.assert_root_gc_authority_current()
+        product.assert_root_gc_authority_current()
         return tuple(intents)
-
-    def commit(
-        self,
-        *,
-        receipt_owner: _SelectedPayloadAuthority,
-        receipt: ProductWorkerActivationReceiptV1,
-        request: ManagedWorkerLaunchRequestV1,
-        payload_lease: _LaunchPayload,
-        intent: IntentT,
-        require_bound: Callable[[], None],
-        verify_marker: _MarkerVerifier,
-    ) -> IntentT:
-        with self._product.gc_gate.guard(require_write=True):
-            self._product.assert_root_gc_authority_current()
-            require_bound()
-            selected = receipt_owner.current_selected_payload(receipt)
-            owner_id = receipt_owner.current_worker_owner_id(receipt)
-            if (
-                selected.digest != payload_lease.payload_digest
-                or selected.configuration.fingerprint
-                != request.runtime.worker_configuration_fingerprint
-                or len(selected.body) != request.runtime.executable_size
-                or (owner_id != payload_lease.owner_id)
-            ):
-                raise self._failure("selection_stale")
-            verify_marker(entrypoint=selected.configuration.entrypoint)
-            request.runtime.verify()
-            request.validate_current()
-            existing = self.read(intent.attempt_id, allow_unpublished_stage=True)
-            if existing is not None:
-                raise self._failure("attempt_reused")
-            with self._product.epoch_runtime.borrow_product_state_root_descriptor():
-                self._io.write_private_receipt(
-                    self._path(intent.attempt_id),
-                    intent.to_bytes(),
-                    maximum_bytes=self._write_maximum_bytes,
-                )
-                if self.read(intent.attempt_id) != intent:
-                    raise self._failure("publication_changed")
-            self._product.assert_root_gc_authority_current()
-            return intent
 
     def commit_bound(
         self,
+        product: WindowsLocalWheelProductSessionOwner,
         *,
         receipt_owner: _WindowsWorkerProductReceiptAuthority[
             _PayloadReceiptT, _SelectedPayloadT
@@ -539,8 +495,16 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
             _WindowsPayloadT, _WindowsPendingT, _PayloadAttemptT
         ],
     ) -> IntentT:
+        self._require_product(product)
         if (
-            request.identity.scope_id != receipt.policy.product_scope_id
+            type(receipt_owner) is not payload_program.receipt_owner_type
+            or receipt_owner.product_owner is not product
+            or type(receipt) is not ProductWorkerActivationReceiptV1
+            or type(request) is not ManagedWorkerLaunchRequestV1
+            or type(payload_lease) is not payload_program.lease_type
+            or request.identity.product_id != self._product_id
+            or receipt.policy.product_id != self._product_id
+            or request.identity.scope_id != receipt.policy.product_scope_id
             or request.identity.plugin_id != receipt.policy.plugin_id
             or request.identity.plugin_revision_digest
             != receipt.policy.plugin_revision_digest
@@ -579,48 +543,48 @@ class WindowsProductWorkerIntentRecords(Generic[IntentT]):
             owner_id=payload_lease.owner_id,
             supervisor_epoch=request.identity.supervisor_epoch,
         )
-        return self.commit(
-            receipt_owner=receipt_owner,
-            receipt=receipt,
-            request=request,
-            payload_lease=payload_lease,
-            intent=intent,
-            require_bound=partial(
-                payload_program.require_bound,
+        with product.gc_gate.guard(require_write=True):
+            product.assert_root_gc_authority_current()
+            payload_program.require_bound(
                 receipt_owner=receipt_owner,
                 receipt=receipt,
                 payload_lease=payload_lease,
                 request=request,
-            ),
-            verify_marker=partial(
-                payload_program.verify_stage,
+            )
+            selected = receipt_owner.current_selected_payload(receipt)
+            owner_id = receipt_owner.current_worker_owner_id(receipt)
+            if (
+                selected.digest != payload_lease.payload_digest
+                or selected.configuration.fingerprint
+                != request.runtime.worker_configuration_fingerprint
+                or len(selected.body) != request.runtime.executable_size
+                or owner_id != payload_lease.owner_id
+            ):
+                raise self._failure("selection_stale")
+            payload_program.verify_stage(
                 receipt_owner=receipt_owner,
                 receipt=receipt,
                 payload_lease=payload_lease,
+                entrypoint=selected.configuration.entrypoint,
                 initial=True,
-            ),
-        )
-
-
-def read_windows_product_worker_launch_intent(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    records: Callable[[], WindowsProductWorkerIntentRecords[IntentT]],
-) -> IntentT | None:
-    """Construct the original record owner inside the Product's read guard."""
-    with product.gc_gate.read_guard():
-        return records().read(attempt_id, allow_unpublished_stage=False)
-
-
-def inspect_windows_product_worker_launch_intents(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    records: Callable[[], WindowsProductWorkerIntentRecords[IntentT]],
-) -> tuple[IntentT, ...]:
-    """Keep inventory construction and IO in the original GC read scope."""
-    with product.gc_gate.read_guard():
-        return records().inspect()
+            )
+            request.runtime.verify()
+            request.validate_current()
+            existing = self.read_under_guard(
+                product, intent.attempt_id, allow_unpublished_stage=True
+            )
+            if existing is not None:
+                raise self._failure("attempt_reused")
+            with product.epoch_runtime.borrow_product_state_root_descriptor():
+                self._io.write_private_receipt(
+                    self._path(product, intent.attempt_id),
+                    intent.to_bytes(),
+                    maximum_bytes=self._write_maximum_bytes,
+                )
+                if self.read_under_guard(product, intent.attempt_id) != intent:
+                    raise self._failure("publication_changed")
+            product.assert_root_gc_authority_current()
+            return intent
 
 
 class WindowsProductWorkerProvisioningAccess:
@@ -1696,13 +1660,9 @@ _WindowsPendingT = TypeVar("_WindowsPendingT", bound=_PendingPayload)
 _PayloadAttemptT = TypeVar("_PayloadAttemptT", bound=WindowsRecoveryAttemptV1)
 
 
-class WindowsWorkerLaunchPayload(_LaunchPayload, _StageCaptureIntent, Protocol):
-    @property
-    def attempt_id(self) -> str: ...
+class WindowsWorkerLaunchPayload(_StageCaptureIntent, Protocol):
     @property
     def runtime(self) -> WorkerRuntimeBindingV1: ...
-    @property
-    def receipt_fingerprint(self) -> str: ...
 
 
 _WindowsPayloadT = TypeVar("_WindowsPayloadT", bound=WindowsWorkerLaunchPayload)
