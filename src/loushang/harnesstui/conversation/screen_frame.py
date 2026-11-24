@@ -34,6 +34,7 @@ class ScreenFrameCopy:
     followup_hint: str
     interruption_marker: str = "■"
     stopping_label: str = "Stopping…"
+    show_elapsed: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +127,7 @@ class ScreenFramePresentation:
         *,
         elapsed_seconds: float,
     ) -> WorkingLine | None:
-        if not state.running:
+        if not state.running or not self.copy.show_elapsed:
             return None
         return WorkingLine(
             label=(

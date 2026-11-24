@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from loushang.appserver.protocol import TranscriptRecordKindV1
 from loushang.tui.transcript import (
     AssistantMessageRecord,
@@ -56,7 +58,11 @@ def project_capabilities(state: HostedMuxState, *, closing: bool = False,
     ))
 
 
-def project_active_conversation(state: HostedMuxState) -> ScreenConversationState:
+def project_active_conversation(
+    state: HostedMuxState,
+    *,
+    terminal_text: Callable[[str], str] | None = None,
+) -> ScreenConversationState:
     """Reuse the shared presentation core without retaining Product objects."""
 
     projected = ScreenConversationState()
@@ -64,24 +70,30 @@ def project_active_conversation(state: HostedMuxState) -> ScreenConversationStat
     if window is None:
         projected.set_status("No hosted Sessions")
         return projected
+    anchor = window.scroll_anchor if terminal_text is not None else None
+
+    def display(text: str) -> str:
+        return text if terminal_text is None else terminal_text(text)
+
     records: list[DisplayRecord] = []
-    for record in window.records:
+    for record in window.records if anchor is None else window.records[:anchor]:
+        text = display(record.text)
         if record.kind is TranscriptRecordKindV1.USER:
-            records.append(UserPromptRecord(record.text))
+            records.append(UserPromptRecord(text))
         elif record.kind is TranscriptRecordKindV1.ASSISTANT:
-            records.append(AssistantMessageRecord(record.text, stable=True))
+            records.append(AssistantMessageRecord(text, stable=True))
         elif record.kind is TranscriptRecordKindV1.STATUS:
-            records.append(StatusRecord(record.text))
+            records.append(StatusRecord(text))
         else:
-            records.append(ErrorRecord(record.text, ""))
+            records.append(ErrorRecord(text, ""))
     projected.replace_transcript_window(records)
-    projected.session_label = window.title
+    projected.session_label = display(window.title)
     projected.session_id = window.session_id
     projected.request_presentation = window.request_presentation
     if window.running:
         projected.begin_run(started_at=0.0)
-    if window.assistant_draft:
-        projected.append_assistant_chunk(window.assistant_draft)
+    if anchor is None and (draft := display(window.assistant_draft)):
+        projected.append_assistant_chunk(draft)
     projected.set_status(state.status_message)
     return projected
 

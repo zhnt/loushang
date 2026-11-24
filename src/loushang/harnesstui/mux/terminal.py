@@ -40,8 +40,6 @@ async def run_hosted_mux_shell(
         type(startup_deadline) not in (int, float) or not math.isfinite(startup_deadline)
     ):
         raise ValueError("invalid startup deadline")
-    input_task: asyncio.Task[str] | None = None
-    poll_task: asyncio.Task[None] | None = None
     native = session or TerminalSession(stdin=stdin, stdout=stdout)
     runtime = TuiRuntime(
         RenderLoop(shell.screen),
@@ -59,15 +57,13 @@ async def run_hosted_mux_shell(
     try:
         # Authentication/recovery precede terminal takeover. Startup failure
         # must not spend a separate UI budget before the outer settlement owner.
-        if startup_deadline is None:
+        clock = asyncio.get_running_loop().time
+        if startup_deadline is not None and clock() >= startup_deadline:
+            raise TimeoutError("hosted_startup_timeout")
+        async with asyncio.timeout_at(startup_deadline):
             await shell.start(settlement=settlement)
-        else:
-            if asyncio.get_running_loop().time() >= startup_deadline:
-                raise TimeoutError("hosted_startup_timeout")
-            async with asyncio.timeout_at(startup_deadline):
-                await shell.start(settlement=settlement)
-            if asyncio.get_running_loop().time() >= startup_deadline:
-                raise TimeoutError("hosted_startup_timeout")
+        if startup_deadline is not None and clock() >= startup_deadline:
+            raise TimeoutError("hosted_startup_timeout")
         with native:
             shell.screen.terminal_capabilities = native.capabilities
             reader = InputReader()

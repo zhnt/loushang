@@ -172,16 +172,11 @@ class HostedMuxShellV1:
         try:
             self.refresh_capability_completions()
             self._handle(event)
-        except AppServiceError as error:
-            self.notice = error.code.value
-            if self.picker.visible:
-                self.picker.status = self.notice
-        except (ValueError, KeyError) as error:
-            self.notice = (
-                str(error)
-                if str(error) in {"draft_limit", "action_queue_full"}
-                else "invalid_or_unavailable_action"
-            )
+        except (AppServiceError, ValueError, KeyError) as error:
+            message = error.code.value if isinstance(error, AppServiceError) else str(error)
+            self.notice = message if (
+                isinstance(error, AppServiceError) or message in {"draft_limit", "action_queue_full"}
+            ) else "invalid_or_unavailable_action"
             if self.picker.visible:
                 self.picker.status = self.notice
 
@@ -230,14 +225,11 @@ class HostedMuxShellV1:
             self.screen.dismiss_details()
             self.picker.open()
             return
-        if key == "f1":
+        if key in {"f1", "f2"}:
+            if key == "f2":
+                self._target()
             self.picker.dismiss()
-            self.screen.show_help()
-            return
-        if key == "f2":
-            self._target()
-            self.picker.dismiss()
-            self.screen.show_approval()
+            (self.screen.show_help if key == "f1" else self.screen.show_approval)()
             return
         if key in {"tab", "shift+tab"} and not self.screen.composer.has_completions:
             self._select(key == "tab")

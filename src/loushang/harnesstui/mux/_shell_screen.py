@@ -16,7 +16,6 @@ from loushang.tui.ui_parts.text_pager import TextPager
 
 from ..conversation.screen_app import ScreenConversationApp
 from ..conversation.screen_frame import ScreenFrameCopy, ScreenFramePresentation
-from ..conversation.screen_state import ScreenConversationState
 from ..selection.model import ModelSelectorSurface
 from ..status.line import StatusLineSettings
 from .projection import project_active_conversation
@@ -59,15 +58,6 @@ def safe_text(text: str) -> str:
     )
 
 
-class _HostedFramePresentation(ScreenFramePresentation):
-    def working_line(
-        self, state: ScreenConversationState, *, elapsed_seconds: float
-    ) -> None:
-        # v1 does not carry a remote start timestamp. The footer/status render
-        # authoritative running state without inventing an elapsed duration.
-        return None
-
-
 class HostedMuxScreenV1(ScreenConversationApp):
     def __init__(self, shell: HostedMuxShellV1, *, transcript_theme: ThemeResolver | None = None) -> None:
         self.shell = shell
@@ -89,8 +79,8 @@ class HostedMuxScreenV1(ScreenConversationApp):
         )
 
     def _create_frame_presentation(self) -> ScreenFramePresentation:
-        return _HostedFramePresentation(
-            ScreenFrameCopy("Working", "Steer", "", "Follow-up", "")
+        return ScreenFramePresentation(
+            ScreenFrameCopy("Working", "Steer", "", "Follow-up", "", show_elapsed=False)
         )
 
     def bind_editor(self, composer: Composer) -> None:
@@ -157,8 +147,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
         self._detail_key = key
 
     def approval_presented(self) -> bool:
-        self._sync_details()
-        key = self._approval_key()
+        key = self._sync_details()
         return key is not None and key == self._reviewed_key
 
     def dismiss_details(self) -> None:
@@ -174,15 +163,17 @@ class HostedMuxScreenV1(ScreenConversationApp):
         self.dismiss_details()
         self._reviewed_key = None
 
-    def _sync_details(self) -> None:
-        if self._reviewed_key is not None and self._reviewed_key != self._approval_key():
+    def _sync_details(self) -> tuple[object, ...] | None:
+        key = self._approval_key()
+        if self._reviewed_key != key:
             self._reviewed_key = None
-        if self._detail_key is not None and self._detail_key != self._approval_key():
+        if self._detail_key is not None and self._detail_key != key:
             self._detail = TextPager(
                 "Approval expired",
                 "Authority or pending action changed. Press Esc to return; inspect the current action again.",
             )
             self._detail_key = self._reviewed_key = None
+        return key
 
     def handle_details(self, event: InputEvent) -> bool:
         self._sync_details()
@@ -210,11 +201,12 @@ class HostedMuxScreenV1(ScreenConversationApp):
         if self._help_capabilities is not None and self._help_capabilities != capabilities:
             self.show_help()
         window = mux.active_window
+        approval_key = self._approval_key()
         key = (
             mux.attachment_id,
             self.shell.notice,
             mux.active_index,
-            self._approval_key(),
+            approval_key,
             None
             if window is None
             else (window.last_cursor, window.scroll_anchor, window.title, window.model_label, window.request_presentation),
@@ -222,31 +214,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
         if key != self._view_key:
             self._view_key = key
             self._view_revision += 1
-            # Sanitize the terminal copy, never the authoritative transcript.
-            windows = []
-            for item in mux.windows:
-                if item is window:
-                    records = (
-                        item.records[: item.scroll_anchor]
-                        if item.scroll_anchor is not None
-                        else item.records
-                    )
-                    windows.append(
-                        replace(
-                            item,
-                            title=safe_text(item.title),
-                            records=[
-                                replace(record, text=safe_text(record.text))
-                                for record in records
-                            ],
-                            assistant_draft=safe_text(item.assistant_draft)
-                            if item.scroll_anchor is None
-                            else "",
-                        )
-                    )
-                else:
-                    windows.append(item)
-            self.state = project_active_conversation(replace(mux, windows=windows))
+            self.state = project_active_conversation(mux, terminal_text=safe_text)
             self.state.records_revision = self._view_revision
             self.state.model_label = safe_text(window.model_label) if window and window.model_label else "Hosted"
             self.state.permission_profile = None
@@ -256,7 +224,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
                 permissions=False,
             )
             self.state.status_message = safe_text(self.shell.notice)
-            if self._approval_key() is not None:
+            if approval_key is not None:
                 # The accepted submit has progressed to an approval boundary.
                 # Keep the current approval visible instead of combining it
                 # with the older delivery receipt and dropping both for width.
@@ -289,14 +257,10 @@ class HostedMuxScreenV1(ScreenConversationApp):
             ),
         )
         self._sync_details()
-        if self.shell.picker.visible:
-            rendered = self.shell.picker.render(inner)
-        elif self._model_picker is not None:
-            rendered = self._model_picker.render(inner)
-        else:
-            rendered = (
-                self._detail.render(inner) if self._detail else super().render(inner)
-            )
+        overlay = self.shell.picker if self.shell.picker.visible else (
+            self._model_picker if self._model_picker is not None else self._detail
+        )
+        rendered = overlay.render(inner) if overlay is not None else super().render(inner)
         if (
             self._detail is not None
             and self._detail.fully_presented

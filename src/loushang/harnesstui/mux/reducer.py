@@ -95,17 +95,13 @@ def reduce_events(
 
 
 def select_next(state: HostedMuxState) -> None:
-    if not state.windows:
-        return
-    state.active_index = (state.active_index + 1) % len(state.windows)
-    _mark_active_read(state)
+    if state.windows:
+        select_window(state, (state.active_index + 1) % len(state.windows))
 
 
 def select_previous(state: HostedMuxState) -> None:
-    if not state.windows:
-        return
-    state.active_index = (state.active_index - 1) % len(state.windows)
-    _mark_active_read(state)
+    if state.windows:
+        select_window(state, (state.active_index - 1) % len(state.windows))
 
 
 def select_window(state: HostedMuxState, index: int) -> None:

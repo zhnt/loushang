@@ -135,10 +135,7 @@ class HostedMuxControllerV1:
     async def close_active_member(
         self, *, close_session: bool = True
     ) -> HostedMuxState:
-        state = self._require_state(current=True)
-        window = state.active_window
-        if window is None:
-            raise RuntimeError("hosted mux has no active window")
+        _, window = self._active()
         await self._client.close_member(
             MuxMemberCloseV1(
                 self._selector,
@@ -211,25 +208,17 @@ class HostedMuxControllerV1:
                     item.draft_revision += 1
 
     async def steer(self, text: str) -> None:
-        state, window = self._active()
-        await self._client.steer_turn(
-            TurnTextV1(
-                state.attachment_id,
-                state.controller_generation,
-                window.member_id,
-                text,
-            )
-        )
+        request = self._turn_text(text)
+        await self._client.steer_turn(request)
 
     async def follow_up(self, text: str) -> None:
+        request = self._turn_text(text)
+        await self._client.follow_up_turn(request)
+
+    def _turn_text(self, text: str) -> TurnTextV1:
         state, window = self._active()
-        await self._client.follow_up_turn(
-            TurnTextV1(
-                state.attachment_id,
-                state.controller_generation,
-                window.member_id,
-                text,
-            )
+        return TurnTextV1(
+            state.attachment_id, state.controller_generation, window.member_id, text
         )
 
     async def interrupt(self) -> None:

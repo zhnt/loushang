@@ -171,10 +171,7 @@ class LocalAppServerV1:
 
     async def start(self) -> None:
         """Compatibility convenience: prepare then activate the same owner."""
-        if self._one_step or self._closed or self._start_task is not None:
-            raise AppConnectionClosedError()
-        self._one_step = True  # Reserve both stages before the first suspension.
-        await self._prepare()
+        await self._prepare(one_step=True)
         await self._activate()
 
     async def prepare(self, *, deadline: float | None = None) -> None:
@@ -184,13 +181,14 @@ class LocalAppServerV1:
         readiness. Only activate publishes a fresh record. A supplied absolute
         loop-clock deadline can shorten, never extend, the profile's budget.
         """
-        if self._one_step:
-            raise AppConnectionClosedError()
         await self._prepare(deadline=deadline)
 
-    async def _prepare(self, *, deadline: float | None = None) -> None:
-        if self._closed or self._start_task is not None:
+    async def _prepare(
+        self, *, deadline: float | None = None, one_step: bool = False
+    ) -> None:
+        if self._one_step or self._closed or self._start_task is not None:
             raise AppConnectionClosedError()
+        self._one_step = one_step  # Reserve before the first suspension.
         if deadline is not None and (
             type(deadline) not in (int, float) or not 0 < deadline <= 1e12
         ):
