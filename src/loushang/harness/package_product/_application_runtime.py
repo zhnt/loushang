@@ -84,10 +84,12 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 )
 
 from ._legacy_runtime import (
+    FencedRuntimeOpenKwargs,
     _FencedRuntime,
     _LegacyEpoch,
     legacy_product_fence_exists,
     matches_epoch_layout,
+    open_read_only_fenced_product,
 )
 from .product_local_wheel_runtime import (
     READ_ONLY_PRODUCT_JOURNAL_POLICY,
@@ -96,8 +98,10 @@ from .product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductRuntimeFactory,
     WindowsLocalWheelProductSessionOwner,
+    _LocalWheelSelectedManifestReader,
     _repair_ordinary_posix_runtime_leases,
     _repair_ordinary_windows_runtime_leases,
+    bind_read_only_local_wheel_manifests,
     bind_read_only_product_desired_state,
 )
 from .product_runtime import PackageProductRuntimeFactoryPort, guard_unbound_factory
@@ -643,6 +647,48 @@ class _SessionOwnerFields(TypedDict):
 
 class _SessionEpochLayout(_LegacyEpoch, Protocol):
     def epoch_root(self, namespace_id: str) -> Path: ...
+
+
+@contextmanager
+def open_fenced_product_manifest_reader(
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    epoch: _SessionEpochLayout,
+    scope_id: str,
+    identity_prefix: str,
+    product_label: str,
+    workspace_guard: Callable[[], None] | None,
+    read_source_policy: Callable[
+        [PackageProductPosixFencedRuntimeOwner, FencedSourceCatalogRoots],
+        PackageProductLocalWheelPolicy,
+    ],
+) -> Iterator[tuple[
+    PackageProductPosixFencedRuntimeOwner,
+    PackageProductLocalWheelPolicy,
+    _LocalWheelSelectedManifestReader,
+    PluginPackageGcReservationJournal,
+]]:
+    """Transfer an admitted read-only epoch with its exact selected manifests."""
+    with open_read_only_fenced_product(**roots) as runtime:
+        if workspace_guard is not None:
+            workspace_guard()
+        source_roots = fenced_source_catalog_roots(
+            runtime,
+            scope_id=scope_id,
+            no_namespace=f"{product_label} Package Product root is not fenced",
+            read_only=True,
+        )
+        policy = read_source_policy(runtime, source_roots)
+        selected, gate = bind_read_only_local_wheel_manifests(
+            runtime,
+            policy=policy,
+            plugin_store_root=epoch.epoch_root(source_roots.identity["namespace_id"]),
+            root_store_identity=f"{identity_prefix}-root-store:{epoch.store_id}",
+        )
+        runtime.assert_current()
+        if workspace_guard is not None:
+            workspace_guard()
+        yield runtime, policy, selected, gate
 
 
 def bind_fenced_product_session_owner(
