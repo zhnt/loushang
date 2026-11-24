@@ -7,11 +7,12 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionProfileProvider,
+    constrain_execution_profile,
 )
 from loushang.harness.authorization.execution_profile import WorkspaceExecutionSelection
 from loushang.harness.capabilities.contracts import CapabilityContractRange
@@ -43,8 +44,10 @@ from loushang.harness.workspace.process import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harness.approval import InteractiveApprovalResolver
+    from loushang.harness.policy import PolicyEvaluator
     from loushang.harness.tools.process_hosting import (
-        ProcessExecutionScope,
+        ProcessAuditSink,
         ProcessLauncherBinder,
     )
 
@@ -198,36 +201,62 @@ def workspace_profile_binding_fingerprint(
     ).hexdigest()
 
 
-def bind_authorized_workspace(
-    runtime: ProcessLauncherBinder,
+_RuntimeT = TypeVar("_RuntimeT", bound="ProcessLauncherBinder")
+
+
+def bind_workspace_execution(
     *,
-    process_scope: ProcessExecutionScope,
+    ceiling: EffectiveExecutionProfile,
+    requested_profiles: Iterable[object],
+    authority_factory: Callable[[EffectiveExecutionProfile], WorkspaceExecutionSelection],
+    bind_runtime: Callable[[WorkspaceExecutionSelection], _RuntimeT],
     operations_factory: Callable[
         [Path, ToolOperations, EffectiveExecutionProfile, ExecutionProfileProvider],
         ToolOperations,
     ],
+    policy_evaluator: PolicyEvaluator | None,
+    approval_resolver: InteractiveApprovalResolver | None,
+    audit_sink: ProcessAuditSink,
     provider_id: str,
     source_id: str,
     fingerprint_namespace: str,
-) -> CapabilityBundleProviderBinding:
-    """Join admitted process and file operations under the same ceiling."""
-    authority = process_scope.execution_profile_provider
+    product_label: str,
+) -> tuple[_RuntimeT, CapabilityBundleProviderBinding]:
+    """Use the same admitted execution ceiling for Sandbox, processes and files."""
+    from loushang.harness.tools.process_hosting import ProcessExecutionScope
+
+    for profile in requested_profiles:
+        if profile is None:
+            continue
+        if not isinstance(profile, EffectiveExecutionProfile):
+            raise TypeError(
+                f"{product_label} workspace execution ceiling must be an EffectiveExecutionProfile"
+            )
+        ceiling = constrain_execution_profile(ceiling, profile)
+    authority = authority_factory(ceiling)
+    runtime = bind_runtime(authority)
     if (
         not isinstance(authority, WorkspaceExecutionSelection)
-        or process_scope.execution_profile_ceiling is not authority.ceiling
+        or ceiling is not authority.ceiling
     ):
         raise TypeError("authorized workspace requires its matching execution authority")
-    process_launcher = runtime.bind_process_launcher(process_scope)
-    workspace_root, ceiling = authority.workspace_root, authority.ceiling
-    fingerprint = workspace_profile_binding_fingerprint(
-        ceiling, namespace=fingerprint_namespace
+    process_launcher = runtime.bind_process_launcher(
+        ProcessExecutionScope(
+            policy_evaluator=policy_evaluator,
+            approval_resolver=approval_resolver,
+            audit_sink=audit_sink,
+            execution_profile_ceiling=ceiling,
+            execution_profile_provider=authority,
+        )
     )
-    return workspace_capability_provider_binding(
+    root = authority.workspace_root
+    fingerprint = workspace_profile_binding_fingerprint(ceiling, namespace=fingerprint_namespace)
+    return runtime, workspace_capability_provider_binding(
         operations=operations_factory(
-            workspace_root, LOCAL_TOOL_OPERATIONS, ceiling, authority.for_workspace_operation
+            root, LOCAL_TOOL_OPERATIONS, ceiling, authority.for_workspace_operation
         ),
         process_launcher=process_launcher,
-        scope_instance_id=f"workspace:{workspace_root}",
+        scope_instance_id=f"workspace:{root}",
         binding_input_fingerprint=fingerprint,
         provider_id=provider_id,
         source_id=source_id,

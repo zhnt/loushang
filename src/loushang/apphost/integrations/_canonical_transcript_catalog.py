@@ -30,7 +30,11 @@ from loushang.apphost.contracts import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
-from loushang.apphost.workspace_registry import WorkspaceRegistrationError
+from loushang.apphost.workspace_registry import (
+    WorkspaceFileRead,
+    WorkspacePreviewError,
+    WorkspaceRegistrationError,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -40,6 +44,16 @@ from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionOpenSpecV1,
     SessionScopeV1,
+    WorkspaceInfoV1,
+    WorkspaceRequestV1,
+    WorkspaceResultV1,
+)
+from loushang.appserver.protocol.workspace_preview import (
+    WorkspaceDirectoryPreviewV1,
+    WorkspaceFilePreviewV1,
+    WorkspacePreviewEntryV1,
+    WorkspacePreviewRequestV1,
+    WorkspacePreviewV1,
 )
 from loushang.appservice.discovery_ports import (
     HostedSessionDiscoveryScopeV1,
@@ -1042,6 +1056,7 @@ class _WorkspaceSessionCatalogPort(SessionIdentityCatalogPortV1, Protocol):
     async def discover_sessions(
         self, scope: HostedSessionDiscoveryScopeV1, *, stop: Callable[[], bool]
     ) -> HostedSessionDiscoverySnapshotV1: ...
+    async def delete_session_history(self, identity: SessionIdentityV1) -> None: ...
     def fence(self) -> None: ...
     async def close(self) -> None: ...
 
@@ -1067,6 +1082,68 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
 
     async def _open_workspace_candidate(self, catalog: WorkspaceCatalogT, reference):
         raise NotImplementedError
+
+    async def _inspect_workspace(
+        self, path: Path, catalog: WorkspaceCatalogT,
+        scope: CanonicalTranscriptScope, session_id: str | None,
+    ) -> dict[str, object]:
+        raise NotImplementedError
+
+    async def _select_workspace_for_read(self, path: str) -> Path:
+        if self._closed:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        try:
+            return await settled_io(self.registry.select, path)
+        except (OSError, ValueError):
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+
+    async def _registered_workspace_for_read(self, path: str) -> tuple[Path, WorkspaceCatalogT]:
+        root = await self._select_workspace_for_read(path)
+        catalog = self._catalogs.get(root)
+        if catalog is None:
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
+        return root, catalog
+
+    async def _preview_workspace(self, path: str, request: WorkspacePreviewRequestV1) -> WorkspaceResultV1:
+        root, catalog = await self._registered_workspace_for_read(path)
+        if root != Path(path):
+            raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
+        return await self._read_workspace_preview(root, catalog, request)
+
+    async def _read_workspace_preview(
+        self, root: Path, catalog: WorkspaceCatalogT, request: WorkspacePreviewRequestV1,
+    ) -> WorkspaceResultV1:
+        scope = catalog.scopes[0]
+        if scope.fingerprint != request.scope_fingerprint:
+            raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
+        try:
+            opened = await settled_io(self.registry.preview, root, request.reference, request.base)
+        except WorkspacePreviewError as exc:
+            raise AppServiceError(AppErrorCodeV1(exc.code)) from None
+        preview: WorkspacePreviewV1
+        if isinstance(opened, WorkspaceFileRead):
+            preview = WorkspaceFilePreviewV1(opened.path, opened.text)
+        else:
+            entries = tuple(WorkspacePreviewEntryV1(name, kind) for name, kind in opened.entries)
+            preview = WorkspaceDirectoryPreviewV1(opened.path, entries, opened.limited)
+        return WorkspaceResultV1((_workspace_info(root, scope, preview=preview),))
+
+    async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        if request.preview is not None and request.path is not None:
+            return await self._preview_workspace(request.path, request.preview)
+        if request.action == "inspect":
+            path, catalog = await self._registered_workspace_for_read(cast(str, request.path))
+            if self.registry.is_temporary(path):
+                raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
+            scope = catalog.scopes[0]
+            report = await self._inspect_workspace(path, catalog, scope, request.session_id)
+            return WorkspaceResultV1((_workspace_info(path, scope, inspection=report),))
+        entries = await self._workspace_entries(request)
+        return WorkspaceResultV1(tuple(_workspace_info(path, catalog.scopes[0]) for path, catalog in entries))
+
+    async def delete_session_history(self, identity: SessionIdentityV1) -> None:
+        catalog = self._find(lambda scope: scope.fingerprint == identity.scope_fingerprint)
+        await catalog.delete_session_history(identity)
 
     async def _workspace_entries(self, request):
         if request.action == "register":
@@ -1191,3 +1268,13 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
         if failures:
             raise BaseExceptionGroup("workspace_cleanup_incomplete", failures)
         await asyncio.to_thread(self.registry.close)
+
+
+def _workspace_info(
+    path: Path,
+    scope: CanonicalTranscriptScope,
+    *,
+    inspection: dict[str, object] | None = None,
+    preview: WorkspacePreviewV1 | None = None,
+) -> WorkspaceInfoV1:
+    return WorkspaceInfoV1(str(path), scope.scope, scope.fingerprint, inspection, preview)

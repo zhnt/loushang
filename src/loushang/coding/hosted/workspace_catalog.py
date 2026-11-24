@@ -16,33 +16,24 @@ from loushang.ai.model import (
 from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.model.selection import is_usable_model_selection
 from loushang.apphost.integrations._canonical_transcript_catalog import (
+    CanonicalTranscriptScope,
     _WorkspaceTranscriptCatalogMethods,
 )
 from loushang.apphost.integrations.session_control import project_session_models
 from loushang.apphost.workspace_registry import (
     HostWorkspaceRegistryPort,
     Workspace,
-    WorkspaceFileRead,
     WorkspacePath,
-    WorkspacePreviewError,
 )
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
-    SessionIdentityV1,
     SessionModelsV1,
     SessionScopeV1,
     SessionThinkingV1,
     WorkspaceInfoV1,
     WorkspaceRequestV1,
     WorkspaceResultV1,
-)
-from loushang.appserver.protocol.workspace_preview import (
-    WorkspaceDirectoryPreviewV1,
-    WorkspaceFilePreviewV1,
-    WorkspacePreviewEntryV1,
-    WorkspacePreviewRequestV1,
-    WorkspacePreviewV1,
 )
 from loushang.appservice.managed_mux import TEMPORARY_MUX, project_mux_name
 from loushang.coding.hosted.catalog import (
@@ -211,7 +202,9 @@ class CodingWorkspaceCatalog(
                     raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
                 catalog = legacy
             if action == "inspect-workspace":
-                return await self._inspect_workspace(link.path, catalog, request.session_id)
+                scope = catalog.scopes[0]
+                report = await self._inspect_workspace(link.path, catalog, scope, request.session_id)
+                return WorkspaceResultV1((WorkspaceInfoV1(str(link.path), scope.scope, scope.fingerprint, report),))
             assert request.preview is not None
             return await self._read_workspace_preview(link.path, catalog, request.preview)
         if action == "delete-workspace":
@@ -301,19 +294,10 @@ class CodingWorkspaceCatalog(
             tuple(path for path, _ in observed.values()), private_roots, current_roots, current_default,
         )
 
-    async def delete_session_history(self, identity: SessionIdentityV1) -> None:
-        catalog = self._find(lambda scope: scope.fingerprint == identity.scope_fingerprint)
-        await catalog.delete_session_history(identity)
-
     async def workspace_models(self, path: str | None, model_id: str | None = None, *, workspace_id: str | None = None) -> SessionModelsV1:
         if self._closed:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        workspace = None
-        if path is not None:
-            try:
-                workspace = await settled_io(self.registry.select, path)
-            except (OSError, ValueError):
-                raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+        workspace = await self._select_workspace_for_read(path) if path is not None else None
         if workspace_id is not None:
             try:
                 item = await settled_io(self.registry.workspace, workspace_id)
@@ -343,38 +327,6 @@ class CodingWorkspaceCatalog(
         level = default_level if selection == default_selection and default_level in levels else None
         return project_session_models(current, choices, SessionThinkingV1(level, levels) if levels else None)
 
-    async def _preview_workspace(self, path: str, request: WorkspacePreviewRequestV1) -> WorkspaceResultV1:
-        if self._closed:
-            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-        try:
-            root = await settled_io(self.registry.select, path)
-        except (OSError, ValueError):
-            raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
-        catalog = self._catalogs.get(root)
-        if catalog is None:
-            raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
-        if root != Path(path):
-            raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
-        return await self._read_workspace_preview(root, catalog, request)
-
-    async def _read_workspace_preview(
-        self, root: Path, catalog: CodingHostedSessionCatalogV1, request: WorkspacePreviewRequestV1,
-    ) -> WorkspaceResultV1:
-        scope = catalog.scopes[0]
-        if scope.fingerprint != request.scope_fingerprint:
-            raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
-        try:
-            opened = await settled_io(self.registry.preview, root, request.reference, request.base)
-        except WorkspacePreviewError as exc:
-            raise AppServiceError(AppErrorCodeV1(exc.code)) from None
-        preview: WorkspacePreviewV1
-        if isinstance(opened, WorkspaceFileRead):
-            preview = WorkspaceFilePreviewV1(opened.path, opened.text)
-        else:
-            entries = tuple(WorkspacePreviewEntryV1(name, kind) for name, kind in opened.entries)
-            preview = WorkspaceDirectoryPreviewV1(opened.path, entries, opened.limited)
-        return WorkspaceResultV1((WorkspaceInfoV1(str(root), scope.scope, scope.fingerprint, preview=preview),))
-
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
         if request.action == "allocate-temporary":
             # Old callers still receive a creation scope, backed by the same
@@ -389,20 +341,8 @@ class CodingWorkspaceCatalog(
             if self._closed:
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             return await self._logical_workspace(request)
-        if request.preview is not None and request.path is not None:
-            return await self._preview_workspace(request.path, request.preview)
-
-        if request.action == "inspect":
-            if self._closed:
-                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-            try:
-                path = await settled_io(self.registry.select, request.path)
-            except (OSError, ValueError):
-                raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
-            catalog = self._catalogs.get(path)
-            if catalog is None or self.registry.is_temporary(path):
-                raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
-            return await self._inspect_workspace(path, catalog, request.session_id)
+        if request.preview is not None or request.action == "inspect":
+            return await super().workspace(request)
 
         if request.action == "open" and request.path is not None:
             selected = await settled_io(self.registry.select, request.path)
@@ -436,21 +376,25 @@ class CodingWorkspaceCatalog(
         )
 
     async def _inspect_workspace(
-        self, path: Path, catalog: CodingHostedSessionCatalogV1, session_id: str | None,
-    ) -> WorkspaceResultV1:
-        scope = catalog.scopes[0]
+        self, path: Path, catalog: CodingHostedSessionCatalogV1,
+        scope: CanonicalTranscriptScope, session_id: str | None,
+    ) -> dict[str, object]:
         report = await settled_io(inspect_workspace, path)
         if report["git"] is None and session_id:
             try:
-                candidates = await catalog.list_identities((scope.discovery_scope,), limit=128)
-                matches = [item.reference for item in candidates
-                           if item.envelope is not None and item.envelope.session_id == session_id]
+                candidates = await catalog.list_identities(
+                    (scope.discovery_scope,), limit=128,
+                )
+                matches = [
+                    item.reference for item in candidates
+                    if item.envelope is not None and item.envelope.session_id == session_id
+                ]
                 if len(matches) == 1:
                     history = await catalog.preview_history_snapshot(matches[0], max_bytes=_MAX_TRANSCRIPT_BYTES)
                     report.update(inspect_session_changes(path, (entry.payload for entry in history.selected_records)))
             except (CodingHostedCatalogError, OSError, ValueError):
                 report["limited"] = True
-        return WorkspaceResultV1((WorkspaceInfoV1(str(path), scope.scope, scope.fingerprint, report),))
+        return report
 
     def admits(self, scope) -> bool:
         return not self._closed and any(

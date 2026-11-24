@@ -14,12 +14,8 @@ from loushang.coding.control.sandbox import (
     coding_workspace_execution_profile,
 )
 from loushang.coding.workspace.operations import CodingWorkspaceOperations
-from loushang.harness.authorization import (
-    EffectiveExecutionProfile,
-    constrain_execution_profile,
-)
-from loushang.harness.capabilities.workspace_provider import bind_authorized_workspace
-from loushang.harness.tools.process_hosting import ProcessExecutionScope
+from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.harness.capabilities.workspace_provider import bind_workspace_execution
 from loushang.harness.workspace.exec import ExecService
 
 if TYPE_CHECKING:
@@ -27,6 +23,9 @@ if TYPE_CHECKING:
 
     from loushang.coding.hosted_workspace import CodingHostedWorkspace
     from loushang.harness.approval import InteractiveApprovalResolver
+    from loushang.harness.authorization.execution_profile import (
+        WorkspaceExecutionSelection,
+    )
     from loushang.harness.capabilities.provider_binding import (
         CapabilityBundleProviderBinding,
     )
@@ -76,54 +75,41 @@ def bind_session_workspace(
             workspace_execution_profile if sandbox_settings.requirement == "required"
             else coding_host_execution_profile(workspace_root_path, writable=writable_workspace)
         )
-    requested_profiles = (
-        getattr(base_exec_service, "execution_profile", None),
-        (
+
+    def bind_sandbox(authority: WorkspaceExecutionSelection) -> SandboxExecutionRuntime:
+        return bind_coding_sandbox_runtime(
+            workspace_root=get_cwd(),
+            writable_workspace=writable_workspace,
+            settings=sandbox_settings,
+            base_exec_service=base_exec_service,
+            diagnostics_service=services.diagnostics_service,
+            session_id=session_id,
+            execution_profile=authority.ceiling,
+            execution_profile_provider=authority,
+        )
+
+    return bind_workspace_execution(
+        ceiling=execution_ceiling,
+        requested_profiles=(
+            getattr(base_exec_service, "execution_profile", None),
             delegated_execution_profile.execution_profile_ceiling
             if delegated_execution_profile is not None
-            else None
+            else None,
         ),
-    )
-    for requested_profile in requested_profiles:
-        if requested_profile is None:
-            continue
-        if not isinstance(requested_profile, EffectiveExecutionProfile):
-            raise TypeError(
-                "Coding workspace execution ceiling must be an EffectiveExecutionProfile"
-            )
-        execution_ceiling = constrain_execution_profile(
-            execution_ceiling,
-            requested_profile,
-        )
-    execution_authority = CodingExecutionAuthority(
-        workspace_root=workspace_root_path,
-        workspace_profile=workspace_execution_profile,
-        ceiling=execution_ceiling,
-        permission_snapshot=services.settings_manager.get_permission_profile_snapshot,
-        current_workspace_roots=hosted_workspace.current_roots if hosted_workspace is not None else None,
-    )
-    sandbox_runtime = bind_coding_sandbox_runtime(
-        workspace_root=get_cwd(),
-        writable_workspace=writable_workspace,
-        settings=sandbox_settings,
-        base_exec_service=base_exec_service,
-        diagnostics_service=services.diagnostics_service,
-        session_id=session_id,
-        execution_profile=execution_ceiling,
-        execution_profile_provider=execution_authority,
-    )
-    workspace_binding = bind_authorized_workspace(
-        sandbox_runtime,
-        process_scope=ProcessExecutionScope(
-            policy_evaluator=tool_policy_evaluator,
-            approval_resolver=approval_resolver,
-            audit_sink=audit_sink,
-            execution_profile_ceiling=execution_ceiling,
-            execution_profile_provider=execution_authority,
+        authority_factory=lambda ceiling: CodingExecutionAuthority(
+            workspace_root_path,
+            workspace_execution_profile,
+            ceiling,
+            services.settings_manager.get_permission_profile_snapshot,
+            current_workspace_roots=(hosted_workspace.current_roots if hosted_workspace is not None else None),
         ),
+        bind_runtime=bind_sandbox,
         operations_factory=CodingWorkspaceOperations,
+        policy_evaluator=tool_policy_evaluator,
+        approval_resolver=approval_resolver,
+        audit_sink=audit_sink,
         provider_id="coding.workspace.standard",
         source_id=CODING_PRODUCT_ID,
         fingerprint_namespace="coding.workspace.standard.v1",
+        product_label="Coding",
     )
-    return sandbox_runtime, workspace_binding
