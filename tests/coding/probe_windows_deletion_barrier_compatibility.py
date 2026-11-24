@@ -182,8 +182,11 @@ def observe(case, patch):
         trace.append("listdir")
         return (root.name,)
 
-    patch.setattr(code, "coding_arch_installation_private_data_root", lambda *a: root)
-    patch.setattr(code, "CodingWindowsArchPrivateDataDeletionTransaction", Deletion)
+    transaction_type = journal.CodingWindowsArchPrivateDataRestoreTransaction
+    bound_recovery = hasattr(transaction_type, "require_expiry_recovery")
+    binding = journal if bound_recovery else code
+    patch.setattr(binding, "coding_arch_installation_private_data_root", lambda *a: root)
+    patch.setattr(binding, "CodingWindowsArchPrivateDataDeletionTransaction", Deletion)
     native = importlib.import_module(
         "loushang.harness.resources.packages._private_tree_windows"
     )
@@ -192,7 +195,7 @@ def observe(case, patch):
         importlib.import_module(
             "loushang.harness.plugin_management._private_data_restore_windows"
         )
-        if hasattr(code, "require_windows_expiry_restored_target")
+        if bound_recovery or hasattr(code, "require_windows_expiry_restored_target")
         or hasattr(code, "require_windows_expiry_recovery_authority")
         else code
     )
@@ -203,13 +206,13 @@ def observe(case, patch):
     )
     patch.setattr(native, "open_windows_directory", open_directory)
     patch.setattr(native, "closing_descriptor", closing)
-    patch.setattr(type(code._native_io), "directory_identity", lambda _io, fd: (1, 2))
+    patch.setattr(type(binding._native_io), "directory_identity", lambda _io, fd: (1, 2))
     patch.setattr(native, "windows_listdir_at", names)
     patch.setattr(
-        code, "inspect_coding_windows_arch_installation_root", lambda *a, **k: (3, 4)
+        binding, "inspect_coding_windows_arch_installation_root", lambda *a, **k: (3, 4)
     )
     patch.setattr(
-        code,
+        binding,
         "_capture_windows_target_snapshot",
         lambda *a, **k: NS(
             root_identity=(3, 4, 5, 6, 7), target_id=plan.restored_target_id
@@ -227,10 +230,17 @@ def observe(case, patch):
             )
         ),
     )
+    layout = NS()
+    if bound_recovery:
+        for name in ("_require_active", "_scan_confirmations", "events", "publication_for"):
+            patch.setattr(transaction_type, name, getattr(Restore, name))
+        restore = transaction_type(layout, product, Restore.state_fd)
+    else:
+        restore = Restore()
     error = None
     try:
         code.require_windows_arch_backup_expiry_recovery_authority(
-            NS(), product, Restore(), plan
+            layout, product, restore, plan
         )
     except Exception as exc:
         error = [type(exc).__name__, str(exc)]
