@@ -12,6 +12,9 @@ from collections.abc import Mapping
 from loushang.harness.package_product._linux_worker_recovery import (
     ProductActivationStateStore,
 )
+from loushang.harness.package_product._worker_history_access import (
+    require_current_worker_activation_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductSessionOwner,
@@ -31,14 +34,9 @@ class CodingProductWorkerActivationStateStore(ProductActivationStateStore):
     def __init__(self, product: PosixLocalWheelProductSessionOwner) -> None:
         if not isinstance(product, PosixLocalWheelProductSessionOwner):
             raise TypeError("Coding Worker activation state requires a Product owner")
-        product.assert_root_gc_authority_current()
-        if product.policy.product_id != "coding" or not any(
-            (
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product.policy.bindings
-            )
-        ):
-            raise ValueError("Coding Worker candidate owner is required")
+        require_current_worker_activation_product(
+            product, product_id="coding", candidate_required="Coding Worker candidate owner is required"
+        )
         super().__init__(
             product,
             CodingProductWorkerActivationStateJournal(
@@ -63,12 +61,9 @@ class CodingWindowsWorkerActivationStateStore:
     def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
         if type(product) is not WindowsLocalWheelProductSessionOwner:
             raise TypeError("Windows Worker activation state requires a Product owner")
-        product.assert_root_gc_authority_current()
-        if product.policy.product_id != "coding" or not any(
-            binding.source_trust_class == "local-worker-candidate"
-            for binding in product.policy.bindings
-        ):
-            raise ValueError("Windows Worker candidate owner is required")
+        require_current_worker_activation_product(
+            product, product_id="coding", candidate_required="Windows Worker candidate owner is required"
+        )
         self._journal = CodingWindowsWorkerActivationStateJournal(product)
 
     def load(self) -> Mapping[str, object] | None:

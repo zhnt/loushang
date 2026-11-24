@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import os
-
 from loushang.harness.package_product._windows_worker_backend_release import (
     _WindowsBackendInstalledMethods,
 )
 from loushang.harness.package_product._worker_product_authority import (
     _WindowsWorkerProductOptInAuthority,
 )
-from loushang.harness.package_product._worker_windows_attempt import is_windows_product
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
@@ -18,6 +15,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from .product_worker_opt_in import CodingWorkerOptInDecisionV1
 from .product_worker_opt_in_owner import CodingWorkerProductOptInError
 from .product_worker_policy import CodingWorkerOptInV1
+from .product_worker_windows_backend_release import _require_candidate_product
 from .product_worker_windows_installed_backend import (
     read_coding_windows_worker_installed_backend_release,
 )
@@ -37,11 +35,7 @@ class CodingWindowsWorkerProductOptInOwner(
     _selection_error_prefix = "coding_worker"
 
     def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
-        if not is_windows_product(product, "coding", os.name) or not any(
-            binding.source_trust_class == "local-worker-candidate"
-            for binding in product.policy.bindings
-        ):
-            raise ValueError("Windows Worker candidate Product owner is required")
+        _require_candidate_product(product)
         product.assert_root_gc_authority_current()
         self._product = product
         self._journal = CodingWindowsWorkerOptInJournal(

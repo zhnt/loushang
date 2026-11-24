@@ -11,6 +11,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry
     PackageWindowsEpochRuntimeLeaseRegistry,
     PackageWindowsRuntimeQuiescenceV1,
 )
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    has_worker_candidate_binding,
+)
 
 from .product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -31,6 +34,30 @@ def windows_product_worker_quiescence(
         if quiescence.active_runtime_lease_ids:
             raise active_error(active_message)
         yield registry, quiescence
+
+
+def is_posix_worker_candidate_product(
+    product: object, *, product_id: str
+) -> bool:
+    """Check eligibility to open a candidate decision or approval journal."""
+    return (
+        isinstance(product, PosixLocalWheelProductSessionOwner)
+        and product.policy.product_id == product_id
+        and has_worker_candidate_binding(product.policy)
+    )
+
+
+def require_current_worker_activation_product(
+    product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
+    *,
+    product_id: str,
+    candidate_required: str,
+) -> None:
+    """Recheck the fenced root before reading the C5 activation policy."""
+    product.assert_root_gc_authority_current()
+    policy = product.policy
+    if policy.product_id != product_id or not has_worker_candidate_binding(policy):
+        raise ValueError(candidate_required)
 
 
 @dataclass(frozen=True, slots=True)
