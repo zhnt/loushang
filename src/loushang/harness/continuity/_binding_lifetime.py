@@ -45,6 +45,7 @@ class _ContinuityCompositionLifetime:
     plugin_publication: ContinuityPluginPublication | None
     owned_cleanup: Callable[[], None] | None
     runtime_owned: bool
+    configured_request_fingerprint: str | None
     _core_shutdown: bool
     _owned_cleanup_complete: bool
     _shutdown: bool

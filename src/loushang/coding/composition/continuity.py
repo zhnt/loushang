@@ -2,8 +2,7 @@
 
 The module is deliberately a Coding composition root.  Harness owns the
 selection, approval, Instance, generation, recovery, and Hub mechanisms; this
-adapter supplies Product policy, durable paths, configuration, and lifecycle
-ordering.
+adapter supplies Product policy, durable paths, and configuration preflight.
 """
 
 from __future__ import annotations
@@ -31,7 +30,6 @@ from loushang.coding.plugin_manager.lifecycle import (
     CODING_PLUGIN_RUNTIME_BOOT_ID as _CODING_PLUGIN_RUNTIME_BOOT_ID,
 )
 from loushang.coding.plugin_manager.lifecycle import (
-    CodingPluginLifecycle,
     CodingPluginLifecycleStateLayout,
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
@@ -75,16 +73,8 @@ from loushang.harness.continuity.plugin_runtime import (
     resolve_continuity_plugin_selection as resolve_continuity_plugin_selection,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.plugin_management import (
-    PluginContinuityDeletionAuthority,
-    PluginContinuityDeletionJournal,
-)
 from loushang.harness.plugin_management.configured_sources import (
     resolve_configured_plugin_local_path,
-)
-from loushang.harness.plugin_management.continuity_adapter import (
-    PluginContinuitySecurityRetirementJournal,
-    PluginInstanceLedgerContinuityFamilyAuthority,
 )
 from loushang.harness.resources.packages._private_directory import (
     prepare_private_directory,
@@ -106,7 +96,8 @@ from loushang.harness.resources.plugins import (
     is_remote_plugin_source,
 )
 from loushang.harness.session.plugin_lifecycle._continuity_installed_plugins import (
-    hold_installed_continuity_runtime,
+    InstalledContinuityLifecycle,
+    bind_installed_continuity,
     resolve_installed_continuity_definitions,
 )
 
@@ -200,13 +191,6 @@ def _continuity_lifecycle_error(
     return CodingContinuityBootstrapError(
         code=f"coding_continuity_{reason}", retryable=retryable
     )
-
-
-@dataclass(slots=True)
-class _InstalledLifecycle:
-    common: CodingPluginLifecycle
-    family_authority: PluginInstanceLedgerContinuityFamilyAuthority
-    deletion_authority: PluginContinuityDeletionAuthority
 
 
 def resolve_coding_continuity_state_layout(
@@ -321,14 +305,14 @@ async def bind_coding_configured_continuity(
             )
             owns_early_startup_lease = False
 
-    def record_base_ready() -> None:
+    def record_ready(plugin_count: int, provider_count: int, recovered_count: int) -> None:
         _record_ready_status(
             runtime,
             diagnostics_service,
             configured_source_count=configured_count,
-            plugin_count=0,
-            provider_count=0,
-            recovered_deletion_count=0,
+            plugin_count=plugin_count,
+            provider_count=provider_count,
+            recovered_deletion_count=recovered_count,
         )
 
     def finish_base_binding() -> CodingContinuityComposition:
@@ -336,7 +320,7 @@ async def bind_coding_configured_continuity(
             runtime, cwd=cwd, all_sessions=all_sessions
         )
         result.configured_request_fingerprint = request_fingerprint
-        record_base_ready()
+        record_ready(0, 0, 0)
         if compatibility is None:
             release_early_startup_lease()
         return result
@@ -397,7 +381,7 @@ async def bind_coding_configured_continuity(
                 and existing.all_sessions == all_sessions
             ):
                 existing.configured_request_fingerprint = request_fingerprint
-                record_base_ready()
+                record_ready(0, 0, 0)
                 if compatibility is None:
                     release_early_startup_lease()
                 return existing
@@ -436,9 +420,10 @@ async def bind_coding_configured_continuity(
         _prepare_private_runtime_roots(layout)
         lifecycle = _build_lifecycle(layout)
         lifecycle_started = True
-        with hold_installed_continuity_runtime(
+        return await bind_installed_continuity(
             sources,
-            lifecycle.common,
+            lifecycle,
+            request_fingerprint=request_fingerprint,
             materializer=resolved_materializer,
             product_id=CODING_EXPERIENCE_ID,
             scope_id=layout.scope_id,
@@ -451,17 +436,9 @@ async def bind_coding_configured_continuity(
             ),
             supports_secure_staging=supports_coding_continuity_secure_staging,
             cleanup_note=_REVISION_CLEANUP_NOTE,
-        ) as (runtime_resolution, instance_refs):
-            if not runtime_resolution.packages:
-                return finish_base_binding()
-            selection = _finalize_selection(
-                runtime_resolution,
-                instance_refs=instance_refs,
-                layout=layout,
-                clock=clock,
-            )
-            resolved, component_host, decisions = prepare_continuity_activation(
-                selection,
+            finalize_selection=partial(_finalize_selection, layout=layout, clock=clock),
+            prepare_activation=partial(
+                prepare_continuity_activation,
                 owner_policy_revision=_OWNER_POLICY_REVISION,
                 revocation_epoch=_CONTINUITY_REVOCATION_EPOCH,
                 decision_path=layout.activation_decisions,
@@ -470,32 +447,19 @@ async def bind_coding_configured_continuity(
                 read_clock=partial(_read_clock, clock),
                 validate_subject=partial(_validate_activation_subject, layout=layout),
                 authorization=_approval_authorization,
-            )
-            pending_before = len(lifecycle.deletion_authority.journal.pending())
-            result = await bind_coding_plugin_continuity(
+            ),
+            bind_base=finish_base_binding,
+            bind_generation=partial(
+                bind_coding_plugin_continuity,
                 runtime,
-                resolved_plugins=resolved,
-                component_host=component_host,
-                activation_decision_ids=decisions,
-                instance_family_authority=lifecycle.family_authority,
                 runtime_id=resolved_runtime_id,
-                deletion_authority=lifecycle.deletion_authority,
-                owned_cleanup=runtime_resolution.close,
                 cwd=cwd,
                 all_sessions=all_sessions,
                 temporary_root=layout.temporary_root,
                 fallback_cwd=cwd,
-            )
-            result.configured_request_fingerprint = request_fingerprint
-        _record_ready_status(
-            runtime,
-            diagnostics_service,
-            configured_source_count=configured_count,
-            plugin_count=len(selection.plan.selected_plugin_ids),
-            provider_count=len(resolved.candidates),
-            recovered_deletion_count=pending_before,
+            ),
+            record_ready=record_ready,
         )
-        return result
     except BaseException as error:
         if not lifecycle_started and compatibility is None:
             release_early_startup_lease()
@@ -530,8 +494,8 @@ class _ContinuityDefinitionApprovalOwner:
 
 def _finalize_selection(
     runtime: PluginRuntimeResolution,
-    *,
     instance_refs: tuple[PluginInstanceRevisionRef, ...],
+    *,
     layout: CodingContinuityStateLayout,
     clock: Callable[[], int],
 ) -> PluginSelection:
@@ -660,28 +624,12 @@ def _coding_continuity_materializer(
     )
 
 
-def _build_lifecycle(
-    layout: CodingContinuityStateLayout,
-) -> _InstalledLifecycle:
-    security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
-        layout.instance_runtime
-    )
-    common = build_coding_plugin_lifecycle(
-        _common_lifecycle_layout(layout),
-        security_acceptances=security,
-    )
-    family_authority = PluginInstanceLedgerContinuityFamilyAuthority(
-        ledger=common.instances,
-        package_lifecycle=common.packages,
-        security_acceptance_journal=security,
-    )
-    deletion_journal = PluginContinuityDeletionJournal.for_instance_runtime(
-        layout.instance_runtime
-    )
-    return _InstalledLifecycle(
-        common=common,
-        family_authority=family_authority,
-        deletion_authority=PluginContinuityDeletionAuthority(deletion_journal),
+def _build_lifecycle(layout: CodingContinuityStateLayout) -> InstalledContinuityLifecycle:
+    return InstalledContinuityLifecycle.open(
+        layout.instance_runtime,
+        lambda security: build_coding_plugin_lifecycle(
+            _common_lifecycle_layout(layout), security_acceptances=security
+        ),
     )
 
 
