@@ -170,3 +170,61 @@ def test_resolved_paths_have_bounded_depth_and_length(tmp_path, reference, code)
     with pytest.raises(WorkspacePreviewError) as rejected:
         read_workspace_preview(tmp_path.resolve(), reference, "")
     assert rejected.value.code == code
+
+
+@pytest.fixture
+def windows_workspace_catalog(standalone_workspace, monkeypatch):
+    from types import SimpleNamespace
+
+    from loushang.apphost.managed.workspaces import WorkspaceRegistry
+    from loushang.coding.hosted import workspace_catalog
+    from loushang.harness.transcript import store_admission
+
+    monkeypatch.setattr(workspace_catalog, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(store_admission, "os", SimpleNamespace())
+    root = standalone_workspace
+    registry = WorkspaceRegistry(root / "registry")
+    return workspace_catalog.CodingWorkspaceCatalog(registry, root / "sessions", root / "stores")
+
+
+@pytest.mark.parametrize("retained_scope", [False, True])
+def test_windows_catalog_loads_workspaces(windows_workspace_catalog, retained_scope):
+    async def scenario():
+        catalog = windows_workspace_catalog
+        try:
+            if retained_scope:
+                (catalog._root / "workspaces" / "default" / "user_home").mkdir(parents=True)
+            await catalog.load()
+            assert [scope.workspace_id for scope in catalog.scopes] == (
+                ["default"] if retained_scope else []
+            )
+        finally:
+            await catalog.close()
+
+    asyncio.run(scenario())
+
+
+def test_windows_catalog_unregister_preserves_existing_session_directories(windows_workspace_catalog):
+    from loushang.appserver.protocol import WorkspaceRequestV1
+
+    async def scenario():
+        catalog = windows_workspace_catalog
+        await asyncio.to_thread(catalog.registry.open)
+        project = catalog._root.parent / "project"
+        project.mkdir()
+        try:
+            await catalog.register(str(project))
+            scope = await catalog.select(str(project))
+            user_home = scope.session_dir.parent / "user_home"
+            user_home.mkdir(parents=True)
+            request = WorkspaceRequestV1("unregister", str(project))
+            with pytest.raises(AppServiceError) as retained:
+                await catalog.workspace(request)
+            assert retained.value.code == AppErrorCodeV1.OPERATION_UNAVAILABLE
+            user_home.rmdir()
+            await catalog.workspace(request)
+            assert await asyncio.to_thread(catalog.registry.list) == ()
+        finally:
+            await catalog.close()
+
+    asyncio.run(scenario())

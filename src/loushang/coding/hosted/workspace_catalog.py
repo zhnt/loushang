@@ -102,12 +102,9 @@ class CodingWorkspaceCatalog(
                 )
             )
         previous = self._root / leaf
-        witness = TranscriptStoreAdmission(
-            previous, state_root=self._state
-        ).witness_root
         # A surviving witness identifies the original store even if its data
         # directory is missing. New stores use the workspaces family.
-        if workspace_id is None and (os.path.lexists(previous) or os.path.lexists(witness)):
+        if workspace_id is None and self._retained_store(previous):
             root = previous
         return CodingManagedSessionCatalogV1(
             session_root=root,
@@ -130,9 +127,16 @@ class CodingWorkspaceCatalog(
     def _retained_logical_store(self, workspace_id: str) -> bool:
         root = self._root / "workspaces" / workspace_id
         roots = (root / "cwd", root / "user_home") if sys.platform in {"win32", "darwin"} else (root,)
-        return any(os.path.lexists(path) or os.path.lexists(
-            TranscriptStoreAdmission(path, state_root=self._state).witness_root
-        ) for path in roots)
+        return any(self._retained_store(path) for path in roots)
+
+    def _retained_store(self, path: Path) -> bool:
+        if os.path.lexists(path):
+            return True
+        if sys.platform in {"win32", "darwin"}:
+            # Native hosted writers have per-scope roots and no managed-store witness.
+            return False
+        witness = TranscriptStoreAdmission(path, state_root=self._state).witness_root
+        return os.path.lexists(witness)
 
     async def _logical_catalog(self, workspace: Workspace) -> CodingHostedSessionCatalogV1:
         path = self._logical_catalogs.get(workspace.id)
@@ -359,10 +363,7 @@ class CodingWorkspaceCatalog(
         if request.action == "unregister" and request.path is not None:
             catalog = self._catalogs.get(Path(request.path))
             if catalog is not None and any(
-                os.path.lexists(scope.session_dir) or os.path.lexists(
-                    TranscriptStoreAdmission(scope.session_dir, state_root=self._state).witness_root
-                )
-                for scope in catalog.scopes
+                self._retained_store(scope.session_dir) for scope in catalog.scopes
             ):
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         entries = await self._workspace_entries(request)
