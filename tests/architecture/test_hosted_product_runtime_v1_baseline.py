@@ -518,6 +518,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "integrations/_session_commands.py",
         "integrations/_session_projection.py",
         "integrations/resource_access.py",
+        "integrations/resource_tools.py",
     } == {
         "__init__.py",
         "_ownership.py",
@@ -699,6 +700,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     execution_work = "loushang.apphost.integrations.session_control"
     session_projection = "loushang.apphost.integrations._session_projection"
     resource_access = "loushang.apphost.integrations.resource_access"
+    resource_tools = "loushang.apphost.integrations.resource_tools"
     optional_execution_consumers = {
         path for path in reverse_apphost_consumers
         if path in {
@@ -716,6 +718,10 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                     execution_work + "._HostedApprovalPresentation",
                     resource_access,
                     resource_access + ".HostedResourceAccess",
+                    resource_tools,
+                    resource_tools + ".SESSION_FILES",
+                    resource_tools + ".HostReferencePolicy",
+                    resource_tools + ".hosted_resource_tools",
                     session_projection,
                     session_projection + "._HostedApprovalPresentation",
                     session_projection + "._project_hosted_approval",

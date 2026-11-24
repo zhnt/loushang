@@ -138,7 +138,7 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
         },
     }
     hosted_contract_values = {
-        Path("src/loushang/coding/hosted/resource_tools.py"): {
+        APPHOST / "integrations/resource_tools.py": {
             "protocol": {"AppServiceError"},
         },
         APPHOST / "integrations/resource_access.py": {

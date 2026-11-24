@@ -28,6 +28,11 @@ from loushang.apphost.integrations._session_projection import (
     _HostedConversationProjection,
 )
 from loushang.apphost.integrations.resource_access import HostedResourceAccess
+from loushang.apphost.integrations.resource_tools import (
+    SESSION_FILES,
+    HostReferencePolicy,
+    hosted_resource_tools,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -53,11 +58,6 @@ from loushang.coding.hosted.catalog import (
     CodingHostedCatalogError,
     CodingHostedHistoryCandidateBindingV1,
     CodingHostedScopeV1,
-)
-from loushang.coding.hosted.resource_tools import (
-    SESSION_FILES,
-    HostReferencePolicy,
-    hosted_resource_tools,
 )
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
