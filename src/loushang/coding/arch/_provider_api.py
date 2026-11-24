@@ -58,6 +58,7 @@ from loushang.harness.capabilities.workspace_contracts import (
 from loushang.harness.plugin_authoring.capability_provider import (
     PLUGIN_PROVIDER_SELECTION_RULE,
 )
+from loushang.harness.workspace.paths import resolve_path_inside_workspace
 
 CODING_ARCH_PLUGIN_CONFIG_VERSION = 1
 CODING_ARCH_PRIVATE_STATE_SCHEMA_VERSION = 1
@@ -526,13 +527,12 @@ def _absolute_path(value: object, *, name: str) -> Path:
 
 
 def _contained_root(workspace: Path, root: str) -> Path:
-    candidate = Path(root).expanduser()
-    if not candidate.is_absolute():
-        candidate = workspace / candidate
-    resolved = candidate.resolve()
-    if not resolved.is_relative_to(workspace):
-        raise PermissionError("Coding Arch analysis root must stay in the workspace")
-    return resolved
+    return resolve_path_inside_workspace(
+        root,
+        workspace,
+        error_type=PermissionError,
+        message="Coding Arch analysis root must stay in the workspace",
+    )
 
 
 def _require_callable_member(value: object, member: str, *, name: str) -> None:
