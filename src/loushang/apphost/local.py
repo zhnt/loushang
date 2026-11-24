@@ -28,17 +28,22 @@ class _LocalStartup:
     """Reuse the two existing startup phases; each adopter owns its own state."""
 
     _startup_error_prefix: str
-    _one_step: bool
-    _closing: bool
-    _prepared: bool
-    _startup_timeout: float
-    _startup_deadline: float | None
-    _start_task: asyncio.Task[None] | None
-    _activate_task: asyncio.Task[None] | None
-    _phases: dict[str, asyncio.Task[None]]
+    def __init__(self, startup_timeout: float, settlement_timeout: float) -> None:
+        self._startup_timeout = startup_timeout
+        self._timeout = settlement_timeout
+        self._start_task: asyncio.Task[None] | None = None
+        self._activate_task: asyncio.Task[None] | None = None
+        self._startup_deadline: float | None = None
+        self._close_task: asyncio.Task[None] | None = None
+        self._deadline: float | None = None
+        self._phases: dict[str, asyncio.Task[None]] = {}
+        self._prepared = False
+        self._one_step = False
+        self._closing = False
+        self._settled = False
 
     def _prepare_unavailable(self) -> bool:
-        raise NotImplementedError
+        return self._closing or self._start_task is not None
 
     def _startup_accepting(self) -> bool:
         raise NotImplementedError
@@ -140,6 +145,29 @@ class _LocalStartup:
             )
         return remaining
 
+    async def _wait_for_startup_settlement(self, deadline: float) -> None:
+        # Both startup phases are fenced before their owners join them.
+        for task in (self._start_task, self._activate_task):
+            if task is not None:
+                await _wait(
+                    task,
+                    deadline,
+                    ignore_failure=True,
+                    error_prefix=self._startup_error_prefix,
+                )
+
+    def _schedule_close(
+        self,
+        close: Callable[[], Coroutine[object, object, None]],
+        retry_timeout: float | None,
+    ) -> asyncio.Task[None]:
+        task = self._close_task
+        if task is None or _failed(task):
+            if retry_timeout is not None:
+                self._deadline = asyncio.get_running_loop().time() + retry_timeout
+            self._close_task = task = _spawn(close())
+        return task
+
     async def _run_local_phase(
         self,
         name: str,
@@ -190,12 +218,11 @@ class _LocalApplicationStartup(_LocalStartup):
     _launch: _LocalLaunchFacts
     _directory: LocalConnectionDirectoryV1
     _attempt: _ApplicationAttempt
-    _application: HostedApplicationContinuityRuntimeV1 | None
-    _local: HostedLocalRuntimeV1 | None
-    _timeout: float
-    _close_task: asyncio.Task[None] | None
-    _deadline: float | None
-    _settled: bool
+
+    def __init__(self, startup_timeout: float, settlement_timeout: float) -> None:
+        super().__init__(startup_timeout, settlement_timeout)
+        self._application: HostedApplicationContinuityRuntimeV1 | None = None
+        self._local: HostedLocalRuntimeV1 | None = None
 
     def _prepare_session_roots(self) -> None:
         raise NotImplementedError
@@ -271,12 +298,9 @@ class _LocalApplicationStartup(_LocalStartup):
         self.fence()
         if self._deadline is None:
             self._deadline = asyncio.get_running_loop().time() + self._timeout
-        task = self._close_task
-        if task is None or _failed(task):
-            if retry_timeout is not None:
-                self._deadline = asyncio.get_running_loop().time() + retry_timeout
-            task = self._close_task = _spawn(self._close_once(retry_timeout))
-        await asyncio.shield(task)
+        await asyncio.shield(
+            self._schedule_close(lambda: self._close_once(retry_timeout), retry_timeout)
+        )
 
     def fence(self) -> None:
         """Revoke startup and client admission without creating a cleanup task."""
@@ -292,20 +316,7 @@ class _LocalApplicationStartup(_LocalStartup):
             # Do not await the outer startup task first: it can itself be
             # waiting for this adopted deployment's start/close settlement.
             await self._local.close(retry_timeout=retry_timeout)
-        if self._start_task is not None:
-            await _wait(
-                self._start_task,
-                self._deadline,
-                ignore_failure=True,
-                error_prefix=self._startup_error_prefix,
-            )
-        if self._activate_task is not None:
-            await _wait(
-                self._activate_task,
-                self._deadline,
-                ignore_failure=True,
-                error_prefix=self._startup_error_prefix,
-            )
+        await self._wait_for_startup_settlement(self._deadline)
         if self._local is None:
             self._directory.close()
             await self._phase(
@@ -393,25 +404,12 @@ class HostedLocalRuntimeV1(_LocalStartup):
             instance=connection_instance,
             app_tunnel=app_tunnel,
         )
-        self._startup_timeout, self._timeout = startup_timeout, settlement_timeout
-        self._start_task: asyncio.Task[None] | None = None
-        self._activate_task: asyncio.Task[None] | None = None
-        self._startup_deadline: float | None = None
-        self._close_task: asyncio.Task[None] | None = None
-        self._phases: dict[str, asyncio.Task[None]] = {}
+        super().__init__(startup_timeout, settlement_timeout)
         self._reply: Awaitable[None] | None = None
-        self._deadline: float | None = None
         self._stop_started = asyncio.Event()
         self._scopes_enabled = False
-        self._prepared = False
-        self._one_step = False
-        self._closing = False
-        self._settled = False
 
     _startup_error_prefix = "hosted_local"
-
-    def _prepare_unavailable(self) -> bool:
-        return self._start_task is not None or self._closing
 
     def _startup_accepting(self) -> bool:
         return self.accepting
@@ -471,12 +469,7 @@ class HostedLocalRuntimeV1(_LocalStartup):
         retry_timeout: float | None = None,
     ) -> asyncio.Task[None]:
         self._fence(reply)
-        task = self._close_task
-        if task is None or _failed(task):
-            if retry_timeout is not None:
-                self._deadline = asyncio.get_running_loop().time() + retry_timeout
-            self._close_task = task = _spawn(self._close_once())
-        return task
+        return self._schedule_close(self._close_once, retry_timeout)
 
     def fence(self) -> None:
         """Synchronously revoke activation before an outer owner schedules close.
@@ -506,11 +499,8 @@ class HostedLocalRuntimeV1(_LocalStartup):
     async def _close_once(self) -> None:
         assert self._deadline is not None
         deadline = self._deadline
-        if self._start_task is not None:
-            # A failed startup may still own a late listener/record handoff.
-            await _wait(self._start_task, deadline, ignore_failure=True)
-        if self._activate_task is not None:
-            await _wait(self._activate_task, deadline, ignore_failure=True)
+        # Failed startup may still own a late listener or record handoff.
+        await self._wait_for_startup_settlement(deadline)
         await self._phase("reply", self._finish_reply, deadline)
         await self._phase("connection", self._server.close, deadline)
         await self._phase("directory", self._close_directory, deadline)
