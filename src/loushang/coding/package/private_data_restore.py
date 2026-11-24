@@ -170,7 +170,16 @@ class CodingArchPrivateDataRestoreOwner:
         expected_plan: CodingArchPrivateDataRestorePlanV1 | None = None,
     ) -> CodingArchPrivateDataRestoreResultV1:
         """Publish verified backup bytes only into an absent Installation root."""
+        return self._restore(key, backup_id, expected_plan=expected_plan)
 
+    def _restore(
+        self,
+        key: PluginInstallationKeyV1,
+        backup_id: str,
+        *,
+        expected_plan: CodingArchPrivateDataRestorePlanV1 | None,
+        operator_submission: bool = False,
+    ) -> CodingArchPrivateDataRestoreResultV1:
         target = coding_arch_installation_private_data_root(self.layout, key)
         if not _digest(backup_id):
             raise ValueError("Coding Arch restore backup ID is invalid")
@@ -190,6 +199,7 @@ class CodingArchPrivateDataRestoreOwner:
                 verify_files=lambda fd, source: _verify_files(fd, source),
                 write_file_factory=lambda: _write_or_verify_file,
                 result_factory=CodingArchPrivateDataRestoreResultV1,
+                operator_submission=operator_submission,
             )
 
 
