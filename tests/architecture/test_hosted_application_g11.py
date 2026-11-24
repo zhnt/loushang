@@ -136,6 +136,8 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path('src/loushang/coding/hosted/resume.py'),
         Path('src/loushang/coding/hosted/session.py'),
         Path('src/loushang/coding/hosted/_execution_work.py'),
+        Path("src/loushang/coding/hosted/_session_commands.py"),
+        Path("src/loushang/coding/hosted/workspace_catalog.py"),
         # Exact current-subject guard extracted from that same execution owner.
         Path("src/loushang/coding/resume/subject.py"),
         # COD-KD-HMW-001: original guard/registry, no second execution owner.
@@ -160,6 +162,14 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
             if name.startswith("loushang.appservice")} == {
         "loushang.appservice.discovery_ports",
     }
+    for filename, ports in {
+        "_session_commands.py": {"execution_guard", "execution_contract"},
+        "workspace_catalog.py": {"managed_mux"},
+    }.items():
+        path = Path("src/loushang/coding/hosted") / filename
+        assert {name for name in _imports(path) if name.startswith("loushang.appservice")} == {
+            f"loushang.appservice.{port}" for port in ports
+        }
     # The new capability is selected by its owner, never discovered by importing
     # a default Product or by altering the legacy Hosted Session port.
     for path in (
@@ -305,7 +315,10 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         "coding-adapter": (CODING_ADAPTER,),
         "harnesstui-mux": tuple(
             HARNESSTUI_MUX / name for name in
-            ("__init__.py", "controller.py", "model.py", "profile.py", "projection.py", "reducer.py")
+            (
+                "__init__.py", "controller.py", "model.py", "profile.py",
+                "projection.py", "reducer.py", "_session_commands.py",
+            )
         ),
     }
     limits = {
@@ -324,7 +337,8 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # Workspace preview adds 140 net lines of closed request/result values,
         # errors and codec projection. Native file IO remains in AppHost.
         # Unified reasoning adds 9 lines across model and codec.
-        "appserver": 2_360 + 126 + 20 + 140 + 9,
+        # Logical Workspace routing and resource errors add 114 lines.
+        "appserver": 2_360 + 126 + 20 + 140 + 9 + 114,
         # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity
@@ -337,7 +351,8 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # Workspace model queries and close/delete ordering add 48 lines
         # across runtime (+33), ports (+11), and the scoped client (+4).
         # Default and explicit Off projection adds two lines to the scoped runtime.
-        "appservice-core": 1_961 + 5 + 54 + 18 + 48 + 2,
+        # Logical Workspace routing adds 66 runtime and 5 port lines.
+        "appservice-core": 1_961 + 5 + 54 + 18 + 48 + 2 + 71,
         # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
         # same continuity schema/recovery boundary; no owner split or activation.
         # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;
@@ -353,7 +368,9 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # failure handling add 12 lines. Reviewed in the AppServer overview.
         "coding-adapter": 470 + 28 + 12,
         # Stable execution recovery and explicit profile wiring from main.
-        "harnesstui-mux": 688,
+        # Hosted command completion, invocation, and recovery add 572 lines
+        # across the client-only command UI, controller, and model.
+        "harnesstui-mux": 688 + 572,
     }
     for name, paths in groups.items():
         lines = sum(len(_read(path).splitlines()) for path in paths)

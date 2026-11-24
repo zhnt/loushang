@@ -137,6 +137,40 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             "SessionOpenSpecV1",
         },
     }
+    hosted_contract_values = {
+        "resource_tools": {"protocol": {"AppServiceError"}},
+        "resources": {
+            "execution.model": {"ResourceRefV1"},
+            "execution.resources": {
+                "RESOURCE_CHUNK_BYTES", "ResourceV1", "SessionResourceQueryV1",
+                "SessionResourceResultV1", "TEXT_MEDIA_TYPE",
+            },
+            "protocol": {"AppErrorCodeV1", "AppServiceError"},
+        },
+        "client_references": {
+            "execution.resources": {"ClientResourceRequestV1", "ResourceV1"},
+            "protocol": {"AppErrorCodeV1", "AppServiceError"},
+        },
+        "host_references": {
+            "execution.resources": {"ResourceV1"},
+            "protocol": {"AppErrorCodeV1", "AppServiceError"},
+        },
+        "_session_commands": {
+            "execution.session_commands": {
+                "SessionCommandCatalogV1", "SessionCommandChoiceV1",
+                "SessionCommandInvocationV1", "SessionCommandResultV1",
+            },
+            "protocol": {"AppErrorCodeV1", "AppServiceError"},
+        },
+    }
+    hosted_contract_imports = {
+        Path(f"src/loushang/coding/hosted/{filename}.py"): {
+            f"loushang.appserver.{item}"
+            for module, values in modules.items()
+            for item in (module, *(f"{module}.{value}" for value in values))
+        }
+        for filename, modules in hosted_contract_values.items()
+    }
     appserver_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -148,6 +182,12 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
         )
     }
     for consumer in appserver_consumers:
+        if consumer in hosted_contract_imports:
+            assert {
+                name for name in _imports(consumer)
+                if name == "loushang.appserver" or name.startswith("loushang.appserver.")
+            } == hosted_contract_imports[consumer]
+            continue
         assert (
             consumer == Path('src/loushang/coding/hosted/service_adapter.py')
             or consumer == Path('src/loushang/coding/hosted/managed/service.py')
