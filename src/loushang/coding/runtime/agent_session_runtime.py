@@ -41,7 +41,10 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.runtime.session_operations import SessionOperationResult
 from loushang.harness.session import AgentProductSessionRuntime
-from loushang.harness.session._resume_continuation import require_resume_owner_check
+from loushang.harness.session._resume_continuation import (
+    require_resume_owner_check,
+    resume_plan_matches_history,
+)
 from loushang.harness.session.lifecycle import (
     PreparedSessionLifecycleOperation,
 )
@@ -387,11 +390,9 @@ class AgentSessionRuntime(
         if view is not None and (
             view.runtime is not self
             or self.resolve_discovered_session_source(session_file).path != view.target
-            or plan.session_id != view.history.header_preview.header.conversation_id
-            or plan.selected_leaf_id != view.history.selected_leaf_id
-            or plan.ancestry_digest != view.history.selected_ancestry_digest
-            or plan.source_fingerprint != view.history.source_fingerprint
-            or plan.source_content_digest != view.history.source_content_digest
+            or not resume_plan_matches_history(
+                plan, view.history, session_id=view.history.header_preview.header.conversation_id
+            )
         ):
             raise CodingResumeRecoveryRequired(
                 'input.history_view_changed'
