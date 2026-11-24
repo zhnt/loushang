@@ -17,6 +17,7 @@ from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.types import ImagePart
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
+from loushang.apphost.integrations.resource_access import HostedResourceAccess
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
     _HostedApprovalPresentation,
@@ -47,7 +48,6 @@ from loushang.coding.hosted.resource_tools import (
     HostReferencePolicy,
     hosted_resource_tools,
 )
-from loushang.coding.hosted.resources import HostedResourceAccess
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSnapshotProjectionV1,

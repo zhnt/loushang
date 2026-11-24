@@ -26,6 +26,11 @@ from loushang.apphost.integrations._session_projection import (
     _HostedApprovalPresentation,
     _HostedConversationProjection,
 )
+from loushang.apphost.integrations.resource_access import (
+    SUBMISSION_ID,
+    HostedResourceAccess,
+    record_resource_ids,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -56,11 +61,6 @@ from loushang.coding.hosted.resource_tools import (
     SESSION_FILES,
     HostReferencePolicy,
     hosted_resource_tools,
-)
-from loushang.coding.hosted.resources import (
-    SUBMISSION_ID,
-    HostedResourceAccess,
-    record_resource_ids,
 )
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
