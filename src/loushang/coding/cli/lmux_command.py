@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import sys
+from functools import partial
 from pathlib import Path
 from secrets import token_hex
 from time import monotonic
@@ -21,8 +22,6 @@ from loushang.apphost.integrations._managed_mux_command import (
 )
 from loushang.apphost.managed._files import (
     ManagedStorageError,
-    PrivateManagedDirectory,
-    _check_deadline,
 )
 from loushang.apphost.managed.connection import (
     ManagedConnectionLeaseV1,
@@ -42,29 +41,17 @@ from loushang.apphost.managed.discovery import (
     ManagedDiscoveryV1,
     ManagedMuxObservationV1,
 )
-from loushang.apphost.managed.event_log import ManagedLifecycleLogV1
-from loushang.apphost.managed.lifecycle import ManagedServiceJournalV1
 from loushang.apphost.managed.mux_creation import ManagedMuxCreateOperationV1
-from loushang.apphost.managed.mux_management import (
-    ManagedMuxManagerV1,
-)
 from loushang.apphost.managed.mux_probe import (
     ManagedMuxProbeSnapshotV1,
 )
 from loushang.apphost.managed.namespace_admission import ManagedNamespaceAdmissionV1
-from loushang.apphost.managed.paths import resolve_managed_service_paths
 from loushang.apphost.managed.registry import (
     MAX_PAGE,
     ManagedMuxCreationInspectionV1,
     ManagedMuxReservationV1,
-    ManagedServiceAliasReservationV1,
 )
 from loushang.apphost.managed.service_admission import ManagedServiceAdmissionV1
-from loushang.apphost.managed.stopper import ManagedServiceStopOperationV1
-from loushang.apphost.managed.storage_budget import ManagedStorageBudgetV1
-from loushang.appserver.managed_mux_close import (
-    ManagedMuxClosePhaseV1,
-)
 from loushang.coding.hosted.managed.process import (
     APPLICATION_ID,
     ENDPOINT,
@@ -236,32 +223,14 @@ class ManagedMuxCommand(_ManagedMuxCommandLifecycle["HostedMuxShellV1"]):
             args.server = alias.service.service_id
         if args.action == "server":
             assert selected_service is not None
-            if args.name is not None:
-                existing = registry.resolve_service_alias(args.name, deadline=self.deadline, wait_for_lock=True)
-                if existing is not None:
-                    if existing.service != selected_service:
-                        raise ManagedStorageError("conflict")
-                    self.alias_reservation = existing
-                else:
-                    self.alias_reservation = ManagedServiceAliasReservationV1(args.name, selected_service, token_hex(16))
-                    try:
-                        registry.reserve_service_alias(self.alias_reservation, deadline=self.deadline, wait_for_lock=True)
-                    except ManagedStorageError as error:
-                        if error.code != "conflict" or registry.cleanup_pending:
-                            raise
-                        # Another first caller may have won this same mapping.
-                        # Reconcile once, read-only; never retry a new intent or
-                        # adopt a different workspace/profile after a conflict.
-                        winner = registry.resolve_service_alias(args.name, deadline=self.deadline, wait_for_lock=True)
-                        if winner is None or winner.service != selected_service:
-                            raise
-                        self.alias_reservation = winner
-            self.service = ManagedServiceAdmissionV1(self.namespace, selected_service)
-            self.journal = self.service.open(deadline=self.deadline, wait_for_lock=True)
-            self._prepare_starter(selected_service)
+            self._prepare_server(selected_service, args.name)
             return True
         if args.action in ("status", "logs"):
-            return self._prepare_status(args, discovery)
+            self._read_status(
+                discovery, service_id=args.server, target=args.target,
+                log_limit=args.limit if args.action == "logs" else None,
+            )
+            return False
         if args.action == "ls":
             page = discovery.list_muxes(deadline=self.deadline, after=args.after, wait_for_lock=True)
             _emit({"muxes": [_observation(item) for item in page],
@@ -270,11 +239,29 @@ class ManagedMuxCommand(_ManagedMuxCommandLifecycle["HostedMuxShellV1"]):
         if args.action == "stop":
             if getattr(args, "all", False):
                 return self._prepare_stop_all(args, discovery)
-            return self._prepare_stop(args, discovery)
+            return self._prepare_stop(
+                discovery, service_id=args.server,
+                confirm=None if args.yes else partial(
+                    self._confirm_yes, "Stop this service and all its muxes? Type yes: "
+                ),
+            )
         if args.action in ("close", "close-status"):
-            return self._prepare_close(args, discovery)
+            return self._prepare_close(
+                discovery, service_id=args.server, target=getattr(args, "target", None),
+                operation_id=args.operation, read_only=args.action == "close-status",
+                continue_close=getattr(args, "continue_close", False),
+                confirm=self._confirm_close if args.action == "close" and not args.yes else None,
+            )
         if args.action in ("create", "create-status"):
-            return self._prepare_creation_recovery(args)
+            return self._prepare_creation_recovery(
+                service_id=args.server, operation_id=args.operation,
+                continue_create=getattr(args, "continue_create", False),
+                confirm=None if getattr(args, "yes", False) else partial(
+                    self._confirm_yes,
+                    "Start/reuse this original service and resend this same idempotent creation once? Type yes: ",
+                    ignore_case=True,
+                ),
+            )
         if args.action == "new":
             assert selected_service is not None
             self._new(args.name, selected_service)
@@ -305,31 +292,11 @@ class ManagedMuxCommand(_ManagedMuxCommandLifecycle["HostedMuxShellV1"]):
             raise ManagedStorageError("not_found")
         if selected is not None and (observed.reservation != selected.reservation or observed.instance != selected.instance):
             raise ManagedStorageError("conflict")
-        if args.action != "start" and (observed.instance is None or observed.stop_requested or observed.cleanly_stopped):
-            raise ManagedStorageError("unavailable")
-        if observed.service.product_id != "coding":
-            raise ManagedStorageError("conflict")
-        paths = resolve_managed_service_paths(self.defaults.namespace, observed.service,
-                                              runtime_root=str(self.defaults.platform.runtime))
-        self.journal = ManagedServiceJournalV1(registry, self.defaults.namespace, observed.service,
-                                               Path(paths.lifecycle), defer_open=True)
-        self.journal.open(deadline=self.deadline, wait_for_lock=True)
-        self.target = observed.name
-        if args.action == "start":
-            self._prepare_starter(observed.service)
-            return True
-        assert observed.instance is not None
-        manager = ManagedMuxManagerV1(registry, self.journal, self.defaults.namespace,
-                                      observed.service, observed.instance, application_id=APPLICATION_ID)
-        inspection = manager.inspect_mux(observed.reservation, deadline=self.deadline, wait_for_lock=True)
-        self.mux_space_id = inspection.creation.mux_space_id
-        if self.probed_mux_id is not None and self.mux_space_id != self.probed_mux_id:
-            raise ManagedStorageError("conflict")
-        self.connection = ManagedConnectionLeaseV1(
-            self.journal, self.defaults.namespace, observed.service, observed.instance,
-            runtime_root=str(self.defaults.platform.runtime), endpoint=ENDPOINT,
-        )
+        self._prepare_attachment(observed, start=args.action == "start")
         return True
+
+    def _connection_type(self) -> type[ManagedConnectionLeaseV1]:
+        return ManagedConnectionLeaseV1
 
     def _prepare_starter(self, service: ManagedServiceKeyV1) -> None:
         assert self.journal is not None
@@ -342,56 +309,6 @@ class ManagedMuxCommand(_ManagedMuxCommandLifecycle["HostedMuxShellV1"]):
                 invocation, descriptor, executable=sys.executable, environment=self.environment,
             ),
         )
-
-    def _prepare_status(self, args: argparse.Namespace, discovery: ManagedDiscoveryV1) -> bool:
-        service_id = args.server
-        if args.action == "status" and service_id is None and args.target is None:
-            snapshot = discovery.snapshot_namespace(deadline=self.deadline, wait_for_lock=True)
-            muxes: dict[str, list[str]] = {}
-            for item in snapshot.muxes:
-                muxes.setdefault(item.service.service_id, []).append(item.name)
-            services = [{"serviceId": item.service.service_id, "productId": item.service.product_id,
-                         "hostRoot": item.service.host_root, "profile": item.service.profile,
-                         "instanceId": None if item.instance is None else item.instance.instance_id,
-                         "revision": item.revision,
-                         "recordedPhase": None if item.recorded_phase is None else item.recorded_phase.value,
-                         "stopRequested": item.stop_requested, "cleanlyStopped": item.cleanly_stopped,
-                         "reservedMuxes": muxes.get(item.service.service_id, [])} for item in snapshot.services]
-            _check_deadline(self.deadline)
-            _emit({"services": services, "observation": "recorded_only", "liveStatus": "not_probed"}, self.stdout)
-            return False
-        if args.target is not None:
-            named = discovery.resolve(args.target, deadline=self.deadline, wait_for_lock=True)
-            if named is None:
-                raise ManagedStorageError("not_found")
-            service_id = named.service.service_id
-        observed = discovery.inspect_service(service_id, deadline=self.deadline, wait_for_lock=True)
-        if observed is None:
-            raise ManagedStorageError("not_found")
-        paths = resolve_managed_service_paths(self.defaults.namespace, observed.service,
-                                              runtime_root=str(self.defaults.platform.runtime))
-        if args.action == "logs":
-            assert self.namespace is not None
-            self.log_directory = PrivateManagedDirectory(Path(paths.logs), defer_open=True)
-            self.log_directory.open(deadline=self.deadline)
-            reader = ManagedLifecycleLogV1(self.log_directory, ManagedStorageBudgetV1(self.namespace.registry), service_id)
-            records = reader.read_tail(limit=args.limit, deadline=self.deadline)
-            _emit({"serviceId": service_id, "observation": "bounded_tail", "completeHistory": False,
-                   "scan": {"maxSegments": 5, "maxBytesPerSegment": 16384},
-                   "events": [{"sequence": record.sequence, "instanceId": record.event.instance_id,
-                               "event": record.event.event, "code": record.event.code} for record in records]}, self.stdout)
-            return False
-        _emit({"serviceId": service_id, "productId": observed.service.product_id,
-               "hostRoot": observed.service.host_root, "profile": observed.service.profile,
-               "instanceId": None if observed.instance is None else observed.instance.instance_id,
-               "revision": observed.revision,
-               "recordedPhase": None if observed.recorded_phase is None else observed.recorded_phase.value,
-               "stopRequested": observed.stop_requested, "cleanlyStopped": observed.cleanly_stopped,
-               "liveStatus": "not_probed", "observation": "recorded_only",
-               "paths": {"logs": str(paths.logs), "application": str(paths.application)},
-               "temporary": {"defaultBase": str(paths.logs.parent / "tmp"), "actualRoot": None,
-                             "reason": "instance_override_not_recorded"}}, self.stdout)
-        return False
 
     def _close_output(self, status: str, *, reconciled: bool = False, historical: bool = False) -> None:
         assert self.close_inspection is not None and self.close_reservation is not None
@@ -412,122 +329,34 @@ class ManagedMuxCommand(_ManagedMuxCommandLifecycle["HostedMuxShellV1"]):
                "name": creation.name, "muxId": creation.mux_space_id,
                "reconciled": reconciled, "historical": historical, **followup}, self.stdout)
 
-    def _prepare_close(self, args: argparse.Namespace, discovery: ManagedDiscoveryV1) -> bool:
-        assert self.namespace is not None
-        self.close_readonly = args.action == "close-status"
-        self.close_continue = getattr(args, "continue_close", False)
-        self.close_by_name = getattr(args, "target", None) is not None
-        observed = discovery.resolve(args.target, deadline=self.deadline, wait_for_lock=True) if self.close_by_name else None
-        if self.close_by_name and observed is None:
-            raise ManagedStorageError("not_found")
-        service = observed.service if observed is not None else discovery.resolve_service(
-            args.server, deadline=self.deadline, wait_for_lock=True)
-        if service is None:
-            raise ManagedStorageError("not_found")
-        if service.product_id != "coding":
-            raise ManagedStorageError("conflict")
-        paths = resolve_managed_service_paths(self.defaults.namespace, service,
-                                              runtime_root=str(self.defaults.platform.runtime))
-        self.journal = ManagedServiceJournalV1(self.namespace.registry, self.defaults.namespace, service,
-                                               Path(paths.lifecycle), defer_open=True)
-        self.journal.open(deadline=self.deadline, wait_for_lock=True)
-        state = self.journal.read(deadline=self.deadline, wait_for_lock=True)
-        if state is None:
-            raise ManagedStorageError("unavailable")
-        if observed is not None and observed.instance != state.handoff.instance:
-            raise ManagedStorageError("conflict")
-        self.close_instance_id = state.handoff.instance.instance_id
-        manager = self.close_manager = ManagedMuxManagerV1(self.namespace.registry, self.journal,
-            self.defaults.namespace, service, state.handoff.instance, application_id=APPLICATION_ID)
-        inspection = self.close_inspection = manager.inspect_mux(
-            observed.reservation, deadline=self.deadline, wait_for_lock=True) if observed is not None else manager.inspect_close_operation(
-                args.operation, deadline=self.deadline, wait_for_lock=True)
-        creation, request = inspection.creation, inspection.close_request
-        self.close_reservation = ManagedMuxReservationV1(creation.name, service, creation.operation_id)
-        self.close_operation = token_hex(16) if request is None else request.operation_id
-        if self.close_readonly and inspection.close_result is not None and inspection.close_result.phase is ManagedMuxClosePhaseV1.CLOSED:
-            self._close_output("closed", reconciled=True, historical=True)
+    def _confirm_yes(self, prompt: str, *, ignore_case: bool = False, end: str = "") -> bool:
+        print(prompt, file=self.stdout, end=end, flush=True)
+        answer = self.stdin.readline(8)
+        if not answer.endswith("\n"):
             return False
-        if not self.close_readonly:
-            self._close_output("planned_close" if request is None else "close_preview")
-            if not args.yes:
-                print("This closes only the selected mux; persistent Session files are kept. "
-                      "Continue [yes/No]?" if self.close_continue or request is None else
-                      "Query and reconcile only; no close request will be resent. Continue [yes/No]?",
-                      file=self.stdout, flush=True)
-                answer = self.stdin.readline(8)
-                if not answer.endswith("\n") or answer.strip().lower() != "yes":
-                    return False
-            self.deadline = monotonic() + 30
-            if inspection.close_result is not None and inspection.close_result.phase is ManagedMuxClosePhaseV1.CLOSED:
-                self._close_output("closed", reconciled=True, historical=True)
-                return False
-        elif request is None or request.instance_id != state.handoff.instance.instance_id:
-            self._close_output("reauthorization_required")
-            raise ManagedStorageError("unavailable")
-        self.connection = ManagedConnectionLeaseV1(self.journal, self.defaults.namespace, service,
-            state.handoff.instance, runtime_root=str(self.defaults.platform.runtime), endpoint=ENDPOINT)
-        return True
+        value = answer.strip()
+        return (value.lower() if ignore_case else value) == "yes"
 
+    def _confirm_close(self, will_send: bool) -> bool:
+        prompt = (
+            "This closes only the selected mux; persistent Session files are kept. Continue [yes/No]?"
+            if will_send else
+            "Query and reconcile only; no close request will be resent. Continue [yes/No]?"
+        )
+        return self._confirm_yes(prompt, ignore_case=True, end="\n")
 
     def _prepare_stop_all(self, args: argparse.Namespace, discovery: ManagedDiscoveryV1) -> bool:
         assert self.namespace is not None
-        snapshot = discovery.snapshot_namespace(deadline=self.deadline, wait_for_lock=True)
-        _emit({"action": "stop_all_preview", "namespaceKey": self.defaults.namespace.namespace_key,
-               "ordering": "service_id", "budgetSeconds": 30, "sharedBudget": True,
-               "services": [{"serviceId": item.service.service_id, "productId": item.service.product_id,
-                   "hostRoot": item.service.host_root,
-                   "instanceId": None if item.instance is None else item.instance.instance_id,
-                   "muxes": [mux.name for mux in snapshot.muxes if mux.service == item.service]}
-                   for item in snapshot.services]}, self.stdout)
-        if not args.yes:
-            print("Stop these exact instances using one shared 30s budget? Type yes: ",
-                  file=self.stdout, end="", flush=True)
-            confirmation = self.stdin.readline(8)
-            if not confirmation.endswith("\n") or confirmation.strip() != "yes":
-                return False
+        snapshot = self._preview_stop_all(discovery)
+        if not args.yes and not self._confirm_yes(
+            "Stop these exact instances using one shared 30s budget? Type yes: "
+        ):
+            return False
         self.deadline = monotonic() + 30
-        self.stop_all = StopAll(self.namespace, self.defaults, snapshot, deadline=self.deadline,
-                               emit=lambda value: _emit(value, self.stdout))
-        return True
-
-    def _prepare_stop(self, args: argparse.Namespace, discovery: ManagedDiscoveryV1) -> bool:
-        assert self.namespace is not None
-        service = discovery.resolve_service(args.server, deadline=self.deadline, wait_for_lock=True)
-        if service is None:
-            raise ManagedStorageError("not_found")
-        paths = resolve_managed_service_paths(self.defaults.namespace, service,
-                                              runtime_root=str(self.defaults.platform.runtime))
-        self.journal = ManagedServiceJournalV1(self.namespace.registry, self.defaults.namespace, service,
-                                               Path(paths.lifecycle), defer_open=True)
-        self.journal.open(deadline=self.deadline, wait_for_lock=True)
-        state = self.journal.read(deadline=self.deadline, wait_for_lock=True)
-        if state is None:
-            raise ManagedStorageError("unavailable")
-        names: list[str] = []
-        after = None
-        while True:
-            page = discovery.list_muxes(deadline=self.deadline, after=after, wait_for_lock=True)
-            names.extend(item.name for item in page if item.service == service)
-            if len(page) < MAX_PAGE:
-                break
-            after = page[-1].name
-        _emit({"action": "stop_preview", "serviceId": service.service_id,
-               "instanceId": state.handoff.instance.instance_id, "muxes": names}, self.stdout)
-        if not args.yes:
-            print("Stop this service and all its muxes? Type yes: ", file=self.stdout, end="", flush=True)
-            confirmation = self.stdin.readline(8)
-            if not confirmation.endswith("\n") or confirmation.strip() != "yes":
-                return False
-            self.deadline = monotonic() + 30
-        self.stopper = ManagedServiceStopOperationV1(
-            self.journal, self.defaults.namespace, service, state.handoff.instance,
-            runtime_root=str(self.defaults.platform.runtime),
+        self.stop_all = StopAll(
+            self.namespace, self.defaults, snapshot, deadline=self.deadline, emit=self._emit_value
         )
         return True
-
-
-
 
     def _select_probe(self, snapshot: ManagedMuxProbeSnapshotV1) -> ManagedMuxObservationV1 | None:
         offset = 0
@@ -586,41 +415,6 @@ class ManagedMuxCommand(_ManagedMuxCommandLifecycle["HostedMuxShellV1"]):
                "nextCommand": ["lmux", "create-status", "--server", reservation.service.service_id,
                                "--operation", reservation.operation_id],
                **continuation}, self.stdout)
-
-    def _prepare_creation_recovery(self, args: argparse.Namespace) -> bool:
-        assert self.namespace is not None
-        registry = self.namespace.registry
-        inspection = registry.inspect_mux_creation(args.operation, deadline=self.deadline, wait_for_lock=True)
-        if inspection is None:
-            raise ManagedStorageError("not_found")
-        reservation = inspection.reservation
-        if reservation.service.service_id != args.server or reservation.service.product_id != "coding":
-            raise ManagedStorageError("conflict")
-        self.creation_reservation = reservation
-        if not getattr(args, "continue_create", False):
-            self._creation_output("created" if inspection.created is not None else "unknown", inspection)
-            self.result_status = 0 if inspection.created is not None else 1
-            return False
-        if not inspection.active:
-            # An old operation cannot reclaim its name after a confirmed close.
-            raise ManagedStorageError("conflict")
-        if inspection.created is not None:
-            self._creation_output("created", inspection)
-            return False
-        self._creation_output("creation_continue_preview", inspection)
-        if not args.yes:
-            print("Start/reuse this original service and resend this same idempotent creation once? "
-                  "Type yes: ", file=self.stdout, end="", flush=True)
-            answer = self.stdin.readline(8)
-            if not answer.endswith("\n") or answer.strip().lower() != "yes":
-                return False
-        self.deadline = monotonic() + 30
-        current = registry.inspect_mux_creation(args.operation, deadline=self.deadline, wait_for_lock=True)
-        if current != inspection:
-            raise ManagedStorageError("conflict")
-        self.creation_recovery = True
-        self._prepare_creation_owner(reservation)
-        return True
 
     def _new(self, name: str, service: ManagedServiceKeyV1) -> None:
         assert self.namespace is not None
