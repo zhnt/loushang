@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from loushang.harness.session.agent_product import AgentProductSession
 
 
-SessionT = TypeVar("SessionT", bound="AgentProductSession")
+SessionT = TypeVar("SessionT", bound="AgentProductSession", covariant=True)
 
 # The owning command pack declares which operations can use this execution
 # path. Lifecycle and local commands keep their existing entry points.
