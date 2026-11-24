@@ -100,7 +100,7 @@ from ._legacy_runtime import _LegacyEpoch, matches_epoch_layout
 
 if TYPE_CHECKING:
     from ._application_runtime import FencedSourceCatalogRoots
-    from ._legacy_inventory import _BindingHead
+    from ._legacy_inventory import LegacyInventoryEvidence, _BindingHead
     from ._legacy_local_migration import _AcceptedSource
 
 
@@ -1436,6 +1436,47 @@ class _LegacyLocalSourceCatalog(
         return cls(
             roots.state_root / cls._product_journal_name,
             **roots.identity,
+            policy_revision=policy_revision,
+            acceptance_reader=acceptance_reader,
+        )
+
+    @classmethod
+    def publish_reviewed_source(
+        cls,
+        *,
+        plugin_id: str,
+        acceptance_reader: Callable[[str], LegacyAcceptanceT | None],
+        reacquire: Callable[[], tuple[LegacyInventoryEvidence, int, LegacyCandidateT]],
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+        resolve_epoch: Callable[[], _LegacyEpoch],
+        read_scope_id: Callable[[], str],
+        policy_revision: str,
+    ) -> LegacyRecordT:
+        """Reopen approval and bind the recaptured local Wheel in its original epoch."""
+        from loushang.harness.plugin_authoring.resource_item import (
+            _inspect_legacy_local_data_wheel,
+        )
+
+        accepted = acceptance_reader(plugin_id)
+        if accepted is None:
+            raise cls._error_factory("Legacy local Source has no accepted review")
+        evidence, position, candidate = reacquire()
+        binding, desired_state, _ = evidence.inventory.active_local[position]
+        try:
+            resource_kind, _ = _inspect_legacy_local_data_wheel(candidate)
+        except (OSError, ValueError) as exc:
+            raise cls._error_factory(
+                "Legacy local Source Resource type is unsupported"
+            ) from exc
+        return cls.publish_from_accepted_review(
+            candidate,
+            accepted=accepted,
+            binding=binding,
+            desired_state=desired_state,
+            inspected_kind=resource_kind,
+            epoch_runtime=epoch_runtime,
+            resolve_epoch=resolve_epoch,
+            scope_id=read_scope_id(),
             policy_revision=policy_revision,
             acceptance_reader=acceptance_reader,
         )
