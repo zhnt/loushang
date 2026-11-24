@@ -814,11 +814,11 @@ class WorkspaceRequestV1:
             raise ValueError("invalid workspace inspection fingerprint")
         logical = {"workspace_id": self.workspace_id, "name": self.name,
                    "path_id": self.path_id, "alias": self.alias}
-        if self.is_logical_workspace_action:
+        if (workspace_fields := _WORKSPACE_FIELDS.get(self.action)) is not None:
             fields = {key for key, value in logical.items() if value is not None}
             if self.path is not None:
                 fields.add("path")
-            required, optional = _WORKSPACE_FIELDS[self.action]
+            required, optional = workspace_fields
             if not required <= fields <= required | optional:
                 raise ValueError("invalid logical workspace request")
             if self.action == "create-workspace" and (self.path is None) != (self.alias is None):
@@ -827,11 +827,16 @@ class WorkspaceRequestV1:
                 if self.action != "inspect-workspace":
                     raise ValueError("unexpected workspace inspection session")
                 _require_opaque_id(self.session_id, field="session_id")
-            if self.action == "preview-workspace":
-                if type(self.preview) is not WorkspacePreviewRequestV1:
-                    raise ValueError("missing workspace preview request")
-            elif self.preview is not None:
-                raise ValueError("unexpected workspace preview request")
+        elif any(value is not None for value in logical.values()):
+            raise ValueError("unexpected logical workspace fields")
+        elif self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary", "inspect", "preview"}:
+            raise ValueError("invalid workspace action")
+        if self.action in {"preview", "preview-workspace"}:
+            if type(self.preview) is not WorkspacePreviewRequestV1:
+                raise ValueError("missing workspace preview request")
+        elif self.preview is not None:
+            raise ValueError("unexpected workspace preview request")
+        if workspace_fields is not None:
             for key, value in logical.items():
                 if value is not None:
                     if key.endswith("_id"):
@@ -841,15 +846,6 @@ class WorkspaceRequestV1:
             if self.path is not None:
                 WorkspaceRequestV1("open", self.path)
             return
-        if any(value is not None for value in logical.values()):
-            raise ValueError("unexpected logical workspace fields")
-        if self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary", "inspect", "preview"}:
-            raise ValueError("invalid workspace action")
-        if self.action == "preview":
-            if type(self.preview) is not WorkspacePreviewRequestV1:
-                raise ValueError("missing workspace preview request")
-        elif self.preview is not None:
-            raise ValueError("unexpected workspace preview request")
         if self.session_id is not None:
             if self.action != "inspect":
                 raise ValueError("invalid workspace inspection session")
