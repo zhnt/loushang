@@ -17,8 +17,6 @@ from typing import (
     cast,
 )
 
-from loushang.foundation._owned_tasks import _observe_task_result
-
 from .contracts import (
     AppHostSessionLeaseV1,
     SessionBindingKeyV1,
@@ -376,6 +374,11 @@ class _CompletionReport(Protocol):
 _ReportT = TypeVar("_ReportT", bound=_CompletionReport)
 
 
+def _observe_background_result(task: asyncio.Task[Any]) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
 def _report_task_needs_retry(task: asyncio.Task[_ReportT]) -> bool:
     return task.done() and (
         task.cancelled() or task.exception() is not None or not task.result().completed
@@ -490,7 +493,7 @@ class _ExplicitProductAppHostLifecycle(Generic[_LatchT, _ReportT]):
             else:
                 return task
             task = asyncio.create_task(settle)
-            task.add_done_callback(_observe_task_result)
+            task.add_done_callback(_observe_background_result)
             self._control_task = task
             self._control_mode = effective_mode
             return task

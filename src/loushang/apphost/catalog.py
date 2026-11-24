@@ -12,6 +12,7 @@ from ._ownership import (
     AsyncClose,
     CloseGroup,
     RetryableCloser,
+    _observe_background_result,
     bind_native_async,
     read_static_property,
 )
@@ -729,13 +730,6 @@ def _bind_rescue_close(value: object) -> AsyncClose | None:
         return cast(AsyncClose, descriptor.__get__(value, type(value)))
     except BaseException:
         return None
-
-
-def _observe_background_result(task: asyncio.Task[None]) -> None:
-    """Consume a detached caller result; catalog debt remains independently owned."""
-
-    if not task.cancelled():
-        task.exception()
 
 
 __all__ = ["AppHostCatalogV1"]

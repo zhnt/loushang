@@ -802,6 +802,10 @@ class WorkspaceRequestV1:
 
     scope_fingerprint: str | None = None
 
+    @property
+    def is_logical_workspace_action(self) -> bool:
+        return self.action in _WORKSPACE_FIELDS
+
     def __post_init__(self) -> None:
         if self.scope_fingerprint is not None and (
             self.action != "inspect-workspace" or type(self.scope_fingerprint) is not str
@@ -810,7 +814,7 @@ class WorkspaceRequestV1:
             raise ValueError("invalid workspace inspection fingerprint")
         logical = {"workspace_id": self.workspace_id, "name": self.name,
                    "path_id": self.path_id, "alias": self.alias}
-        if self.action in _WORKSPACE_FIELDS:
+        if self.is_logical_workspace_action:
             fields = {key for key, value in logical.items() if value is not None}
             if self.path is not None:
                 fields.add("path")

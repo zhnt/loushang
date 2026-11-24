@@ -11,6 +11,7 @@ from ._ownership import (
     CloseGroup,
     RetryableCloser,
     _ClaimedCandidateView,
+    _observe_background_result,
     _OpenedCandidateView,
     bind_native_async,
     read_static_property,
@@ -880,11 +881,6 @@ def _primary_category(error: BaseException | None) -> AppHostFailureCategory | N
     if isinstance(error, CleanupIncompleteError) and error.primary_category is not None:
         return error.primary_category
     return error.category if isinstance(error, AppHostError) else None
-
-
-def _observe_background_result(task: asyncio.Task[None]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 def _require_product_id(product_id: str) -> None:

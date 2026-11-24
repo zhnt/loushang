@@ -11,6 +11,7 @@ from typing import Any, cast
 from ._ownership import (
     DependentCloseChain,
     RetryableCloser,
+    _observe_background_result,
     read_static_property,
 )
 from .catalog import AppHostCatalogV1, _RuntimeCatalogLease
@@ -927,11 +928,6 @@ def _shutdown_needs_retry(
         return not task.result().completed
     except BaseException:
         return True
-
-
-def _observe_background_result(task: asyncio.Task[Any]) -> None:
-    if not task.cancelled():
-        task.exception()
 
 
 __all__ = ["AppHostRuntimeV1"]
