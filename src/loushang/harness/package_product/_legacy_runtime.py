@@ -292,6 +292,23 @@ def legacy_product_projection_parent(lifecycle_root: Path) -> Path:
     return lifecycle_root.parent
 
 
+def legacy_product_state_has_inputs(
+    roots: Iterable[tuple[Path, Callable[[], Mapping[str, tuple[str, ...]]]]],
+    *,
+    skip_missing: bool,
+) -> bool:
+    """Observe historical state without acquiring write or repair authority."""
+    for root, domain_members in roots:
+        if skip_missing:
+            try:
+                root.lstat()
+            except FileNotFoundError:
+                continue
+        if any(domain_members().values()):
+            return True
+    return False
+
+
 def prepare_legacy_product_cutover_roots(
     lifecycle: _LegacyStateRoots,
     *,

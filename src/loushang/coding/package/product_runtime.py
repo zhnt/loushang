@@ -41,6 +41,7 @@ from loushang.harness.package_product._application_runtime import (
     require_current_product_admission,
 )
 from loushang.harness.package_product._legacy_runtime import (
+    legacy_product_state_has_inputs,
     matches_epoch_layout,
     open_native_fenced_product_epoch,
     read_fresh_product_source_snapshot,
@@ -173,7 +174,7 @@ from .product_backup_types import (
     ensure_coding_product_backup_types as ensure_coding_product_backup_types,
 )
 from .product_worker_opt_in import CodingWorkerOptInJournal
-from .source_snapshot import coding_settings_have_pre_b_inputs_without_writes
+from .source_snapshot import _source_projection
 
 CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH = 2
 CODING_PACKAGE_PRODUCT_POLICY_REVISION = "coding-product-package-policy:1"
@@ -199,9 +200,6 @@ _fresh_coding_builtin_bootstrap_completed = partial(
 
 
 _RESUME_EPOCH_DOMAIN = b"loushang.coding.resume-epoch/v1\0"
-
-
-_LIFECYCLE_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -720,17 +718,6 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
         return receipt
 
 
-def _coding_settings_have_legacy_product_inputs(settings_manager: SettingsManager) -> bool:
-    settings = settings_manager.get_settings()
-    return bool(
-        settings.disabled_plugins
-        or settings.plugin_sources
-        or settings.resource_roots
-        or settings.package_roots
-        or settings.package_sources
-    )
-
-
 def require_fresh_coding_product_inputs(
     lifecycle: CodingPluginLifecycleStateLayout,
     settings_manager: SettingsManager,
@@ -741,16 +728,14 @@ def require_fresh_coding_product_inputs(
 
     if not isinstance(settings_manager, SettingsManager):
         raise TypeError("Coding settings manager is required")
-    if _coding_settings_have_legacy_product_inputs(settings_manager):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(
+        _source_projection.has_loaded_pre_fence_inputs(settings_manager),
+    )
     if type(roots_may_be_absent) is not bool:
         raise TypeError("Coding fresh Product root policy is invalid")
-    if _legacy_state_requires_migration(lifecycle, skip_missing=roots_may_be_absent):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(
+        _legacy_state_requires_migration(lifecycle, skip_missing=roots_may_be_absent),
+    )
 
 
 def require_fresh_coding_product_inputs_without_writes(
@@ -761,14 +746,11 @@ def require_fresh_coding_product_inputs_without_writes(
 ) -> None:
     """Require empty input for an explicit fresh-only Product cutover."""
 
-    if coding_product_inputs_need_compatibility(
-        lifecycle,
-        workspace=workspace,
-        settings_manager=settings_manager,
-    ):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(
+        coding_product_inputs_need_compatibility(
+            lifecycle, workspace=workspace, settings_manager=settings_manager
+        ),
+    )
 
 
 def coding_product_inputs_need_compatibility(
@@ -781,8 +763,6 @@ def coding_product_inputs_need_compatibility(
 
     if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
-    if not isinstance(workspace, Path) or not workspace.is_absolute():
-        raise ValueError("Coding workspace must be absolute")
     if _coding_product_settings_need_compatibility(
         workspace=workspace, settings_manager=settings_manager
     ):
@@ -795,13 +775,11 @@ def require_fresh_coding_product_settings_without_writes(
 ) -> None:
     """Require fresh settings for an explicit fresh-only Product cutover."""
 
-    if _coding_product_settings_need_compatibility(
-        workspace=workspace,
-        settings_manager=settings_manager,
-    ):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(
+        _coding_product_settings_need_compatibility(
+            workspace=workspace, settings_manager=settings_manager
+        ),
+    )
 
 
 def _coding_product_settings_need_compatibility(
@@ -811,25 +789,9 @@ def _coding_product_settings_need_compatibility(
 ) -> bool:
     if not isinstance(workspace, Path) or not workspace.is_absolute():
         raise ValueError("Coding workspace must be absolute")
-    settings_paths = [
-        default_global_settings_path(),
-        default_project_settings_path(workspace),
-    ]
-    if settings_manager is not None:
-        if not isinstance(settings_manager, SettingsManager):
-            raise TypeError("Coding Product settings manager is invalid")
-        if _coding_settings_have_legacy_product_inputs(settings_manager):
-            return True
-        settings_paths.extend(
-            path
-            for path in (
-                settings_manager.global_settings_path,
-                settings_manager.project_settings_path,
-            )
-            if path is not None
-        )
-    return coding_settings_have_pre_b_inputs_without_writes(
-        *dict.fromkeys(settings_paths)
+    return _source_projection.workspace_has_pre_fence_inputs(
+        (default_global_settings_path(), default_project_settings_path(workspace)),
+        settings_manager,
     )
 
 
@@ -963,24 +925,14 @@ def is_coding_fresh_first_b_snapshot(
     raw = read_fresh_product_source_snapshot(
         _snapshot_reader(lifecycle, runtime),
         namespace_id=_fresh_coding_product_namespace_id(epoch.store_id),
-        source_member="coding-source-configuration.json",
-        maximum_bytes=_LIFECYCLE_SNAPSHOT_MAX_BYTES,
+        source_member=_source_projection.projection_name,
+        maximum_bytes=_source_projection.maximum_bytes,
         label="Coding",
     )
     if raw is None:
         return False
-    source = json.loads(raw)
-    classification = classify_coding_legacy_source_configuration(source)
-    if classification.disabled_plugins or classification.configured_source_keys:
-        return False
-    scopes = source["scopes"]
-    return not any(
-        any(patch.values())
-        for patch in (
-            scopes["global"]["sourcePatch"],
-            scopes["project"]["sourcePatch"],
-        )
-    )
+    classification = classify_coding_legacy_source_configuration(json.loads(raw))
+    return not (classification.disabled_plugins or classification.configured_source_keys)
 
 
 def _bootstrap_coding_builtin_plugin(
@@ -1191,18 +1143,13 @@ def _legacy_state_requires_migration(
 ) -> bool:
     """Inspect the historical roots in lifecycle-before-package order."""
 
-    for root, resolve_members in (
-        (lifecycle.root, resolve_coding_lifecycle_pre_b_members),
-        (lifecycle.package_root, resolve_coding_package_pre_b_store_members),
-    ):
-        if skip_missing:
-            try:
-                root.lstat()
-            except FileNotFoundError:
-                continue
-        if any(resolve_members(lifecycle).domain_members().values()):
-            return True
-    return False
+    return legacy_product_state_has_inputs(
+        (
+            (lifecycle.root, lambda: resolve_coding_lifecycle_pre_b_members(lifecycle).domain_members()),
+            (lifecycle.package_root, lambda: resolve_coding_package_pre_b_store_members(lifecycle).domain_members()),
+        ),
+        skip_missing=skip_missing,
+    )
 
 
 __all__ = [

@@ -1883,6 +1883,7 @@ class _LegacySourceProjection:
     projection_name: str
     prefix: str
     maximum_bytes: int
+    loaded_fields: tuple[str, ...] = ()
 
     @contextmanager
     def hold(
@@ -1998,6 +1999,34 @@ class _LegacySourceProjection:
             maximum_bytes=lambda: self.maximum_bytes,
             label=f"{self.label} Source settings",
         )
+
+    def workspace_has_pre_fence_inputs(
+        self, paths: tuple[Path, ...], settings_manager: SettingsManager | None
+    ) -> bool:
+        """Check effective settings before the ordered on-disk source patches."""
+        if settings_manager is not None:
+            if not isinstance(settings_manager, SettingsManager):
+                raise TypeError(f"{self.label} Product settings manager is invalid")
+            if self.has_loaded_pre_fence_inputs(settings_manager):
+                return True
+            paths = (*paths, *(
+                path
+                for path in (
+                    settings_manager.global_settings_path, settings_manager.project_settings_path
+                )
+                if path is not None
+            ))
+        return self.has_pre_fence_inputs(*dict.fromkeys(paths))
+
+    def has_loaded_pre_fence_inputs(self, settings_manager: SettingsManager) -> bool:
+        settings = settings_manager.get_settings()
+        return any(getattr(settings, field) for field in self.loaded_fields)
+
+    def require_fresh_inputs(self, has_legacy_inputs: bool) -> None:
+        if has_legacy_inputs:
+            raise RuntimeError(
+                f"{self.label} pre-B workspace is unsupported; use a fresh workspace"
+            )
 
     def has_pre_fence_inputs(self, *paths: Path) -> bool:
         """Read settings in order and short-circuit on the first legacy input."""

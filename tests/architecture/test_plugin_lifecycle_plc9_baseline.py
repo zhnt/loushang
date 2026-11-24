@@ -130,11 +130,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             Path("src/loushang/coding/package/product_runtime.py"),
             "is_coding_fresh_first_b_snapshot",
         ): 1,
-        # ARD-008: read effective legacy settings before selecting a storage owner.
-        (
-            Path("src/loushang/coding/package/product_runtime.py"),
-            "_coding_settings_have_legacy_product_inputs",
-        ): 1,
         (
             Path("src/loushang/harness/config/agent/_settings_patch.py"),
             "AgentSettingsUpdate",

@@ -167,3 +167,14 @@ Coding 的公开记录仍保自身声明字段、slots、模块路径和名义�
 职责边界复核由 Codex 实现 owner 在本任务授权范围内完成；以实际单一 owner、公开契约与无环依赖、兼容差分和完整本地检查作为接受证据，不声称用户另行批准架构或协议修订。macOS/Windows 原生、安装/真实 LSP、Host Runtime 等平台检查沿用既有 Actions 路线，本机结果不替代这些平台证据；交付检查及合并记录以关联 PR 为准。
 
 整体清单见 [Coding 职责清单](coding-responsibility-inventory.md)。
+
+## pre-B 准入复核
+
+实施 agent `/root` 在 `4f3a7899e` 上复核并接受 Package Product 与 Coding 的
+准入边界，采用本地架构方法 `0f9bd3f`。现有 Source 投影先检查内存设置，再按
+默认路径和显式路径的原顺序读取磁盘；旧状态检查先观察生命周期根，再观察
+Package 根。允许缺失目录的入口只跳过直接观察为不存在的根。Coding 绑定旧字段、
+路径和目录清单。中断启动复用已认证快照的 Source 分类结果，删除对同一设置的二次检查。
+
+本批 Coding −49 行、Harness +46 行，系统生产 Python −3 行。Linux 上与 cutover
+和普通会话相关的 161 项通过，4 个 Windows 原生用例跳过。旧字段库存检查通过。
