@@ -7,7 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import NamedTuple
 
 from loushang.harness.plugin_authoring.resource_item import (
     _inspect_legacy_local_data_wheel,
@@ -50,39 +49,26 @@ _PACKAGE_LOCK_MARKER = "package-lock.json.lock"
 _DESIRED_JOURNAL = "desired-state.jsonl"
 
 
-class LegacyDataAdmissionEvidence(NamedTuple):
-    inventory: LegacyInventoryFacts[LegacyLocalBindingEvidence]
-    removed_local_ids: frozenset[str]
-    source_projection: object
-
-
 @dataclass(frozen=True, slots=True)
 class LegacyDataSnapshotAdmission:
     source_member: str
     inventory_reader: LegacyInventoryReader
     maximum_bindings: int
     maximum_sources: int
+    index_configured_sources: Callable[[object, tuple[str, ...]], object]
 
-    def require_adoptable_sources(
-        self, evidence: LegacyDataAdmissionEvidence, plugin_id: str, *, message: str
-    ) -> tuple[str, ...]:
-        active = evidence.inventory.active_local
-        removable_ids = self.inventory_reader.builtin_ids | evidence.removed_local_ids
-        if (
-            not 0 < len(active) <= self.maximum_sources
-            or plugin_id not in {binding.plugin_id for binding, _, _ in active}
-            or any(plugin not in removable_ids for plugin in evidence.inventory.removed_plugin_ids)
-        ):
-            raise ValueError(message)
-        return tuple(binding.source_identity for binding, _, _ in active)
-
-    def before_fence(
+    def admit_before_fence(
         self,
         owner: PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner,
         snapshot: PackageEpochCutoverSnapshotReceiptV1,
         *,
         has_legacy_state: bool,
-    ) -> LegacyDataAdmissionEvidence:
+        legacy_package_root: Path,
+        plugin_id: str,
+        required_kind: str,
+        result_factory: Callable[[_LegacyWheelValues], _LegacyLocalWheelFields],
+    ) -> None:
+        """Join the frozen settings, Installation history and live Source bytes."""
         receipt = snapshot.receipt_id
         evidence = owner.snapshot(receipt)
         shape_error = ValueError("Legacy Skill snapshot shape is unsupported")
@@ -138,18 +124,25 @@ class LegacyDataSnapshotAdmission:
                 instance_error=self.inventory_reader.instance_error,
             )
         inventory = self.inventory_reader.classify(bindings, desired)
-        return LegacyDataAdmissionEvidence(
+        self._require_configured_sources(
             inventory,
             self._removed_ids(inventory, bindings, transitions)
             if inventory.unselected_source_identities
             else frozenset(),
             source,
+            plugin_id,
+            before_fence=True,
+        )
+        _verify_legacy_data_wheels(
+            inventory,
+            legacy_package_root=legacy_package_root,
+            plugin_id=plugin_id,
+            required_kind=required_kind,
+            result_factory=result_factory,
         )
 
-    def after_fence(
-        self,
-        reader: _LegacyFirstSnapshot,
-    ) -> LegacyDataAdmissionEvidence:
+    def require_frozen_sources(self, reader: _LegacyFirstSnapshot, plugin_id: str) -> None:
+        """Verify first-fence evidence for a reopen without accessing live bytes."""
         members = reader.list_members
         require_legacy_snapshot_members(
             members,
@@ -184,7 +177,37 @@ class LegacyDataSnapshotAdmission:
             removed_ids = self._removed_ids(
                 inventory, evidence.binding_heads, evidence.desired_transitions
             )
-        return LegacyDataAdmissionEvidence(inventory, removed_ids, source)
+        self._require_configured_sources(
+            inventory, removed_ids, source, plugin_id, before_fence=False
+        )
+        reader.runtime.assert_current()
+
+    def _require_configured_sources(
+        self,
+        inventory: LegacyInventoryFacts[LegacyLocalBindingEvidence],
+        removed_ids: frozenset[str],
+        source: object,
+        plugin_id: str,
+        *,
+        before_fence: bool,
+    ) -> None:
+        active = inventory.active_local
+        removable_ids = self.inventory_reader.builtin_ids | removed_ids
+        if (
+            not 0 < len(active) <= self.maximum_sources
+            or plugin_id not in {binding.plugin_id for binding, _, _ in active}
+            or any(plugin not in removable_ids for plugin in inventory.removed_plugin_ids)
+        ):
+            message = (
+                "Legacy data Installation set is unsupported"
+                if before_fence
+                else f"{self.inventory_reader.label} first-B Installation set is unsupported"
+            )
+            raise ValueError(message)
+        identities = tuple(binding.source_identity for binding, _, _ in active)
+        if before_fence and not identities[0].startswith("local:/"):
+            raise ValueError("Legacy Skill Source is not local")
+        self.index_configured_sources(source, identities)
 
     def _expected(self) -> dict[str, tuple[str, ...]]:
         return {
@@ -214,8 +237,8 @@ class LegacyDataSnapshotAdmission:
         )
 
 
-def verify_legacy_data_wheels(
-    evidence: LegacyDataAdmissionEvidence,
+def _verify_legacy_data_wheels(
+    inventory: LegacyInventoryFacts[LegacyLocalBindingEvidence],
     *,
     legacy_package_root: Path,
     plugin_id: str,
@@ -223,7 +246,7 @@ def verify_legacy_data_wheels(
     result_factory: Callable[[_LegacyWheelValues], _LegacyLocalWheelFields],
 ) -> None:
     names: set[tuple[str, str]] = set()
-    for binding, _, _ in evidence.inventory.active_local:
+    for binding, _, _ in inventory.active_local:
         if not binding.source_identity.startswith("local:/"):
             raise ValueError("Legacy Skill Source is not local")
         wheel = reacquire_legacy_bound_wheel(

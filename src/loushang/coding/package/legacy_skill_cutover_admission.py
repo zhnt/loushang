@@ -9,7 +9,6 @@ from typing import Literal
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_data_admission import (
     LegacyDataSnapshotAdmission,
-    verify_legacy_data_wheels,
 )
 from loushang.harness.package_product._legacy_runtime import (
     guard_legacy_snapshot_admission,
@@ -83,21 +82,10 @@ def admit_coding_single_legacy_skill_snapshot(
         code=_RESOURCE_REFUSAL_CODES[resource_kind],
         extra_errors=(KeyError, zipfile.BadZipFile),
     ):
-        admission = _data_snapshot_admission(lifecycle)
-        evidence = admission.before_fence(
+        _data_snapshot_admission(lifecycle).admit_before_fence(
             prepared.owner,
             snapshot,
             has_legacy_state=prepared.legacy_classification.kind == "legacy_state",
-        )
-        identities = admission.require_adoptable_sources(
-            evidence, plugin_id,
-            message="Legacy data Installation set is unsupported",
-        )
-        if not identities[0].startswith("local:/"):
-            raise ValueError("Legacy Skill Source is not local")
-        _index_configured_sources(evidence.source_projection, identities)
-        verify_legacy_data_wheels(
-            evidence,
             legacy_package_root=lifecycle.package_root,
             plugin_id=plugin_id,
             required_kind=resource_kind,
@@ -114,14 +102,7 @@ def require_coding_fenced_single_legacy_skill_snapshot(
     """Check frozen old inputs without depending on the original live Source."""
 
     reader = _snapshot_reader(lifecycle, epoch_runtime)
-    admission = _data_snapshot_admission(lifecycle)
-    evidence = admission.after_fence(reader)
-    identities = admission.require_adoptable_sources(
-        evidence, plugin_id,
-        message="Coding first-B Installation set is unsupported",
-    )
-    _index_configured_sources(evidence.source_projection, identities)
-    epoch_runtime.assert_current()
+    _data_snapshot_admission(lifecycle).require_frozen_sources(reader, plugin_id)
 
 
 def require_coding_fenced_single_legacy_skill(
@@ -169,6 +150,7 @@ def _data_snapshot_admission(
         inventory_reader=_legacy_inventory_reader(lifecycle),
         maximum_bindings=_MAX_REMOVAL_BINDINGS,
         maximum_sources=_LEGACY_EVIDENCE_MAX_SOURCES,
+        index_configured_sources=_index_configured_sources,
     )
 
 
