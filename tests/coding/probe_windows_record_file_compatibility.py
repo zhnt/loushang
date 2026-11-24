@@ -272,10 +272,15 @@ def run_probe(kind: str, case: str, documents: dict) -> dict:
             )
         try:
             if append:
-                value = (
-                    transaction.confirm_restore(object())
-                    if kind == "confirmation"
-                    else transaction._append(
+                if kind == "confirmation":
+                    value = transaction.confirm_restore(object())
+                else:
+                    append_record = (
+                        transaction._append_current
+                        if kind == "expiry" and hasattr(transaction, "_append_current")
+                        else transaction._append
+                    )
+                    value = append_record(
                         (),
                         2
                         if case == "wrong_stage"
@@ -284,7 +289,6 @@ def run_probe(kind: str, case: str, documents: dict) -> dict:
                         else None,
                         event,
                     )
-                )
                 result = {"returned": value.to_dict()}
             else:
                 rows, staged = (
