@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 from uuid import uuid4
@@ -65,6 +65,7 @@ from loushang.foundation._owned_tasks import (
     _observe_task_result,
     _task_failed_or_cancelled,
 )
+from loushang.foundation.json import JSONValue
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import (
     SessionControlPort,
@@ -856,14 +857,28 @@ class _HostedPromptExecutionWork(_HostedAgentExecutionWork):
         text: str,
         cancel_requested: Callable[[], bool],
         *,
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
         start_title: Callable[[], None] | None = None,
         wait_for_title: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         super().__init__(cancel_requested)
         self.session = session
         self.text = text
+        self._images = images
+        self._input_metadata = input_metadata
         self._start_title = start_title
         self._wait_for_title = wait_for_title
+
+    async def _execute_hosted_prompt(
+        self, control: ExecutionControlV1, images: list[ImagePart] | None = None,
+    ) -> ExecutionOutcomeV1:
+        images = self._images if images is None else images
+        if self._input_metadata is None:
+            return await super()._execute_hosted_prompt(control, images)
+        router = self.session._composition.session_runtime.agent_event_router
+        with router.bind_user_input_metadata(self._input_metadata):
+            return await super()._execute_hosted_prompt(control, images)
 
     async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
         try:
