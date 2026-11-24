@@ -341,8 +341,10 @@ class PackageProductLifecycleTransaction:
             raise PackageProductRouteContractError(
                 "Direct Package route cannot enter the Product transaction"
             )
-        durable = self._kernel.status(current.operation_id)
-        lifecycle_request = self._kernel.journal.request(current.operation_id)
+        lifecycle_request, durable = (
+            self._kernel.journal._operation_for_transaction(current.operation_id)
+            or (None, None)
+        )
         classification = current.classification
         if (
             durable != current

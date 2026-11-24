@@ -134,13 +134,16 @@ class PackageProductHandoffFinalizer:
         if not isinstance(current, PackageLifecycleStatusV1):
             raise TypeError("Committed Package status is required")
         classification = current.classification
-        durable_request = self._kernel.journal.request(current.operation_id)
+        durable_request, durable_status = (
+            self._kernel.journal._operation_for_transaction(current.operation_id)
+            or (None, None)
+        )
         if (
             current.phase != "committed"
             or current.disposition != "committed"
             or classification is None
             or classification.decision != "plugin_bound"
-            or self._kernel.status(current.operation_id) != current
+            or durable_status != current
             or not isinstance(durable_request, PackageLifecycleRequestV2)
             or durable_request
             != request.ingress.bind_classification_facts(classification.basis_facts)

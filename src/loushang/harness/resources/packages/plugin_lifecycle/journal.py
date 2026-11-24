@@ -6,6 +6,7 @@ import json
 from contextlib import AbstractContextManager
 from dataclasses import replace
 from pathlib import Path
+from typing import NamedTuple
 
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal import (
@@ -46,6 +47,19 @@ PackageLifecycleRecord = (
     | PackageLifecycleStagingAdoptionRecordV1
     | PackageLifecycleRestartRecordV1
 )
+
+
+class _LifecycleJournalProjection(NamedTuple):
+    records: tuple[PackageLifecycleRecord, ...]
+    requests: dict[str, PackageLifecycleRequestV1]
+    statuses: dict[str, PackageLifecycleStatusV1]
+
+    def operation(
+        self, operation_id: str
+    ) -> tuple[PackageLifecycleRequestV1, PackageLifecycleStatusV1] | None:
+        request = self.requests.get(operation_id)
+        status = self.statuses.get(operation_id)
+        return (request, status) if request is not None and status is not None else None
 
 
 class PackageLifecycleJournalError(RuntimeError):
@@ -133,8 +147,7 @@ class PackageLifecycleJournal:
         if not isinstance(request, PackageLifecycleRequestV1):
             raise TypeError("Package lifecycle request is required")
         with self._exclusive():
-            records = self._load_unlocked()
-            statuses = _project_records(records)
+            records, _, statuses = self._load_unlocked()
             existing = statuses.get(request.operation_id)
             if existing is not None:
                 if existing.request_fingerprint != request.request_fingerprint:
@@ -176,8 +189,7 @@ class PackageLifecycleJournal:
         if not isinstance(classification, PluginBoundPackageClassificationV1):
             raise TypeError("Package classification evidence is required")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, operation_id)
             if current.phase == "classified":
                 if current.classification != classification:
@@ -248,8 +260,7 @@ class PackageLifecycleJournal:
                 code="package_operation_phase_transition_invalid",
             )
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, operation_id)
             expected_disposition = (
                 "committed" if next_phase == "committed" else "active"
@@ -310,8 +321,7 @@ class PackageLifecycleJournal:
         if failure.subject_kind != "operation":
             raise TypeError("Operation journal accepts only operation failures")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, failure.operation_id)
             if current.failure == failure:
                 if current.attempt_epoch != expected_attempt_epoch:
@@ -401,8 +411,7 @@ class PackageLifecycleJournal:
         ):
             raise ValueError("Package expected attempt revision is invalid")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, operation_id)
             if (
                 current.disposition == "retryable_failure"
@@ -457,8 +466,7 @@ class PackageLifecycleJournal:
         expected_attempt_epoch: int,
     ) -> PackageLifecycleStatusV1:
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, operation_id)
             self._require_fingerprint(current, request_fingerprint)
             if (
@@ -540,8 +548,7 @@ class PackageLifecycleJournal:
         if not isinstance(decision, PackageLifecyclePinnedAdoptionRequestV1):
             raise TypeError("Pinned adoption decision is required")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, decision.operation_id)
             prior = next(
                 (
@@ -625,7 +632,7 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY).records
         return next(
             (
                 record for record in reversed(records)
@@ -647,7 +654,7 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY).records
         return tuple(
             record for record in records
             if isinstance(record, PackageLifecyclePinnedAdoptionRecordV1)
@@ -662,8 +669,7 @@ class PackageLifecycleJournal:
         if not isinstance(decision, PackageLifecycleStagingAdoptionRequestV1):
             raise TypeError("Staging adoption decision is required")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, decision.operation_id)
             selected = next(
                 (
@@ -749,7 +755,7 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY).records
         return next(
             (
                 record for record in reversed(records)
@@ -769,7 +775,7 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY).records
         return tuple(
             record for record in records
             if isinstance(record, PackageLifecycleStagingAdoptionRecordV1)
@@ -784,8 +790,7 @@ class PackageLifecycleJournal:
         if not isinstance(decision, PackageLifecycleRebindRequestV1):
             raise TypeError("Package rebind decision is required")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, decision.operation_id)
             previous = next(
                 (
@@ -853,7 +858,7 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY).records
         return next(
             (
                 record
@@ -876,8 +881,7 @@ class PackageLifecycleJournal:
         if not isinstance(restart, PackageLifecycleRestartRequestV1):
             raise TypeError("Package restart request is required")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, restart.operation_id)
             previous = next(
                 (
@@ -954,7 +958,7 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY).records
         return next(
             (
                 record
@@ -978,7 +982,7 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY).records
         return tuple(
             record
             for record in records
@@ -1007,8 +1011,7 @@ class PackageLifecycleJournal:
         ):
             raise ValueError("Prior Package rebind revision is invalid")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, decision.operation_id)
             prior = next(
                 (
@@ -1092,8 +1095,7 @@ class PackageLifecycleJournal:
         ):
             raise ValueError("Package rebind record revision is invalid")
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, decision.operation_id)
             rebind = next(
                 (
@@ -1154,8 +1156,7 @@ class PackageLifecycleJournal:
         expected_attempt_epoch: int,
     ) -> PackageLifecycleStatusV1:
         with self._exclusive():
-            records = self._load_unlocked()
-            requests, statuses = _project_state(records)
+            records, requests, statuses = self._load_unlocked()
             current = self._current(statuses, operation_id)
             self._require_fingerprint(current, request_fingerprint)
             if current.disposition == "cancelled":
@@ -1198,16 +1199,22 @@ class PackageLifecycleJournal:
 
     def status(self, operation_id: str) -> PackageLifecycleStatusV1 | None:
         with self._exclusive():
-            return _project_records(self._load_unlocked()).get(operation_id)
+            return self._load_unlocked().statuses.get(operation_id)
 
     def request(self, operation_id: str) -> PackageLifecycleRequestV1 | None:
         with self._exclusive():
-            requests, _statuses = _project_state(self._load_unlocked())
-            return requests.get(operation_id)
+            return self._load_unlocked().requests.get(operation_id)
 
     def records(self) -> tuple[PackageLifecycleRecord, ...]:
         with self._exclusive():
-            return self._load_unlocked()
+            return self._load_unlocked().records
+
+    def _operation_for_transaction(
+        self, operation_id: str
+    ) -> tuple[PackageLifecycleRequestV1, PackageLifecycleStatusV1] | None:
+        """Pair request and status within the transaction's repairing lock."""
+        with self._exclusive():
+            return self._load_unlocked().operation(operation_id)
 
     def read_operations(
         self,
@@ -1220,8 +1227,8 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            requests, statuses = _project_state(
-                self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            _, requests, statuses = self._load_unlocked(
+                load_policy=_READ_ONLY_LOAD_POLICY
             )
         return tuple(
             (request, statuses[operation_id])
@@ -1241,14 +1248,9 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            requests, statuses = _project_state(
-                self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            return self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY).operation(
+                operation_id
             )
-        request = requests.get(operation_id)
-        status = statuses.get(operation_id)
-        if request is None or status is None:
-            return None
-        return request, status
 
     def _require_active_cas(
         self,
@@ -1337,9 +1339,9 @@ class PackageLifecycleJournal:
 
     def _load_unlocked(
         self, *, load_policy: JournalLoadPolicy | None = None
-    ) -> tuple[PackageLifecycleRecord, ...]:
+    ) -> _LifecycleJournalProjection:
         if not self._path.exists():
-            return ()
+            return _LifecycleJournalProjection((), {}, {})
         try:
             snapshot: JsonlSnapshot[None, PackageLifecycleRecord] = load_jsonl(
                 self._path,
@@ -1355,8 +1357,7 @@ class PackageLifecycleJournal:
                 for index, record in enumerate(records, start=1)
             ):
                 raise ValueError("Package journal revisions are not contiguous")
-            _project_records(records)
-            return records
+            return _LifecycleJournalProjection(records, *_project_state(records))
         except (JournalCodecError, JournalFileError, TypeError, ValueError) as exc:
             raise self._error(
                 "Package lifecycle journal is corrupt",
@@ -1365,13 +1366,6 @@ class PackageLifecycleJournal:
 
     def _error(self, message: str, *, code: str) -> PackageLifecycleJournalError:
         return PackageLifecycleJournalError(message, code=code, path=self._path)
-
-
-def _project_records(
-    records: tuple[PackageLifecycleRecord, ...],
-) -> dict[str, PackageLifecycleStatusV1]:
-    _requests, statuses = _project_state(records)
-    return statuses
 
 
 def _assert_no_duplicate_json_keys(path: Path) -> None:

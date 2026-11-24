@@ -1707,8 +1707,8 @@ class PackageRetentionHandoffJournal:
         if not isinstance(request, PackageRetentionHandoffRequestV1):
             raise TypeError("Package retention handoff request is required")
         with self._exclusive():
-            records = self._load_unlocked()
-            current = _current_handoff(records, request.handoff_id)
+            records, by_id = self._load_unlocked()
+            current = by_id.get(request.handoff_id)
             if current is not None:
                 if current.request != request:
                     raise self._error(
@@ -1716,10 +1716,7 @@ class PackageRetentionHandoffJournal:
                         code="package_retention_handoff_stale",
                     )
                 return current
-            for record in records:
-                receipt = record.receipt
-                if receipt is None:
-                    continue
+            for receipt in by_id.values():
                 existing = receipt.request
                 if (
                     existing.desired_request.command_id
@@ -1753,34 +1750,30 @@ class PackageRetentionHandoffJournal:
         if not isinstance(receipt, PackageRetentionHandoffReceiptV1):
             raise TypeError("Package retention handoff receipt is required")
         with self._exclusive():
-            records = self._load_unlocked()
-            chain = tuple(
-                record.receipt
-                for record in records
-                if record.handoff_id == receipt.request.handoff_id
-                and record.receipt is not None
-            )
-            if not chain:
+            records, by_id = self._load_unlocked()
+            current = by_id.get(receipt.request.handoff_id)
+            if current is None:
                 raise self._error(
                     "Package retention handoff has not been opened",
                     code="package_retention_handoff_stale",
                 )
-            else:
-                current = chain[-1]
-                if receipt in chain:
-                    return current
-                if current.request != receipt.request:
-                    raise self._error(
-                        "Package retention handoff request changed",
-                        code="package_retention_handoff_stale",
-                    )
-                try:
-                    _validate_handoff_successor(current, receipt)
-                except ValueError as exc:
-                    raise self._error(
-                        "Package retention handoff receipt is stale",
-                        code="package_retention_handoff_stale",
-                    ) from exc
+            if receipt in (
+                record.receipt for record in records
+                if record.handoff_id == receipt.request.handoff_id and record.receipt is not None
+            ):
+                return current
+            if current.request != receipt.request:
+                raise self._error(
+                    "Package retention handoff request changed",
+                    code="package_retention_handoff_stale",
+                )
+            try:
+                _validate_handoff_successor(current, receipt)
+            except ValueError as exc:
+                raise self._error(
+                    "Package retention handoff receipt is stale",
+                    code="package_retention_handoff_stale",
+                ) from exc
             record = PackageRetentionHandoffRecordV1(
                 record_revision=len(records) + 1,
                 record_kind="handoff",
@@ -1808,9 +1801,8 @@ class PackageRetentionHandoffJournal:
         ):
             raise ValueError("Package retention handoff failure context changed")
         with self._exclusive():
-            records = self._load_unlocked()
-            current = _current_handoff(records, receipt.request.handoff_id)
-            if current != receipt:
+            records, by_id = self._load_unlocked()
+            if by_id.get(receipt.request.handoff_id) != receipt:
                 return False
             if any(record.failure == failure for record in records):
                 return False
@@ -1829,11 +1821,13 @@ class PackageRetentionHandoffJournal:
     def current(self, handoff_id: str) -> PackageRetentionHandoffReceiptV1 | None:
         _require_sha256(handoff_id, name="retention handoff identity")
         with self._exclusive():
-            return _current_handoff(self._load_unlocked(), handoff_id)
+            _, by_id = self._load_unlocked()
+            return by_id.get(handoff_id)
 
     def records(self) -> tuple[PackageRetentionHandoffRecordV1, ...]:
         with self._exclusive():
-            return self._load_unlocked()
+            records, _ = self._load_unlocked()
+            return records
 
     def read_operation(
         self, operation_id: str
@@ -1847,14 +1841,12 @@ class PackageRetentionHandoffJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             create_lock=False,
         ):
-            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            _, by_id = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
         receipts = tuple(
-            record.receipt
-            for record in records
-            if record.receipt is not None
-            and record.receipt.request.operation_id == operation_id
+            receipt for receipt in by_id.values()
+            if receipt.request.operation_id == operation_id
         )
-        if len({item.request.handoff_id for item in receipts}) > 1:
+        if len(receipts) > 1:
             raise self._error(
                 "Package operation has conflicting handoff identities",
                 code="package_retention_handoff_stale",
@@ -1881,9 +1873,12 @@ class PackageRetentionHandoffJournal:
 
     def _load_unlocked(
         self, *, load_policy: JournalLoadPolicy | None = None
-    ) -> tuple[PackageRetentionHandoffRecordV1, ...]:
+    ) -> tuple[
+        tuple[PackageRetentionHandoffRecordV1, ...],
+        dict[str, PackageRetentionHandoffReceiptV1],
+    ]:
         if not self._path.exists():
-            return ()
+            return (), {}
         try:
             _assert_no_duplicate_json_keys(self._path)
             snapshot: JsonlSnapshot[None, PackageRetentionHandoffRecordV1] = load_jsonl(
@@ -1909,13 +1904,12 @@ class PackageRetentionHandoffJournal:
             ) from exc
         records = snapshot.records
         try:
-            _validate_handoff_records(records)
+            return records, _project_handoff_records(records)
         except ValueError as exc:
             raise self._error(
                 "Package retention handoff journal history is invalid",
                 code="package_retention_handoff_journal_corrupt",
             ) from exc
-        return records
 
     def _exclusive(self) -> AbstractContextManager[None]:
         return journal_file_lock(
@@ -2458,9 +2452,9 @@ def _validate_handoff_successor(
         raise ValueError("Package retention handoff successor evidence changed")
 
 
-def _validate_handoff_records(
+def _project_handoff_records(
     records: tuple[PackageRetentionHandoffRecordV1, ...],
-) -> None:
+) -> dict[str, PackageRetentionHandoffReceiptV1]:
     current: dict[str, PackageRetentionHandoffReceiptV1] = {}
     command_owners: dict[str, str] = {}
     desired_request_owners: dict[str, str] = {}
@@ -2514,18 +2508,7 @@ def _validate_handoff_records(
             ):
                 raise ValueError("Package retention handoff attempt changed")
             failures.add(failure.failure_id)
-
-
-def _current_handoff(
-    records: tuple[PackageRetentionHandoffRecordV1, ...],
-    handoff_id: str,
-) -> PackageRetentionHandoffReceiptV1 | None:
-    receipts = tuple(
-        record.receipt
-        for record in records
-        if record.handoff_id == handoff_id and record.receipt is not None
-    )
-    return receipts[-1] if receipts else None
+    return current
 
 
 def _valid_acquired_dependency_receipt(
