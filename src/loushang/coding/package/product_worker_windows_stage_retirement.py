@@ -12,8 +12,6 @@ from pathlib import Path
 
 from loushang.harness.package_product._windows_worker_retirement import (
     WindowsProductWorkerCompleteStageRetirement,
-    has_other_windows_worker_retirement_artifact,
-    windows_worker_stage_exists,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     WindowsWorkerRetirementRecords,
@@ -85,7 +83,6 @@ _records = WindowsWorkerRetirementRecords(
     receipt_invalid="coding_worker_stage_retirement_receipt_invalid",
 )
 _start_path = _records.start_path
-_read_review = _records.read_start
 _read_receipt = _records.read_receipt
 
 
@@ -115,8 +112,6 @@ _remove_remaining_stage = _operations.remove_remaining
 _retirement = _operations.physical
 _inspect_retirement_attempt_ids_under_gc_guard = _operations.inspect_attempt_ids
 _retirement_attempt_ids_from_names = _operations.attempt_ids_from_names
-_stage_exists = windows_worker_stage_exists
-_has_other_retirement_artifact = has_other_windows_worker_retirement_artifact
 
 
 retire_coding_windows_product_worker_complete_stage = _operations.retire

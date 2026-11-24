@@ -199,12 +199,6 @@ _write_payload = _STORAGE._write_payload
 _write_marker = _STORAGE._write_marker
 
 
-_read_repair_file = _STORAGE._read_repair_file
-
-
-_stage_exists = _STORAGE._stage_exists
-
-
 _remove_empty_stage = _STORAGE._remove_empty_stage
 
 
@@ -247,12 +241,6 @@ repair_coding_product_worker_empty_payload_debt = _PAYLOAD_CUSTODY.repair_empty
 _offline = _PAYLOAD_CUSTODY.offline
 
 
-def _verify_debt(root_fd: int, attempt_id: str) -> CodingWorkerPayloadDebtPlanV1:
-    return cast(
-        "CodingWorkerPayloadDebtPlanV1", _STORAGE._verify_debt(root_fd, attempt_id)
-    )
-
-
 def _verify_empty_debt(
     root_fd: int, attempt_id: str
 ) -> CodingWorkerEmptyPayloadDebtPlanV1:
@@ -271,37 +259,10 @@ def _scan_unmarked_debt(
     )
 
 
-_open_unmarked_repair_remainder = _STORAGE._open_unmarked_repair_remainder
-
-
-_verify_unmarked_repair_file = _STORAGE._verify_unmarked_repair_file
-
-
-_verify_unmarked_repair_remainder = _STORAGE._verify_unmarked_repair_remainder
-
-
 _remove_unmarked_repair_remainder = _STORAGE._remove_unmarked_repair_remainder
 
 
-_verify_debt_file = _STORAGE._verify_debt_file
-
-
-_verify_complete_repair_remainder = _STORAGE._verify_complete_repair_remainder
-
-
-_verify_complete_repair_leaf = _STORAGE._verify_complete_repair_leaf
-
-
 _remove_verified_stage = _STORAGE._remove_verified_stage
-
-
-_remove_partial_stage = _STORAGE._remove_partial_stage
-
-
-_require_private_visible_root = _STORAGE._require_private_visible_root
-
-
-_require_visible_stage = _STORAGE._require_visible_stage
 
 
 review_coding_product_worker_payload_recovery = _PAYLOAD_CUSTODY.review_complete

@@ -43,7 +43,6 @@ from .product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwn
 if TYPE_CHECKING:
     from .product_worker_windows_payload import CodingWindowsWorkerPayloadLeaseV1
 
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _NAME = re.compile(r"worker-launch-intent-([0-9a-f]{32})\.json\Z")
 _PREFIX = "worker-launch-intent-"
 _MAX_ATTEMPTS = 1024
