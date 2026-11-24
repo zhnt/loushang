@@ -8,7 +8,6 @@ settles no external effects and supplies no restart or automatic replay grant.
 from __future__ import annotations
 
 import inspect as inspect
-import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -93,7 +92,6 @@ from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session.manager import SessionManager
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
-from loushang.harness.approval._plugin_resume_parents import plugin_resume_journals
 from loushang.harness.approval.plugin_activation import (
     PluginActivationJournalError as PluginActivationJournalError,
 )
@@ -102,11 +100,18 @@ from loushang.harness.approval.plugin_execution import (
 )
 from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.policy import PolicyEvaluator
-from loushang.harness.resume_effects import ResumeEffectParentContextV1
+from loushang.harness.resume_effects import (
+    ResumeEffectParentContextV1,
+    select_native_resume_parents,
+)
 from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
-from loushang.harness.session._resume_continuation import prepare_resume_continuation
+from loushang.harness.session._resume_continuation import (
+    prepare_resume_continuation,
+    require_native_resume_journal_writers,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.transcript import AgentTranscriptSessionFactory
+from loushang.harness.transcript._resume_continuation import resume_intent_matches_plan
 from loushang.harness.worker.activation_state_journal import (
     WorkerActivationStateJournal as WorkerActivationStateJournal,
 )
@@ -114,8 +119,6 @@ from loushang.harness.worker.activation_state_journal import (
     WorkerActivationStateJournalError as WorkerActivationStateJournalError,
 )
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
-
-_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,60 +141,15 @@ def _prepare_v2_plugin_parents(
     *,
     worker_candidate_plugin_id: str | None,
 ) -> tuple[CodingResumePluginParents | None, ResumeEffectParentContextV1 | None]:
-    owners = {owner.owner_id: owner for owner in attempt.effect_owners}
-    plugin_ids = {
-        'harness.plugin-execution',
-        'harness.plugin-activation',
-    }
-    selected_plugin_ids = plugin_ids & owners.keys()
-    if selected_plugin_ids and selected_plugin_ids != plugin_ids:
-        raise CodingResumeRecoveryRequired(
-            'input.effect_owner_set_unsupported'
-        )
-    worker_owner_id = 'harness.worker-activation'
-    supported = plugin_ids | (
-        {worker_owner_id} if worker_candidate_plugin_id else set()
+    plugins, worker_parent = select_native_resume_parents(
+        attempt.effect_owners,
+        effect_classes=attempt.effect_classes,
+        worker_candidate_id=worker_candidate_plugin_id,
+        parent=attempt.parent_context,
+        unsupported=lambda: CodingResumeRecoveryRequired("input.effect_owner_set_unsupported"),
     )
-    unsupported = set(owners) - supported
-    if (
-        unsupported
-        or attempt.effect_classes
-        or any(owner.effect_classes for owner in attempt.effect_owners)
-    ):
-        raise CodingResumeRecoveryRequired(
-            'input.effect_owner_set_unsupported'
-        )
-    worker_owner = owners.get(worker_owner_id)
-    if (worker_candidate_plugin_id is None) != (worker_owner is None):
-        raise CodingResumeRecoveryRequired(
-            'input.effect_owner_set_unsupported'
-        )
-    worker_parent = None
-    if worker_owner is not None:
-        if worker_owner.phases != ("reservation", "start"):
-            raise CodingResumeRecoveryRequired(
-                'input.effect_owner_set_unsupported'
-            )
-        worker_parent = attempt.parent_context(worker_owner)
-    if not selected_plugin_ids:
-        return None, worker_parent
-    if owners['harness.plugin-execution'].phases != (
-        "declaration",
-    ) or owners['harness.plugin-activation'].phases != (
-        "activation",
-    ):
-        raise CodingResumeRecoveryRequired(
-            'input.effect_owner_set_unsupported'
-        )
     return (
-        CodingResumePluginParents(
-            definition=attempt.parent_context(
-                owners['harness.plugin-execution']
-            ),
-            activation=attempt.parent_context(
-                owners['harness.plugin-activation']
-            ),
-        ),
+        CodingResumePluginParents(*plugins) if plugins is not None else None,
         worker_parent,
     )
 
@@ -204,31 +162,9 @@ def _require_v2_native_writer_protocols(
     manager_type._require_resume_writer_capabilities(
         frozenset({'coding.resume-continuation/v2'})
     )
-    probe_root = (
-        Path.cwd().resolve(strict=False)
-        / '.resume-protocol-probe'
+    require_native_resume_journal_writers(
+        unavailable=lambda: CodingResumeRecoveryRequired("writer.resume_protocol_unsupported")
     )
-    try:
-        plugin_resume_journals(
-            "protocol-probe",
-            probe_root / "definition-decisions.jsonl",
-            probe_root / "activation-decisions.jsonl",
-            require_resume_context=True,
-        )
-        WorkerActivationStateJournal(
-            probe_root / 'worker-activation-state.jsonl',
-            required_writer_capabilities=frozenset(
-                {'harness.worker-activation.resume-context/v1'}
-            ),
-        )
-    except (
-        PluginExecutionJournalError,
-        PluginActivationJournalError,
-        WorkerActivationStateJournalError,
-    ) as error:
-        raise CodingResumeRecoveryRequired(
-            'writer.resume_protocol_unsupported'
-        ) from error
 
 
 async def prepare_coding_resume_continuation(
@@ -332,32 +268,9 @@ async def prepare_coding_resume_continuation(
         not isinstance(plan, SessionActivationPlanV1)
         or not isinstance(attempt, CodingActivationAttemptV1)
         or plan.status != "needs_final_validation"
-        or attempt.session_id != plan.session_id
-        or attempt.original_leaf_id != plan.selected_leaf_id
-        or attempt.ancestry_digest != plan.ancestry_digest
-        or attempt.plan_fingerprint != plan.plan_id
+        or not resume_intent_matches_plan(attempt, plan)
     ):
         raise ValueError('Coding Resume attempt differs from its activation Plan')
-    if (
-        type(input_record_id) is not str
-        or _IDENTIFIER.fullmatch(input_record_id) is None
-    ):
-        raise ValueError('Coding Resume input record identity is invalid')
-    if input_record_id == attempt.attempt_id:
-        raise ValueError('Coding Resume intent and input require distinct record identities')
-    if not isinstance(text, str) or (not text.strip() and not images):
-        raise ValueError('Coding Resume requires nonempty user input')
-    if not isinstance(created_at, datetime) or created_at.tzinfo is None:
-        raise ValueError('Coding Resume timestamp must be timezone-aware')
-    if any(
-        not callable(check) or inspect.iscoroutinefunction(check)
-        for check in (
-            require_current_admission,
-            require_current_epoch_settlement,
-        )
-    ):
-        raise TypeError('Coding Resume requires synchronous current owner checks')
-
     async def open_writer() -> SessionManager:
         manager = await manager_type._load_resume_writer(
             session_file,

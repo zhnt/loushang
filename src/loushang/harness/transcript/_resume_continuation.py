@@ -71,6 +71,16 @@ class _ResumePlanRead(Protocol):
     def workspace_root(self) -> str: ...
 
 
+def resume_intent_matches_plan(attempt: _ResumeIntentRead, plan: _ResumePlanRead) -> bool:
+    """Match an intent to its exact selected history and plan."""
+    return (
+        attempt.session_id == plan.session_id
+        and attempt.original_leaf_id == plan.selected_leaf_id
+        and attempt.ancestry_digest == plan.ancestry_digest
+        and attempt.plan_fingerprint == plan.plan_id
+    )
+
+
 class _ResumeHistoryHeader(Protocol):
     @property
     def header(self) -> ConversationHeader: ...
@@ -383,12 +393,7 @@ class _ResumeContinuationTranscript(
                 or existing.binding_status == "unknown_version"
             ):
                 raise self._resume_recovery_error("activation.recovery_required")
-            if (
-                attempt.plan_fingerprint != writer_plan.plan_id
-                or attempt.session_id != writer_plan.session_id
-                or attempt.original_leaf_id != writer_plan.selected_leaf_id
-                or attempt.ancestry_digest != writer_plan.ancestry_digest
-            ):
+            if not resume_intent_matches_plan(attempt, writer_plan):
                 raise ValueError(
                     f"{self._resume_label} intent differs from its prepared Writer Plan"
                 )

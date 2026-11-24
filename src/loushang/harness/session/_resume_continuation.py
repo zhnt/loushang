@@ -12,7 +12,7 @@ import os
 import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
@@ -36,9 +36,11 @@ from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     execution_profile_expansion_codes,
 )
+from loushang.harness.resources._catalog_records import fingerprint_catalog_value
 from loushang.harness.transcript._resume_continuation import (
     _ResumeContinuationTranscript,
     _ResumeIntentRead,
+    _ResumePlanRead,
     _ResumeProjector,
 )
 from loushang.harness.transcript._resume_records import canonical_binding_bytes
@@ -72,6 +74,58 @@ class _ActivationPlanSource(Protocol):
     def source_content_digest(self) -> str: ...
     @property
     def selected_ancestry_digest(self) -> str | None: ...
+
+
+class _ActivationSourcePlan(_ResumePlanRead, Protocol):
+    @property
+    def source_fingerprint(self) -> str: ...
+
+    @property
+    def source_content_digest(self) -> str: ...
+
+
+def resume_plan_matches_history(
+    plan: _ActivationSourcePlan, history: _ActivationPlanSource, *, session_id: str
+) -> bool:
+    return (
+        plan.session_id == session_id
+        and plan.selected_leaf_id == history.selected_leaf_id
+        and plan.source_fingerprint == history.source_fingerprint
+        and plan.source_content_digest == history.source_content_digest
+        and plan.ancestry_digest == history.selected_ancestry_digest
+    )
+
+
+def require_native_resume_journal_writers(*, unavailable: Callable[[], Exception]) -> None:
+    """Negotiate the original native writers before touching their state paths."""
+    from loushang.harness.approval._plugin_resume_parents import plugin_resume_journals
+    from loushang.harness.approval.plugin_activation import PluginActivationJournalError
+    from loushang.harness.approval.plugin_execution import PluginExecutionJournalError
+    from loushang.harness.worker.activation_state_journal import (
+        WorkerActivationStateJournal,
+        WorkerActivationStateJournalError,
+    )
+
+    probe_root = Path.cwd().resolve(strict=False) / ".resume-protocol-probe"
+    try:
+        plugin_resume_journals(
+            "protocol-probe",
+            probe_root / "definition-decisions.jsonl",
+            probe_root / "activation-decisions.jsonl",
+            require_resume_context=True,
+        )
+        WorkerActivationStateJournal(
+            probe_root / "worker-activation-state.jsonl",
+            required_writer_capabilities=frozenset(
+                {"harness.worker-activation.resume-context/v1"}
+            ),
+        )
+    except (
+        PluginExecutionJournalError,
+        PluginActivationJournalError,
+        WorkerActivationStateJournalError,
+    ) as error:
+        raise unavailable() from error
 
 
 def require_activation_plan_workspace_root(workspace_root: Path) -> None:
@@ -262,28 +316,20 @@ def resume_execution_scope(
     return document, sha256(digest_domain + encoded).hexdigest()
 
 
-class _ResumeRuntimeCandidate(Protocol[IntentCo]):
-    @property
-    def attempt(self) -> IntentCo: ...
-    @property
-    def consumer(self) -> object: ...
-    @property
-    def graph_generation(self) -> int: ...
-    @property
-    def receipt_fingerprint(self) -> str: ...
+@dataclass(frozen=True, slots=True)
+class _ResumeRuntimeCandidate(Generic[IntentT]):
+    attempt: IntentT
+    consumer: object
+    graph_generation: int
+    receipt_fingerprint: str
 
 
-class _ResumeRuntimePublication(Protocol[IntentT]):
-    @property
-    def candidate(self) -> _ResumeRuntimeCandidate[IntentT]: ...
-    @property
-    def input_record_id(self) -> str: ...
-    @property
-    def current_admission(self) -> Callable[[IntentT], None]: ...
-    @property
-    def current_epoch_settlement(
-        self,
-    ) -> Callable[[IntentT, Mapping[str, object]], None]: ...
+@dataclass(frozen=True, slots=True)
+class _ResumeRuntimePublication(Generic[IntentT]):
+    candidate: _ResumeRuntimeCandidate[IntentT]
+    input_record_id: str
+    current_admission: Callable[[IntentT], None]
+    current_epoch_settlement: Callable[[IntentT, Mapping[str, object]], None]
 
 
 class _ResumeTranscriptLifecycle(Protocol):
@@ -318,6 +364,7 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
 
     _resume_label: ClassVar[str]
     _resume_recovery_error: ClassVar[type[RuntimeError]]
+    _resume_candidate_fingerprint_domain: ClassVar[str]
 
     @property
     def execution_available(self) -> bool:
@@ -368,29 +415,7 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
     def _resume_graph_prepared(self) -> None:
         raise NotImplementedError
 
-    def _create_resume_runtime_candidate(
-        self,
-        attempt: IntentT,
-        receipt: Mapping[str, object],
-    ) -> _ResumeRuntimeCandidate[IntentT]:
-        raise NotImplementedError
-
-    def _require_resume_candidate_policy(
-        self,
-        candidate: _ResumeRuntimeCandidate[IntentT],
-    ) -> dict[str, object]:
-        raise NotImplementedError
-
     def _require_resume_worker_effect_settlement(self, attempt: IntentT) -> None:
-        raise NotImplementedError
-
-    def _create_resume_runtime_publication(
-        self,
-        candidate: _ResumeRuntimeCandidate[IntentT],
-        input_record_id: str,
-        current_admission: Callable[[IntentT], None],
-        current_epoch_settlement: Callable[[IntentT, Mapping[str, object]], None],
-    ) -> _ResumeRuntimePublication[IntentT]:
         raise NotImplementedError
 
     def _activate_resume_runtime_tools(self) -> None:
@@ -439,9 +464,11 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
                 self._resume_graph_prepared()
                 require_current()
                 receipt = self._build_resume_composition_receipt()
-                self._resume_candidate = self._create_resume_runtime_candidate(
+                self._resume_candidate = _ResumeRuntimeCandidate(
                     manager._require_resume_runtime_preparation(attempt_id),
-                    receipt,
+                    self._model_call_consumer,
+                    self._capability_graph_runtime.generation,
+                    fingerprint_catalog_value(self._resume_candidate_fingerprint_domain, receipt),
                 )
                 return receipt
             except BaseException:
@@ -592,7 +619,14 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
             or self._capability_graph_runtime.generation != candidate.graph_generation
         ):
             raise self._resume_recovery_error("runtime.candidate_changed")
-        return self._require_resume_candidate_policy(candidate)
+        self._require_current_resume_selection()
+        self.require_current_capability_component_activations()
+        receipt = self._build_resume_composition_receipt()
+        if fingerprint_catalog_value(
+            self._resume_candidate_fingerprint_domain, receipt
+        ) != candidate.receipt_fingerprint:
+            raise self._resume_recovery_error("runtime.candidate_changed")
+        return receipt
 
     def _require_current_resume_publication(
         self,
@@ -660,7 +694,7 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
                     lambda: require_current_admission(candidate.attempt)
                 )
             await manager._verify_resume_publication_input(attempt_id, input_record_id)
-            publication = self._create_resume_runtime_publication(
+            publication = _ResumeRuntimePublication(
                 candidate,
                 input_record_id,
                 require_current_admission,
@@ -867,6 +901,20 @@ async def prepare_resume_continuation(
     input_metadata: Mapping[str, JSONValue] | None = None,
 ) -> _ContinuationT:
     """Commit initial input on the original Writer and publish its prepared Session."""
+
+    if type(input_record_id) is not str or _PLAN_IDENTIFIER.fullmatch(input_record_id) is None:
+        raise ValueError(f"{product_label} input record identity is invalid")
+    if input_record_id == attempt.attempt_id:
+        raise ValueError(f"{product_label} intent and input require distinct record identities")
+    if not isinstance(text, str) or (not text.strip() and not images):
+        raise ValueError(f"{product_label} requires nonempty user input")
+    if not isinstance(created_at, datetime) or created_at.tzinfo is None:
+        raise ValueError(f"{product_label} timestamp must be timezone-aware")
+    if any(
+        not callable(check) or inspect.iscoroutinefunction(check)
+        for check in (require_current_admission, require_current_epoch_settlement)
+    ):
+        raise TypeError(f"{product_label} requires synchronous current owner checks")
 
     invalid_check_return = f"{product_label} owner check must return None"
 

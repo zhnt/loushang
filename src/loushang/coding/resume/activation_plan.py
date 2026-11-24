@@ -33,6 +33,7 @@ from loushang.harness.session._resume_continuation import (
     checked_activation_plan_owner_refs,
     project_activation_plan_identity,
     require_activation_plan_workspace_root,
+    resume_plan_matches_history,
 )
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -273,11 +274,9 @@ def require_current_resume_plan_source(
         plan.composition_comparison.candidate_set_id,
     )
     if (
-        plan.session_id != history.header_preview.header.conversation_id
-        or plan.selected_leaf_id != history.selected_leaf_id
-        or plan.source_fingerprint != history.source_fingerprint
-        or plan.source_content_digest != history.source_content_digest
-        or plan.ancestry_digest != history.selected_ancestry_digest
+        not resume_plan_matches_history(
+            plan, history, session_id=history.header_preview.header.conversation_id
+        )
         or plan.composition_comparison
         != compare_coding_resume_composition(history, current)
     ):

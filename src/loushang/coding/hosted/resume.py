@@ -64,6 +64,7 @@ from loushang.coding.resume.activation_plan import SessionActivationPlanV1
 from loushang.coding.resume.activation_projection_v2 import (
     project_coding_activation_attempt_path_v2,
 )
+from loushang.coding.resume.first_input import require_first_input_plan
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     CodingResumeInputLookupResultV1,
@@ -340,9 +341,6 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         )
 
     async def _current_plan(self) -> SessionActivationPlanV1:
-        from loushang.coding.resume.activation_attempt import (
-            CodingResumeRecoveryRequired,
-        )
         self._source.require_current_source()
         policy = self._resume_policy()
         history = self._source.history
@@ -353,8 +351,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             ) or plan
             await self._planning.close()
             self._planning = None
-        if plan.status != "needs_final_validation" or plan.ancestry_digest is None:
-            raise CodingResumeRecoveryRequired("input.plan_unavailable")
+        require_first_input_plan(plan)
         return plan
 
     async def start_background_planning(self) -> None:

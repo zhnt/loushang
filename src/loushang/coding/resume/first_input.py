@@ -39,6 +39,11 @@ class _VerifyPluginEffects(Protocol):
     ) -> None: ...
 
 
+def require_first_input_plan(plan: SessionActivationPlanV1) -> None:
+    if plan.status != "needs_final_validation" or plan.ancestry_digest is None:
+        raise CodingResumeRecoveryRequired("input.plan_unavailable")
+
+
 def require_first_input_attempt(
     observed: CodingActivationAttemptV1,
 ) -> CodingActivationAttemptV2:
