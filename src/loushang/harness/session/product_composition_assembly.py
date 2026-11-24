@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from itertools import chain
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from loushang.harness.capabilities import (
@@ -105,6 +106,7 @@ from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     PublishedPluginPackage,
 )
+from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
@@ -116,9 +118,15 @@ from loushang.harness.session.composition_evidence import (
     _capture_worker_startup_selection,
     read_composition_receipt,
 )
+from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+    _PreparedCompositionCleanup,
+)
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 if TYPE_CHECKING:
+    from loushang.harness.approval._plugin_resume_parents import (
+        _PluginResumeParentMethods,
+    )
     from loushang.harness.config.agent import CapabilityMountMode
     from loushang.harness.package_product._selected_plugin_revisions import (
         ProductSessionSelection,
@@ -131,6 +139,9 @@ if TYPE_CHECKING:
         PackageProductRuntimeBindingV1,
     )
     from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
+    from loushang.harness.resources.plugins.distribution_evidence import (
+        InstalledPythonDistributionEvidenceResolver,
+    )
     from loushang.harness.resume_effects import ResumeEffectParentContextV1
     from loushang.harness.transcript.product_session import ProductTranscriptSession
     from loushang.harness.worker.product_activation import (
@@ -1500,18 +1511,47 @@ class ProductPluginCompositionAssembly:
 
     def approve_and_bind_session_inputs(
         self,
+        selection: PluginSelection,
         *,
-        component_host: CapabilityComponentHost,
-        approval_owner: Callable[[], CapabilityActivationApprovalIssuer],
+        provider_authorities: Mapping[str, CapabilityProviderOwnerAuthority],
+        journal_path: Path,
+        scope_id: str,
+        host_boot_id: str,
+        clock: Callable[[], int],
+        expected_product_id: str,
         product_label: str,
+        approval_owner: Callable[[], CapabilityActivationApprovalIssuer],
         error_code_prefix: str,
         error_factory: Callable[[str, str], RuntimeError],
-    ) -> SessionCapabilityCompositionInputs:
-        """Ask the explicit issuer and bind only exact available recorded decisions."""
+        distribution_evidence_resolver: Callable[
+            [], InstalledPythonDistributionEvidenceResolver
+        ],
+        resume_parents: _PluginResumeParentMethods | None,
+    ) -> tuple[CapabilityComponentHost, SessionCapabilityCompositionInputs]:
+        """Open the activation journal and bind its exact session inputs."""
+        host = CapabilityComponentHost.from_product_selection(
+            selection,
+            provider_authorities=provider_authorities,
+            journal_path=journal_path,
+            scope_id=scope_id,
+            host_boot_id=host_boot_id,
+            clock=clock,
+            expected_product_id=expected_product_id,
+            product_label=product_label,
+            required_writer_capabilities=(
+                frozenset({"harness.plugin-activation.resume-context/v1"})
+                if resume_parents is not None
+                else frozenset()
+            ),
+            distribution_evidence_resolver=distribution_evidence_resolver,
+            resume_parent_context=lambda: (
+                resume_parents.activation if resume_parents is not None else None
+            ),
+        )
         decision_ids: dict[str, str] = {}
         for candidate in self.component_candidates:
             decision_ids[candidate.capability_id] = (
-                component_host.approve_selected_activation(
+                host.approve_selected_activation(
                     candidate.resolved,
                     owner_snapshot=candidate.owner_snapshot,
                     trust_snapshot=candidate.trust_snapshot,
@@ -1521,7 +1561,7 @@ class ProductPluginCompositionAssembly:
                     error_factory=error_factory,
                 )
             )
-        return self.bind_session_inputs(decision_ids)
+        return host, self.bind_session_inputs(decision_ids)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1626,6 +1666,66 @@ class ProductPluginCompositionPreparation:
             ),
             contribution_request=contribution_request,
         )
+
+
+_WorkspaceBindingResultT = TypeVar("_WorkspaceBindingResultT")
+
+
+class _PreparedCapabilityComposition(_PreparedCompositionCleanup):
+    """Bind a prepared Capability closure and transfer its cleanup authority."""
+
+    __slots__ = ()
+    product: ProductPluginCompositionPreparation
+    provider_owner_authorities: Mapping[str, CapabilityProviderOwnerAuthority]
+    selection_recheck: Callable[[], None] | None
+
+    def _bind_workspace_provider(
+        self,
+        workspace_binding: CapabilityBundleProviderBinding,
+        *,
+        host_boot_id: str,
+        tool_modes: Mapping[str, CapabilityMountMode],
+        clock: Callable[[], int],
+        complete: Callable[[ProductPluginCompositionAssembly], _WorkspaceBindingResultT],
+    ) -> tuple[ProductPluginCompositionAssembly, _WorkspaceBindingResultT]:
+        if self._closed or self._transferred:
+            raise RuntimeError(
+                f"{self._cleanup_label} Plugin preparation is no longer available"
+            )
+        selected_capability_ids = frozenset(self.provider_owner_authorities.keys())
+        label = self._cleanup_label
+        if not isinstance(workspace_binding, CapabilityBundleProviderBinding):
+            raise TypeError(f"{label} Plugin workspace binding is invalid")
+        if (
+            workspace_binding.provider.capability_id
+            != WORKSPACE_CAPABILITY_DEFINITION.capability_id
+        ):
+            raise ValueError(f"{label} Plugins require harness.workspace")
+        if not isinstance(host_boot_id, str):
+            raise TypeError(f"{label} Plugin Host boot id is invalid")
+        if len(host_boot_id) != 32 or any(
+            item not in "0123456789abcdefABCDEF" for item in host_boot_id
+        ):
+            raise ValueError(f"{label} Plugin Host boot id must be 32 hex digits")
+        if frozenset(tool_modes) != selected_capability_ids or any(
+            mode not in {"on_demand", "always"} for mode in tool_modes.values()
+        ):
+            raise ValueError(f"{label} Plugins require enabled Tool modes")
+        if not callable(clock):
+            raise TypeError(f"{label} Plugin clock is invalid")
+        try:
+            if self.selection_recheck is not None:
+                self.selection_recheck()
+            assembly = self.product.bind_host_providers((workspace_binding.provider,))
+            result = complete(assembly)
+        except BaseException as error:
+            run_cleanup_steps(
+                error, ((f"{self._cleanup_label} Plugin preparation cleanup", self.close),)
+            )
+            raise
+        # The concrete preparation owns this slot.
+        setattr(self, "_transferred", True)
+        return assembly, result
 
 
 def project_product_owner_candidates(

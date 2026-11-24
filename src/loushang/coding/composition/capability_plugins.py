@@ -56,9 +56,6 @@ from loushang.harness.approval.plugin_execution import (
 from loushang.harness.approval.plugin_execution import (
     PluginExecutionJournalError as PluginExecutionJournalError,
 )
-from loushang.harness.capabilities import (
-    WORKSPACE_CAPABILITY_DEFINITION,
-)
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
@@ -93,13 +90,11 @@ from loushang.harness.resources.plugins.selection import (
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
 from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
     _PreparationFailureCleanup,
-    _PreparedCompositionCleanup,
     _PublishedCapabilityComposition,
 )
 from loushang.harness.session.product_composition_assembly import (
@@ -110,6 +105,7 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginCompositionPreparation,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
+    _PreparedCapabilityComposition,
     bind_selected_registration_authority,
     build_product_plugin_selection_plan,
 )
@@ -588,7 +584,7 @@ class CodingCapabilityPluginCompositionAssembly(_PublishedCapabilityComposition)
 
 
 @dataclass(slots=True)
-class CodingCapabilityPluginCompositionPreparation(_PreparedCompositionCleanup):
+class CodingCapabilityPluginCompositionPreparation(_PreparedCapabilityComposition):
     """Definition-approved closure compiled before host Provider construction."""
 
     _cleanup_label = "Coding Capability"
@@ -647,23 +643,11 @@ class CodingCapabilityPluginCompositionPreparation(_PreparedCompositionCleanup):
         tool_modes: Mapping[str, CapabilityMountMode],
         clock: Callable[[], int],
     ) -> CodingCapabilityPluginCompositionAssembly:
-        if self._closed or self._transferred:
-            raise RuntimeError(
-                "Coding Capability Plugin preparation is no longer available"
-            )
-        _validate_workspace_binding(
-            workspace_binding,
-            host_boot_id=host_boot_id,
-            tool_modes=tool_modes,
-            selected_capability_ids=frozenset(self.provider_owner_authorities.keys()),
-            clock=clock,
-        )
-        try:
-            if self.selection_recheck is not None:
-                self.selection_recheck()
-            plugin_assembly = self.product.bind_host_providers(
-                (workspace_binding.provider,)
-            )
+        def complete(plugin_assembly: ProductPluginCompositionAssembly) -> tuple[
+            CapabilityComponentHost,
+            SessionCapabilityCompositionInputs,
+            Mapping[str, CodingCapabilityToolOwner],
+        ]:
             component_host, session_inputs = _approve_activation_and_bind_inputs(
                 self.selection,
                 plugin_assembly,
@@ -683,13 +667,17 @@ class CodingCapabilityPluginCompositionPreparation(_PreparedCompositionCleanup):
                 tool_modes=tool_modes,
                 clock=clock,
             )
-        except BaseException as error:
-            run_cleanup_steps(
-                error,
-                (("Coding Capability Plugin preparation cleanup", self.close),),
+            return component_host, session_inputs, tool_owners
+
+        plugin_assembly, (component_host, session_inputs, tool_owners) = (
+            self._bind_workspace_provider(
+                workspace_binding,
+                host_boot_id=host_boot_id,
+                tool_modes=tool_modes,
+                clock=clock,
+                complete=complete,
             )
-            raise
-        self._transferred = True
+        )
         return CodingCapabilityPluginCompositionAssembly(
             runtime=self.runtime,
             selection=self.selection,
@@ -1024,7 +1012,7 @@ def _approve_activation_and_bind_inputs(
     clock: Callable[[], int],
     resume_parents: CodingResumePluginParents | None = None,
 ) -> tuple[CapabilityComponentHost, SessionCapabilityCompositionInputs]:
-    component_host = CapabilityComponentHost.from_product_selection(
+    return plugin_assembly.approve_and_bind_session_inputs(
         selection,
         provider_authorities=provider_authorities,
         journal_path=state_root / _ACTIVATION_DECISIONS_FILENAME,
@@ -1033,29 +1021,15 @@ def _approve_activation_and_bind_inputs(
         clock=clock,
         expected_product_id=CODING_PRODUCT_ID,
         product_label="Coding",
-        required_writer_capabilities=frozenset(
-            {"harness.plugin-activation.resume-context/v1"}
-        )
-        if resume_parents is not None
-        else frozenset(),
+        approval_owner=lambda: request.approval_owner,
+        error_code_prefix="coding_capability_plugin",
+        error_factory=lambda message, code: CodingCapabilityPluginCompositionError(
+            message, code=code
+        ),
         distribution_evidence_resolver=lambda: (
             coding_plugin_distribution_evidence_resolver()
         ),
-        resume_parent_context=lambda: (
-            resume_parents.activation if resume_parents is not None else None
-        ),
-    )
-    return (
-        component_host,
-        plugin_assembly.approve_and_bind_session_inputs(
-            component_host=component_host,
-            approval_owner=lambda: request.approval_owner,
-            product_label="Coding",
-            error_code_prefix="coding_capability_plugin",
-            error_factory=lambda message, code: CodingCapabilityPluginCompositionError(
-                message, code=code
-            ),
-        ),
+        resume_parents=resume_parents,
     )
 
 
@@ -1393,35 +1367,6 @@ def _validate_preparation_inputs(
             and _BASE_PLUGIN_ID not in coding_product_plan_seed.plan.selected_plugin_ids
         ):
             raise ValueError("Coding Capability Product seed omits coding.base")
-    if not callable(clock):
-        raise TypeError("Coding Capability Plugin clock is invalid")
-
-
-def _validate_workspace_binding(
-    workspace_binding: CapabilityBundleProviderBinding,
-    *,
-    host_boot_id: str,
-    tool_modes: Mapping[str, CapabilityMountMode],
-    selected_capability_ids: frozenset[str],
-    clock: Callable[[], int],
-) -> None:
-    if not isinstance(workspace_binding, CapabilityBundleProviderBinding):
-        raise TypeError("Coding Capability Plugin workspace binding is invalid")
-    if (
-        workspace_binding.provider.capability_id
-        != WORKSPACE_CAPABILITY_DEFINITION.capability_id
-    ):
-        raise ValueError("Coding Capability Plugins require harness.workspace")
-    if not isinstance(host_boot_id, str):
-        raise TypeError("Coding Capability Plugin Host boot id is invalid")
-    if len(host_boot_id) != 32 or any(
-        item not in "0123456789abcdefABCDEF" for item in host_boot_id
-    ):
-        raise ValueError("Coding Capability Plugin Host boot id must be 32 hex digits")
-    if frozenset(tool_modes) != selected_capability_ids or any(
-        mode not in {"on_demand", "always"} for mode in tool_modes.values()
-    ):
-        raise ValueError("Coding Capability Plugins require enabled Tool modes")
     if not callable(clock):
         raise TypeError("Coding Capability Plugin clock is invalid")
 
