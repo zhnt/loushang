@@ -54,7 +54,7 @@ from loushang.harness.transcript.session_catalog import (
     read_transcript_history_or_recent,
 )
 
-from .resume_planning import ResumePlanningSlot
+from .resume_planning import ResumePlanningConfiguration, ResumePlanningSlot
 
 _ResumePreview = TypeVar(
     "_ResumePreview", CodingResumeHistoryPreview, CodingResumeRecentPage
@@ -104,17 +104,6 @@ class CodingRuntimePreparedResume:
     async def run_first_input(self) -> None:
         """Run the committed input after original lifecycle delivery, once."""
         await self._root._run_resume_first_input(self)
-
-
-@dataclass(frozen=True, slots=True)
-class _ConfiguredResumePlanning:
-    current_composition: CodingCompositionSetPlan
-    workspace_root: Path
-    resource_loader: ResourceLoader
-    subject_digest: Callable[[], str]
-    policy_digest: Callable[[], str]
-    max_work_units: int
-    time_budget_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,7 +189,7 @@ class AgentSessionRuntime(
         self._embedded_resume_approval_owner: InteractiveApprovalResolver | None = None
         self._initialize_session_history_reads()
         self._resume_planning: ResumePlanningSlot = ResumePlanningSlot()
-        self._configured_resume_planning: _ConfiguredResumePlanning | None = None
+        self._configured_resume_planning: ResumePlanningConfiguration | None = None
         transcript_type = (
             _bind_owned_session_manager(self._owned_transcript_factory)
             if self._owned_transcript_factory is not None else SessionManager
@@ -578,7 +567,7 @@ class AgentSessionRuntime(
             raise ValueError("Coding Resume planning configuration is invalid")
         if self._configured_resume_planning is not None:
             raise RuntimeError("coding_resume_planning_already_configured")
-        self._configured_resume_planning = _ConfiguredResumePlanning(
+        self._configured_resume_planning = ResumePlanningConfiguration(
             current_composition=current_composition,
             workspace_root=workspace_root,
             resource_loader=resource_loader,
@@ -596,16 +585,7 @@ class AgentSessionRuntime(
         configured = self._configured_resume_planning
         if configured is None:
             return False
-        await self.start_resume_planning(
-            history,
-            configured.current_composition,
-            workspace_root=configured.workspace_root,
-            resource_loader=configured.resource_loader,
-            subject_digest=configured.subject_digest(),
-            policy_digest=configured.policy_digest(),
-            max_work_units=configured.max_work_units,
-            time_budget_seconds=configured.time_budget_seconds,
-        )
+        await configured.plan(self.start_resume_planning, history)
         return True
 
     async def prepare_configured_resume_plan(
@@ -619,8 +599,6 @@ class AgentSessionRuntime(
         Matching in-flight Resource work is promoted by its original owner.
         """
 
-        from loushang.coding.resume.activation_plan import plan_coding_resume_async
-
         configured = self._configured_resume_planning
         if (
             configured is None
@@ -628,17 +606,7 @@ class AgentSessionRuntime(
             or self.current_session is not None
         ):
             raise RuntimeError("coding_resume_planning_unavailable")
-        fresh = await plan_coding_resume_async(
-            history,
-            configured.current_composition,
-            workspace_root=configured.workspace_root,
-            resource_loader=configured.resource_loader,
-            subject_digest=configured.subject_digest(),
-            policy_digest=configured.policy_digest(),
-            max_work_units=configured.max_work_units,
-            time_budget_seconds=configured.time_budget_seconds,
-            priority="foreground",
-        )
+        fresh = await configured.foreground(history)
         cached = self.current_resume_plan(
             history,
             current_owner_inputs=fresh.owner_inputs,
