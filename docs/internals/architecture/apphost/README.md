@@ -79,6 +79,13 @@ checks on each operation. Coding selects when to expose resource tools and
 supplies its approval policy. Host reference enumeration uses scoped
 Workspace operations.
 
+### Hosted Session user choice
+
+The AppHost Session integration owns `ask_user` registration, the guard on
+Tool-call arguments, and recovery of an unanswered choice from the active
+transcript branch. Coding controls where the Tool is exposed and supplies
+the result tag used by its existing transcripts.
+
 ### Managed workspace deletion
 
 Clients explicitly confirm session deletion with `delete-workspace-with-history`.

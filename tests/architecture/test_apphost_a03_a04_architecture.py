@@ -141,6 +141,14 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
         APPHOST / "integrations/resource_tools.py": {
             "protocol": {"AppServiceError"},
         },
+        APPHOST / "integrations/user_choice.py": {
+            "protocol": {"UserChoiceOptionV1", "UserChoicePromptV1"},
+            "protocol.model": {
+                "USER_CHOICE_DESCRIPTION_CHARS", "USER_CHOICE_ID_CHARS",
+                "USER_CHOICE_LABEL_CHARS", "USER_CHOICE_MAX_OPTIONS",
+                "USER_CHOICE_QUESTION_CHARS",
+            },
+        },
         APPHOST / "integrations/resource_access.py": {
             "execution.model": {"ResourceRefV1"},
             "execution.resources": {
