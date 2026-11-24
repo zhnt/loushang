@@ -53,7 +53,6 @@ from .legacy_installation_inventory import (
 from .legacy_instance_evidence import (
     parse_coding_legacy_retired_instance_capture as parse_coding_legacy_retired_instance_capture,
 )
-from .legacy_lock_evidence import CodingLegacyLocalBindingEvidenceV1
 from .legacy_lock_evidence import (
     parse_coding_legacy_local_binding_heads as parse_coding_legacy_local_binding_heads,
 )
@@ -108,27 +107,7 @@ class CodingLegacyRemovedReviewEntryV1(LegacyRemovalEntryRecord):
     def from_evidence(
         cls, item: CodingLegacyRemovedLocalInstallationV1, *, review_version: int = 1
     ) -> CodingLegacyRemovedReviewEntryV1:
-        if review_version not in {1, 2} or (
-            review_version == 1 and item.head_transition_kind == "update"
-        ):
-            raise CodingLegacyRemovedReviewError(
-                "Old local removal review version is invalid"
-            )
-        binding = item.binding
-        return cls(
-            plugin_id=binding.plugin_id,
-            source_identity=binding.source_identity,
-            content_digest=binding.content_digest,
-            manifest_digest=binding.manifest_digest,
-            dependency_lock_digest=binding.dependency_lock.digest,
-            binding_digest=binding.binding_digest,
-            install_operation_id=item.install_operation_id,
-            remove_operation_id=item.remove_operation_id,
-            head_operation_id=(item.head_operation_id if review_version == 2 else None),
-            head_transition_kind=(
-                item.head_transition_kind if review_version == 2 else None
-            ),
-        )
+        return cls._from_removal_evidence(item, review_version=review_version)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,7 +165,7 @@ def admit_coding_removed_local_snapshot(
             raise CodingLegacyRemovedReviewError(
                 "Old removal preparation requires no active local Installation"
             )
-        _require_supported_disabled_plugins(classification.disabled_plugins, facts)
+        capture.require_supported_disables(classification.disabled_plugins, facts, builtin_ids=_BUILTINS)
 
 
 def review_coding_first_b_removed_local(
@@ -230,7 +209,7 @@ def review_coding_first_b_removed_local(
     elif source.classification.configured_source_keys:
         raise CodingLegacyRemovedReviewError("Old removal Source set is unsupported")
     disables = source.classification.disabled_plugins
-    _require_supported_disabled_plugins(disables, facts)
+    capture.require_supported_disables(disables, facts, builtin_ids=_BUILTINS)
     review_version = (
         2
         if capture.has_operations
@@ -238,34 +217,13 @@ def review_coding_first_b_removed_local(
         else 1
     )
     epoch_runtime.assert_current()
-    return CodingLegacyRemovedReviewV1(
-        **identity,
+    return CodingLegacyRemovedReviewV1._from_verified_removals(
+        identity,
+        facts,
         scope_id=lifecycle.scope_id,
         source_projection_digest=source.projection_digest,
-        lockfile_digest=facts.removed[0].binding.lockfile_digest,
-        desired_journal_digest=facts.desired_digest,
-        disabled_plugins=disables,
-        builtin_intent=tuple(
-            CodingLegacyBuiltinIntentV1(*item) for item in inventory.builtin_intent
-        ),
-        removed_builtin_ids=tuple(
-            item for item in inventory.removed_plugin_ids if item in _REMOVABLE_BUILTINS
-        ),
-        removed_local=tuple(
-            CodingLegacyRemovedReviewEntryV1.from_evidence(
-                CodingLegacyRemovedLocalInstallationV1(
-                    CodingLegacyLocalBindingEvidenceV1(*item.binding),
-                    item.install_operation_id,
-                    item.remove_operation_id,
-                    item.head_operation_id,
-                    item.head_transition_kind,
-                ),
-                review_version=review_version,
-            )
-            for item in facts.removed
-        ),
+        disables=disables,
         review_version=review_version,
-        operation_journal_digest=facts.operation_digest,
         retained_store_roots=capture.retained_store_roots,
     )
 
@@ -277,14 +235,6 @@ def _prove_removal(
         inventory_reader=_legacy_inventory_reader(lifecycle),
         maximum_bindings=_MAX_REMOVAL_BINDINGS,
     )
-
-
-def _require_supported_disabled_plugins(
-    disables: tuple[CodingScopedLegacyDisableV1, ...], facts: LegacyRemovalFacts
-) -> None:
-    allowed = _BUILTINS | {item.binding.plugin_id for item in facts.removed}
-    if any(item.plugin_id not in allowed for item in disables):
-        raise CodingLegacyRemovedReviewError("Old disable set is unsupported")
 
 
 __all__ = [

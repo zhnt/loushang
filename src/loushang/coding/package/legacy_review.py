@@ -218,10 +218,8 @@ def _review_source_choices(
 def _review_builtin_intent(
     evidence: LegacyLocalReviewEvidence,
 ) -> tuple[tuple[CodingLegacyBuiltinIntentV1, ...], tuple[str, ...]]:
-    inventory = evidence.inventory.inventory
-    return (
-        tuple(CodingLegacyBuiltinIntentV1(*item) for item in inventory.builtin_intent),
-        tuple(item for item in inventory.removed_plugin_ids if item in _BUILTINS),
+    return evidence.inventory.inventory.reviewed_builtin_selections(
+        CodingLegacyBuiltinIntentV1, _BUILTINS
     )
 
 

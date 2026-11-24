@@ -251,7 +251,11 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         (
             Path("src/loushang/coding/package/legacy_builtin_review.py"),
             "review_coding_first_b_builtin_only",
-        ): 2,
+        ): 1,
+        (
+            Path("src/loushang/harness/package_product/_legacy_inventory.py"),
+            "LegacyBuiltinReviewRecord._from_verified_inventory",
+        ): 1,
         (
             Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
             "CodingLegacyDisabledOnlyAcceptanceV1._check_review",
@@ -323,7 +327,11 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         (
             Path("src/loushang/coding/package/legacy_removed_review.py"),
             "review_coding_first_b_removed_local",
-        ): 2,
+        ): 1,
+        (
+            Path("src/loushang/harness/package_product/_legacy_removed_review.py"),
+            "LegacyRemovalReviewRecord._from_verified_removals",
+        ): 1,
         (
             Path("src/loushang/coding/package/legacy_review.py"),
             "CodingLegacyLocalAdoptionReviewV1",
