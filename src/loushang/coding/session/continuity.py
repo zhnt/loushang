@@ -9,7 +9,6 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
-from loushang.ai.types import AssistantMessage, UserMessage
 from loushang.coding.resume.history import CodingResumeRecentPage
 from loushang.coding.resume.history import (
     read_coding_resume_header as read_coding_resume_header,
@@ -27,16 +26,11 @@ from loushang.harness.capabilities.owner_component_host import (
 from loushang.harness.continuity import (
     CallbackPreparedActivationLease,
     ContinuityActivationPayload,
-    ContinuityArtifactReference,
     ContinuityDeletionRecoveryAuthority,
-    ContinuityDiagnostic,
     ContinuityHub,
-    ContinuityPreview,
-    ContinuityPreviewSection,
     ContinuityProviderDescriptor,
     ContinuityProviderPack,
     ContinuityProviderSourceDescriptor,
-    ContinuitySummary,
     ContinuityTarget,
     ExperienceComposition,
     ExperienceDescriptor,
@@ -63,7 +57,6 @@ from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginPublication,
     ResolvedContinuityPluginSelection,
 )
-from loushang.harness.conversation import IndexedProjection
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import (
     CONTINUITY_PROVIDER_PACKS_SLOT,
@@ -85,14 +78,9 @@ from loushang.harness.session._continuity_index import (
     canonical_session_directory,
 )
 from loushang.harness.transcript import (
-    SessionAssetHealthSummary,
-    SessionIndexPage,
     SessionSummary,
-    assistant_message_text,
-    session_summary_authority_is_current,
-    session_summary_revision,
-    user_message_text,
 )
+from loushang.harness.transcript.interaction import readonly_transcript_history_text
 from loushang.harness.transcript.session_catalog import (
     read_transcript_history_or_recent,
 )
@@ -216,6 +204,8 @@ class CodingContinuityProvider(_IndexedSessionContinuity):
     """Adapt Agent transcript summaries without leaking Coding UI or Git facts."""
 
     _provider_id = CODING_CONTINUITY_PROVIDER_ID
+    _domain_id = "coding"
+    _conflicted_target_error = ConflictedContinuityTargetError
     _product_label = "Coding"
     _max_preview_cache = _MAX_PREVIEW_CACHE
     _requires_messages = _INDEX_REQUIRES_MESSAGES
@@ -235,15 +225,6 @@ class CodingContinuityProvider(_IndexedSessionContinuity):
             all_sessions=all_sessions,
         )
 
-    def _summarize(self, indexed: IndexedProjection[SessionSummary]) -> ContinuitySummary:
-        return _continuity_summary(indexed)
-
-    def _discovery_diagnostics(self, page: SessionIndexPage) -> list[ContinuityDiagnostic]:
-        return _session_index_discovery_diagnostics(page)
-
-    def _require_summary_allowed(self, summary: SessionSummary, *, deleting: bool) -> None:
-        _require_unconflicted_summary(summary, deleting=deleting)
-
     @property
     def descriptor(self) -> ContinuityProviderDescriptor:
         return ContinuityProviderDescriptor(
@@ -259,157 +240,64 @@ class CodingContinuityProvider(_IndexedSessionContinuity):
             profile_version=1,
         )
 
-    async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
-        indexed = self._cached_target(target)
-        summary = indexed.projection
-        history_changed = False
+    async def _preview_history(
+        self, summary: SessionSummary, path: Path, rows: list[tuple[str, str]],
+    ) -> tuple[str | None, bool]:
         history_text: str | None = None
-        rows = [
-            ("Session ID", summary.session_id),
-            ("Workspace", summary.cwd or "Unknown"),
-            (
-                "Messages",
-                str(summary.message_count)
-                if summary.counts_exact
-                else f"at least {summary.message_count}",
-            ),
-            (
-                "Entries",
-                str(summary.entry_count)
-                if summary.counts_exact
-                else f"at least {summary.entry_count}",
-            ),
-        ]
-        discovery = summary.discovery
-        if discovery is not None:
-            rows.extend(
-                (
-                    ("Storage", _session_storage_label(summary)),
-                    ("Health", _session_health_label(summary)),
-                )
-            )
-            if discovery.aliases:
-                rows.append(("Compatible copies", str(len(discovery.aliases))))
-            if discovery.conflicts:
-                rows.append(("Conflicting copies", str(len(discovery.conflicts))))
-        if summary.session_file is not None:
-            observed = await _read_history_preview(
-                self._runtime,
-                summary.session_file,
-                session_id=summary.session_id,
-                authority_fingerprint=summary.authority_fingerprint,
-                max_bytes=1024 * 1024,
-            )
-            history_changed = observed.changed
-            history = observed.header
-            if history is None:
-                rows.append(
-                    (
-                        "History identity",
-                        "Changed; refresh" if history_changed else "Unavailable",
-                    )
-                )
-            else:
-                rows.append(
-                    (
-                        "History identity",
-                        "Coding"
-                        if history.product_identity == "coding"
-                        else "Unverified",
-                    )
-                )
-                rows.append(
-                    (
-                        "Historical composition",
-                        history.composition.set_id
-                        if history.composition is not None
-                        else "Legacy unknown",
-                    )
-                )
-                if observed.snapshot is not None:
-                    history_text = _readonly_history_text(
-                        observed.snapshot.selected_records
-                    )
-                    start_planning = getattr(
-                        self._runtime, "start_configured_resume_planning", None
-                    )
-                    if callable(start_planning):
-                        try:
-                            planning_started = await start_planning(observed.snapshot)
-                        except (OSError, RuntimeError, TypeError, ValueError):
-                            rows.append(("Resume preparation", "Unavailable"))
-                        else:
-                            if planning_started is True:
-                                rows.append(("Resume preparation", "In progress"))
-                elif observed.recent is not None:
-                    history_text = _readonly_history_text(observed.recent.records)
-                    rows.append(("Recent history", "Unverified tail preview"))
-                elif not history_changed:
-                    rows.append(("Recent history", "Bounded preview unavailable"))
-        inspect_assets = getattr(
+        observed = await _read_history_preview(
             self._runtime,
-            "inspect_discovered_session_assets",
-            None,
+            path,
+            session_id=summary.session_id,
+            authority_fingerprint=summary.authority_fingerprint,
+            max_bytes=1024 * 1024,
         )
-        if callable(inspect_assets) and summary.session_file is not None:
-            try:
-                asset_health = await settled_io(
-                    inspect_assets,
-                    summary.session_file,
+        history_changed = observed.changed
+        history = observed.header
+        if history is None:
+            rows.append(
+                (
+                    "History identity",
+                    "Changed; refresh" if history_changed else "Unavailable",
                 )
-            except (OSError, ValueError):
-                asset_health = SessionAssetHealthSummary(state="unavailable")
-            if isinstance(asset_health, SessionAssetHealthSummary):
-                rows.append(("Assets", _asset_health_label(asset_health)))
-        if summary.model:
-            provider = summary.model.get("provider")
-            model_id = summary.model.get("model_id")
-            if provider and model_id:
-                rows.append(("Model", f"{provider}/{model_id}"))
-        if summary.authority_fingerprint is not None:
-            history_changed = (
-                not session_summary_authority_is_current(summary) or history_changed
             )
-        if history_changed:
-            history_text = None
-        artifacts = (
-            (
-                ContinuityArtifactReference(
-                    label="Transcript",
-                    reference=str(summary.session_file),
-                ),
+        else:
+            rows.append(
+                (
+                    "History identity",
+                    "Coding"
+                    if history.product_identity == "coding"
+                    else "Unverified",
+                )
             )
-            if summary.session_file is not None
-            else ()
-        )
-        revision = session_summary_revision(summary, indexed.source_revision)
-        return ContinuityPreview(
-            target=target,
-            revision=revision,
-            heading=_summary_title(summary),
-            sections=(
-                ContinuityPreviewSection(
-                    kind="text",
-                    text=(
-                        "History changed; refresh"
-                        if history_changed
-                        else history_text
-                        or summary.last_message_preview
-                        or summary.first_message
-                    ),
-                ),
-                ContinuityPreviewSection(
-                    kind="key_value",
-                    title="Coding session",
-                    rows=tuple(rows),
-                ),
-                ContinuityPreviewSection(
-                    kind="artifacts",
-                    artifacts=artifacts,
-                ),
-            ),
-            stale=revision != target.revision or history_changed,
-        )
+            rows.append(
+                (
+                    "Historical composition",
+                    history.composition.set_id
+                    if history.composition is not None
+                    else "Legacy unknown",
+                )
+            )
+            if observed.snapshot is not None:
+                history_text = readonly_transcript_history_text(
+                    observed.snapshot.selected_records
+                )
+                start_planning = getattr(
+                    self._runtime, "start_configured_resume_planning", None
+                )
+                if callable(start_planning):
+                    try:
+                        planning_started = await start_planning(observed.snapshot)
+                    except (OSError, RuntimeError, TypeError, ValueError):
+                        rows.append(("Resume preparation", "Unavailable"))
+                    else:
+                        if planning_started is True:
+                            rows.append(("Resume preparation", "In progress"))
+            elif observed.recent is not None:
+                history_text = readonly_transcript_history_text(observed.recent.records)
+                rows.append(("Recent history", "Unverified tail preview"))
+            elif not history_changed:
+                rows.append(("Recent history", "Bounded preview unavailable"))
+        return history_text, history_changed
 
 
 @dataclass
@@ -756,149 +644,6 @@ async def _read_history_preview(
     if isinstance(evidence, CodingResumeRecentPage):
         return _HistoryPreview(header=header, recent=evidence)
     return _HistoryPreview(header=header, snapshot=evidence)
-
-
-def _session_index_discovery_diagnostics(
-    page: SessionIndexPage,
-) -> list[ContinuityDiagnostic]:
-    return [
-        ContinuityDiagnostic(
-            code=f"coding_session_discovery_{issue.code}",
-            message=f"Ignored Session source {issue.source_id}: {issue.detail}.",
-            provider_id=CODING_CONTINUITY_PROVIDER_ID,
-        )
-        for issue in page.discovery_issues
-    ]
-
-
-def _continuity_summary(
-    indexed: IndexedProjection[SessionSummary],
-) -> ContinuitySummary:
-    summary = indexed.projection
-    return ContinuitySummary(
-        target=ContinuityTarget(
-            provider_id=CODING_CONTINUITY_PROVIDER_ID,
-            opaque_id=summary.session_id,
-            revision=session_summary_revision(summary, indexed.source_revision),
-        ),
-        domain_ids=("coding",),
-        primary_domain_id="coding",
-        title=_summary_title(summary),
-        updated_at=summary.updated_at,
-        created_at=summary.created_at,
-        subtitle=_session_subtitle(summary),
-        excerpt=summary.last_message_preview or summary.first_message,
-        status=_session_status(summary),
-        actions=(
-            ("activate", "delete")
-            if summary.discovery is None or summary.discovery.mode == "canonical"
-            else ("activate",)
-        ),
-    )
-
-
-def _summary_title(summary: SessionSummary) -> str:
-    for value in (summary.name, summary.first_message, summary.session_id[:8]):
-        if isinstance(value, str) and (normalized := " ".join(value.split())):
-            return normalized[:512]
-    return summary.session_id[:8]
-
-
-def _readonly_history_text(records: Iterable[object]) -> str | None:
-    """Show a few selected-path messages without activating their Session."""
-
-    recent: list[str] = []
-    for record in reversed(tuple(records)):
-        payload = getattr(record, "payload", None)
-        text: str | None
-        if isinstance(payload, UserMessage):
-            label, text = "You", user_message_text(payload)
-        elif isinstance(payload, AssistantMessage):
-            label, text = "Assistant", assistant_message_text(payload)
-        else:
-            continue
-        normalized = " ".join(text.split()) if text else ""
-        if not normalized:
-            continue
-        recent.append(f"{label}: {normalized[:160]}")
-        if len(recent) == 3:
-            break
-    return "\n".join(reversed(recent)) if recent else None
-
-
-def _require_unconflicted_summary(
-    summary: SessionSummary, *, deleting: bool = False
-) -> None:
-    discovery = summary.discovery
-    if discovery is not None and not discovery.resumable:
-        raise ConflictedContinuityTargetError(
-            "This Session ID has different transcripts in multiple discovery "
-            "sources. Select an exact path or resolve the conflict before resume."
-        )
-
-    if (
-        deleting
-        and summary.discovery is not None
-        and summary.discovery.mode != "canonical"
-    ):
-        raise RuntimeError(
-            "Compatibility Sessions are read-only; resume them before deletion."
-        )
-
-
-def _session_status(summary: SessionSummary) -> str | None:
-    discovery = summary.discovery
-    if discovery is None:
-        return "Needs attention" if summary.has_diagnostics else None
-    if discovery.health == "conflict":
-        return "Conflict"
-    if discovery.health == "needs_attention":
-        return "Needs attention"
-    if summary.has_diagnostics:
-        return "Needs attention"
-    if discovery.health == "legacy":
-        return f"Legacy · {discovery.origin}"
-    return None
-
-
-def _session_subtitle(summary: SessionSummary) -> str | None:
-    discovery = summary.discovery
-    if discovery is None or discovery.mode == "canonical":
-        return summary.cwd or None
-    origin = discovery.origin.capitalize()
-    return f"{summary.cwd or 'Unknown workspace'} · {origin} compatibility"
-
-
-def _session_storage_label(summary: SessionSummary) -> str:
-    discovery = summary.discovery
-    if discovery is None:
-        return "Unknown"
-    if discovery.mode == "canonical":
-        return f"{discovery.origin.capitalize()} canonical"
-    return f"{discovery.origin.capitalize()} compatibility"
-
-
-def _session_health_label(summary: SessionSummary) -> str:
-    discovery = summary.discovery
-    if discovery is None:
-        return "Unknown"
-    return discovery.health.replace("_", " ").title()
-
-
-def _asset_health_label(health: SessionAssetHealthSummary) -> str:
-    if health.state == "none":
-        return "None"
-    if health.state == "unavailable":
-        return "Unavailable (preview budget or read boundary)"
-    suffix = f" · {health.object_count} objects · {health.total_bytes} bytes"
-    if health.state == "available":
-        return f"Available{suffix}"
-    if health.state == "partial":
-        return f"Present (integrity checked on resume){suffix}"
-    return (
-        f"{health.state.title()}{suffix} · "
-        f"{health.missing} missing · {health.corrupt} corrupt"
-    )
 
 
 __all__ = [

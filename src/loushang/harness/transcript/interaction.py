@@ -614,6 +614,28 @@ def assistant_message_text(message: AssistantMessage) -> str | None:
     return text if text.strip() else None
 
 
+def readonly_transcript_history_text(records: Sequence[object]) -> str | None:
+    """Show a few selected-path messages without activating their Session."""
+
+    recent: list[str] = []
+    for record in reversed(records):
+        payload = getattr(record, "payload", None)
+        text: str | None
+        if isinstance(payload, UserMessage):
+            label, text = "You", user_message_text(payload)
+        elif isinstance(payload, AssistantMessage):
+            label, text = "Assistant", assistant_message_text(payload)
+        else:
+            continue
+        normalized = " ".join(text.split()) if text else ""
+        if not normalized:
+            continue
+        recent.append(f"{label}: {normalized[:160]}")
+        if len(recent) == 3:
+            break
+    return "\n".join(reversed(recent)) if recent else None
+
+
 def model_selection_from_model(model: object) -> ModelSelection | None:
     provider = getattr(model, "provider_id", None) or getattr(model, "provider", None)
     endpoint_id = getattr(model, "endpoint_id", None) or getattr(
@@ -683,6 +705,7 @@ __all__ = [
     "application_message_text",
     "assistant_message_text",
     "model_selection_from_model",
+    "readonly_transcript_history_text",
     "user_message_text",
     "validate_model",
 ]

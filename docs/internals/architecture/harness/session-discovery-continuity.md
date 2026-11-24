@@ -64,8 +64,12 @@ the canonical authority; compatibility indexes are read only.
 
 ## Product projection
 
-The existing Coding Continuity Provider maps discovery health into the common
-TUI picker:
+The Harness indexed Session provider projects discovery health into the common
+TUI picker. It owns summary and preview revisions, conflict and deletion
+eligibility, and bounded asset inspection. The Coding provider adds historical
+Product identity and CompositionSet information and requests Resume planning
+when the verified selected history is available. The preview rechecks the
+indexed source after observing the history and assets.
 
 - canonical healthy Sessions retain the compact existing presentation;
 - compatibility Sessions show their origin and `Legacy` state;
