@@ -9,6 +9,10 @@ from typing import Any, cast
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart, ToolCall
+from loushang.apphost.integrations._resource_client_reference import (
+    ClientDirectoryOffline,
+)
+from loushang.apphost.integrations.resource_access import HostedResourceAccess
 from loushang.appserver.protocol import AppServiceError
 from loushang.coding.workspace.operations import CodingWorkspaceOperations
 from loushang.harness.authorization import (
@@ -39,9 +43,6 @@ from loushang.harness.tools.workspace.factory import (
     create_tool_definition,
 )
 from loushang.harness.workspace.operations import ToolOperations
-
-from .client_references import ClientDirectoryOffline
-from .resources import HostedResourceAccess
 
 SESSION_FILES = "session_files"
 

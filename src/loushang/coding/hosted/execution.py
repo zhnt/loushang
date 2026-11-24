@@ -12,6 +12,11 @@ from loushang.apphost import SessionBindingKeyV1
 from loushang.apphost.integrations._canonical_transcript_catalog import (
     session_identity_matches_open,
 )
+from loushang.apphost.integrations.resource_access import (
+    SUBMISSION_DIGEST,
+    SUBMISSION_ID,
+    HostedResourceAccess,
+)
 from loushang.apphost.integrations.session_control import (
     _ExecutionSessionServiceAdapter,
 )
@@ -52,7 +57,6 @@ from ._execution_work import (
 )
 from ._session_commands import CodingHostedSessionCommands
 from .execution_goal import _HostedExecutionGoal
-from .resources import SUBMISSION_DIGEST, SUBMISSION_ID, HostedResourceAccess
 from .resume import CodingDeferredHostedSessionV1
 from .service_adapter import (
     CodingHostedEventProjectionV1,
