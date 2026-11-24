@@ -5,11 +5,11 @@ import App, { HarnessGui } from "./App";
 import { useOfflineAccount } from "./client/offlineAccount";
 import { nativeLiveAvailable, validateSessionModels } from "./client/nativeLiveClient";
 import type { ConnectionState, HarnessClientUiPort } from "./client/model";
-import { useSystemTray, type TrayConnection } from "./client/systemTray";
+import { ownsSystemTray, useSystemTray, type TrayConnection } from "./client/systemTray";
 import { sharedSettings, webRequest } from "./client/hostApi";
-import { createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
+import { clientDirectoryControls, createWebLiveClient, type WebLiveClient } from "./client/webLiveClient";
 import { useTrayHosts, selectTrayHost, type HostStatus, type HostAction as Action } from "./client/trayHosts";
-import { TEMPORARY_WORKSPACE, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
+import { projectKey, TEMPORARY_WORKSPACE, workspaceName, type ManagedProjectNavigation, type ProjectChat, type ProjectDirectory } from "./client/projectDirectory";
 import { TrayHostDialog } from "./TrayHostDialog";
 import "./LocalHostGate.css";
 
@@ -86,7 +86,9 @@ export default function LocalHostGate() {
     setWorkspaceError(false);
     const epoch = ++workspaceEpoch.current;
     try {
-      await webRequest({ operation: "workspace", action: "register", path }, connectionId.current);
+      await webRequest({
+        operation: "workspace", action: "create-workspace", name: workspaceName(path), path, alias: "main",
+      }, connectionId.current);
       if (epoch !== workspaceEpoch.current) return false;
       setFolderInput(false);
       await refreshDirectory();
@@ -99,6 +101,48 @@ export default function LocalHostGate() {
       setWorkspacePending(false);
     }
   }
+
+  const editWorkspace: NonNullable<ManagedProjectNavigation["editWorkspace"]> = async (edit) => {
+    if (workspaceMutation.current || pending.current || host.state !== "running" || host.errorCode) {
+      throw new Error("operation_unavailable");
+    }
+    workspaceMutation.current = true;
+    setWorkspacePending(true);
+    const epoch = ++workspaceEpoch.current;
+    const origin = connectionId.current;
+    const deleting = edit.action === "delete-workspace-with-history";
+    let resume: (() => void) | undefined;
+    try {
+      if (deleting) resume = await workspaceClients.current.get(edit.workspaceId)?.suspend();
+      if (epoch !== workspaceEpoch.current) return;
+      await webRequest({ operation: "workspace", ...edit }, origin);
+      if (epoch !== workspaceEpoch.current) return;
+      if (!deleting) {
+        await refreshDirectory();
+        return;
+      }
+      const id = edit.workspaceId;
+      ++workspaceEpoch.current;
+      const deletedClient = workspaceClients.current.get(id);
+      workspaceClients.current.delete(id);
+      if (deletedClient && clientRef.current === deletedClient) {
+        clientRef.current = null;
+        setClient(null);
+        setWorkspace("");
+      }
+      setSelection((current) => current?.workspace === id ? null : current);
+      setDirectory((current) => ({
+        ...current, projects: current.projects.filter((project) => projectKey(project) !== id),
+      }));
+    } finally {
+      resume?.();
+      workspaceMutation.current = false;
+      setWorkspacePending(false);
+      if (deleting && origin === connectionId.current) {
+        void refreshDirectory().catch(() => { if (origin === connectionId.current) setWorkspaceError(true); });
+      }
+    }
+  };
 
   const createChat: ManagedProjectNavigation["createChat"] = async (path, continuityId, title) => {
     const origin = connectionId.current;
@@ -153,7 +197,7 @@ export default function LocalHostGate() {
         chats.filter((item) => item.id !== chat.id || item.scope !== chat.scope);
       ++workspaceEpoch.current;
       setDirectory((current) => ({
-        projects: current.projects.map((project) => project.path === path
+        projects: current.projects.map((project) => projectKey(project) === path
           ? { ...project, sessions: withoutChat(project.sessions) } : project),
         temporarySessions: path === TEMPORARY_WORKSPACE ? withoutChat(current.temporarySessions) : current.temporarySessions,
       }));
@@ -233,7 +277,7 @@ export default function LocalHostGate() {
         if (serial !== generation.current) return;
         const path = restoreSelection?.workspace;
         const chats = path === TEMPORARY_WORKSPACE ? directory?.temporarySessions
-          : directory?.projects.find((project) => project.path === path)?.sessions;
+          : directory?.projects.find((project) => projectKey(project) === path)?.sessions;
         if (restoreSelection?.id && chats?.some((chat) => chat.id === restoreSelection.id)) {
           openConversation(restoreSelection.workspace, restoreSelection.id);
         } else setConnection("connected");
@@ -316,6 +360,12 @@ export default function LocalHostGate() {
   }, []);
 
   useEffect(() => {
+    if (host.state !== "starting" || !supported) return;
+    const timer = window.setInterval(() => { void perform("connect"); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [host.state, supported]);
+
+  useEffect(() => {
     if (host.state !== "running" || !supported) return;
     const timer = window.setInterval(() => { void perform("status"); }, 5000);
     return () => window.clearInterval(timer);
@@ -329,9 +379,9 @@ export default function LocalHostGate() {
 
   const trayConnection: TrayConnection = busy && ["connect", "start", "restart"].includes(pendingAction.current) ? "connecting"
     : connection === "connected" ? "connected"
-    : connection === "connecting" || connection === "resync-required" ? "connecting" : "disconnected";
+    : connection === "connecting" ? "connecting" : "disconnected";
   const trayHosts = useTrayHosts({
-    enabled: route === "web", selectedId, localName: i18n.t("shell:tray.localHost"),
+    enabled: route === "web" && ownsSystemTray(), selectedId, localName: i18n.t("shell:tray.localHost"),
     workspace, host, supported: supported === true, busy, connection: trayConnection,
     onSelect: (id) => activateHost(id),
     onManage: (action, _path, instanceId) => action === "connect" && connectionId.current
@@ -399,27 +449,30 @@ export default function LocalHostGate() {
   </>;
   const requestConnection = connectionId.current;
   return <><HarnessGui client={client} account={account} hostSettings={hostSettings}
-    startLocalHost={canStart ? <button disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
+    startLocalHost={canStart ? <button type="button" className="primary-button" disabled={busy} onClick={startHost}>{t("localHost.start")}</button> : null}
     hostSettingsRequest={hostSettingsRequest} onConnectionChange={client ? setConnection : undefined}
     managedHostConnection={busy ? { status: pendingAction.current === "stop" ? "disconnected" : "connecting" }
-      : host.state === "running" && !host.errorCode ? { status: "running", serviceInstanceId: host.serviceInstanceId }
-        : { status: "disconnected" }}
+      : supported === null && !host.errorCode ? { status: "connecting" }
+        : host.state === "running" && !host.errorCode ? { status: "running", serviceInstanceId: host.serviceInstanceId }
+          : { status: "disconnected" }}
     projectNavigation={{
       directory, available: host.state === "running" && !host.errorCode && !busy,
       pending: workspacePending, error: workspaceError, folderInput, selection,
       openFolder: () => { void openFolder(); },
       closeFolder: () => setFolderInput(false),
       register: registerWorkspace,
+      editWorkspace,
       hostKey: selectedId,
       inspectWorkspace: async (path, fingerprint, sessionId) => {
         const result = await webRequest<{ workspaces: { scopeFingerprint: string; inspection?: import("./WorkspaceInspection").Inspection }[] }>(
-          { operation: "workspace", action: "inspect", path, sessionId }, requestConnection,
+          { operation: "workspace", action: "inspect", path, fingerprint, sessionId }, requestConnection,
         );
         const workspace = result.workspaces[0];
         if (workspace?.scopeFingerprint !== fingerprint || !workspace.inspection) throw new Error("workspace_unavailable");
         return workspace.inspection;
       },
       openProjectPath: isTauri() && selectedId === "local" ? openLocalWorkspacePath : undefined,
+      clientDirectories: clientDirectoryControls(requestConnection),
       draftModels: async (path, modelId) => validateSessionModels(
         await webRequest({ operation: "workspace", action: "models", path, modelId }, connectionId.current),
       ),

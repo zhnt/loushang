@@ -4,6 +4,7 @@ import { appName } from "./branding";
 import type Resources from "./i18n/generated/resources";
 
 export interface FrameActions {
+  onNewWindow?: () => void;
   onNewSession?: () => void;
   onOpenFolder?: () => void;
   onFocusComposer?: () => void;
@@ -121,7 +122,7 @@ export function FrameMenu(actions: FrameActions) {
   const entry = (label: Label, action?: () => void, shortcut?: string, checked?: boolean): MenuEntry => ({ label, action, shortcut, checked });
   const groups: Record<MenuName, MenuEntry[][]> = {
     file: [
-      [entry("newWindow"), entry("newSession", actions.onNewSession, "Ctrl+N"), entry("temporarySession", undefined, "Ctrl+Shift+N"), entry("newProject", actions.onOpenFolder)],
+      [entry("newWindow", actions.onNewWindow), entry("newSession", actions.onNewSession, "Ctrl+N"), entry("temporarySession", undefined, "Ctrl+Shift+N"), entry("newProject", actions.onOpenFolder)],
       [entry("openFolder", actions.onOpenFolder), entry("focusComposer", actions.onFocusComposer), entry("close", actions.onClose, "Ctrl+W")],
       [entry("settings", actions.onSettings, "Ctrl+,")],
       [entry("signOut"), entry("quitApp", actions.onQuit, "Ctrl+Q")],
@@ -177,7 +178,7 @@ export function FrameMenu(actions: FrameActions) {
             {index > 0 ? <div role="separator" className="frame-menu-separator" /> : null}
             {group.map((item) => <button key={item.label} role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
               aria-label={t(item.label, { appName })} aria-checked={item.checked} aria-haspopup={item.submenu ? "menu" : undefined}
-              disabled={!item.action} title={!item.action ? t("actionUnavailable") : undefined}
+              disabled={!item.action} data-tooltip={!item.action ? t("actionUnavailable") : undefined}
               onClick={() => { if (item.action) run(item.action); }}>
               <span className="menu-check" aria-hidden="true">{item.checked ? "✓" : ""}</span>
               <span className="menu-label">{t(item.label, { appName })}</span>

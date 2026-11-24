@@ -115,7 +115,10 @@ def prepare_managed_plugins(
     def resolve_layout(ephemeral: str | None) -> CodingPluginLifecycleStateLayout:
         cwd = session_manager.get_cwd()
         if ephemeral is None:
-            return resolve_coding_plugin_lifecycle_state_layout(cwd)
+            return resolve_coding_plugin_lifecycle_state_layout(
+                session_manager.package_product_workspace(),
+                historical_origin=session_manager.legacy_plugin_workspace(),
+            )
         return resolve_ephemeral_coding_plugin_lifecycle_state_layout(ephemeral, cwd=cwd)
 
     def record_failure(error: BaseException) -> None:

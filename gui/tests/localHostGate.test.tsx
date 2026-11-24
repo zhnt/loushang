@@ -15,13 +15,14 @@ const native = vi.hoisted(() => ({
   invoke: vi.fn(), create: vi.fn(() => ({ suspend: async () => () => {} })), listeners: new Map<string, (value: any) => void>(),
   available: vi.fn(async () => false), realShell: false,
 }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main" }) }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: native.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async (name, callback) => {
   native.listeners.set(name, callback);
   return () => native.listeners.delete(name);
 }) }));
 vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: native.available }));
-vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.create }));
+vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: native.create, clientDirectoryControls: () => undefined }));
 vi.mock("../src/DesktopFrame", () => ({ DesktopFrame: () => <header>Desktop</header>, PanelIcon: () => null }));
 vi.mock("../src/App", async (importOriginal) => {
   const { HarnessGui } = await importOriginal<typeof import("../src/App")>();
@@ -164,6 +165,25 @@ describe("local managed Host presentation", () => {
     expect(native.invoke.mock.calls.filter(([command]) => command === "client_settings")).toEqual([]);
   });
 
+  it("waits for another client to finish starting the Host", async () => {
+    let checks = 0;
+    installMock(async (command, args) => {
+      if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
+      if (command === "sync_tray") return;
+      if (command === "environment") return { supported: true, workspace: "/workspace" };
+      if (args.request.action === "connect") {
+        return { state: ++checks === 1 ? "starting" : "running", errorCode: null, instanceId: "instance-1" };
+      }
+      return { state: "running", errorCode: null, instanceId: "instance-1" };
+    });
+    render(<LocalHostGate />);
+    const settings = openHostSettings();
+    expect(await settings.findByText("Host starting")).toBeVisible();
+    expect(await settings.findByText("Running", {}, { timeout: 3000 })).toBeVisible();
+    expect(countActions("connect")).toBeGreaterThanOrEqual(2);
+    expect(countActions("start")).toBe(0);
+  });
+
   it("offers Start when the recorded Host has exited", async () => {
     installMock(async (command, args) => {
       if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
@@ -295,7 +315,7 @@ describe("local managed Host presentation", () => {
     fireEvent.click(projects.getByRole("button", { name: "Add project" }));
     await waitFor(() => expect(native.invoke).toHaveBeenCalledWith("client_settings", {
       request: { operation: "host/request", connectionId: "local",
-        request: { operation: "workspace", action: "register", path: "C:\\Work\\项目" } },
+        request: { operation: "workspace", action: "create-workspace", name: "项目", path: "C:\\Work\\项目", alias: "main" } },
     }));
     expect(countActions("create-chat")).toBe(2);
     expect(countActions("open")).toBe(0);

@@ -1,4 +1,4 @@
-export type UiIconName = "close" | "check" | "chevron-down" | "chevron-up" | "chevron-right" | "search" | "back" | "forward" | "folder" | "folder-closed" | "conversation" | "new-session" | "plus" | "goal" | "pull-request" | "scheduled" | "plugins" | "settings" | "account" | "host" | "pin" | "copy" | "refresh" | "review";
+export type UiIconName = "close" | "check" | "chevron-down" | "chevron-up" | "chevron-right" | "search" | "back" | "forward" | "file" | "folder" | "folder-closed" | "conversation" | "new-session" | "plus" | "goal" | "pull-request" | "scheduled" | "plugins" | "settings" | "account" | "host" | "pin" | "copy" | "paperclip" | "refresh" | "review";
 
 // Shared presentation icons: fixed boxes avoid font-dependent glyph baselines.
 export function UiIcon({ name }: { name: UiIconName }) {
@@ -6,6 +6,7 @@ export function UiIcon({ name }: { name: UiIconName }) {
     {name === "close" && <path d="m6 6 12 12M18 6 6 18" />}
     {name === "check" && <path d="m5 12 4 4L19 6" />}
     {name === "copy" && <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>}
+    {name === "paperclip" && <path d="m9 12 6-6a2.5 2.5 0 0 1 3.5 3.5l-7.5 7.5a4 4 0 0 1-5.7-5.7l8-8M9 12a1.5 1.5 0 0 0 2.1 2.1l5.6-5.6" />}
     {name === "refresh" && <path d="M20 10a8 8 0 0 0-13-4L4 9m0-5v5h5m-5 5a8 8 0 0 0 13 4l3-3m-5 0h5v5" />}
     {name === "review" && <path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10zm0 0v7h7M8 14l2 2 4-4" />}
     {name === "chevron-down" && <path d="m7 10 5 5 5-5" />}
@@ -14,6 +15,7 @@ export function UiIcon({ name }: { name: UiIconName }) {
     {name === "search" && <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></>}
     {name === "back" && <path d="M20 12H4m6-6-6 6 6 6" />}
     {name === "forward" && <path d="M4 12h16m-6-6 6 6-6 6" />}
+    {name === "file" && <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zm0 0v6h6M8 13h8m-8 4h6" />}
     {name === "folder" && <><path d="M3 9V6a1 1 0 0 1 1-1h6l2 3h8a1 1 0 0 1 1 1v2" /><path d="M3 10h18l-2 9H3z" /></>}
     {name === "folder-closed" && <path d="M3 6a1 1 0 0 1 1-1h6l2 3h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />}
     {name === "conversation" && <path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />}

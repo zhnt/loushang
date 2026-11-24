@@ -7,6 +7,7 @@ from pathlib import Path
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionProfileProvider,
+    constrain_execution_profile,
 )
 from loushang.harness.authorization.execution_profile import WorkspaceExecutionSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -32,6 +33,38 @@ class CodingExecutionAuthority(WorkspaceExecutionSelection):
     workspace_profile: EffectiveExecutionProfile
     ceiling: EffectiveExecutionProfile
     permission_snapshot: Callable[[], PermissionProfileSnapshot]
+    current_workspace_roots: Callable[[], tuple[Path, ...]] | None = None
+
+    def __call__(self) -> EffectiveExecutionProfile:
+        return self._select(self.workspace_profile)
+
+    def for_workspace_operation(self) -> EffectiveExecutionProfile:
+        if self.current_workspace_roots is not None:
+            return self._select(self.workspace_profile)
+        # Git processes need linked-worktree metadata outside the workspace.
+        # Ordinary Standard/Cautious file tools retain their original boundary.
+        workspace_only = constrain_execution_profile(
+            self.workspace_profile,
+            EffectiveExecutionProfile(
+                readable_roots=(self.workspace_root,),
+                writable_roots=(self.workspace_root,),
+            ),
+        )
+        return self._select(workspace_only)
+
+    def _select(self, workspace_profile: EffectiveExecutionProfile) -> EffectiveExecutionProfile:
+        profile = self.permission_snapshot().effective_profile
+        selected = (
+            self.ceiling
+            if profile.workspace_access == "managed_ceiling"
+            else workspace_profile
+        )
+        if self.current_workspace_roots is not None:
+            roots = self.current_workspace_roots()
+            selected = constrain_execution_profile(
+                selected, EffectiveExecutionProfile(readable_roots=roots, writable_roots=roots),
+            )
+        return constrain_execution_profile(self.ceiling, selected)
 
 
 def coding_host_execution_profile(

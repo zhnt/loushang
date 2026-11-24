@@ -408,6 +408,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         text: str,
         *,
         source: str = "execution",
+        images: list[ImagePart] | None = None,
         check_cancelled: Callable[[], None] | None = None,
     ) -> PromptExecutionResult:
         """Opt-in full invocation input result, retaining the legacy prompt API."""
@@ -424,6 +425,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 self._composition.command_controller.dispatch_command_async,
                 text,
                 source=source,
+                images=images,
                 check_cancelled=check_cancelled,
             )
             await self._composition.retry_runtime.settle()
@@ -1299,7 +1301,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     navigate_tree=self._navigate_tree_from_extension,
                     import_session=self._extension_replacement_controller.import_session,
                     get_active_tool_names=self.get_active_tool_names,
-                    get_all_tools=self.get_all_tool_infos,
+                    get_all_tools=self._get_command_tool_infos,
+                    is_tool_allowed=lambda name: self._composition.tool_controller.is_tool_allowed(name),
                     set_active_tools=self.set_active_tools,
                     get_default_active_tool_names=self._default_active_tool_names,
                     get_extensions=self.list_extensions,
@@ -1406,6 +1409,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 turn_performance=self._turn_start_performance,
             ),
         )
+
+    def _get_command_tool_infos(self) -> list[dict[str, object]]:
+        return self._composition.tool_controller.get_available_tool_infos()
 
     def get_context_usage(self):
         return serialize_context_usage_payload(super().get_context_usage())

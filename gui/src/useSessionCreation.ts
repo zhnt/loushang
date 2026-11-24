@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { uploadAttachments, type AttachmentDraft } from "./client/sessionResources";
 import type { ClientSnapshot, DraftBinding, HarnessClientUiPort, SessionModels, SessionSnapshot, SubmitReceipt, ThinkingLevel } from "./client/model";
 
 export interface DraftTarget {
@@ -17,6 +18,8 @@ interface Draft {
   readonly id: string;
   readonly target: DraftTarget;
   readonly text: string;
+  readonly images?: readonly AttachmentDraft[];
+  readonly failureReason?: string;
   readonly modelId?: string;
   readonly thinking?: SessionModels["thinking"];
   readonly visible: boolean;
@@ -42,7 +45,7 @@ export function isSendingDraft(draft: Draft | null): draft is Draft & { status: 
 }
 
 export function canSubmitDraft(draft: Draft | null): draft is Draft {
-  return Boolean(draft?.visible && draft.text.trim() && draft.status !== "firstSubmissionUnknown"
+  return Boolean(draft?.visible && (draft.text.trim() || draft.images?.length) && draft.status !== "firstSubmissionUnknown"
     && (draft.status !== "createUnknown" || draft.binding));
 }
 
@@ -113,6 +116,10 @@ class SessionCreation {
     if (this.current?.visible && !this.inFlight) this.save({ ...this.current, text });
   }
 
+  changeImages(images: readonly AttachmentDraft[]) {
+    if (this.current?.visible && !this.inFlight) this.save({ ...this.current, images });
+  }
+
   selectModel(target: DraftTarget, id: string, thinking?: SessionModels["thinking"]) {
     if (!this.current?.visible || this.inFlight || this.current.target !== target) return false;
     this.save({ ...this.current, modelId: id, thinking });
@@ -163,12 +170,13 @@ class SessionCreation {
     }
     this.update(input.id, { status: "sending" });
     if (modelId && !await this.applyFirstModel(binding, published.session.id, input.id, modelId, level)) return;
-    const receipt = await sendDraft(binding.client, published.session.id, input.text);
+    const receipt = await sendDraft(binding.client, published.session.id, input.text, input.images ?? []);
     if (!receipt.accepted) {
       const unknown = receipt.reason === "submission_outcome_unknown";
       const instanceId = published.snapshot.source.kind === "live" ? published.snapshot.source.serviceInstanceId : undefined;
       this.update(input.id, {
         status: unknown ? "firstSubmissionUnknown" : "firstSubmitRejected",
+        failureReason: receipt.reason,
         unconfirmed: unknown ? { id: receipt.submissionId, instanceId } : undefined,
       });
       return;
@@ -184,10 +192,17 @@ class SessionCreation {
     const pending = draft?.unconfirmed;
     const binding = draft?.binding;
     if (!draft?.visible || !binding || !pending) return;
-    const published = publishedSession(this.observed, binding, draft.id);
     const id = binding.sessionId;
-    if (published && id && pending.instanceId && binding.client.findSubmission) {
-      const receipt = await binding.client.findSubmission(id, pending.id, pending.instanceId).catch(() => null);
+    const observation = this.observed;
+    const persisted = id && observation?.snapshot.sessions.find((session) => session.id === id
+      && session.context.continuityId === draft.id
+      && session.messages.some((message) => message.submissionId === pending.id));
+    const published = persisted && observation ? { session: persisted, snapshot: observation.snapshot }
+      : publishedSession(observation, binding, draft.id);
+    if (published && id) {
+      const committed = Boolean(persisted);
+      const receipt: SubmitReceipt | null | undefined = committed ? { accepted: true, submissionId: pending.id }
+        : pending.instanceId ? await binding.client.findSubmission?.(id, pending.id, pending.instanceId).catch(() => null) : null;
       if (receipt?.accepted && receipt.submissionId === pending.id && this.current?.id === draft.id) {
         onAccepted(published, draft.text, receipt, this.current.visible, draft.target);
         this.save(null);
@@ -219,6 +234,7 @@ export function useSessionCreation(onAccepted: Accepted) {
     draft, drafts, observe: creation.observe, hide: creation.hide,
     open: creation.open,
     change: (text: string) => creation.change(text),
+    changeImages: (images: readonly AttachmentDraft[]) => creation.changeImages(images),
     selectModel: (target: DraftTarget, id: string, thinking?: SessionModels["thinking"]) => creation.selectModel(target, id, thinking),
     check: () => creation.check(onAccepted),
     submit: (modelId?: string, level?: ThinkingLevel) => creation.submit(onAccepted, modelId, level),
@@ -246,10 +262,17 @@ async function confirmFirstModel(
   }
 }
 
-async function sendDraft(client: HarnessClientUiPort, sessionId: string, text: string): Promise<SubmitReceipt> {
+async function sendDraft(client: HarnessClientUiPort, sessionId: string, text: string, files: readonly AttachmentDraft[]): Promise<SubmitReceipt> {
   const submissionId = `gui-${crypto.randomUUID()}`;
+  let resourceRefs;
   try {
-    const receipt = await client.submitText({ sessionId, submissionId, text });
+    resourceRefs = files.length ? await uploadAttachments(client, sessionId, files) : [];
+  } catch {
+    return { accepted: false, reason: "resource_unavailable", submissionId };
+  }
+  try {
+    const receipt = await client.submitText({ sessionId, submissionId, text,
+      ...(resourceRefs.length ? { resourceRefs } : {}) });
     if (receipt.submissionId === submissionId) return receipt;
   } catch {
     // Reconcile the outcome with the original submission ID.

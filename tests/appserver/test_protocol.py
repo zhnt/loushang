@@ -397,6 +397,21 @@ def test_workspace_request_rejects_invalid_paths_at_protocol_boundary(path, acti
         WorkspaceRequestV1(action, path)
 
 
+def test_logical_workspace_selectors_roundtrip_without_a_physical_path():
+    request = AppRequestV1(
+        "request-1", AppOperationV1.WORKSPACE,
+        WorkspaceRequestV1("open-workspace", workspace_id="default"),
+    )
+    assert decode_request(encode_request(request)) == request
+    write = AppRequestV1(
+        "request-2", AppOperationV1.WORKSPACE,
+        WorkspaceRequestV1("update-path", "/new", workspace_id="ws-1", path_id="path-1", alias="frontend"),
+    )
+    assert decode_request(encode_request(write)) == write
+    with pytest.raises(ValueError):
+        WorkspaceRequestV1("open-workspace", "/arbitrary", workspace_id="default")
+
+
 def test_workspace_request_rejects_unknown_authority_fields():
     request = AppRequestV1('request-1', AppOperationV1.WORKSPACE, WorkspaceRequestV1('open', '/project'))
     wire = json.loads(encode_request(request))

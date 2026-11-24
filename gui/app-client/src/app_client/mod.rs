@@ -82,7 +82,51 @@ pub enum InteractiveGoalReviewDecision {
     Reject,
 }
 
+/// GUI operations backed by the existing Hosted Session Command and Execution APIs.
+#[derive(Deserialize)]
+#[serde(
+    tag = "action",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum SessionOperation {
+    Info,
+    Tools,
+    SetTool {
+        submission_id: String,
+        name: String,
+        active: bool,
+    },
+    ResetTools {
+        submission_id: String,
+    },
+    Compact {
+        submission_id: String,
+    },
+    Lookup {
+        submission_id: String,
+    },
+    Interrupt {
+        execution_id: String,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionOperationInput {
+    pub session_id: String,
+    pub service_instance_id: String,
+    pub connection_epoch: String,
+    pub operation: SessionOperation,
+}
+
 pub enum ControlCommand {
+    SessionOperation {
+        session_id: String,
+        operation: SessionOperation,
+        reply: SyncSender<Result<serde_json::Value, ()>>,
+    },
     CreateSession {
         source_session_id: Option<String>,
         continuity_id: String,
@@ -98,7 +142,13 @@ pub enum ControlCommand {
         session_id: String,
         submission_id: String,
         text: String,
+        resource_refs: Vec<serde_json::Value>,
         reply: SyncSender<Result<ControlResult, ()>>,
+    },
+    Resource {
+        session_id: String,
+        query: serde_json::Value,
+        reply: SyncSender<Result<serde_json::Value, ()>>,
     },
     StartGoal {
         session_id: String,
@@ -507,6 +557,21 @@ impl AppClient {
         self.1.get()
     }
 
+    #[cfg(feature = "frontend")]
+    pub(crate) fn target_binding(target: AppTarget<'_>) -> Result<[u8; 32], ()> {
+        use sha2::{Digest, Sha256};
+        let (root, endpoint) = match target {
+            AppTarget::Local(root) => (root, "workspace"),
+            AppTarget::Tunnel {
+                credential_root, ..
+            } => (credential_root, "app-tunnel"),
+        };
+        let raw = record_native::read(root, &Record::filename(endpoint)?)?;
+        let record = Record::decode(&raw)?;
+        record.selected(endpoint, &record.semantic_profile()?)?;
+        Ok(Sha256::digest(raw).into())
+    }
+
     fn load_record(&self, target: AppTarget<'_>) -> Result<(Record, String, SocketAddr), ()> {
         let (root, endpoint, forwarded_port) = match target {
             AppTarget::Local(root) => (root, "workspace", None),
@@ -540,7 +605,9 @@ impl AppClient {
         request: WorkspaceRequest<'_>,
     ) -> Result<WorkspaceResult, ()> {
         self.request_once(target, timeout, false, |channel, hello| {
-            if let WorkspaceRequest::Preview { instance, .. } = &request {
+            if let WorkspaceRequest::Preview { instance, .. }
+            | WorkspaceRequest::LogicalPreview { instance, .. } = &request
+            {
                 if *instance != hello.service_instance_id {
                     return Ok(WorkspaceResult::Rejected("instance_changed".into()));
                 }
@@ -555,12 +622,16 @@ impl AppClient {
         target: AppTarget<'_>,
         timeout: Duration,
         path: Option<&str>,
+        workspace_id: Option<&str>,
         model_id: Option<&str>,
     ) -> Result<ModelControlResult, ()> {
         // A draft's model-specific preview needs the same reasoning
         // negotiation as an attached session. The plain catalog stays legacy-compatible.
         self.request_once(target, timeout, model_id.is_some(), |channel, _| {
             let mut payload = serde_json::json!({"path": path});
+            if let Some(id) = workspace_id {
+                payload["workspaceId"] = serde_json::json!(id);
+            }
             if let Some(id) = model_id {
                 payload["modelId"] = serde_json::json!(id);
             }
@@ -711,10 +782,42 @@ fn process_controls<R: Read, W: Write>(
                 session_id,
                 submission_id,
                 text,
+                resource_refs,
                 reply,
             } => {
-                let result =
-                    authority.submit(channel, &session_id, &submission_id, &text, &request_id);
+                let result = authority.submit(
+                    channel,
+                    &session_id,
+                    &submission_id,
+                    (&text, resource_refs),
+                    &request_id,
+                );
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::SessionOperation {
+                session_id,
+                operation,
+                reply,
+            } => {
+                let result = authority.session_operation(
+                    channel,
+                    &session_id,
+                    operation,
+                    &request_id,
+                    || session.next_control_request_id(),
+                );
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::Resource {
+                session_id,
+                query,
+                reply,
+            } => {
+                let result = authority.resource(channel, &session_id, query, &request_id);
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 failed
@@ -921,3 +1024,5 @@ mod tests {
         assert!(!text.contains("controllerGeneration"));
     }
 }
+#[cfg(feature = "frontend")]
+pub(crate) mod client_directory;

@@ -7,6 +7,7 @@ mod project_folder;
 #[cfg(desktop)]
 mod tray;
 mod web_link;
+mod windows;
 // Exit joins run on the blocking pool.
 #[allow(dead_code)]
 mod read_worker;
@@ -27,22 +28,25 @@ fn open_devtools(window: tauri::WebviewWindow) {
 
 #[tauri::command]
 fn show_tray_window(app: tauri::AppHandle) {
-    #[cfg(desktop)]
-    tray::show_main_window(&app);
-    #[cfg(not(desktop))]
-    let _ = app;
+    windows::show_main_window(&app);
 }
 
 #[tauri::command]
-async fn sync_tray(app: tauri::AppHandle, projection: serde_json::Value) -> Result<(), String> {
+async fn sync_tray(
+    window: tauri::WebviewWindow,
+    projection: serde_json::Value,
+) -> Result<(), String> {
     #[cfg(desktop)]
     {
+        if window.label() != windows::MAIN {
+            return Ok(());
+        }
         let projection = serde_json::from_value(projection).map_err(|error| error.to_string())?;
-        tray::sync_tray(app, projection).await
+        tray::sync_tray(window.app_handle().clone(), projection).await
     }
     #[cfg(not(desktop))]
     {
-        let _ = (app, projection);
+        let _ = (window, projection);
         Ok(())
     }
 }
@@ -76,23 +80,38 @@ fn fixture_bridge_handshake(app: tauri::AppHandle) -> Result<FixtureBridgeReceip
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || windows::activate(&handle));
+    }));
+    let builder = builder
+        .manage(windows::DesktopWindows::default())
+        .on_window_event(windows::on_window_event)
         .plugin(tauri_plugin_os::init())
-        .manage(Arc::new(ConnectionLifecycle::default()));
+        .manage(Arc::new(ConnectionLifecycle::default()))
+        .manage(client_settings::AttachmentFiles::default());
     let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         sync_tray,
+        windows::new_window,
         web_link::open_web_link,
         quit_app,
         open_devtools,
         show_tray_window,
         project_folder::pick_project_folder,
+        client_settings::pick_client_directory,
+        client_settings::open_text_attachment,
         fixture_bridge_handshake,
         client_settings::client_settings,
         offline_account::offline_account,
         live_bridge::live_connection_available,
         live_bridge::live_submit_text,
+        live_bridge::live_find_submission,
+        live_bridge::live_session_resource,
+        live_bridge::live_session_operation,
         live_bridge::live_interrupt,
         live_bridge::live_respond_interaction,
         live_bridge::live_create_session,
@@ -113,15 +132,21 @@ pub fn run() {
     #[cfg(not(feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         sync_tray,
+        windows::new_window,
         web_link::open_web_link,
         quit_app,
         open_devtools,
         show_tray_window,
         project_folder::pick_project_folder,
+        client_settings::pick_client_directory,
+        client_settings::open_text_attachment,
         client_settings::client_settings,
         offline_account::offline_account,
         live_bridge::live_connection_available,
         live_bridge::live_submit_text,
+        live_bridge::live_find_submission,
+        live_bridge::live_session_resource,
+        live_bridge::live_session_operation,
         live_bridge::live_interrupt,
         live_bridge::live_respond_interaction,
         live_bridge::live_create_session,
@@ -141,7 +166,7 @@ pub fn run() {
     ]);
     builder
         .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window(windows::MAIN) {
                 window.set_title(&app.package_info().name)?;
             }
             #[cfg(desktop)]
@@ -154,6 +179,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if matches!(event, tauri::RunEvent::Reopen { .. }) {
+                windows::activate(app);
+            }
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 let owner = app.state::<Arc<ConnectionLifecycle>>().inner().clone();
                 match owner.begin_exit() {

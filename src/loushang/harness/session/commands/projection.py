@@ -175,6 +175,10 @@ def _standard_argument_error(result: StandardSessionCommandResult) -> str:
     match result.command_id, result.error_code:
         case StandardSessionCommandId.COPY, "invalid_copy_index":
             return "Usage: /copy [N], where N is a positive integer."
+        case StandardSessionCommandId.TOOLS, "tool_not_allowed":
+            if isinstance(result.value, Mapping) and isinstance(denied := result.value.get("denied"), list):
+                return f"Tools not allowed in this Session: {', '.join(map(str, denied))}"
+            return "Tool not allowed in this Session"
         case StandardSessionCommandId.TOOLS, "unknown_tool":
             value = result.value
             if isinstance(value, Mapping):

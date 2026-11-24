@@ -92,6 +92,10 @@ async def _binding(
     tools=(),
     persist=False,
     manager=None,
+    settings_manager=None,
+    allowed_tool_names=None,
+    model_available=True,
+    model_registry=None,
 ):
     runner = None
     if command is not None:
@@ -119,7 +123,7 @@ async def _binding(
                     capabilities=Capabilities(
                         input=("text",), context_window=128000, max_tokens=4096
                     ),
-                )
+                ) if model_available else None
             },
             stream_fn=stream_fn,
         ),
@@ -129,10 +133,13 @@ async def _binding(
             cwd=str(tmp_path),
             persist=persist,
         ),
+        settings_manager=settings_manager,
+        model_registry=model_registry,
         extension_runner=runner,
         approval_resolver=approval,
         tool_registry=registry,
         active_tool_names=[tool.name for tool in tools],
+        **({"allowed_tool_names": allowed_tool_names} if allowed_tool_names is not None else {}),
     )
     session.set_auto_retry_enabled(False)
     session.set_auto_compaction_enabled(False)

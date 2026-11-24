@@ -70,6 +70,24 @@ control, managed discovery/connection coordination, Session writer
 admission and the installed `lmux` entry remain unactivated. This does not
 change the existing foreground or explicit G16 lifecycle.
 
+### Managed workspace deletion
+
+Clients explicitly confirm session deletion with `delete-workspace-with-history`.
+AppService holds workspace admission while removing the selected workspace's
+members through Mux continuity and settling their Sessions. Coding removes
+transcripts through its existing maintenance owner, covering both the logical
+store and any historical stores associated with that workspace. AppHost
+removes the registration after cleanup. Transcript maintenance takes its
+deletion authority exclusively from AppHost-owned session stores. The
+original `delete-workspace` request keeps its existing admission rules.
+
+Codex accepted this boundary on 2026-11-20 for the
+`feature/gui-workspace-delete-feedback` candidate based on `18ccbaea3`.
+The review covered the confirmation contract, Mux continuity, transcript
+ownership and registry publication. Linux evidence includes a Chromium
+deletion through the Rust Web bridge and a real local AppServer, transcript
+and project-file checks after restart, and retry after interrupted cleanup.
+
 A0.1 supplies immutable standard-library contracts and exact validation for:
 
 - Product and profile descriptors;

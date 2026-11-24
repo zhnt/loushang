@@ -125,8 +125,9 @@ def test_catalog_requires_the_exact_registered_workspace_scope(standalone_worksp
                 "preview", allocated.path,
                 preview=WorkspacePreviewRequestV1("index.html", "", allocated.scope_fingerprint),
             )
-            temporary_result = await catalog.workspace(temporary_request)
-            assert temporary_result.workspaces[0].preview.text == "<h1>Weather</h1>"
+            with pytest.raises(AppServiceError) as private_anchor:
+                await catalog.workspace(temporary_request)
+            assert private_anchor.value.code == AppErrorCodeV1.NOT_FOUND
             assert allocated.path not in {
                 workspace.path for workspace in (await catalog.workspace(WorkspaceRequestV1("projects"))).workspaces
             }

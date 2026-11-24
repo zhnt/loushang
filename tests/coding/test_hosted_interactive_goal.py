@@ -116,6 +116,14 @@ async def _managed(tmp_path, *, blocked=False):
             address.attachment_id, address.controller_generation, address.member_id,
         ))._port
         assert type(hosted) is CodingHostedExecutionSessionV1
+        approval = hosted._product_binding._approval
+
+        async def approve_attached_directory_action(request):
+            action_id = request["action_id"]
+            assert isinstance(action_id, str)
+            assert await approval.handle_result(action_id, outcome="allow_once")
+
+        approval.set_request_presenter(approve_attached_directory_action)
         yield app, client, selector, address, hosted, adapter, member.session.session_id
     finally:
         try:
@@ -153,7 +161,7 @@ def test_managed_goal_uses_original_session_and_tool_policy(tmp_path, blocked, m
             await _activate(client, address, hosted, adapter)
             initial_calls = adapter.chat_calls
             with monkeypatch.context() as patch:
-                patch.setattr(session.session_manager, "cwd", str(tmp_path / "other"))
+                patch.setattr(session.session_manager, "get_cwd", lambda: str(tmp_path / "other"))
                 with pytest.raises(GoalError, match="Hosted Session and Workspace"):
                     await binding.create_interactive_goal("Wrong workspace")
 

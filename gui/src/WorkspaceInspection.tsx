@@ -46,7 +46,7 @@ export function OpenWorkspacePath({ open }: {
   const label = t("inspection.openFolder");
   return <span className="workspace-open-folder">
     <button type="button" className="workspace-folder-action" disabled={opening}
-      aria-label={label} title={label} onClick={() => void activate()}>
+      aria-label={label} data-tooltip={label} onClick={() => void activate()}>
       <UiIcon name="folder" />
     </button>
     {error && <span className="workspace-open-error" role="status">{t(`inspection.${error}`)}</span>}

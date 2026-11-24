@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { UiIcon, type UiIconName } from "./UiIcon";
 
-type Item = { label: string; run: () => void | Promise<void>; disabled?: boolean; danger?: boolean };
-type Menu = { anchor: HTMLElement; x: number; y: number; items: readonly Item[] };
-const OpenMenu = createContext<(event: MouseEvent<HTMLElement>, items: readonly Item[]) => void>(() => {});
+type Item = { label: string; run: () => void | Promise<void>; disabled?: boolean; danger?: boolean; icon?: UiIconName };
+type Entry = Item | { label: string; items: readonly Item[] };
+type Menu = { anchor: HTMLElement; x: number; y: number; entries: readonly Entry[]; above?: boolean };
+const OpenMenu = createContext<(event: MouseEvent<HTMLElement>, entries: readonly Entry[], above?: boolean) => void>(() => {});
 export const useContextMenu = () => useContext(OpenMenu);
 
 function editorAt(target: HTMLElement) {
@@ -23,9 +25,9 @@ function replaceSelection(field: Editor, value: string, start: number, end: numb
   field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
 }
 
-function at(target: HTMLElement, x: number, y: number, items: readonly Item[]): Menu {
+function at(target: HTMLElement, x: number, y: number, entries: readonly Entry[], above?: boolean): Menu {
   const bounds = target.getBoundingClientRect();
-  return { anchor: target, x: x || bounds.left, y: y || bounds.bottom, items };
+  return { anchor: target, x: x || bounds.left, y: y || bounds.bottom, entries, above };
 }
 
 export function ContextMenuProvider({ children }: { children: ReactNode }) {
@@ -76,8 +78,15 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     if (!menu || !popup.current) return;
     const element = popup.current;
-    element.style.left = `${Math.max(4, Math.min(menu.x, window.innerWidth - element.offsetWidth - 4))}px`;
-    element.style.top = `${Math.max(4, Math.min(menu.y, window.innerHeight - element.offsetHeight - 4))}px`;
+    let { x, y } = menu;
+    if (menu.above) {
+      const anchor = menu.anchor.getBoundingClientRect();
+      const top = anchor.top - element.offsetHeight - 6;
+      x = anchor.left;
+      y = top >= 4 ? top : anchor.bottom + 6;
+    }
+    element.style.left = `${Math.max(4, Math.min(x, window.innerWidth - element.offsetWidth - 4))}px`;
+    element.style.top = `${Math.max(4, Math.min(y, window.innerHeight - element.offsetHeight - 4))}px`;
     // Keep the editor and its text selection active for clipboard operations.
     if (!editorAt(menu.anchor)) element.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, [menu]);
@@ -116,21 +125,30 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
     };
   }, [menu]);
 
-  return <OpenMenu.Provider value={(event, items) => {
+  function renderItem(item: Item, anchor: HTMLElement) {
+    return <button key={item.label} type="button" role="menuitem"
+      disabled={item.disabled} className={item.danger ? "context-menu-danger" : undefined}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={async () => {
+        setMenu(null);
+        anchor.focus({ preventScroll: true });
+        try { await item.run(); } catch { setFailed(true); }
+      }}>{item.icon ? <UiIcon name={item.icon} /> : null}{item.label}</button>;
+  }
+
+  return <OpenMenu.Provider value={(event, entries, above) => {
     event.preventDefault();
     setFailed(false);
-    setMenu(at(event.currentTarget, event.clientX, event.clientY, items));
+    setMenu(at(event.currentTarget, event.clientX, event.clientY, entries, above));
   }}>
     {children}
     {menu ? createPortal(<div ref={popup} className="app-context-menu" role="menu" aria-label={t("contextMenu")}>
-      {menu.items.map((item) => <button key={item.label} type="button" role="menuitem"
-        disabled={item.disabled} className={item.danger ? "context-menu-danger" : undefined}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={async () => {
-          setMenu(null);
-          menu.anchor.focus({ preventScroll: true });
-          try { await item.run(); } catch { setFailed(true); }
-        }}>{item.label}</button>)}
+      {menu.entries.map((entry) => "items" in entry
+        ? <div key={entry.label} role="group" aria-label={entry.label} className="context-menu-group">
+          <div className="section-label" aria-hidden="true">{entry.label}</div>
+          {entry.items.map((item) => renderItem(item, menu.anchor))}
+        </div>
+        : renderItem(entry, menu.anchor))}
     </div>, menu.anchor.closest("dialog[open]") ?? document.body) : null}
     {failed ? <p className="context-menu-error" role="alert">{t("clipboard.unavailable")}</p> : null}
   </OpenMenu.Provider>;

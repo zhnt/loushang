@@ -59,6 +59,35 @@ impl Identity {
 struct Record {
     kind: String,
     text: String,
+    #[serde(default, rename = "recordId", skip_serializing_if = "Option::is_none")]
+    record_id: Option<String>,
+    #[serde(default, rename = "resourceIds", skip_serializing_if = "Vec::is_empty")]
+    resource_ids: Vec<String>,
+    #[serde(
+        default,
+        rename = "submissionId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    submission_id: Option<String>,
+}
+
+impl Record {
+    fn valid(&self) -> bool {
+        self.record_id.as_ref().is_none_or(|id| {
+            !id.trim().is_empty() && id.chars().count() <= 512 && !id.chars().any(char::is_control)
+        }) && self
+            .submission_id
+            .as_ref()
+            .is_none_or(|id| self.kind == "user" && self.record_id.is_some() && identifier(id, 128))
+            && self.resource_ids.len() <= 16
+            && (self.resource_ids.is_empty() || (self.record_id.is_some() && self.kind == "user"))
+            && self.resource_ids.iter().all(|id| {
+                id.len() == 64
+                    && id
+                        .bytes()
+                        .all(|ch| ch.is_ascii_digit() || (b'a'..=b'f').contains(&ch))
+            })
+    }
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -246,6 +275,9 @@ const APP_ERROR_CODES: &[&str] = &[
     "workspace_preview_binary",
     "workspace_preview_too_large",
     "workspace_registration_failed",
+    "resource_input_committed",
+    "resource_unavailable",
+    "image_input_unsupported",
     "cleanup_incomplete",
     "service_closed",
 ];
@@ -388,9 +420,9 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
                 .map(|r| r.text.chars().count())
                 .sum::<usize>()
                 > 65_536
-            || s.records
-                .iter()
-                .any(|r| !["user", "assistant", "status", "error"].contains(&r.kind.as_str()))
+            || s.records.iter().any(|r| {
+                !r.valid() || !["user", "assistant", "status", "error"].contains(&r.kind.as_str())
+            })
             || !e.result.source.observation.valid()
             || e.result.source.draft.chars().count() > 16_384
             || (!e.result.source.draft.is_empty() && !e.result.source.observation.running())
@@ -919,7 +951,8 @@ pub fn source_value(wire: &str) -> Result<Value, ()> {
         || source.title.chars().count() > 256
         || source.records.len() > 4096
         || source.records.iter().any(|record| {
-            !["user", "assistant", "status", "error"].contains(&record.kind.as_str())
+            !record.valid()
+                || !["user", "assistant", "status", "error"].contains(&record.kind.as_str())
                 || record.text.chars().count() > 262_144
         })
     {

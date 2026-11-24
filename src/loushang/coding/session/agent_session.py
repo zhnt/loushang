@@ -142,6 +142,7 @@ from loushang.harness.runtime.registration import (
 )
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession as AgentProductSession
+from loushang.harness.session import CommandExecutionResult
 from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session._resume_continuation import (
     _ResumeContinuationSession,
@@ -367,7 +368,14 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         await super().set_active_tools(tool_names)
 
     def get_all_tool_infos(self) -> list[dict[str, object]]:
-        infos = super().get_all_tool_infos()
+        return self._with_dormant_lsp_tools(super().get_all_tool_infos())
+
+    def _get_command_tool_infos(self) -> list[dict[str, object]]:
+        return self._with_dormant_lsp_tools(super()._get_command_tool_infos())
+
+    def _with_dormant_lsp_tools(
+        self, infos: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
         slot = self._deferred_lsp_slot
         if slot is None or slot.active is not None:
             return infos
@@ -950,14 +958,23 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
     ) -> object | None:
         await self.prepare_model_call_runtime()
         if normalize_command_name(invocation_name) == LSP_SESSION_COMMAND_NAME:
-            return await execute_lsp_session_command(
-                self._lsp_access
-                or (
-                    _DORMANT_LSP_ACCESS if self._deferred_lsp_slot is not None else None
-                ),
-                args,
-            )
+            return await self.execute_lsp_command(args)
         return await super().execute_command_async(invocation_name, args)
+
+    async def execute_lsp_command(self, args: str) -> CommandExecutionResult:
+        return await execute_lsp_session_command(
+            self._lsp_access
+            or (_DORMANT_LSP_ACCESS if self._deferred_lsp_slot is not None else None),
+            args,
+        )
+
+    async def emit_product_tool_audit_event(
+        self,
+        event: Mapping[str, object],
+    ) -> None:
+        """Route a Product-owned runtime action through the session event stream."""
+
+        await self._dispatch_event(dict(event))
 
     def _prepare_resource_refresh(self) -> None:
         capability_plugins = self._coding_capability_plugin_assembly

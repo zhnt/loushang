@@ -1,4 +1,36 @@
 {
+  "sessionControls": {
+    "group": "工具",
+    "tools": "管理工具",
+    "info": "会话信息",
+    "close": "关闭",
+    "loading": "正在读取会话数据…",
+    "toolsHint": "下方列出已注册的工具，勾选表示已启用。运行工具时仍遵循会话的审批规则。",
+    "allowed": "允许",
+    "denied": "当前会话未获允许",
+    "unknownPermission": "可用性未知",
+    "noTools": "当前没有已注册的工具。",
+    "reset": "恢复默认工具",
+    "name": "名称",
+    "identity": "会话 ID",
+    "context": "上下文 Token",
+    "activeTools": "已启用工具数",
+    "compaction": "压缩状态",
+    "running": "正在进行",
+    "lastCompaction": "上次压缩（Token）",
+    "compact": "压缩上下文",
+    "submitting": "正在提交「{{operation}}」…",
+    "pending": "正在执行「{{operation}}」…",
+    "checking": "正在查询「{{operation}}」…",
+    "unknown": "「{{operation}}」的结果未知。请先查询原提交的结果。",
+    "check": "查询结果",
+    "stop": "停止压缩",
+    "failed": "会话操作失败（{{reason}}）。",
+    "interrupted": "操作已停止。",
+    "succeeded": "会话操作已完成。",
+    "readFailed": "无法读取会话数据（{{reason}}）。",
+    "refresh": "重新读取"
+  },
   "approval": {
     "processed": "审批已处理",
     "scope": "作用范围 · {{scope}}",
@@ -41,7 +73,9 @@
     "modelChanged": "会话模型已切换为 {{model}}。",
     "interruptReason": "中断请求未被接受。",
     "thinkingChanged": "已更新推理强度。",
-    "thinkingRejected": "无法更改推理强度。"
+    "thinkingRejected": "无法更改推理强度。",
+    "imageInputUnsupported": "当前模型不支持图片输入。",
+    "resourceUnavailable": "图片不可用或上传失败，草稿已保留。"
   },
   "choice": {
     "title": "选择业务方向",
@@ -129,5 +163,28 @@
   },
   "welcome": "今天想做什么？",
   "emptySession": "没有可用的会话。",
-  "opening": "正在打开 {{appName}}…"
+  "opening": "正在打开 {{appName}}…",
+  "attachments": {
+    "actions": "会话操作",
+    "open": "用系统默认文本编辑器打开 {{name}}",
+    "openFailed": "无法用系统文本编辑器打开附件。",
+    "preview": "预览 {{name}}",
+    "close": "关闭预览",
+    "remove": "移除 {{name}}",
+    "image": "图片",
+    "invalid": "最多添加四个附件。图片不超过 4 MB，UTF-8 文本或代码文件不超过 1 MB。",
+    "sessionResources": "会话资源",
+    "unavailable": "附件不可用。",
+    "empty": "本会话暂无资源。",
+    "file": "文件",
+    "addGroup": "添加（本地）",
+    "addFile": "文件或图片",
+    "addFolder": "文件夹",
+    "modeGroup": "模式",
+    "shareDirectory": "共享本机目录（只读）",
+    "shareReadOnly": "共享只读访问",
+    "cancel": "取消",
+    "stopSharing": "停止共享",
+    "sharingStopped": "已停止共享"
+  }
 }

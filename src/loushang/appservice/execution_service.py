@@ -11,6 +11,16 @@ from loushang.appserver.execution.model import (
     ExecutionInterruptResultV1,
     ExecutionSessionSnapshotV1,
     ExecutionSessionViewV1,
+    ResourceRefV1,
+)
+from loushang.appserver.execution.resources import (
+    SessionResourceQueryV1,
+    SessionResourceResultV1,
+)
+from loushang.appserver.execution.session_commands import (
+    SessionCommandCatalogV1,
+    SessionCommandInvocationV1,
+    SessionCommandResultV1,
 )
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -117,15 +127,62 @@ class ScopedExecutionClientV1(_ScopedInteractiveGoal):
         self._check(control, session)
         return session, binding
 
+    async def session_resource(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        query: SessionResourceQueryV1,
+    ) -> SessionResourceResultV1:
+        _, binding = await self._resolve(control, expected_instance_id)
+        exchange = getattr(binding.port, "session_resource", None)
+        if exchange is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return exchange(query)
+
+    async def session_command_catalog(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str, prefix: str = "",
+    ) -> SessionCommandCatalogV1:
+        session, binding = await self._resolve(control, expected_instance_id)
+        catalog = getattr(binding.port, "session_command_catalog", None)
+        if catalog is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        result = await catalog(prefix)
+        self._check(control, session)
+        return result
+
+    async def read_session_command(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        command: SessionCommandInvocationV1,
+    ) -> SessionCommandResultV1:
+        session, binding = await self._resolve(control, expected_instance_id)
+        read = getattr(binding.port, "read_session_command", None)
+        if read is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        result = await read(command)
+        self._check(control, session)
+        return result
+
+    async def submit_session_command(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        submission_id: str, command: SessionCommandInvocationV1,
+    ) -> ExecutionRecordV1:
+        _, binding = await self._resolve(control, expected_instance_id)
+        return self._registry.submit(binding, "", submission_id, command=command)
+
+    async def session_command_result(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str, execution_id: str,
+    ) -> SessionCommandResultV1 | None:
+        record = await self.get_execution(control, expected_instance_id, execution_id)
+        outcome = record.state.outcome
+        return outcome.command_result if outcome is not None else None
+
     async def submit_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
-        submission_id: str, text: str,
+        submission_id: str, text: str, resource_refs: tuple[ResourceRefV1, ...] = (),
     ) -> ExecutionRecordV1:
         _, binding = await self._resolve(control, expected_instance_id)
         # Duplicate lookup precedes every capacity check. No communication slot
         # is reserved and no await separates this authority cut from admission.
         with self._scope.resume_subject_scope(control, submission_id=submission_id):
-            return self._registry.submit(binding, text, submission_id)
+            return self._registry.submit(binding, text, submission_id, resource_refs)
 
     async def get_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,

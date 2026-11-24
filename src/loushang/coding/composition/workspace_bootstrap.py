@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,7 @@ from loushang.harness.workspace.exec import ExecService
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from loushang.coding.hosted_workspace import CodingHostedWorkspace
     from loushang.harness.approval import InteractiveApprovalResolver
     from loushang.harness.authorization.execution_profile import (
         WorkspaceExecutionSelection,
@@ -44,30 +46,36 @@ def bind_session_workspace(
     tool_policy_evaluator: PolicyEvaluator | None,
     approval_resolver: InteractiveApprovalResolver | None,
     audit_sink: ProcessAuditSink,
+    hosted_workspace: CodingHostedWorkspace | None = None,
 ) -> tuple[SandboxExecutionRuntime, CapabilityBundleProviderBinding]:
     """Use one ceiling for sandbox operations, process launch and tool binding."""
     base_exec_service = services.exec_service or ExecService()
     workspace_root_path = Path(get_cwd()).resolve()
-    workspace_execution_profile = (
-        coding_workspace_execution_profile(
-            workspace_root_path,
-            writable=writable_workspace,
-        )
-        if workspace_root_path.is_dir()
-        else EffectiveExecutionProfile(
-            readable_roots=(workspace_root_path,),
-            writable_roots=(workspace_root_path,)
-            if writable_workspace
-            else (),
-            network="allowed",
-        )
-    )
     sandbox_settings = services.settings_manager.get_sandbox_settings()
-    execution_ceiling = (
-        workspace_execution_profile
-        if sandbox_settings.requirement == "required"
-        else coding_host_execution_profile(workspace_root_path, writable=writable_workspace)
-    )
+    if hosted_workspace is not None:
+        workspace_execution_profile = EffectiveExecutionProfile(
+            readable_roots=hosted_workspace.roots,
+            writable_roots=hosted_workspace.roots if writable_workspace else (),
+            denied_roots=hosted_workspace.private_roots,
+        )
+        execution_ceiling = workspace_execution_profile
+        if hosted_workspace.roots:
+            # A shell's cwd alone cannot enforce the attached directory boundary.
+            sandbox_settings = replace(sandbox_settings, enabled=True, requirement="required")
+    else:
+        workspace_execution_profile = (
+            coding_workspace_execution_profile(workspace_root_path, writable=writable_workspace)
+            if workspace_root_path.is_dir()
+            else EffectiveExecutionProfile(
+                readable_roots=(workspace_root_path,),
+                writable_roots=(workspace_root_path,) if writable_workspace else (),
+            )
+        )
+        execution_ceiling = (
+            workspace_execution_profile if sandbox_settings.requirement == "required"
+            else coding_host_execution_profile(workspace_root_path, writable=writable_workspace)
+        )
+
     def bind_sandbox(authority: WorkspaceExecutionSelection) -> SandboxExecutionRuntime:
         return bind_coding_sandbox_runtime(
             workspace_root=get_cwd(),
@@ -93,6 +101,7 @@ def bind_session_workspace(
             workspace_execution_profile,
             ceiling,
             services.settings_manager.get_permission_profile_snapshot,
+            current_workspace_roots=(hosted_workspace.current_roots if hosted_workspace is not None else None),
         ),
         bind_runtime=bind_sandbox,
         operations_factory=CodingWorkspaceOperations,

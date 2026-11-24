@@ -15,6 +15,7 @@ from typing import cast
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.reasoning import available_thinking_levels
+from loushang.ai.types import ImagePart
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
@@ -41,6 +42,12 @@ from loushang.coding.hosted.goal_recovery import (
     unavailable_recovery,
 )
 from loushang.coding.hosted.models import load_workspace_models
+from loushang.coding.hosted.resource_tools import (
+    SESSION_FILES,
+    HostReferencePolicy,
+    hosted_resource_tools,
+)
+from loushang.coding.hosted.resources import HostedResourceAccess
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSnapshotProjectionV1,
@@ -49,6 +56,7 @@ from loushang.coding.hosted.session import (
     CodingRealHostedSessionV1,
     _resolve_hosted_saved_model,
 )
+from loushang.coding.hosted_workspace import CodingHostedWorkspace
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
@@ -64,14 +72,17 @@ from loushang.coding.resume.input_lookup import (
 from loushang.coding.resume.permission_confirmation import NativeResumePolicy
 from loushang.coding.runtime.resume_planning import ResumePlanningSlot
 from loushang.coding.session.agent_session import AgentSession
+from loushang.foundation.json import JSONValue
 from loushang.harness.approval import (
     ApprovalOutcome,
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.journal._owned_io import settled_io
+from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
 from loushang.harness.runtime._owned_tasks import _get_close_task
 from loushang.harness.session import SessionControlPort
 from loushang.harness.session.model_selection import (
@@ -151,7 +162,10 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         tools: list[ToolDefinition] | None,
         output_capture_factory: ExecCaptureFactory | None,
         product_owner_selection: CodingFencedProductApplicationSelection,
+        hosted_workspace: CodingHostedWorkspace | None = None,
+        workspace_policy: PolicyEvaluator | None = None,
         user_choice_enabled: bool = False,
+        resource_tools: bool = False,
     ) -> None:
         self._source = source
         self.identity = source.record.identity
@@ -159,6 +173,18 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
+        self._hosted_workspace = hosted_workspace
+        self._workspace = hosted_workspace.cwd if hosted_workspace is not None else source.record.scope.cwd
+        self._workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
+        self._resource_tools = resource_tools
+        self._resource_access = HostedResourceAccess(
+            self.identity.session_id, self._source.record.scope.session_dir,
+            self._resource_records, self._hosted_workspace,
+        )
+        if resource_tools:
+            access = self.create_resource_access()
+            self._tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=self._workspace_tools)]
+        self._workspace_policy = workspace_policy
         self._user_choice_enabled = user_choice_enabled
         self._output_capture_factory = output_capture_factory
         self._product_owner_selection = product_owner_selection
@@ -310,7 +336,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         plan = await plan_coding_resume_async(
             self._source.history,
             resolve_coding_composition_set("coding-standard"),
-            workspace_root=self._source.record.scope.cwd,
+            workspace_root=self._workspace,
             resource_loader=self._services.resource_loader,
             subject_digest=self._plan_subject_digest(),
             policy_digest=policy_engine.configuration_fingerprint(),
@@ -330,7 +356,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
 
     async def start_background_planning(self) -> None:
         self._source.require_current_source()
-        await settled_io(load_workspace_models, self._services, self._source.record.scope.cwd)
+        project_cwd = self._workspace if self._hosted_workspace is None else self._hosted_workspace.project_cwd
+        if project_cwd is not None:
+            await settled_io(load_workspace_models, self._services, project_cwd)
         self._source.require_current_source()
         policy = workspace_tool_runtime_settings(self._services.settings_manager)
         raw_policy_engine = policy.policy_engine
@@ -342,7 +370,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         await planning.start(
             self._source.history,
             resolve_coding_composition_set("coding-standard"),
-            workspace_root=self._source.record.scope.cwd,
+            workspace_root=self._workspace,
             resource_loader=self._services.resource_loader,
             subject_digest=self._plan_subject_digest(),
             policy_digest=policy_engine.configuration_fingerprint(),
@@ -350,8 +378,19 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             time_budget_seconds=5.0,
         )
 
+    def create_resource_access(self) -> HostedResourceAccess:
+        return self._resource_access
+
+    def _resource_records(self):
+        if self._active is not None:
+            return self._active.canonical_records()
+        self._source.require_current_source()
+        return self._source.history.records
+
     def create_execution_work(
         self, text: str, cancel_requested: Callable[[], bool],
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> ExecutionWorkV1:
         from loushang.coding.hosted._execution_work import (
             current_coding_hosted_resume_subject,
@@ -359,14 +398,14 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         )
 
         if self._active is not None:
-            return self._active.create_execution_work(text, cancel_requested)
+            return self._active.create_execution_work(text, cancel_requested, images, input_metadata)
         scope, control, subject_digest = current_coding_hosted_resume_subject()
         submission_id = current_coding_hosted_resume_submission_id()
         if submission_id is None:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return _HostedResumeExecutionWorkV1(
             self, text, cancel_requested, scope, control, subject_digest,
-            submission_id,
+            submission_id, images, input_metadata,
         )
 
     async def wait_for_title(self) -> None:
@@ -376,6 +415,12 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     def start_title_if_unnamed(self) -> None:
         if self._active is not None:
             self._active.start_title_if_unnamed()
+
+    def project_explicit_title(self) -> str | None:
+        return (self._active or self._source.history_binding).project_explicit_title()
+
+    def project_title(self) -> str:
+        return (self._active or self._source.history_binding).project_title()
 
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
         if self._close_task is not None:
@@ -458,6 +503,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         subject_control: SessionSnapshotRequestV1,
         subject_digest: str,
         submission_id: str,
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> _ActivatedHostedResumeV1:
 
         from loushang.coding.composition.capability_plugins import (
@@ -501,13 +548,15 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
 
             require_subject()
             epoch_fingerprint = self._product_owner_selection.prepare_resume_epoch(
-                workspace,
+                self._hosted_workspace.anchor if self._hosted_workspace is not None else workspace,
                 require_current_admission=require_subject,
                 settings_manager=self._services.settings_manager,
+                historical_origin=self._hosted_workspace.legacy_plugin_origin if self._hosted_workspace is not None else None,
             )
             require_subject()
             effects = prepare_first_input_effects(
                 plan,
+                no_tools=None if self._workspace_tools else "builtin" if self._resource_tools else "all",
                 history=self._source.history,
                 session_dir=self._source.record.scope.session_dir,
                 settings_manager=self._services.settings_manager,
@@ -536,6 +585,9 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 if self._close_task is not None:
                     raise CodingHostedCatalogError()
 
+            effective_policy = PolicyEvaluatorChain(
+                (self._workspace_policy, policy_engine), strategy="most_restrictive",
+            ) if self._workspace_policy is not None else policy_engine
             continuation = await prepare_coding_resume_continuation(
                 manager_type=self._source.manager_type,
                 session_file=self._source.record.path,
@@ -544,6 +596,8 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 attempt=attempt,
                 input_record_id=f"resume-record:{stable}",
                 text=text,
+                images=images,
+                input_metadata=input_metadata,
                 created_at=datetime.now(UTC),
                 require_current_admission=admit,
                 require_current_epoch_settlement=settle,
@@ -553,14 +607,18 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 tools=self._tools,
                 output_capture_factory=self._output_capture_factory,
                 approval_resolver=self._approval,
-                tool_policy_evaluator=policy_engine,
+                no_tools=None if self._workspace_tools else "builtin" if self._resource_tools else "all",
+                allowed_tool_names=[SESSION_FILES] if self._resource_tools and not self._workspace_tools else ToolSelection.ALL,
+                tool_policy_evaluator=HostReferencePolicy(effective_policy),
+                _hosted_workspace=self._hosted_workspace,
                 observe_input_identity=self._observe_input_identity,
                 product_owner_selection=self._product_owner_selection,
                 resume_writer_factory=self._source.writer_factory,
             )
             def bind() -> CodingRealHostedSessionV1:
                 real = CodingRealHostedSessionV1(
-                    continuation.session, self.identity, self._approval
+                    continuation.session, self.identity, self._approval, workspace=self._workspace,
+                    resource_access=self._resource_access,
                 )
                 if self._user_choice_enabled:
                     real.enable_user_choice()
@@ -623,6 +681,8 @@ class _HostedResumeExecutionWorkV1(_HostedResumeInputExecutionWork):
         control: SessionSnapshotRequestV1,
         subject_digest: str,
         submission_id: str,
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> None:
         async def activate() -> _ActivatedHostedResumeV1:
             return await binding.activate(
@@ -631,6 +691,8 @@ class _HostedResumeExecutionWorkV1(_HostedResumeInputExecutionWork):
                 subject_control=control,
                 subject_digest=subject_digest,
                 submission_id=submission_id,
+                images=images,
+                input_metadata=input_metadata,
             )
 
         super().__init__(

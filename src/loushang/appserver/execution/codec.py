@@ -49,7 +49,20 @@ from .model import (
     ExecutionUpdateV1,
     InteractiveGoalCommandViewV1,
     InteractiveGoalViewV1,
+    ResourceRefV1,
     _identifier,
+)
+from .resources import (
+    ClientResourceRequestV1,
+    ResourceV1,
+    SessionResourceQueryV1,
+    SessionResourceResultV1,
+)
+from .session_commands import (
+    SessionCommandCatalogV1,
+    SessionCommandChoiceV1,
+    SessionCommandInvocationV1,
+    SessionCommandResultV1,
 )
 
 EXECUTION_PROTOCOL_VERSION = "loushang.execution/v1"
@@ -57,8 +70,17 @@ EXECUTION_PROTOCOL_VERSION = "loushang.execution/v1"
 # Explicit fields freeze the wire independently of future dataclass additions.
 # No arbitrary type/name lookup or untyped Product payload is admitted.
 _FIELDS: dict[type, tuple[str, ...]] = {
+    SessionCommandChoiceV1: ("name", "description", "source", "aliases", "argument_hint", "unavailable_reason", "read_only"),
+    SessionCommandCatalogV1: ("commands", "completions", "truncated"),
+    SessionCommandInvocationV1: ("name", "args"),
+    SessionCommandResultV1: ("data",),
     ResumeInputLookupQueryV1: ("input_id", "record_digest"),
     ResumeInputLookupResultV1: ("input_id", "record_id", "status"),
+    ResourceRefV1: ("id", "sha256"),
+    ResourceV1: ("id", "kind", "source", "media_type", "size_bytes"),
+    SessionResourceQueryV1: ("action", "resource_id", "offset", "total_bytes", "media_type", "data"),
+    SessionResourceResultV1: ("resources", "data"),
+    ClientResourceRequestV1: ("id", "operation", "path", "offset"),
     AckV1: (), AppFailureV1: ("code",), ExecutionFailureV1: ("code",),
     SessionIdentityV1: ("product_id", "continuity_id", "session_id", "scope", "scope_fingerprint"),
     TranscriptRecordV1: ("kind", "text"),
@@ -81,6 +103,9 @@ _FIELDS: dict[type, tuple[str, ...]] = {
     ExecutionInterruptResultV1: ("record", "disposition"),
 }
 _KINDS: dict[str, type] = {
+    "session_command_catalog": SessionCommandCatalogV1,
+    "session_command_result": SessionCommandResultV1,
+    "session_resource": SessionResourceResultV1,
     "resume_input_lookup": ResumeInputLookupResultV1,
     **GOAL_KINDS,
     "record": ExecutionRecordV1, "snapshot": ExecutionSessionSnapshotV1,
@@ -100,12 +125,30 @@ def _encode(value: object) -> object:
         return value
     if isinstance(value, Enum):
         return value.value
+    if type(value) is SessionCommandResultV1:
+        return {"data": value.data}
     if type(value) is tuple:
         return [_encode(item) for item in value]
     fields = _FIELDS.get(type(value))
     if fields is None:
         raise InvalidAppMessageError()
     encoded = {_camel(name): _encode(getattr(value, name)) for name in fields}
+    if isinstance(value, (ResourceV1, SessionResourceQueryV1)) and value.name is not None:
+        encoded["name"] = value.name
+    if type(value) is SessionResourceQueryV1:
+        for field in ("path", "proxy_key", "request_id"):
+            item = getattr(value, field)
+            if item is not None:
+                encoded[_camel(field)] = item
+    if type(value) is SessionResourceResultV1 and value.proxy_request is not None:
+        encoded["proxyRequest"] = _encode(value.proxy_request)
+    if type(value) is TranscriptRecordV1:
+        if value.record_id is not None:
+            encoded["recordId"] = value.record_id
+        if value.submission_id is not None:
+            encoded["submissionId"] = value.submission_id
+        if value.resource_ids:
+            encoded["resourceIds"] = _encode(value.resource_ids)
     if type(value) is SessionSnapshotV1:
         if value.submission_mode is SessionSubmissionModeV1.EXECUTION:
             encoded["submissionMode"] = value.submission_mode.value
@@ -152,8 +195,22 @@ def _decode(expected: object, raw: object) -> object:
         return expected(_string(raw))
     if not isinstance(expected, type) or expected not in _FIELDS:
         raise InvalidAppMessageError()
+    if expected is SessionCommandResultV1:
+        value = _object(raw, {"data"})
+        result = value["data"]
+        if type(result) is not dict:
+            raise InvalidAppMessageError()
+        return SessionCommandResultV1.from_data(result)
     fields = _FIELDS[expected]
     wire_fields = {_camel(name) for name in fields}
+    if expected in (ResourceV1, SessionResourceQueryV1) and type(raw) is dict and "name" in raw:
+        wire_fields.add("name")
+    if expected is SessionResourceQueryV1 and type(raw) is dict:
+        wire_fields.update({"path", "proxyKey", "requestId"} & raw.keys())
+    if expected is SessionResourceResultV1 and type(raw) is dict and "proxyRequest" in raw:
+        wire_fields.add("proxyRequest")
+    if expected is TranscriptRecordV1 and type(raw) is dict:
+        wire_fields.update({"recordId", "resourceIds", "submissionId"} & raw.keys())
     if expected is SessionSnapshotV1 and type(raw) is dict:
         wire_fields.update({"submissionMode", "userChoice"} & raw.keys())
     if expected is ExecutionSessionSnapshotV1 and type(raw) is dict:
@@ -165,6 +222,21 @@ def _decode(expected: object, raw: object) -> object:
     values = {
         name: _decode(annotations[name], value[_camel(name)]) for name in fields
     }
+    if expected in (ResourceV1, SessionResourceQueryV1) and "name" in value:
+        values["name"] = _string(value["name"])
+    if expected is SessionResourceQueryV1:
+        for field in ("path", "proxy_key", "request_id"):
+            if _camel(field) in value:
+                values[field] = _string(value[_camel(field)])
+    if expected is SessionResourceResultV1 and "proxyRequest" in value:
+        values["proxy_request"] = _decode(ClientResourceRequestV1, value["proxyRequest"])
+    if expected is TranscriptRecordV1:
+        if "recordId" in value:
+            values["record_id"] = _string(value["recordId"])
+        if "submissionId" in value:
+            values["submission_id"] = _string(value["submissionId"])
+        if "resourceIds" in value:
+            values["resource_ids"] = _decode(tuple[str, ...], value["resourceIds"])
     if expected is SessionSnapshotV1:
         mode = (
             _decode(SessionSubmissionModeV1, value["submissionMode"])
@@ -210,6 +282,14 @@ def encode_call(call: ExecutionCallV1) -> bytes:
     encode_goal_fields(call, body, _encode)
     if call.text is not None:
         body["text"] = call.text
+    if call.resource_refs:
+        body["resourceRefs"] = _encode(call.resource_refs)
+    if call.resource_query is not None:
+        body["resourceQuery"] = _encode(call.resource_query)
+    if call.command is not None:
+        body["command"] = _encode(call.command)
+    if call.command_prefix is not None:
+        body["commandPrefix"] = call.command_prefix
     if call.resume_query is not None:
         body["resumeQuery"] = _encode(call.resume_query)
     return _dumps({
@@ -227,17 +307,27 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
         fields = {"control", "expectedInstanceId"}
         if operation in {
             ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND, ExecutionOperationV1.GOAL_START,
+            ExecutionOperationV1.COMMAND_SUBMIT,
         }:
             fields.add("submissionId")
         if operation in {
             ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GOAL_PROGRESS,
+            ExecutionOperationV1.COMMAND_RESULT,
         }:
             fields.add("executionId")
         if operation is ExecutionOperationV1.SUBMIT:
             fields.add("text")
         if operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP:
             fields.add("resumeQuery")
+        if operation is ExecutionOperationV1.RESOURCE:
+            fields.add("resourceQuery")
+        if operation in {ExecutionOperationV1.COMMAND_SUBMIT, ExecutionOperationV1.COMMAND_READ}:
+            fields.add("command")
+        if operation is ExecutionOperationV1.COMMAND_CATALOG:
+            fields.add("commandPrefix")
         raw = root["payload"]
+        if operation is ExecutionOperationV1.SUBMIT and type(raw) is dict and "resourceRefs" in raw:
+            fields.add("resourceRefs")
         include_batches = add_goal_fields(operation, raw, fields)
         body = _object(raw, fields)
         if include_batches and body["includeBatches"] is not True:
@@ -252,6 +342,13 @@ def decode_call(payload: bytes) -> ExecutionCallV1:
             cast(ResumeInputLookupQueryV1, _decode(ResumeInputLookupQueryV1, body["resumeQuery"]))
             if "resumeQuery" in fields else None,
             include_goal_batches=include_batches,
+            resource_refs=cast(tuple[ResourceRefV1, ...], _decode(tuple[ResourceRefV1, ...], body["resourceRefs"]))
+            if "resourceRefs" in fields else (),
+            resource_query=cast(SessionResourceQueryV1, _decode(SessionResourceQueryV1, body["resourceQuery"]))
+            if "resourceQuery" in fields else None,
+            command=cast(SessionCommandInvocationV1, _decode(SessionCommandInvocationV1, body["command"]))
+            if "command" in fields else None,
+            command_prefix=_string(body["commandPrefix"]) if "commandPrefix" in fields else None,
             **decode_goal_fields(operation, body, _decode),
         )
     except (TypeError, ValueError, KeyError, RecursionError):

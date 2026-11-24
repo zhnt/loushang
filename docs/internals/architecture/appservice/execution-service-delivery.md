@@ -1070,3 +1070,25 @@ only after the user clicks. The desktop verifies a local registered workspace,
 the Session scope fingerprint, and the canonical target before handing the
 path to the operating system. A tunneled connection has no local file-open
 action. The GUI displays diff and Markdown content as text.
+
+## GUI resource and Hosted command integration review
+
+Codex, acting as implementation reviewer for the AppHost, AppService,
+AppServer, Coding and Hosted TUI boundary, reviewed GUI integration candidate
+`b55ae4c7c` against `main` at `862888481`. Acceptance covers the existing
+logical Workspace, Session resource and Hosted command delivery, including the
+following ownership boundaries.
+
+- AppHost resolves registered Workspace paths and owns membership. Coding
+  maps that authority to the Session's existing catalog and authorizes
+  resource access. AppServer carries typed resource and Workspace values.
+- AppService retains the original submission ledger and execution guard.
+  Coding supplies a Session command adapter against that guard. Hosted TUI
+  uses the negotiated client contract for completion and command submission.
+- The existing architecture checks account for exact contract imports and
+  source inventories. Size budgets account for measured additions to each
+  affected group, with per-owner limits for transport and execution files.
+
+The review used the resource and command protocol round trips, managed
+Workspace continuity and approval regressions, Hosted command and recovery
+tests, and the import and size checks in the AppHost architecture suite.

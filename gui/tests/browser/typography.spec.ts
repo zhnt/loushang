@@ -109,11 +109,25 @@ for (const sample of [
       await expect(pin).toBeFocused();
       await page.mouse.move(sample.width - 10, 10);
       await expect(pin).toHaveCSS("opacity", "1");
+      await selectedTitle.hover();
+      await expect(page.locator(".app-tooltip")).toHaveCount(0);
+      const themedSurface = page.locator(".conversation-pane");
+      const systemBackground = await themedSurface.evaluate((pane) => getComputedStyle(pane).backgroundColor);
+      await page.locator("html").evaluate((root, appearance) => root.setAttribute("data-appearance", appearance),
+        sample.colorScheme === "dark" ? "light" : "dark");
+      const appBackground = await themedSurface.evaluate((pane) => getComputedStyle(pane).backgroundColor);
+      expect(appBackground).not.toBe(systemBackground);
       for (const label of await labels.filter({ hasText: /这是用于验证|A long English/ }).all()) {
         await expect(label).toHaveCSS("text-overflow", "ellipsis");
         expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-        await expect(label.locator("..")).toHaveAttribute("title", (await label.textContent())!);
+        await expect(label.locator("..")).not.toHaveAttribute("title");
+        await label.hover();
+        const tooltip = page.locator(".app-tooltip");
+        await expect(tooltip).toBeVisible();
+        await expect(tooltip).toHaveText((await label.textContent())!);
+        await expect(tooltip).toHaveCSS("background-color", appBackground);
       }
+      await page.locator("html").evaluate((root) => root.removeAttribute("data-appearance"));
       const input = page.locator("#message-input");
       await input.fill("Mixed 中文 125");
       await expect(input).toHaveValue("Mixed 中文 125");
@@ -136,10 +150,72 @@ for (const sample of [
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(680);
       expect(fontRequests).toEqual([]);
       await page.locator(".brand-actions .frame-icon").click();
-      const goal = page.locator(".composer-goal");
-      await goal.click();
-      await expect(goal).toHaveAttribute("aria-expanded", "true");
+      const actions = page.getByRole("button", { name: sample.locale === "zh-CN" ? "会话操作" : "Session actions" });
+      await page.locator("html").evaluate((root, appearance) => root.setAttribute("data-appearance", appearance),
+        sample.colorScheme === "dark" ? "light" : "dark");
+      await actions.hover();
+      const hint = page.locator(".app-tooltip");
+      await expect(actions).not.toHaveAttribute("title");
+      await expect(hint).toHaveText(sample.locale === "zh-CN" ? "会话操作" : "Session actions");
+      await expect(hint).toHaveCSS("background-color", await themedSurface.evaluate((element) => getComputedStyle(element).backgroundColor));
+      const hintBox = (await hint.boundingBox())!;
+      expect(hintBox.y).toBeGreaterThanOrEqual(0);
+      expect(hintBox.y + hintBox.height).toBeLessThanOrEqual(740);
+      await page.keyboard.press("Escape");
+      await expect(hint).toHaveCount(0);
+      const send = page.locator(".composer-submit");
+      await expect(send).toBeEnabled();
+      await send.hover();
+      await expect(hint).toHaveText((await send.getAttribute("data-tooltip"))!);
+      await page.mouse.move(10, 200);
+      await input.focus();
+      await page.keyboard.press("Tab");
+      await expect(actions).toBeFocused();
+      await expect(hint).toHaveText((await actions.getAttribute("data-tooltip"))!);
+      await page.locator("html").evaluate((root) => root.removeAttribute("data-appearance"));
+      await actions.click();
+      const add = page.getByRole("group", { name: sample.locale === "zh-CN" ? "添加（本地）" : "Add (local)", exact: true });
+      await expect(add.getByRole("menuitem")).toHaveCount(2);
+      const mode = page.getByRole("group", { name: sample.locale === "zh-CN" ? "模式" : "Mode", exact: true });
+      const goal = mode.getByRole("menuitem", { name: sample.locale === "zh-CN" ? "目标" : "Goal", exact: true });
+      const popup = mode.locator("..");
+      const popupBox = (await popup.boundingBox())!;
+      const actionsBox = (await actions.boundingBox())!;
+      expect(popupBox.y + popupBox.height).toBeLessThan(actionsBox.y);
+      await popup.screenshot({ path: info.outputPath("session-actions.png") });
+      await expect(add.getByRole("menuitem").first()).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("ArrowDown");
+      await expect(goal).toBeFocused();
+      await page.keyboard.press("Enter");
       await expect(page.locator(".interactive-goal")).toBeInViewport();
+
+      await page.locator(".composer input[type=file]").setInputFiles([
+        { name: "tauri.conf.json", mimeType: "text/plain", buffer: Buffer.from("{}") },
+        { name: "preview.png", mimeType: "image/png", buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jCx0AAAAASUVORK5CYII=", "base64",
+        ) },
+      ]);
+      await actions.click();
+      await page.getByRole("menuitem", { name: sample.locale === "zh-CN" ? "文件夹" : "Folder", exact: true }).click();
+      const tiles = page.locator(".composer-attachment");
+      await expect(tiles).toHaveCount(3);
+      const boxes = await tiles.evaluateAll((items) => items.map((item) => {
+        const { width, height, y } = item.getBoundingClientRect();
+        return { width, height, y };
+      }));
+      expect(boxes).toEqual(Array(3).fill({ width: 64, height: 64, y: boxes[0].y }));
+      const remove = tiles.first().locator(".attachment-remove");
+      await expect(remove).toHaveCSS("opacity", "0");
+      await tiles.first().hover();
+      await expect(remove).toHaveCSS("opacity", "1");
+      const tileBox = (await tiles.first().boundingBox())!;
+      const removeBox = (await remove.boundingBox())!;
+      expect(removeBox.x).toBeGreaterThan(tileBox.x + tileBox.width / 2);
+      expect(removeBox.y).toBeLessThan(tileBox.y + tileBox.height / 2);
+      await page.locator(".composer .attachment-list").screenshot({ path: info.outputPath("draft-attachments.png") });
+      await remove.click();
+      await expect(tiles).toHaveCount(2);
     } finally {
       await context.close();
     }

@@ -74,6 +74,23 @@ it("navigates real Session selections with drafts intact and connects menu actio
 });
 
 describe("native frame commands", () => {
+  it("keeps the title bar draggable without a system hover tooltip", () => {
+    render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
+    const dragRegion = screen.getByRole("banner").querySelector("[data-tauri-drag-region]");
+    expect(dragRegion).toBeVisible();
+    expect(dragRegion).not.toHaveAttribute("title");
+  });
+
+  it("creates a window only on the New window menu action", async () => {
+    native.invoke.mockClear();
+    const user = userEvent.setup();
+    render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "File" }));
+    expect(native.invoke).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("menuitem", { name: "New window" }));
+    expect(native.invoke).toHaveBeenCalledExactlyOnceWith("new_window");
+  });
+
   it("routes window buttons to the native window, not fixture execution", async () => {
     const user = userEvent.setup();
     render(<DesktopFrame sidebarOpen onToggleSidebar={() => {}} />);

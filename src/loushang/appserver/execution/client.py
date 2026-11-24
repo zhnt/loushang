@@ -18,6 +18,12 @@ from .model import (
     ExecutionRecordV1,
     ExecutionSessionSnapshotV1,
     ExecutionUpdateV1,
+    ResourceRefV1,
+)
+from .session_commands import (
+    SessionCommandCatalogV1,
+    SessionCommandInvocationV1,
+    SessionCommandResultV1,
 )
 
 
@@ -37,7 +43,7 @@ class ExecutionObservationPortV1(Protocol):
 class ExecutionClientV1(ExecutionObservationPortV1, Protocol):
     async def submit_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
-        submission_id: str, text: str,
+        submission_id: str, text: str, resource_refs: tuple[ResourceRefV1, ...] = (),
     ) -> ExecutionRecordV1: ...
 
     async def get_execution(
@@ -56,10 +62,31 @@ class ExecutionClientV1(ExecutionObservationPortV1, Protocol):
     ) -> ExecutionInterruptResultV1: ...
 
 
+@runtime_checkable
+class SessionCommandClientV1(ExecutionClientV1, Protocol):
+    async def session_command_catalog(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str, prefix: str = "",
+    ) -> SessionCommandCatalogV1: ...
+
+    async def read_session_command(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        command: SessionCommandInvocationV1,
+    ) -> SessionCommandResultV1: ...
+
+    async def submit_session_command(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        submission_id: str, command: SessionCommandInvocationV1,
+    ) -> ExecutionRecordV1: ...
+
+    async def session_command_result(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str, execution_id: str,
+    ) -> SessionCommandResultV1 | None: ...
+
+
 ExecutionPortV1 = ExecutionClientV1
 
 __all__ = [
     "ExecutionGoalControlPortV1", "InteractiveGoalClientPortV1", "InteractiveGoalCommandClientPortV1",
     "InteractiveGoalRecoveryClientPortV1", "InteractiveGoalReviewClientPortV1", "ExecutionObservationPortV1",
-    "ExecutionClientV1", "ExecutionPortV1",
+    "ExecutionClientV1", "ExecutionPortV1", "SessionCommandClientV1",
 ]

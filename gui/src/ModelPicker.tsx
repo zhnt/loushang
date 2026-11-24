@@ -85,7 +85,7 @@ export function ModelPicker({ models, emptyLabel, disabled, busy, onSelect }: {
     <button type="button" ref={trigger} className="model-trigger" aria-label={t("models.label")}
       aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
       aria-describedby="model-current-label" aria-disabled={busy || undefined} disabled={disabled}
-      title={currentLabel}
+      data-tooltip={currentLabel}
       onClick={() => { if (!busy) setStage(open ? null : "model"); }}
       onKeyDown={(event) => {
         if (!busy && !open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {

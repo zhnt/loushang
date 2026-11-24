@@ -1106,8 +1106,15 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
 
     async def _preview_workspace(self, path: str, request: WorkspacePreviewRequestV1) -> WorkspaceResultV1:
         root, catalog = await self._registered_workspace_for_read(path)
+        if root != Path(path):
+            raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
+        return await self._read_workspace_preview(root, catalog, request)
+
+    async def _read_workspace_preview(
+        self, root: Path, catalog: WorkspaceCatalogT, request: WorkspacePreviewRequestV1,
+    ) -> WorkspaceResultV1:
         scope = catalog.scopes[0]
-        if root != Path(path) or scope.fingerprint != request.scope_fingerprint:
+        if scope.fingerprint != request.scope_fingerprint:
             raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
         try:
             opened = await settled_io(self.registry.preview, root, request.reference, request.base)
@@ -1144,11 +1151,6 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
         elif request.action == "create":
             path = await self._create_workspace(request.path)
             return ((path, self._add(path)),)
-        elif request.action == "allocate-temporary":
-            path = await asyncio.to_thread(self.registry.allocate_temporary)
-            self._add(path)
-        elif request.action == "open":
-            selected = await self.select(request.path)
         elif request.action == "unregister":
             path = Path(request.path)
             catalog = self._catalogs.get(path)
@@ -1157,27 +1159,13 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
             await asyncio.to_thread(self.registry.unregister, request.path)
             self._catalogs.pop(path, None)
         entries = self._catalogs.items()
-        if request.action == "open":
-            entries = ((selected.cwd, self._catalogs[selected.cwd]),)
-        elif request.action == "allocate-temporary":
-            entries = ((path, self._catalogs[path]),)
-        elif request.action == "projects":
+        if request.action == "projects":
             entries = (
                 (root, catalog)
                 for root, catalog in entries
                 if not self.registry.is_temporary(root)
             )
         return entries
-
-    async def load(self) -> None:
-        if not self._loaded:
-            for path in await asyncio.to_thread(self._load_paths):
-                self._add(path)
-            self._loaded = True
-
-    def _load_paths(self) -> tuple[Path, ...]:
-        self.registry.open()
-        return self.registry.list()
 
     @property
     def scopes(self):

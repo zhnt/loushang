@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -99,6 +100,8 @@ class CodingHostedSessionBindingV1(Protocol):
 
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1: ...
 
+    def project_title(self) -> str: ...
+
     def project_event(
         self,
         event: RuntimeEvent[object],
@@ -134,6 +137,18 @@ class CodingHostedSessionV1(
     ) -> None:
         super().__init__(binding, execution_submission=execution_submission)
 
+    def display_title(self) -> str | None:
+        from loushang.coding.hosted.session import _uses_automatic_title
+
+        binding = cast(CodingHostedSessionBindingV1, self._binding)
+        explicit_title = getattr(binding, "project_explicit_title", None)
+        if callable(explicit_title) and (title := explicit_title()):
+            return title
+        if not _uses_automatic_title(self.identity):
+            return None
+        title = binding.project_title()
+        return None if title == "New Session" else title
+
     async def _select_model(self, model_id: str, thinking_level: str | None) -> SessionModelsV1:
         result = await super()._select_model(model_id, thinking_level)
         settings = getattr(self._binding.control, "settings_manager", None)
@@ -143,8 +158,10 @@ class CodingHostedSessionV1(
             level = cast(ThinkingLevel | None, result.thinking.current_level if result.thinking else None)
             try:
                 await settled_io(settings.update_settings, scope="global", default_model=selection, thinking_level=level)
-            except Exception as error:
-                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from error
+            except Exception:
+                # The Session's model and transcript already changed. A
+                # preference write failure cannot undo that confirmed state.
+                logging.getLogger(__name__).warning("Could not save the default model preference")
         return result
 
     async def lookup_resume_input(
@@ -156,7 +173,7 @@ class CodingHostedSessionV1(
 
         if self._close_task is not None:
             raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
-        return await _lookup_coding_resume_input(self._binding, query)
+        return await _lookup_coding_resume_input(cast(CodingHostedSessionBindingV1, self._binding), query)
 
 
 def coding_hosted_identity_from_envelope(

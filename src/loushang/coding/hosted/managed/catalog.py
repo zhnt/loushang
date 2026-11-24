@@ -56,12 +56,13 @@ class CodingManagedSessionCatalogV1(
         return _MAX_STORE_OBSERVATIONS
 
     def __init__(self, *, session_root: Path, workspace: Path, initialize_session_root: bool = False,
-                 store_state_root: Path | None = None) -> None:
+                 store_state_root: Path | None = None, workspace_id: str | None = None,
+                 historical_origin: bool = False) -> None:
         self._initialize_managed_store(
             store_state_root, initialize_session_root=initialize_session_root
         )
         super().__init__(tuple(
-            CodingHostedScopeV1(scope, session_root, workspace)
+            CodingHostedScopeV1(scope, session_root, workspace, workspace_id=workspace_id, historical_origin=historical_origin)
             for scope in (SessionScopeV1.CWD, SessionScopeV1.USER_HOME)
         ), owned_transcripts=True, store_state_root=store_state_root, store_root_observed=self._root_observed)
 
@@ -102,7 +103,8 @@ class CodingManagedSessionCatalogV1(
             identity, compatibility, operation = _hosted_header_identity(
                 header,
                 scope=original_scope,
-                fingerprint=_scope_fingerprint(original_scope, scope.session_dir, cwd),
+                fingerprint=(replace(scope, scope=original_scope).fingerprint if scope.workspace_id is not None
+                             else _scope_fingerprint(original_scope, scope.session_dir, cwd)),
             )
         else:
             session_id = header.conversation_id

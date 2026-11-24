@@ -4,7 +4,7 @@ use loushang_app_client::{
     definitive_create_rejection, AppClient, ConnectionOptions, ControlCommand, ControlResult,
     CreateSessionResult, InteractionOutcome, InteractiveGoalAction, InteractiveGoalCommand,
     InteractiveGoalReviewDecision, InteractiveGoalReviewSubmission, LiveEventRound,
-    LiveInitialSnapshot, ModelControlResult,
+    LiveInitialSnapshot, ModelControlResult, SessionOperationInput,
 };
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -62,6 +62,8 @@ pub(crate) struct LiveSubmitInput {
     session_id: String,
     submission_id: String,
     text: String,
+    #[serde(default)]
+    resource_refs: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -181,8 +183,11 @@ enum Publication {
 }
 
 #[tauri::command]
-pub(crate) fn live_connection_available(app: tauri::AppHandle) -> bool {
-    matches!(&app.state::<LiveLaunchState>().launch, Ok(Some(_)))
+pub(crate) fn live_connection_available(window: tauri::WebviewWindow) -> bool {
+    // The explicit Mux launch owns a single controller. Other windows use the
+    // normal workspace gateway instead of attaching the same Mux again.
+    window.label() == crate::windows::MAIN
+        && matches!(&window.state::<LiveLaunchState>().launch, Ok(Some(_)))
 }
 
 fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<LiveLaunch>, ()> {
@@ -329,6 +334,7 @@ pub(crate) async fn live_submit_text(
                 session_id: input.session_id,
                 submission_id: input.submission_id,
                 text: input.text,
+                resource_refs: input.resource_refs,
                 reply,
             })
             .map_err(|_| "live control connection changed".to_owned())?;
@@ -352,6 +358,83 @@ pub(crate) async fn live_submit_text(
     })
     .await
     .map_err(|_| "live submit worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_session_operation(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: SessionOperationInput,
+) -> Result<serde_json::Value, String> {
+    let control = current_control(&state)?;
+    if control.service_instance_id != input.service_instance_id
+        || input.connection_epoch != control.connection_epoch.to_string()
+    {
+        return Err("instance_changed".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::SessionOperation {
+                session_id: input.session_id,
+                operation: input.operation,
+                reply,
+            })
+            .map_err(|_| "Session connection changed".to_owned())?;
+        receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "Session operation timed out".to_owned())?
+            .map_err(|_| "Session operation failed".to_owned())
+    })
+    .await
+    .map_err(|_| "Session operation worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_session_resource(
+    state: tauri::State<'_, LiveLaunchState>,
+    session_id: String,
+    query: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let control = current_control(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::Resource {
+                session_id,
+                query,
+                reply,
+            })
+            .map_err(|_| ())?;
+        receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| ())?
+    })
+    .await
+    .map_err(|_| "resource worker failed".to_owned())?
+    .map_err(|_| "resource request failed".to_owned())
+}
+
+#[tauri::command]
+pub(crate) async fn live_find_submission(
+    state: tauri::State<'_, LiveLaunchState>,
+    session_id: String,
+    submission_id: String,
+    service_instance_id: String,
+) -> Result<LiveControlReceipt, String> {
+    let control = current_control(&state)?;
+    if control.service_instance_id != service_instance_id {
+        return control_receipt(Ok(ControlResult::Missing), true);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        control_receipt(
+            find_live_submission(&control, &session_id, &submission_id),
+            true,
+        )
+    })
+    .await
+    .map_err(|_| "submission lookup worker failed".to_owned())?
 }
 
 #[tauri::command]

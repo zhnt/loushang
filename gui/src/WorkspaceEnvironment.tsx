@@ -25,9 +25,9 @@ function GitEnvironment({ report, git, workspacePath }: {
     </header>
     <dl className="inspection-fields">
       <div><dt>{t("inspection.branch")}</dt><dd>{git.branch || t("inspection.detached")}</dd></div>
-      {git.commit && <div><dt>{t("inspection.commit")}</dt><dd><code title={git.commit}>{git.commit.slice(0, 12)}</code></dd></div>}
+      {git.commit && <div><dt>{t("inspection.commit")}</dt><dd><code data-tooltip={git.commit}>{git.commit.slice(0, 12)}</code></dd></div>}
       {git.root !== workspacePath &&
-        <div><dt>{t("inspection.repositoryRoot")}</dt><dd><code title={git.root}>{git.root}</code></dd></div>}
+        <div><dt>{t("inspection.repositoryRoot")}</dt><dd><code data-tooltip={git.root}>{git.root}</code></dd></div>}
       {git.worktree && <div><dt>{t("inspection.worktree")}</dt><dd>{git.worktree}</dd></div>}
     </dl>
   </section>;
@@ -42,7 +42,7 @@ function ToolchainEnvironment({ tool }: { readonly tool: Inspection["toolchains"
         <div><dt>{t("inspection.detected")}</dt><dd>{t("environment.unavailable")}</dd></div>}
       {tool.declared && <div><dt>{t("inspection.declared")}</dt><dd>{tool.declared}</dd></div>}
       {tool.detected && <div><dt>{t("inspection.detected")}</dt><dd>{tool.detected}</dd></div>}
-      {tool.environment && <div><dt>{t("inspection.virtualEnv")}</dt><dd><code title={tool.environment}>{tool.environment}</code></dd></div>}
+      {tool.environment && <div><dt>{t("inspection.virtualEnv")}</dt><dd><code data-tooltip={tool.environment}>{tool.environment}</code></dd></div>}
     </dl>
   </section>;
 }

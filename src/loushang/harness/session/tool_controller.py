@@ -294,13 +294,19 @@ class SessionToolController:
         return self._runtime.get_all_tools()
 
     def get_all_tool_infos(self) -> list[dict[str, object]]:
+        return self._tool_infos(self.get_all_tools())
+
+    def get_available_tool_infos(self) -> list[dict[str, object]]:
+        return self._tool_infos(self._runtime.get_available_tools())
+
+    def _tool_infos(self, definitions: list[ToolDefinition]) -> list[dict[str, object]]:
         return [
             project_tool_definition(
                 definition,
                 self.tool_source_info(definition.name),
                 builtin_names=_BUILTIN_TOOL_NAMES,
             )
-            for definition in self.get_all_tools()
+            for definition in definitions
         ]
 
     def get_tool_definition(self, name: str) -> ToolDefinition | None:

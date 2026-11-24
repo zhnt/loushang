@@ -22,6 +22,7 @@ class HarnessWindowState:
     last_cursor: int = 0
     unread: bool = False
     draft: str = ""
+    model_label: str | None = field(default=None, kw_only=True)
     draft_revision: int = field(default=0, kw_only=True)
     request_id: int = field(default=0, kw_only=True)
     request_presentation: ConversationRequestPresentation | None = field(default=None, kw_only=True)

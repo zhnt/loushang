@@ -289,6 +289,7 @@ class _ResumeContinuationTranscript(
             [ConversationHeader, BindingInputT, bool], None
         ],
         stale_error: type[ValueError],
+        workspace_cwd: str | None = None,
     ) -> Self:
         """Acquire the original Writer only after matching its read-only evidence."""
         cls._require_resume_writer_capabilities(required_writer_capabilities)
@@ -307,7 +308,7 @@ class _ResumeContinuationTranscript(
         require_plan_source(history)
         if (
             context.header != history.header_preview.header
-            or context.cwd != plan.workspace_root
+            or (context.cwd if workspace_cwd is None else workspace_cwd) != plan.workspace_root
             or rebuild_plan(history) != plan
         ):
             raise stale_error(f"{label} Plan differs from current history")

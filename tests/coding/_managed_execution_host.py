@@ -2,18 +2,26 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import faulthandler
 import json
 import os
 import runpy
 import sys
+from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 from time import monotonic
 
 from _hosted_product_child import scripted_stream
 
 from loushang.agent import synthetic_model_transport
+from loushang.ai.context import normalize_context
+from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
+from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
+from loushang.ai.provider import ProviderRequest
+from loushang.ai.types import ImagePart, TextPart, ToolCall
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.appservice.execution_registry import ExecutionRegistryV1
 from loushang.coding.hosted.managed.local import CodingManagedLocalCommandV1
@@ -35,6 +43,49 @@ async def gate(name):
 
 @synthetic_model_transport
 async def held_stream(model, context, options=None):
+    latest = context.messages[-1]
+    text = latest.content if isinstance(latest.content, str) else "".join(
+        part.text for part in latest.content if isinstance(part, TextPart)
+    )
+    if latest.role == "user" and text.startswith(("read-session-file ", "host-resource-")):
+        command, resource_id = text.split()
+        if command == "read-session-file":
+            name = "session_files"
+            args = {"action": "read", "id": resource_id}
+        elif command == "host-resource-read":
+            name = "resource_read"
+            args = {"resourceId": resource_id, "path": "nested.txt"}
+        else:
+            name = "resource_write"
+            args = {"resourceId": resource_id, "path": "written.txt", "content": "allowed edit"}
+        assert any(tool.name == name for tool in (context.tools or ()))
+        original = await scripted_stream(model, context, options)
+        message = replace(await original.result(), stop_reason="toolUse", content=[
+            ToolCall(type="toolCall", id="read-file", name=name,
+                     arguments=args),
+        ])
+        stream = AssistantMessageEventStream()
+        stream.push({"type": "start", "partial": message})
+        stream.push({"type": "done", "reason": "toolUse", "message": message})
+        return stream
+    if latest.role == "toolResult" and latest.tool_name in {"session_files", "resource_read", "resource_write"}:
+        audit("model_received_file", text=text, tool=latest.tool_name)
+        return await scripted_stream(model, context, options)
+    if (root / "image-model").exists():
+        latest = context.messages[-1]
+        parts = latest.content if isinstance(latest.content, list) else []
+        images = [sha256(base64.b64decode(part.data)).hexdigest()
+                  for part in parts if isinstance(part, ImagePart)]
+        request = AnthropicMessagesAdapter().prepare_request(ProviderRequest(
+            model, normalize_context(context, model=model), options, "http://127.0.0.1",
+            invocation_id="image-test-request",
+        ))
+        wire = request.payload_for_transport()
+        encoded_images = [sha256(base64.b64decode(part["source"]["data"])).hexdigest()
+                          for part in wire["messages"][-1]["content"] if part["type"] == "image"]
+        assert encoded_images == images
+        audit("model_images", images=images, provider_payload_images=encoded_images)
+        return await scripted_stream(model, context, options)
     audit("model_entered")
     await gate("advance-after-a")
     audit("model_progressed")
@@ -50,15 +101,16 @@ original_init = CodingManagedLocalCommandV1.__init__
 def with_provider(self, launch, **kwargs):
     original_init(self, launch, **{**kwargs, "model": Model(
         id="faux-model", name="Faux", provider="faux", endpoint="anthropic-messages",
-        capabilities=Capabilities(input=("text",), context_window=128000, max_tokens=4096),
+        api="anthropic-messages" if (root / "image-model").exists() else None,
+        capabilities=Capabilities(input=("text", "image") if (root / "image-model").exists() else ("text",), context_window=128000, max_tokens=4096),
     ), "stream_fn": held_stream, "tools": []})
 
 
 original_submit = ExecutionRegistryV1.submit
 
 
-def observed_submit(self, binding, text, submission_id):
-    record = original_submit(self, binding, text, submission_id)
+def observed_submit(self, binding, text, submission_id, resource_refs=()):
+    record = original_submit(self, binding, text, submission_id, resource_refs)
     audit("accepted", submission_id=submission_id, execution_id=record.state.execution_id,
           session_id=record.identity.session_id, service_instance_id=self.service_instance_id)
     return record

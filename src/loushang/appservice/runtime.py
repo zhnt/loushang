@@ -50,6 +50,8 @@ from loushang.appserver.protocol import (
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
+from loushang.appserver.protocol.model import MAX_TITLE_CHARS
+from loushang.foundation._owned_tasks import _join_failure_first
 from loushang.foundation._owned_tasks import (
     _observe_task_result as _observe_managed_close,
 )
@@ -89,6 +91,7 @@ from .ports import (
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
     HostedSessionResolverV1,
+    HostedWorkspaceHistoryDeletionPort,
     HostedWorkspaceModelsPort,
     HostedWorkspacePort,
 )
@@ -270,6 +273,15 @@ class _SessionOwner:
 
     def remove_attachment(self, attachment: _Attachment) -> None:
         self._attachments.pop(attachment.attachment_id, None)
+
+    def display_title(self, fallback: str) -> str:
+        # The original Mux member label remains the fallback for continuity.
+        try:
+            project_title = getattr(self._port, "display_title", None)
+            title = project_title() if callable(project_title) else None
+        except Exception:
+            return fallback
+        return title if type(title) is str and len(title) <= MAX_TITLE_CHARS and title.strip() else fallback
 
     async def snapshot(self) -> SessionSnapshotV1:
         if not self._accepting:
@@ -475,7 +487,7 @@ class _MuxOwner:
                 MuxSpaceMemberV1(
                     member_id=member.member_id,
                     session=member.session.identity,
-                    title=member.title,
+                    title=member.session.display_title(member.title),
                     position=index,
                 )
                 for index, member in enumerate(self.members, 1)
@@ -605,6 +617,8 @@ class AppServiceV1:
             owner = self._workspaces
             if not isinstance(owner, HostedWorkspaceModelsPort):
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            if request.workspace_id is not None:
+                return await owner.workspace_models(None, request.model_id, workspace_id=request.workspace_id)
             if request.model_id is None:
                 return await owner.workspace_models(request.path)
             return await owner.workspace_models(request.path, request.model_id)
@@ -617,6 +631,19 @@ class AppServiceV1:
         self._require_open()
         if type(request) is not WorkspaceRequestV1 or self._workspaces is None:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        if request.action == "delete-workspace-with-history":
+            await _join_failure_first(
+                _start_continuity_io(lambda: self._delete_workspace_with_history(request))
+            )
+            return WorkspaceResultV1(())
+        if request.action == "delete-workspace":
+            selected = await self._workspaces.workspace(WorkspaceRequestV1("open-workspace", workspace_id=request.workspace_id))
+            fingerprints = {item.scope_fingerprint for item in selected.workspaces}
+            owners = (*self._sessions.values(), *self._cleanup_debt)
+            if fingerprints.intersection(self._workspace_pending) or any(
+                session.identity.scope_fingerprint in fingerprints for session in owners
+            ):
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         if request.action == "unregister":
             listed = await self._workspaces.workspace(WorkspaceRequestV1("list"))
             fingerprints = {w.scope_fingerprint for w in listed.workspaces if w.path == request.path}
@@ -626,20 +653,59 @@ class AppServiceV1:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         result = await self._workspaces.workspace(request)
         binding = self._managed_mux
-        if request.action in {"open", "allocate-temporary"} and binding is not None and binding.ensure_named is not None:
+        if request.action in {"open", "open-workspace", "allocate-temporary"} and binding is not None and binding.ensure_named is not None:
             if len(result.workspaces) != 1:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             try:
-                await binding.ensure_named(
-                    (project_mux_name(result.workspaces[0].path)
-                     if request.action == "open" else TEMPORARY_MUX),
-                    self.create_managed_mux,
-                )
+                row = result.workspaces[0]
+                mux_name = (project_mux_name(row.path) if request.action == "open" else TEMPORARY_MUX)
+                if row.workspace is not None or request.action == "open-workspace":
+                    projected = row.workspace.get("muxName") if row.workspace is not None else None
+                    if type(projected) is not str:
+                        raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                    mux_name = projected
+                await binding.ensure_named(mux_name, self.create_managed_mux)
             except AppServiceError:
                 raise
             except Exception:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
         return result
+
+    async def _delete_workspace_with_history(self, request: WorkspaceRequestV1) -> None:
+        owner = self._workspaces
+        if not isinstance(owner, HostedWorkspaceHistoryDeletionPort):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        assert request.workspace_id is not None
+        try:
+            fingerprints = await owner.workspace_deletion_scopes(request.workspace_id)
+        except AppServiceError as error:
+            if error.code is AppErrorCodeV1.NOT_FOUND:
+                return
+            raise
+        if fingerprints.intersection(self._workspace_pending):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        # The workspace lock prevents new opens while the original Mux
+        # continuity path removes these members and settles their writers.
+        async with self._state_lock:
+            members = tuple(
+                MuxMemberCloseV1(MuxSelectorV1(mux_space_id=mux.mux_space_id), member.member_id)
+                for mux in self._mux_by_id.values()
+                for member in mux.members
+                if member.session.identity.scope_fingerprint in fingerprints
+            )
+        for member in members:
+            try:
+                await self._close_member(member)
+            except AppServiceError as error:
+                if error.code is not AppErrorCodeV1.NOT_FOUND:
+                    raise
+        async with self._state_lock:
+            unsettled = tuple(
+                session for session in {*self._sessions.values(), *self._cleanup_debt}
+                if session.identity.scope_fingerprint in fingerprints
+            )
+        await self._close_sessions(unsettled)
+        await owner.workspace(request)
 
     @property
     def continuity_enabled(self) -> bool:

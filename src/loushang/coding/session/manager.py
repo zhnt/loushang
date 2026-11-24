@@ -25,6 +25,7 @@ from loushang.coding.composition.sets import (
     CodingCompositionSetPlan,
     resolve_coding_composition_set,
 )
+from loushang.coding.hosted_workspace import CodingHostedWorkspace
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
     CodingResumeRecoveryRequired,
@@ -319,6 +320,20 @@ class SessionManager(
     _resume_label = "Coding Resume"
     _resume_writer_capabilities = _RESUME_WRITER_CAPABILITIES
 
+    _hosted_workspace: CodingHostedWorkspace | None = None
+    def get_cwd(self) -> str:
+        if self._hosted_workspace is not None:
+            return str(self._hosted_workspace.available_cwd())
+        return super().get_cwd()
+
+    def package_product_workspace(self) -> Path:
+        if self._hosted_workspace is not None:
+            return self._hosted_workspace.anchor
+        return Path(self.get_cwd())
+
+    def legacy_plugin_workspace(self) -> Path | None:
+        return self._hosted_workspace.legacy_plugin_origin if self._hosted_workspace is not None else None
+
     def _require_ordinary_input_policy(self, message: object) -> None:
         if (
             self.persist
@@ -340,6 +355,7 @@ class SessionManager(
         plan: SessionActivationPlanV1,
         current_owner_inputs: Sequence[ActivationOwnerInputRefV1],
         required_writer_capabilities: frozenset[str] = frozenset(),
+        _hosted_workspace: CodingHostedWorkspace | None = None,
         _factory: AgentTranscriptSessionFactory[
             ResolvedRuntimeProfile,
             RuntimeProfileBinding,
@@ -382,6 +398,7 @@ class SessionManager(
             ),
             validate_historical_header=_validate_coding_restored_header,
             stale_error=ResumePlanStaleError,
+            workspace_cwd=str(_hosted_workspace.cwd) if _hosted_workspace is not None else None,
         )
 
     def _require_resume_bootstrap_composition(

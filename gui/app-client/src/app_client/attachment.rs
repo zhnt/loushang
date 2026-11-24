@@ -1,7 +1,7 @@
 //! Sequential read-only attachment and membership-barrier implementation.
 use super::{
     transport_auth::Channel, InteractiveGoalCommand, InteractiveGoalReviewDecision,
-    InteractiveGoalReviewSubmission,
+    InteractiveGoalReviewSubmission, SessionOperation,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
@@ -914,16 +914,156 @@ impl ControlAuthority {
         channel: &mut Channel<R, W>,
         session_id: &str,
         submission_id: &str,
-        text: &str,
+        input: (&str, Vec<Value>),
         request_id: &str,
     ) -> Result<ControlResult, ()> {
-        if text.trim().is_empty() || text.chars().count() > 262_144 {
+        let (text, refs) = input;
+        if (text.trim().is_empty() && refs.is_empty())
+            || refs.len() > 4
+            || text.chars().count() > 262_144
+        {
             return Err(());
         }
         let mut payload = self.submission_payload(session_id, submission_id)?;
         payload["text"] = Value::String(text.to_owned());
+        if !refs.is_empty() {
+            payload["resourceRefs"] = Value::Array(refs);
+        }
         let result = execution_request(channel, "execution/submit", request_id, payload)?;
         self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn session_operation<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        operation: SessionOperation,
+        request_id: &str,
+        next_request_id: impl FnOnce() -> Result<String, ()>,
+    ) -> Result<Value, ()> {
+        let (name, args, submission_id) = match operation {
+            SessionOperation::Info => ("session", String::new(), None),
+            SessionOperation::Tools => ("tools", String::new(), None),
+            SessionOperation::SetTool {
+                submission_id,
+                name,
+                active,
+            } => {
+                // /tools splits whitespace and commas. Accept a single tool name.
+                if name.is_empty()
+                    || name.len() > 256
+                    || name.chars().any(|c| {
+                        c.is_whitespace() || c.is_control() || matches!(c, ',' | '\'' | '"' | '\\')
+                    })
+                {
+                    return Ok(json!({"error": "invalid_request"}));
+                }
+                (
+                    "tools",
+                    format!("{} {name}", if active { "on" } else { "off" }),
+                    Some(submission_id),
+                )
+            }
+            SessionOperation::ResetTools { submission_id } => {
+                ("tools", "reset".into(), Some(submission_id))
+            }
+            SessionOperation::Compact { submission_id } => {
+                ("compact", String::new(), Some(submission_id))
+            }
+            SessionOperation::Lookup { submission_id } => {
+                return self.session_operation_result(
+                    channel,
+                    session_id,
+                    &submission_id,
+                    request_id,
+                    next_request_id,
+                );
+            }
+            SessionOperation::Interrupt { execution_id } => {
+                return match self.interrupt(channel, session_id, &execution_id, request_id)? {
+                    ControlResult::Accepted => Ok(json!({"accepted": true})),
+                    ControlResult::Rejected(code) => Ok(json!({"error": code})),
+                    _ => Err(()),
+                };
+            }
+        };
+        let invocation = json!({"name": name, "args": args});
+        if let Some(submission_id) = submission_id {
+            let mut payload = self.submission_payload(session_id, &submission_id)?;
+            payload["command"] = invocation;
+            let result = execution_request(channel, "session/command_submit", request_id, payload)?;
+            return match self.record_result(result, session_id, Some(&submission_id))? {
+                ControlResult::Submitted(execution_id) => Ok(json!({"executionId": execution_id})),
+                ControlResult::Rejected(code) => Ok(json!({"error": code})),
+                _ => Err(()),
+            };
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["command"] = invocation;
+        let result = execution_request(channel, "session/command_read", request_id, payload)?;
+        if let Some(code) = rejected_result(&result)? {
+            return Ok(json!({"error": code}));
+        }
+        Ok(json!({"data": session_command_data(&result)?}))
+    }
+
+    fn session_operation_result<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        submission_id: &str,
+        request_id: &str,
+        next_request_id: impl FnOnce() -> Result<String, ()>,
+    ) -> Result<Value, ()> {
+        let payload = self.submission_payload(session_id, submission_id)?;
+        let result = execution_request(channel, "execution/find_submission", request_id, payload)?;
+        if result["resultType"] == "not_found" {
+            projection::control_bridge("not_found", &result.to_string())?;
+            return Ok(Value::Null);
+        }
+        let execution_id =
+            match self.record_result(result.clone(), session_id, Some(submission_id))? {
+                ControlResult::Submitted(execution_id) => execution_id,
+                ControlResult::Rejected(code) => return Ok(json!({"error": code})),
+                _ => return Err(()),
+            };
+        let state = &result["result"]["state"];
+        let mut receipt = json!({"state": state});
+        if !state["outcome"].is_null() {
+            let mut payload = self.payload(session_id)?;
+            payload["executionId"] = json!(execution_id);
+            let result = execution_request(
+                channel,
+                "session/command_result",
+                &next_request_id()?,
+                payload,
+            )?;
+            // The execution record remains authoritative if the optional command
+            // data was absent or the attachment changed before the second read.
+            if result["resultType"] == "session_command_result" {
+                receipt["data"] = session_command_data(&result)?;
+            }
+        }
+        Ok(receipt)
+    }
+
+    pub(crate) fn resource<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        query: Value,
+        request_id: &str,
+    ) -> Result<Value, ()> {
+        let mut payload = self.payload(session_id)?;
+        payload["resourceQuery"] = query;
+        let result = execution_request(channel, "session/resource", request_id, payload)?;
+        if let Some(error) = rejected_result(&result)? {
+            return Ok(json!({"error": error}));
+        }
+        if result["resultType"] != "session_resource" || !result["result"].is_object() {
+            return Err(());
+        }
+        Ok(result["result"].clone())
     }
 
     pub(crate) fn start_goal<R: Read, W: Write>(
@@ -1331,6 +1471,18 @@ fn execution_request<R: Read, W: Write>(
         return Err(());
     }
     Ok(value)
+}
+
+fn session_command_data(value: &Value) -> Result<Value, ()> {
+    let data = &value["result"]["data"];
+    if value["protocolVersion"] != "loushang.execution/v1"
+        || value["resultType"] != "session_command_result"
+        || !data.is_object()
+        || data.to_string().len() > 16 * 1024
+    {
+        return Err(());
+    }
+    Ok(data.clone())
 }
 
 fn rejected_result(value: &Value) -> Result<Option<String>, ()> {

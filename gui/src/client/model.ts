@@ -58,6 +58,8 @@ export interface ConversationMessage {
   readonly content: string;
   readonly phase: MessagePhase;
   readonly systemNotice?: "resumesRuntime";
+  readonly resourceIds?: readonly string[];
+  readonly submissionId?: string;
 }
 
 export interface ExecutionProjection {
@@ -157,6 +159,7 @@ export interface SessionSnapshot {
   readonly context: ContextIdentity;
   readonly messages: readonly ConversationMessage[];
   readonly execution?: ExecutionProjection | null;
+  readonly latestTerminalExecution?: ExecutionProjection | null;
   readonly supportsGoalProgress?: true;
   readonly supportsGoalStart?: true;
   readonly supportsInteractiveGoal?: true;
@@ -260,6 +263,7 @@ export type ClientEvent =
     });
 
 export interface SubmitTextInput {
+  readonly resourceRefs?: readonly import("../../contracts/generated/bridge").ResourceRefV1[];
   readonly sessionId: string;
   readonly submissionId: string;
   readonly text: string;
@@ -328,6 +332,12 @@ export interface HarnessClientUiPort {
   requestResync?(): Promise<void>;
   previewWorkspace?: ReadWorkspacePreview;
   locateWorkspace?: (scope: import("./workspacePreview").WorkspacePreviewScope) => Promise<string>;
+  sessionOperation?: import("./sessionOperations").SessionOperationPort;
+  sessionResource?(sessionId: string, query: import("../../contracts/generated/bridge").SessionResourceQueryV1):
+    Promise<import("../../contracts/generated/bridge").SessionResourceResultV1>;
+  pickClientDirectory?: import("./sessionResources").DirectoryPicker;
+  referenceClientDirectory?(sessionId: string, grantId: string): Promise<import("../../contracts/generated/bridge").SessionResourceResultV1>;
+  revokeClientDirectory?(id: string): Promise<boolean>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   findSubmission?(sessionId: string, submissionId: string, serviceInstanceId: string): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;

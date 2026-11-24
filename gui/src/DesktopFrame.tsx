@@ -49,19 +49,20 @@ export function DesktopFrame({ onBack, onForward, ...actions }: FrameActions & {
     try { await getCurrentWindow()[action](); setError(null); }
     catch { setError("actionFailed"); }
   }
-  async function invokeFrameAction(command: "quit_app" | "open_devtools") {
+  async function invokeFrameAction(command: "new_window" | "quit_app" | "open_devtools") {
     try { await invoke(command); setError(null); }
     catch { setError("actionFailed"); }
   }
   if (!native) return null;
   return <>
     <header className="native-frame" aria-label={t("applicationMenu")}>
-      <button className="frame-icon" aria-label={t("back")} title={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
-      <button className="frame-icon" aria-label={t("forward")} title={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
+      <button className="frame-icon" aria-label={t("back")} data-tooltip={t("back")} disabled={!onBack} onClick={onBack}><UiIcon name="back" /></button>
+      <button className="frame-icon" aria-label={t("forward")} data-tooltip={t("forward")} disabled={!onForward} onClick={onForward}><UiIcon name="forward" /></button>
       <FrameMenu {...actions} onBack={onBack} onForward={onForward}
+        onNewWindow={() => void invokeFrameAction("new_window")}
         onClose={() => void control("close")} onQuit={() => void invokeFrameAction("quit_app")}
         onOpenDevtools={() => void invokeFrameAction("open_devtools")} />
-      <div className="window-drag-region" data-tauri-drag-region title={t("dragWindow")} />
+      <div className="window-drag-region" data-tauri-drag-region />
       <div className="window-controls">
         <button aria-label={t("minimize")} disabled={!native} onClick={() => void control("minimize")}><WindowIcon action="minimize" /></button>
         <button aria-label={maximized ? t("restore") : t("maximize")} disabled={!native} onClick={() => void control("toggleMaximize")}><WindowIcon action={maximized ? "restore" : "maximize"} /></button>

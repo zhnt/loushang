@@ -1,3 +1,5 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { platform } from "@tauri-apps/plugin-os";
 import { validateGoalProgress } from "../../contracts/goalProgress";
 import type { ClientSnapshot, ControlReceipt, HarnessClientUiPort, SubmitReceipt } from "./model";
 import { projectNativeInitialSnapshot, validateSessionModels } from "./nativeLiveClient";
@@ -5,12 +7,31 @@ import { ApprovalResponses } from "./approvalResponses";
 import { validateInteractiveGoalRecovery } from "../../contracts/interactiveGoalRecovery";
 import { validateInteractiveGoal, validateInteractiveGoalReview } from "../../contracts/interactiveGoal";
 import { goalStartReceipt, unknownGoalStart } from "./goalStartReceipt";
+import { resourceResult, type ClientDirectoryDraft, type DirectoryPicker } from "./sessionResources";
 import { webRequest } from "./hostApi";
 import type { WorkspacePreview, WorkspacePreviewRequest, WorkspacePreviewScope } from "./workspacePreview";
 
 /** Same projection/contracts as desktop; authoritative snapshots arrive from AppHost. */
 export interface WebLiveClient extends HarnessClientUiPort {
   suspend(): Promise<() => void>;
+}
+
+export function clientDirectoryControls(connectionId?: string) {
+  if (!isTauri() || !connectionId
+    || !["linux", "windows", "macos"].includes(platform())) return undefined;
+
+  const pickClientDirectory: DirectoryPicker = async (labels) => {
+    const value = await invoke<{ id: string; name: string } | null>("pick_client_directory", { connectionId, ...labels });
+    if (value && (!/^[a-f0-9]{32}$/.test(value.id) || !value.name)) throw new Error("resource_unavailable");
+    return value ? { grantId: value.id, name: value.name } satisfies ClientDirectoryDraft : null;
+  };
+  return {
+    pickClientDirectory,
+    async revokeClientDirectory(id: string) {
+      const value = await webRequest<{ removed: boolean }>({ operation: "revoke-client-directory", id }, connectionId);
+      return value.removed;
+    },
+  };
 }
 
 export function createWebLiveClient(workspace: string, connectionId?: string): WebLiveClient {
@@ -96,6 +117,7 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
     return result;
   }
 
+  const clientDirectories = clientDirectoryControls(connectionId);
   const pageHidden = () => { void close(); };
   return {
     snapshot: refresh,
@@ -135,7 +157,7 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
       return () => { suspended = false; };
     },
     async requestResync() {
-      await close();
+      await close(false);
       publish(await refresh());
     },
     respondInteraction(sessionId, interactionId, outcome) {
@@ -201,6 +223,18 @@ export function createWebLiveClient(workspace: string, connectionId?: string): W
         }
         return unknown;
       }
+    },
+    ...(clientDirectories ? {
+      ...clientDirectories,
+      async referenceClientDirectory(sessionId: string, grantId: string) {
+        return resourceResult(await call("client-directory-reference", { sessionId, grantId }));
+      },
+    } : {}),
+    sessionOperation(scope, operation) {
+      return call("session-operation", { ...scope, operation });
+    },
+    async sessionResource(sessionId, query) {
+      return resourceResult(await call("resource", { sessionId, query }));
     },
     async findSubmission(sessionId, submissionId, serviceInstanceId) {
       if (current?.source.kind !== "live" || current.source.serviceInstanceId !== serviceInstanceId) {

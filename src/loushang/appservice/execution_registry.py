@@ -13,17 +13,24 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from hashlib import sha256
 from secrets import token_hex
 
 from loushang.appserver.execution.model import (
     ExecutionErrorCodeV1 as ExecutionErrorCodeV1,
 )
 from loushang.appserver.execution.model import (
+    ExecutionInputV1,
+    ResourceRefV1,
+)
+from loushang.appserver.execution.model import (
     ExecutionRecordV1 as ExecutionRecordV1,
 )
 from loushang.appserver.execution.model import (
     ExecutionServiceErrorV1 as ExecutionServiceErrorV1,
+)
+from loushang.appserver.execution.session_commands import (
+    MAX_COMMAND_RESULT_BYTES,
+    SessionCommandInvocationV1,
 )
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -118,6 +125,7 @@ class ExecutionRegistryV1:
         self._records: dict[str, ExecutionRecordV1] = {}
         self._active: dict[tuple[str, str, str], _Invocation] = {}
         self._legacy: OrderedDict[str, float] = OrderedDict()
+        self._command_reservations = 0
         self._sequence = 0
         self._nonce = token_hex(12)
         self._closed = False
@@ -128,7 +136,7 @@ class ExecutionRegistryV1:
 
     @property
     def reserved_ledger_bytes(self) -> int:
-        return len(self._ledger) * RECORD_RESERVATION_BYTES
+        return len(self._ledger) * RECORD_RESERVATION_BYTES + self._command_reservations * MAX_COMMAND_RESULT_BYTES
 
     def require_instance(self, expected: str) -> None:
         _identifier(expected)
@@ -156,6 +164,8 @@ class ExecutionRegistryV1:
 
     def submit(
         self, binding: ExecutionBindingV1, text: str, submission_id: str | None,
+        resource_refs: tuple[ResourceRefV1, ...] = (), *,
+        command: SessionCommandInvocationV1 | None = None,
     ) -> ExecutionRecordV1:
         """Caller validates current authority immediately before this no-await cut.
 
@@ -164,10 +174,13 @@ class ExecutionRegistryV1:
         """
         if self._closed or binding.closing:
             raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
-        ExecutionRequestV1("validation", text)
+        input = ExecutionInputV1(text, resource_refs, command)
+        if command is not None and submission_id is None:
+            raise ValueError("command submission requires a stable identity")
+        reservation_bytes = RECORD_RESERVATION_BYTES + (MAX_COMMAND_RESULT_BYTES if command else 0)
         identity = binding.view.identity
         key = _canonical(identity)
-        digest = sha256(text.encode("utf-8")).hexdigest()
+        digest = input.digest()
         if submission_id is not None:
             _identifier(submission_id)
             prior = self._ledger.get((key, submission_id))
@@ -175,17 +188,32 @@ class ExecutionRegistryV1:
                 if prior[0] != digest:
                     raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.SUBMISSION_CONFLICT)
                 return self._records[prior[1]]
+            original_digest = getattr(binding.port, "resource_submission_digest", None)
+            if original_digest is not None and (persisted := original_digest(submission_id)) is not None:
+                if persisted != digest:
+                    raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.SUBMISSION_CONFLICT)
+                raise AppServiceError(AppErrorCodeV1.RESOURCE_INPUT_COMMITTED)
         if key in self._active or len(self._active) >= self.limits.active:
             raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.BUSY)
         if submission_id is not None and (
             len(self._ledger) >= self.limits.submissions
-            or self.reserved_ledger_bytes + RECORD_RESERVATION_BYTES > self.limits.ledger_bytes
+            or self.reserved_ledger_bytes + reservation_bytes > self.limits.ledger_bytes
         ):
             raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.LEDGER_FULL)
         # A readiness rejection must leave the submission key available for retry.
         require_ready = getattr(binding.port, "require_submission_ready", None)
-        if require_ready is not None:
+        if command is not None:
+            require_command = getattr(binding.port, "require_command_ready", None)
+            if require_command is None:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            require_command(command)
+        elif require_ready is not None:
             require_ready()
+        if resource_refs:
+            require_resources = getattr(binding.port, "require_resource_input", None)
+            if require_resources is None:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            require_resources(resource_refs)
         self._sequence += 1
         execution_id = f"exec-{self._nonce}-{self._sequence}"
         record = ExecutionRecordV1(
@@ -197,7 +225,7 @@ class ExecutionRegistryV1:
 
         async def invoke() -> ExecutionOutcomeV1:
             await published
-            return await self._drive(invocation, text)
+            return await self._drive(invocation, input)
 
         operation = invoke()
         try:
@@ -210,6 +238,8 @@ class ExecutionRegistryV1:
         self._active[key] = binding.active = invocation
         if submission_id is not None:
             self._ledger[key, submission_id] = digest, execution_id
+            if command is not None:
+                self._command_reservations += 1
         self._publish(invocation, record.state)
         published.set_result(None)
         return invocation.record
@@ -300,12 +330,14 @@ class ExecutionRegistryV1:
     def fence(self) -> None:
         self._closed = True
 
-    async def _drive(self, invocation: _Invocation, text: str) -> ExecutionOutcomeV1:
+    async def _drive(self, invocation: _Invocation, input: ExecutionInputV1) -> ExecutionOutcomeV1:
         state, port = invocation.record.state, invocation.binding.port
         if state.interrupt_requested:
             return self._finish(invocation, ExecutionOutcomeV1(ExecutionStatusV1.INTERRUPTED))
         try:
-            port.start_execution(ExecutionRequestV1(state.execution_id, text))
+            port.start_execution(ExecutionRequestV1(
+                state.execution_id, input.text, input.resource_refs, invocation.record.submission_id, input.command,
+            ))
         except Exception:
             return self._finish(invocation, ExecutionOutcomeV1(
                 ExecutionStatusV1.FAILED, "execution_start_failed",

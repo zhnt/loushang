@@ -25,6 +25,11 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
         if not inspect.iscoroutinefunction(progress):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return await progress(*args, call.execution_id)
+    if call.operation is ExecutionOperationV1.RESOURCE:
+        exchange = getattr(client, "session_resource", None)
+        if not inspect.iscoroutinefunction(exchange):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await exchange(*args, call.resource_query)
     if call.operation is ExecutionOperationV1.SNAPSHOT:
         return await client.snapshot_execution_session(*args)
     if call.operation is ExecutionOperationV1.EVENTS:
@@ -39,6 +44,18 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
                 return await client.goal_interrupt(*args, cast(str, call.execution_id))
     if call.operation.value.startswith("session/interactive_goal_"):
         return await dispatch_goal(client, call)
+    command_operations = {
+        ExecutionOperationV1.COMMAND_CATALOG: ("session_command_catalog", (call.command_prefix,)),
+        ExecutionOperationV1.COMMAND_READ: ("read_session_command", (call.command,)),
+        ExecutionOperationV1.COMMAND_SUBMIT: ("submit_session_command", (call.submission_id, call.command)),
+        ExecutionOperationV1.COMMAND_RESULT: ("session_command_result", (call.execution_id,)),
+    }
+    if call.operation in command_operations:
+        method, parameters = command_operations[call.operation]
+        handler = getattr(client, method, None)
+        if not inspect.iscoroutinefunction(handler):
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await handler(*args, *parameters)
     if not isinstance(client, ExecutionPortV1):
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
     match call.operation:
@@ -48,7 +65,10 @@ async def dispatch_execution(client: ExecutionObservationPortV1, call: Execution
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             return await lookup(*args, call.resume_query)
         case ExecutionOperationV1.SUBMIT:
-            return await client.submit_execution(*args, cast(str, call.submission_id), cast(str, call.text))
+            submission = (*args, cast(str, call.submission_id), cast(str, call.text))
+            if call.resource_refs:
+                return await client.submit_execution(*submission, call.resource_refs)
+            return await client.submit_execution(*submission)
         case ExecutionOperationV1.GET:
             return await client.get_execution(*args, cast(str, call.execution_id))
         case ExecutionOperationV1.FIND:

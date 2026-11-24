@@ -1,12 +1,14 @@
 //! Browser and desktop requests use the same AppServer client.
+mod client_directories;
 mod live_view;
 mod service;
 use crate::{
     definitive_create_rejection, AppClient, AppTarget, ConnectionOptions, ControlCommand,
     ControlResult, CreateSessionResult, InteractiveGoalCommand, InteractiveGoalReviewSubmission,
-    ModelControlResult, WorkspaceInfo, WorkspaceRequest, WorkspaceResult, WorkspaceScope,
+    ModelControlResult, SessionOperationInput, WorkspaceInfo, WorkspaceRequest, WorkspaceResult,
+    WorkspaceScope,
 };
-use live_view::{Target, View};
+use live_view::{Target, View, LEASE};
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -15,7 +17,7 @@ use std::{
     num::NonZeroU16,
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -28,10 +30,23 @@ pub struct Backend {
     root: PathBuf,
     tunnel: Option<(PathBuf, NonZeroU16)>,
     requests: Arc<Mutex<()>>,
-    views: Arc<Mutex<HashMap<String, View>>>,
+    views: Arc<Mutex<HashMap<String, ViewRegistration>>>,
     next_view_epoch: Arc<Mutex<u64>>,
     manager: Option<PathBuf>,
+    allow_service_control: bool,
     managed_record: Arc<Mutex<Option<PathBuf>>>,
+    client_directories: Arc<Mutex<client_directories::Grants>>,
+}
+
+struct ViewRegistration {
+    view: Arc<View>,
+    last_seen: Instant,
+}
+
+impl ViewRegistration {
+    fn active(&self) -> bool {
+        self.last_seen.elapsed() < LEASE && self.view.active()
+    }
 }
 
 impl Backend {
@@ -43,13 +58,22 @@ impl Backend {
             views: Arc::default(),
             next_view_epoch: Arc::default(),
             manager: None,
+            allow_service_control: false,
             managed_record: Arc::new(Mutex::new(None)),
+            client_directories: Arc::default(),
         }
     }
 
-    pub fn with_service_management(mut self) -> Self {
+    pub fn with_service_discovery(mut self) -> Self {
         self.manager = service::executable();
         self
+    }
+
+    pub fn with_service_management(self) -> Self {
+        Self {
+            allow_service_control: true,
+            ..self.with_service_discovery()
+        }
     }
 
     pub fn through_tunnel(&self, root: PathBuf, port: NonZeroU16) -> Self {
@@ -60,8 +84,20 @@ impl Backend {
             views: self.views.clone(),
             next_view_epoch: self.next_view_epoch.clone(),
             manager: None,
+            allow_service_control: false,
             managed_record: Arc::new(Mutex::new(None)),
+            client_directories: self.client_directories.clone(),
         }
+    }
+
+    pub fn grant_client_directory(&self, path: PathBuf) -> Result<Value> {
+        let target = self
+            .host_target(self.configured_record()?)?
+            .ok_or("not_connected")?;
+        self.client_directories
+            .lock()
+            .map_err(|_| "host_unavailable")?
+            .add(target, path)
     }
 
     pub fn call(&self, request: Value) -> Result<Value> {
@@ -85,12 +121,30 @@ impl Backend {
         }
     }
 
-    fn host_request(&self, operation: &str, request: &Value) -> Result<Value> {
-        let configured_record = if self.tunnel.is_none() {
-            self.record_root()?
-        } else {
-            None
+    fn configured_record(&self) -> Result<Option<PathBuf>> {
+        if self.tunnel.is_some() {
+            return Ok(None);
+        }
+        self.record_root()
+    }
+
+    fn host_target(&self, configured_record: Option<PathBuf>) -> Result<Option<Target>> {
+        if let Some((root, port)) = &self.tunnel {
+            return Ok(Some(Target::Tunnel(root.clone(), *port)));
+        }
+        let root = match configured_record {
+            Some(path) => Some(path),
+            None => self
+                .managed_record
+                .lock()
+                .map_err(|_| "host_unavailable")?
+                .clone(),
         };
+        Ok(root.map(Target::Local))
+    }
+
+    fn host_request(&self, operation: &str, request: &Value) -> Result<Value> {
+        let configured_record = self.configured_record()?;
         let manager = self
             .manager
             .as_deref()
@@ -98,31 +152,26 @@ impl Backend {
         if let (Some(manager), "manage") = (manager, operation) {
             return self.manage_service(manager, request);
         }
-        let record_root;
-        let target = if let Some((credential_root, forwarded_port)) = &self.tunnel {
-            Some(AppTarget::Tunnel {
-                credential_root,
-                forwarded_port: *forwarded_port,
-            })
-        } else {
-            record_root = match configured_record {
-                Some(path) => Some(path),
-                None => self
-                    .managed_record
-                    .lock()
-                    .map_err(|_| "host_unavailable")?
-                    .clone(),
-            };
-            record_root.as_deref().map(AppTarget::Local)
-        };
+        let host_target = self.host_target(configured_record)?;
+        let target = host_target.as_ref().map(Target::borrow);
         match operation {
             "environment" => Ok(json!({
                 "supported": target.is_some() || manager.is_some(),
-                "manageable": manager.is_some(), "workspace": self.last_workspace()?,
+                "manageable": self.allow_service_control && manager.is_some(), "workspace": self.last_workspace()?,
             })),
             "manage" => status(target, field(request, "action")?),
             "workspace" => self.workspace(target.ok_or("not_connected")?, request),
             "live" => self.live(target.ok_or("not_connected")?, request),
+            "revoke-client-directory" => {
+                let selector = field(request, "id")?;
+                let target = host_target.as_ref().ok_or("not_connected")?;
+                let removed = self
+                    .client_directories
+                    .lock()
+                    .map_err(|_| "host_unavailable")?
+                    .revoke(target, selector);
+                Ok(json!({"removed": removed}))
+            }
             _ => Err("unknown_operation".into()),
         }
     }
@@ -140,11 +189,10 @@ impl Backend {
         let action = field(request, "action")?;
         let identity = Target::from(target);
         let mut views = self.views.lock().map_err(|_| "host_unavailable")?;
-        views.retain(|_, view| view.active());
-        if views
-            .get(id)
-            .is_some_and(|view| view.target != identity || view.path != path)
-        {
+        views.retain(|_, registration| registration.active());
+        if views.get(id).is_some_and(|registration| {
+            registration.view.target != identity || registration.view.path != path
+        }) {
             return Err("invalid_request".into());
         }
         if action == "close" {
@@ -155,38 +203,94 @@ impl Backend {
             if views.len() >= 16 {
                 return Err("connection_failed".into());
             }
-            let workspace = if path == TEMPORARY {
-                None
+            // A Mux has one controller. Windows/tabs at this endpoint keep
+            // separate view IDs and share the attachment until the last closes.
+            let shared = views
+                .values()
+                .map(|registration| &registration.view)
+                .find(|view| view.target == identity && view.path == path)
+                .cloned();
+            let view = if let Some(shared) = shared {
+                if AppClient::target_binding(target).ok() != Some(shared.credential_binding) {
+                    return Err("connection_failed".into());
+                }
+                shared
             } else {
-                Some(open_workspace(target, path)?)
+                let workspace = if path == TEMPORARY {
+                    None
+                } else {
+                    Some(open_workspace(target, path)?)
+                };
+                let mux = workspace
+                    .as_ref()
+                    .map_or_else(|| TEMPORARY_MUX.into(), workspace_mux_name);
+                let epoch = {
+                    let mut counter = self
+                        .next_view_epoch
+                        .lock()
+                        .map_err(|_| "host_unavailable")?;
+                    *counter = counter.checked_add(1).ok_or("host_unavailable")?;
+                    *counter
+                };
+                Arc::new(View::open(
+                    identity,
+                    path.to_owned(),
+                    workspace,
+                    mux,
+                    epoch,
+                )?)
             };
-            let mux = workspace
-                .as_ref()
-                .map_or_else(|| TEMPORARY_MUX.into(), |item| mux_name(&item.path));
-            let epoch = {
-                let mut counter = self
-                    .next_view_epoch
-                    .lock()
-                    .map_err(|_| "host_unavailable")?;
-                *counter = counter.checked_add(1).ok_or("host_unavailable")?;
-                *counter
-            };
-            let view = View::open(identity, path.to_owned(), workspace, mux, epoch)?;
-            views.insert(id.to_owned(), view);
+            views.insert(
+                id.to_owned(),
+                ViewRegistration {
+                    view,
+                    last_seen: Instant::now(),
+                },
+            );
         }
-        let view = views.get(id).ok_or("connection_failed")?;
+        let registration = views.get_mut(id).ok_or("connection_failed")?;
+        registration.last_seen = Instant::now();
+        let view = &registration.view;
         match action {
-            "snapshot" => view.snapshot(),
+            "snapshot" => {
+                let snapshot = view.snapshot()?;
+                self.client_directories
+                    .lock()
+                    .map_err(|_| "host_unavailable")?
+                    .serve(view, &snapshot);
+                Ok(snapshot)
+            }
+            "client-directory-reference" => self
+                .client_directories
+                .lock()
+                .map_err(|_| "host_unavailable")?
+                .reference(view, &request["input"]),
             "create" => created(view.control(None, create_command(&request["input"])?)?),
             _ => session_control(view, action, &request["input"]),
         }
     }
 
+    fn attached_view(&self, target: AppTarget<'_>, mux: &str) -> Result<Option<Arc<View>>> {
+        let identity = Target::from(target);
+        let mut views = self.views.lock().map_err(|_| "host_unavailable")?;
+        views.retain(|_, registration| registration.active());
+        let view = views
+            .values()
+            .map(|registration| &registration.view)
+            .find(|view| view.target == identity && view.mux == mux);
+        if let Some(view) = view {
+            if AppClient::target_binding(target).ok() != Some(view.credential_binding) {
+                return Err("connection_failed".into());
+            }
+        }
+        Ok(view.cloned())
+    }
+
     fn manage_service(&self, manager: &std::path::Path, request: &Value) -> Result<Value> {
         let (action, instance) = match field(request, "action")? {
             "status" | "connect" => ("status", None),
-            "start" => ("start", None),
-            action @ ("stop" | "restart") => {
+            "start" if self.allow_service_control => ("start", None),
+            action @ ("stop" | "restart") if self.allow_service_control => {
                 let instance = field(request, "instanceId")?;
                 if instance.len() != 32
                     || !instance
@@ -197,9 +301,10 @@ impl Backend {
                 }
                 (action, Some(instance))
             }
+            "start" | "stop" | "restart" => return Err("service_managed_externally".into()),
             _ => return Err("invalid_request".into()),
         };
-        let error = |code: &str| json!({"state":"unknown", "errorCode":code, "manageable":true});
+        let error = |code: &str| json!({"state":"unknown", "errorCode":code, "manageable":self.allow_service_control});
         let reply = match service::invoke(manager, &self.root, action, instance) {
             Ok(reply) => reply,
             Err(code) => return Ok(error(code)),
@@ -215,7 +320,9 @@ impl Backend {
                 return Ok(error("management_unconfirmed"));
             }
             *self.managed_record.lock().map_err(|_| "host_unavailable")? = None;
-            return Ok(json!({"state":reply.state, "errorCode":null, "manageable":true}));
+            return Ok(
+                json!({"state":reply.state, "errorCode":null, "manageable":self.allow_service_control}),
+            );
         }
         let Some(root) = reply.record_root.filter(|path| path.is_absolute()) else {
             return Ok(error("management_unconfirmed"));
@@ -233,7 +340,7 @@ impl Backend {
         }
         *self.managed_record.lock().map_err(|_| "host_unavailable")? = Some(root);
         Ok(
-            json!({"state":"running", "errorCode":null, "manageable":true,
+            json!({"state":"running", "errorCode":null, "manageable":self.allow_service_control,
                   "instanceId":reply.instance_id, "serviceInstanceId":service_instance}),
         )
     }
@@ -259,10 +366,13 @@ impl Backend {
         let action = field(request, "action")?;
         let operation = match action {
             "navigation" => return self.navigation(target),
-            "create-chat" => return create_chat(target, request),
-            "delete-chat" => return delete_chat(target, request),
+            "create-chat" => return create_chat(self, target, request),
+            "delete-chat" => return delete_chat(self, target, request),
             "models" => {
-                let path = optional_workspace_path(request)?;
+                let selector = optional_workspace_path(request)?;
+                let (workspace, path) = selector
+                    .filter(|value| workspace_id(value))
+                    .map_or((None, selector), |value| (Some(value), None));
                 let model_id = request
                     .get("modelId")
                     .map(|id| id.as_str().ok_or("invalid_request"))
@@ -270,16 +380,22 @@ impl Backend {
                 let client = AppClient::default();
                 return models(
                     client
-                        .workspace_models(target, TIMEOUT, path, model_id)
+                        .workspace_models(target, TIMEOUT, path, workspace, model_id)
                         .map_err(|_| client.failure_code())?,
                 );
             }
             "inspect" => {
                 let path = field(request, "path")?;
-                let inspect = WorkspaceRequest::Inspect {
-                    path,
-                    session: request.get("sessionId").and_then(Value::as_str),
-                };
+                let session = request.get("sessionId").and_then(Value::as_str);
+                if workspace_id(path) {
+                    let operation = WorkspaceRequest::Logical {
+                        action: "inspect-workspace",
+                        path: None,
+                        fields: json!({"workspaceId": path, "sessionId": session, "scopeFingerprint": request["fingerprint"]}),
+                    };
+                    return Ok(json!({"workspaces": workspaces(target, operation)?}));
+                }
+                let inspect = WorkspaceRequest::Inspect { path, session };
                 return match workspaces(target, inspect) {
                     Ok(items) => Ok(json!({"workspaces": items})),
                     Err(code)
@@ -320,6 +436,21 @@ impl Backend {
                 return Ok(json!({ "path": workspace.path }));
             }
             "open" => return self.open(target, field(request, "path")?),
+            "create-workspace"
+            | "rename-workspace"
+            | "delete-workspace"
+            | "delete-workspace-with-history"
+            | "add-path"
+            | "update-path"
+            | "remove-path"
+            | "set-default-path" => WorkspaceRequest::Logical {
+                action,
+                path: optional_workspace_path(request)?,
+                fields: json!({
+                    "workspaceId": request["workspaceId"], "name": request["name"],
+                    "pathId": request["pathId"], "alias": request["alias"],
+                }),
+            },
             "list" => WorkspaceRequest::List,
             "projects" => WorkspaceRequest::Projects,
             "create" => WorkspaceRequest::Create(workspace_creation_path(request)?),
@@ -332,7 +463,7 @@ impl Backend {
 
     fn open(&self, target: AppTarget<'_>, path: &str) -> Result<Value> {
         let opened = open_workspace(target, path)?;
-        let mux = mux_name(&opened.path);
+        let mux = workspace_mux_name(&opened);
         let mut connection = options(target, &mux, Some(&opened));
         connection.prepare_default_session = true;
         AppClient::default()
@@ -343,7 +474,14 @@ impl Backend {
     }
 
     fn navigation(&self, target: AppTarget<'_>) -> Result<Value> {
-        let projects = workspaces(target, WorkspaceRequest::Projects)?;
+        let projects = workspaces(
+            target,
+            WorkspaceRequest::Logical {
+                action: "workspaces",
+                path: None,
+                fields: json!({}),
+            },
+        )?;
         let muxes = AppClient::default()
             .muxes(target, TIMEOUT)
             .map_err(|_| "connection_failed")?;
@@ -362,11 +500,25 @@ impl Backend {
             result.sort_by_key(|chat| chat["pinned"] != true);
             Ok(result)
         };
-        let projects = projects
-            .iter()
-            .map(|item| Ok(json!({"path": item.path, "sessions": chats(&mux_name(&item.path))?})))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(json!({"projects": projects, "temporarySessions": chats(TEMPORARY_MUX)?}))
+        let mut entries = vec![];
+        let mut default_chats = vec![];
+        for item in projects {
+            let workspace = item.workspace.ok_or("invalid_host_reply")?;
+            let sessions = chats(&workspace.mux_name)?;
+            if workspace.default {
+                default_chats = sessions;
+                continue;
+            }
+            let mut entry = serde_json::to_value(&workspace).map_err(|_| "invalid_host_reply")?;
+            entry["sessions"] = json!(sessions);
+            entry["path"] = json!(workspace
+                .paths
+                .iter()
+                .find(|link| Some(&link.id) == workspace.default_path_id.as_ref())
+                .map(|link| &link.path));
+            entries.push(entry);
+        }
+        Ok(json!({"projects": entries, "temporarySessions": default_chats}))
     }
 
     fn database(&self) -> Result<Connection> {
@@ -499,18 +651,32 @@ fn preview_workspace(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     } else {
         path
     };
-    let operation = WorkspaceRequest::Preview {
-        path,
-        fingerprint,
-        instance: field(request, "serviceInstanceId")?,
-        reference: field(request, "reference")?,
-        base: request
-            .get("base")
-            .and_then(Value::as_str)
-            .ok_or("invalid_request")?,
+    let instance = field(request, "serviceInstanceId")?;
+    let reference = field(request, "reference")?;
+    let base = request
+        .get("base")
+        .and_then(Value::as_str)
+        .ok_or("invalid_request")?;
+    let logical = workspace_id(path);
+    let operation = if logical {
+        WorkspaceRequest::LogicalPreview {
+            workspace_id: path,
+            instance,
+            reference,
+            base,
+            fingerprint,
+        }
+    } else {
+        WorkspaceRequest::Preview {
+            path,
+            instance,
+            reference,
+            base,
+            fingerprint,
+        }
     };
     let workspace = single(workspaces(target, operation)?)?;
-    if workspace.path != path || workspace.scope_fingerprint != fingerprint {
+    if (!logical && workspace.path != path) || workspace.scope_fingerprint != fingerprint {
         return Err("invalid_host_reply".into());
     }
     let preview = workspace.preview.ok_or("workspace_preview_unavailable")?;
@@ -529,8 +695,32 @@ fn workspace_by_fingerprint(target: AppTarget<'_>, fingerprint: &str) -> Result<
     }
 }
 
+fn workspace_id(value: &str) -> bool {
+    value == "default"
+        || (value.len() == 32
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+}
+
+fn workspace_mux_name(info: &WorkspaceInfo) -> String {
+    info.workspace.as_ref().map_or_else(
+        || mux_name(&info.path),
+        |workspace| workspace.mux_name.clone(),
+    )
+}
+
 fn open_workspace(target: AppTarget<'_>, path: &str) -> Result<WorkspaceInfo> {
-    single(workspaces(target, WorkspaceRequest::Open(path))?)
+    let operation = if workspace_id(path) {
+        WorkspaceRequest::Logical {
+            action: "open-workspace",
+            path: None,
+            fields: json!({"workspaceId": path}),
+        }
+    } else {
+        WorkspaceRequest::Open(path)
+    };
+    single(workspaces(target, operation)?)
 }
 
 fn status(target: Option<AppTarget<'_>>, action: &str) -> Result<Value> {
@@ -624,7 +814,7 @@ fn control_on<T>(
         .map_err(|_| "connection_failed".into())
 }
 
-fn delete_chat(target: AppTarget<'_>, input: &Value) -> Result<Value> {
+fn delete_chat(backend: &Backend, target: AppTarget<'_>, input: &Value) -> Result<Value> {
     let path = field(input, "path")?;
     let session_id = field(input, "sessionId")?.to_owned();
     let mux_space_id = field(input, "scope")?
@@ -635,19 +825,26 @@ fn delete_chat(target: AppTarget<'_>, input: &Value) -> Result<Value> {
     let instance = field(input, "serviceInstanceId")?;
     let mux = if path == TEMPORARY {
         TEMPORARY_MUX.to_owned()
+    } else if workspace_id(path) {
+        workspace_mux_name(&open_workspace(target, path)?)
     } else {
         mux_name(path)
     };
-    let accepted = control_on(
-        options(target, &mux, None),
-        Some(instance),
-        &mut None,
-        |reply| ControlCommand::CloseSession {
-            mux_space_id,
-            session_id,
-            reply,
-        },
-    )?;
+    let build = |reply| ControlCommand::CloseSession {
+        mux_space_id,
+        session_id,
+        reply,
+    };
+    let accepted = if let Some(view) = backend.attached_view(target, &mux)? {
+        view.control(Some(instance), build)?
+    } else {
+        control_on(
+            options(target, &mux, None),
+            Some(instance),
+            &mut None,
+            build,
+        )?
+    };
     Ok(json!({"accepted": accepted}))
 }
 
@@ -702,7 +899,7 @@ fn optional_workspace_path(request: &Value) -> Result<Option<&str>> {
         .transpose()
 }
 
-fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
+fn create_chat(backend: &Backend, target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let title = request
         .get("title")
         .map(|value| value.as_str().ok_or("invalid_request"))
@@ -717,16 +914,19 @@ fn create_chat(target: AppTarget<'_>, request: &Value) -> Result<Value> {
     let workspace_path = optional_workspace_path(request)?;
     let scope = match workspace_path {
         Some(path) => open_workspace(target, path),
-        None => workspaces(target, WorkspaceRequest::AllocateTemporary).and_then(single),
+        None => open_workspace(target, "default"),
     };
     let Ok(scope) = scope else {
         return Ok(json!({"accepted": false}));
     };
-    let (path, mux) = match workspace_path {
-        Some(_) => (scope.path.as_str(), mux_name(&scope.path)),
-        None => (TEMPORARY, TEMPORARY_MUX.into()),
+    let path = workspace_path.unwrap_or(TEMPORARY);
+    let mux = workspace_mux_name(&scope);
+    let result = if let Some(view) = backend.attached_view(target, &mux)? {
+        view.control(None, command)?
+    } else {
+        control(options(target, &mux, Some(&scope)), command)?
     };
-    match control(options(target, &mux, Some(&scope)), command)? {
+    match result {
         CreateSessionResult::Accepted(session_id) => {
             Ok(json!({"workspace": path, "sessionId": session_id}))
         }
@@ -741,6 +941,25 @@ fn session_control(view: &View, action: &str, input: &Value) -> Result<Value> {
     let session_id = field(input, "sessionId")?.to_owned();
     match action {
         "submit" | "find-submission" | "goal-start" => submission(view, action, session_id, input),
+        "session-operation" => {
+            let input: SessionOperationInput =
+                serde_json::from_value(input.clone()).map_err(|_| "invalid_request")?;
+            if input.connection_epoch != view.epoch.to_string() {
+                return Err("instance_changed".into());
+            }
+            view.control(Some(&input.service_instance_id), |reply| {
+                ControlCommand::SessionOperation {
+                    session_id,
+                    operation: input.operation,
+                    reply,
+                }
+            })
+        }
+        "resource" => view.control(None, |reply| ControlCommand::Resource {
+            session_id,
+            query: input["query"].clone(),
+            reply,
+        }),
         "interrupt" => {
             let execution_id = field(input, "executionId")?.to_owned();
             let result = view.control(None, |reply| ControlCommand::Interrupt {
@@ -912,11 +1131,16 @@ fn submission(view: &View, action: &str, session_id: String, input: &Value) -> R
             }
         })
     } else {
-        let text = field(input, "text")?.to_owned();
+        let text = input["text"].as_str().ok_or("invalid_request")?.to_owned();
+        let resource_refs = match input.get("resourceRefs") {
+            Some(value) => value.as_array().ok_or("invalid_request")?.clone(),
+            None => Vec::new(),
+        };
         view.control(instance, |reply| ControlCommand::Submit {
             session_id,
             submission_id: id.to_owned(),
             text,
+            resource_refs,
             reply,
         })
     };
@@ -952,6 +1176,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn discovery_only_rejects_service_lifecycle_actions() {
+        let backend = Backend::new(PathBuf::new());
+        let missing_command = std::path::Path::new("missing-acceptance-manager");
+        for action in ["start", "stop", "restart"] {
+            assert_eq!(
+                backend.manage_service(missing_command, &json!({"action": action})),
+                Err("service_managed_externally".into())
+            );
+        }
+    }
+
+    #[test]
     fn workspace_creation_checks_the_wire_shape_without_interpreting_host_paths() {
         for path in ["/home/project", r"C:\Work Space"] {
             assert_eq!(
@@ -970,14 +1206,15 @@ mod tests {
     #[test]
     fn invalid_chat_titles_are_rejected_before_workspace_allocation() {
         let target = AppTarget::Local(std::path::Path::new("unconfigured"));
+        let backend = Backend::new(PathBuf::new());
         for title in ["   ".to_owned(), "a".repeat(257)] {
             assert_eq!(
-                create_chat(target, &json!({"title": title})),
+                create_chat(&backend, target, &json!({"title": title})),
                 Err("invalid_request".into())
             );
         }
         assert_eq!(
-            create_chat(target, &json!({"title": "a".repeat(256)})),
+            create_chat(&backend, target, &json!({"title": "a".repeat(256)})),
             Ok(json!({"accepted": false}))
         );
     }

@@ -849,9 +849,13 @@ class OrdinaryProductSessionOwner(Generic[_SessionManagerT]):
         session_id = manager.get_header().conversation_id
         return self.product_owner.factory_for_session(
             session_id=session_id,
-            cwd=Path(manager.get_cwd()),
+            cwd=self._session_workspace(manager),
             runtime_id=self._runtime_id_prefix + sha256(session_id.encode()).hexdigest(),
         )
+
+
+    def _session_workspace(self, manager: _SessionManagerT) -> Path:
+        return Path(manager.get_cwd())
 
 
 class FencedOrdinaryProductApplication(Generic[_SessionManagerT]):
@@ -1010,6 +1014,7 @@ class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], A
         *,
         settings_manager: _SettingsT | None,
         require_current_admission: Callable[[], None] | None,
+        historical_origin: Path | None = None,
     ) -> FencedOrdinaryProductApplication[_SessionManagerT] | LegacyProductWorkspace:
         """Apply Product compatibility and opening policy under the selection lock."""
         raise NotImplementedError
@@ -1049,6 +1054,7 @@ class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], A
         *,
         settings_manager: _SettingsT | None,
         require_current_admission: Callable[[], None] | None,
+        historical_origin: Path | None = None,
     ) -> FencedOrdinaryProductApplication[_SessionManagerT] | None:
         self._require_open()
         previous = self._owners.get(workspace)
@@ -1057,6 +1063,7 @@ class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], A
             previous,
             settings_manager=settings_manager,
             require_current_admission=require_current_admission,
+            historical_origin=historical_origin,
         )
         if isinstance(selected, LegacyProductWorkspace):
             self._legacy_workspaces[workspace] = selected
@@ -1079,14 +1086,21 @@ class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], A
                 f"{self._application_label} Product Session manager is required"
             )
         # A legacy Session may name a workspace that has yet to be created.
-        workspace = Path(manager.get_cwd()).resolve(strict=False)
+        workspace = self._session_workspace(manager).resolve(strict=False)
         with self._workspace_selection_scope():
             owner = self._select_workspace(
                 workspace,
                 settings_manager=settings_manager,
                 require_current_admission=None,
+                historical_origin=self._historical_workspace(manager),
             )
             return owner.factory_for_session(manager) if owner is not None else None
+
+    def _session_workspace(self, manager: _SessionManagerT) -> Path:
+        return Path(manager.get_cwd())
+
+    def _historical_workspace(self, manager: _SessionManagerT) -> Path | None:
+        return None
 
     def prepare_resume_epoch(
         self,
@@ -1094,6 +1108,7 @@ class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], A
         *,
         require_current_admission: Callable[[], None],
         settings_manager: _SettingsT | None = None,
+        historical_origin: Path | None = None,
     ) -> str:
         """Select and recheck original storage before creating any Session lease."""
         label = self._application_label
@@ -1119,6 +1134,7 @@ class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], A
                 workspace,
                 settings_manager=settings_manager,
                 require_current_admission=current,
+                historical_origin=historical_origin,
             )
             current()
             return self.resume_epoch_fingerprint(workspace)

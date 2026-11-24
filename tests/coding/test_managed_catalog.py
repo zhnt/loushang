@@ -16,6 +16,7 @@ from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 from loushang.apphost.managed.workspaces import WorkspaceRegistry
 from loushang.apphost.workspace_registry import (
     HostWorkspaceRegistryPort,
+    Workspace,
     WorkspaceRegistrationError,
 )
 from loushang.appserver.protocol import (
@@ -594,10 +595,12 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
     project.mkdir()
     temporary.mkdir()
     registry = Mock(spec=HostWorkspaceRegistryPort)
+    registry.workspaces.return_value = ()
     registry.list.return_value = (project,)
     registry.register.return_value = project
     registry.select.return_value = project
-    registry.allocate_temporary.return_value = temporary
+    registry.default_workspace.return_value = Workspace("default", "Chats", default=True)
+    registry.session_context.return_value = temporary
     new_project = tmp_path / "new"
     new_project.mkdir()
     registry.create.return_value = new_project
@@ -640,7 +643,7 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
     registry.list.assert_called_once_with()
     registry.register.assert_called_once_with(str(project))
     registry.select.assert_called_once_with(str(project))
-    registry.allocate_temporary.assert_called_once_with()
+    registry.default_workspace.assert_called_once_with()
     registry.create.assert_called_once_with(str(new_project))
 
 
@@ -654,6 +657,7 @@ def test_workspace_catalog_uses_registry_port_and_releases_it_after_session_cata
 ])
 def test_workspace_catalog_exposes_safe_create_errors(tmp_path, failure, code):
     registry = Mock(spec=HostWorkspaceRegistryPort)
+    registry.workspaces.return_value = ()
     registry.list.return_value = ()
     registry.create.side_effect = failure
 
@@ -701,5 +705,67 @@ def test_workspace_catalog_reopens_previous_project_store(tmp_path):
             await candidate.close()
         finally:
             await catalog.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("replacement", ["missing", "file", "symlink"])
+def test_workspace_catalog_starts_with_an_unavailable_registered_project(tmp_path, replacement):
+    async def scenario():
+        project = tmp_path / "project"
+        healthy = tmp_path / "healthy"
+        project.mkdir()
+        healthy.mkdir()
+
+        def owner():
+            return CodingWorkspaceCatalog(
+                WorkspaceRegistry(tmp_path / "registry"), tmp_path / "sessions", tmp_path / "stores",
+            )
+
+        original = owner()
+        await original.load()
+        try:
+            await original.register(str(project))
+            await original.register(str(healthy))
+            scope = await original.select(str(project))
+            candidate = await original.create_candidate(_intent(scope))
+            await candidate.close()
+            rows = await original.workspace_identities(scope.fingerprint, scope.discovery_scope, limit=2)
+        finally:
+            await original.close()
+        before = (tmp_path / "registry/workspaces.json").read_bytes()
+        project.rmdir()
+        if replacement == "file":
+            project.write_text("unavailable directory")
+        elif replacement == "symlink":
+            project.symlink_to(healthy, target_is_directory=True)
+
+        reopened = owner()
+        try:
+            await reopened.load()
+            assert {item.cwd for item in reopened.scopes if item.workspace_id is None} == {healthy, project}
+            missing = next(item for item in reopened.scopes if item.cwd == project)
+            assert missing.fingerprint == scope.fingerprint
+            found = await reopened.workspace_identities(missing.fingerprint, missing.discovery_scope, limit=2)
+            assert [item.reference for item in found] == [item.reference for item in rows]
+            selected = await reopened.select(str(healthy))
+            candidate = await reopened.create_candidate(_intent(selected))
+            await candidate.close()
+            assert await asyncio.to_thread(reopened.registry.list) == (healthy, project)
+            assert (tmp_path / "registry/workspaces.json").read_bytes() == before
+        finally:
+            await reopened.close()
+        if replacement != "missing":
+            project.unlink()
+        project.mkdir()
+
+        restored = owner()
+        try:
+            await restored.load()
+            selected = await restored.select(str(project))
+            found = await restored.workspace_identities(selected.fingerprint, selected.discovery_scope, limit=2)
+            assert [item.reference for item in found] == [item.reference for item in rows]
+        finally:
+            await restored.close()
 
     asyncio.run(scenario())

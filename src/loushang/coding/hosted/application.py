@@ -284,6 +284,21 @@ class _LeasedCodingHostedBinding(
         super().__init__(runtime=runtime, lease=lease, binding=binding, identity=identity)
         self._execution_projection: tuple[object, ...] | None = None
 
+    def project_explicit_title(self) -> str | None:
+        getter = getattr(self._binding, "project_explicit_title", None)
+        return getter() if callable(getter) else None
+
+    def project_title(self) -> str:
+        getter = getattr(self._binding, "project_title", None)
+        return getter() if callable(getter) else self._binding.project_snapshot().title
+
+    def project_event(self, event: object) -> CodingHostedEventProjectionV1 | None:
+        return self._binding.project_event(event)  # type: ignore[arg-type]
+
+    async def respond_interaction(self, interaction_id: str, outcome: str) -> bool:
+        return await self._binding.respond_interaction(interaction_id, outcome)
+
+
 
 class CodingAppHostHostedSessionResolverV1:
     """Resolve G11 Session requests exclusively through canonical AppHost routes."""

@@ -18,12 +18,16 @@ if TYPE_CHECKING:
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1, LocalRecordError
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
     AppServiceError,
     MuxAttachV1,
     MuxCloseV1,
     MuxCreateV1,
+    MuxReadV1,
     MuxSelectorV1,
     MuxSpaceV1,
+    SessionScopeV1,
+    WorkspaceRequestV1,
 )
 
 from . import mux_service
@@ -60,6 +64,27 @@ class _ClientCommand:
         self._shell: HostedMuxShellV1 | None = None
         self.cleanup_pending = True
 
+    async def _attachment_scopes(
+        self, selector: MuxSelectorV1,
+    ) -> tuple[tuple[SessionScopeV1, str], ...]:
+        if self._connection.scopes:
+            return tuple((item.scope, item.fingerprint) for item in self._connection.scopes)
+        client = self._connection.client
+        mux = await client.read_mux(MuxReadV1(selector))
+        scopes = tuple(dict.fromkeys(
+            (member.session.scope, member.session.scope_fingerprint) for member in mux.members
+        ))
+        if scopes:
+            return scopes
+
+        # A managed Host advertises no static scopes. An empty project Mux
+        # has the scope of its matching logical Workspace in that Host.
+        workspaces = await client.workspace(WorkspaceRequestV1("workspaces"))
+        for item in workspaces.workspaces:
+            if item.workspace is not None and item.workspace.get("muxName") == mux.name:
+                return ((item.scope, item.scope_fingerprint),)
+        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
     async def run(self) -> None:
         try:
             await self._connection.start()
@@ -74,14 +99,12 @@ class _ClientCommand:
                 from loushang.harnesstui.mux.shell import HostedMuxShellV1
                 from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
 
+                selector = MuxSelectorV1(name=self._name)
                 self._shell = HostedMuxShellV1(
                     client,
-                    selector=MuxSelectorV1(name=self._name),
+                    selector=selector,
                     product_id="coding",
-                    scopes=tuple(
-                        (item.scope, item.fingerprint)
-                        for item in self._connection.scopes
-                    ),
+                    scopes=await self._attachment_scopes(selector),
                     discovery_client=self._connection.discovery_client,
                     execution_client=self._connection.execution_client,
                     transcript_theme=terminal_transcript_theme(),

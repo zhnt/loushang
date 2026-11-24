@@ -50,7 +50,7 @@ export function AccountMenu({ compact = false, account, onSettings }: {
     }}>
     <button ref={trigger} type="button" className={compact ? "account-avatar-button" : "rail-footer"}
       aria-label={t("accountMenu")} aria-expanded={open} aria-controls={open ? id : undefined}
-      title={account?.name ?? t("accountMenu")} onClick={() => setOpen(!open)}>
+      data-tooltip={account?.name ?? t("accountMenu")} onClick={() => setOpen(!open)}>
       <span className="user-avatar" aria-hidden="true">{account ? Array.from(account.name.trim())[0].toLocaleUpperCase() : <UiIcon name="account" />}</span>
       {compact ? null : <>
         <span className="account-label"><strong>{account?.name ?? t("accountMenu")}</strong>{account ? <small>{t("offlineAccount")}</small> : null}</span>

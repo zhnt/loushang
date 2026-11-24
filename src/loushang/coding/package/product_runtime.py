@@ -304,6 +304,9 @@ class CodingPosixLocalWheelProductRuntimeOwner(OrdinaryProductSessionOwner[Sessi
     _runtime_id_prefix = _CODING_SESSION_RUNTIME_ID_PREFIX
     _session_manager_type = SessionManager
 
+    def _session_workspace(self, manager: SessionManager) -> Path:
+        return manager.package_product_workspace()
+
 
 @dataclass(frozen=True, slots=True)
 class CodingFencedProductApplicationOwner(FencedOrdinaryProductApplication[SessionManager]):
@@ -341,6 +344,12 @@ class CodingFencedProductApplicationSelection(
             raise TypeError("Coding Worker candidate selection must be explicit")
         self._windows_candidate = windows_candidate
         super().__init__(worker_candidates=worker_candidates)
+
+    def _session_workspace(self, manager: SessionManager) -> Path:
+        return manager.package_product_workspace()
+
+    def _historical_workspace(self, manager: SessionManager) -> Path | None:
+        return manager.legacy_plugin_workspace()
 
     def resume_worker_effect_owner(self, workspace: Path) -> CodingResumeEffectOwnerV1:
         """Freeze the selected Product's original Worker C5 obligation."""
@@ -380,14 +389,13 @@ class CodingFencedProductApplicationSelection(
         *,
         settings_manager: SettingsManager | None,
         require_current_admission: Callable[[], None] | None,
+        historical_origin: Path | None = None,
     ) -> FencedOrdinaryProductApplication[SessionManager] | LegacyProductWorkspace:
-        if owner is not None and self._external_bindings_current(
-            owner,
-            lifecycle=resolve_coding_plugin_lifecycle_state_layout(workspace),
-        ):
+        lifecycle = resolve_coding_plugin_lifecycle_state_layout(
+            workspace, historical_origin=historical_origin,
+        )
+        if owner is not None and self._external_bindings_current(owner, lifecycle=lifecycle):
             return owner
-
-        lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
         if owner is None:
             epoch = resolve_coding_package_epoch_layout(lifecycle)
             native_blocked = (
@@ -1061,7 +1069,7 @@ def _open_coding_product_runtime(
         workspace=workspace,
         state_root=state.state_root,
         scope_id=lifecycle.scope_id,
-        workspace_scope=_workspace_scope_id,
+        workspace_scope=lambda path: _workspace_scope_id(lifecycle.historical_origin or path),
         resolve_epoch=partial(resolve_coding_package_epoch_layout, lifecycle),
         additional_state_paths=(
             (journal.path, name)

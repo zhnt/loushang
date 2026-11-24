@@ -13,6 +13,46 @@ const scenarios = [
   { name: "density-150", width: 1440, height: 720, rail: 280, scale: 1.5 },
 ];
 
+test("the sidebar divider resizes without text selection or a mouse focus outline", async ({ page }) => {
+  await page.setViewportSize({ width: 1240, height: 720 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "GUI development" })).toBeVisible();
+  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+
+  const divider = page.getByRole("separator", { name: "Sidebar width" });
+  await expect(divider).toHaveAttribute("aria-valuenow", "280");
+  await divider.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(divider).toHaveAttribute("aria-valuenow", "290");
+  await expect(divider).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("ArrowLeft");
+  await expect(divider).toHaveAttribute("aria-valuenow", "280");
+  // Some engines do not select text from the divider even if pointerdown is uncanceled.
+  await divider.evaluate((element) => {
+    document.addEventListener("pointerdown", (event) => {
+      element.setAttribute("data-default-prevented", String(event.defaultPrevented));
+    }, { once: true });
+  });
+  const box = (await divider.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + 90;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 64, y + 96, { steps: 8 });
+  await expect(divider).toHaveAttribute("aria-valuenow", "216");
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
+  await expect(divider).toHaveAttribute("data-default-prevented", "true", { timeout: 500 });
+  await page.mouse.up();
+  await expect(divider).toBeFocused();
+  await expect(divider).toHaveCSS("outline-style", "none");
+  await page.keyboard.press("ArrowRight");
+  await expect(divider).toHaveAttribute("aria-valuenow", "226");
+  await expect(divider).toHaveCSS("outline-style", "solid");
+  await divider.dblclick();
+  await expect(divider).toHaveAttribute("aria-valuenow", "280");
+  await expect(divider).toHaveCSS("outline-style", "none");
+});
+
 async function verifyLayout(page: Page, info: TestInfo, mode: string) {
   await page.locator("main").evaluate((element) => { element.scrollTop = 0; });
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -93,7 +133,7 @@ for (const scenario of scenarios) {
       await verifyLayout(page, info, "closed");
       await page.getByRole("button", { name: "Open Work Dock" }).click();
       const tabs = page.getByRole("navigation", { name: "Work Dock panels" });
-      await tabs.getByRole("button", { name: "Tasks" }).click();
+      await tabs.getByRole("button", { name: "Execution" }).click();
       await verifyLayout(page, info, "work-panel");
       await tabs.getByRole("button", { name: "Environment" }).click();
       await expect(page.getByRole("complementary", { name: "Work Dock", exact: true })).toHaveCount(0);

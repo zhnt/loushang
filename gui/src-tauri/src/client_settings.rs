@@ -108,8 +108,117 @@ fn workspace_error(creating: bool, code: &str) -> &'static str {
         "permission_denied" => "permission_denied",
         "workspace_registration_failed" => "workspace_registration_failed",
         "operation_unavailable" => "operation_unavailable",
+        "cleanup_incomplete" => "cleanup_incomplete",
         _ => "connection_failed",
     }
+}
+
+fn backend(root: &Path) -> &'static Backend {
+    static BACKEND: OnceLock<Backend> = OnceLock::new();
+    BACKEND.get_or_init(|| Backend::new(root.to_owned()).with_service_management())
+}
+
+#[tauri::command]
+pub(crate) async fn pick_client_directory(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    connection_id: String,
+    title: String,
+    accept: String,
+    cancel: String,
+) -> Result<Option<Value>> {
+    let root = application_root(&app)?;
+    let port = Directory::read(&root)?.tunnel_port(&connection_id)?;
+    let selected = crate::project_folder::pick_project_folder(window, title, accept, cancel)
+        .await
+        .map_err(|_| "operation_unavailable")?;
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let chosen = std::fs::canonicalize(selected).map_err(|_| "resource_unavailable")?;
+        let private = std::fs::canonicalize(&root).map_err(|_| SETTINGS_ERROR)?;
+        if private.starts_with(&chosen) || chosen.starts_with(&private) {
+            return Err("permission_denied");
+        }
+        let backend = backend(&root);
+        let backend = match port {
+            Some(port) => {
+                backend.through_tunnel(root.join("app-tunnels").join(&connection_id), port)
+            }
+            None => backend.clone(),
+        };
+        backend
+            .grant_client_directory(chosen)
+            .map(Some)
+            .map_err(|_| "resource_unavailable")
+    })
+    .await
+    .map_err(|_| SETTINGS_ERROR)?
+}
+
+#[derive(Default)]
+pub(crate) struct AttachmentFiles(std::sync::Mutex<Option<tempfile::TempDir>>);
+
+#[tauri::command]
+pub(crate) async fn open_text_attachment(app: AppHandle, name: String, text: String) -> Result<()> {
+    use std::io::Write;
+    if text.len() > 1024 * 1024 || text.contains('\0') {
+        return Err("open_failed");
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AttachmentFiles>();
+        let path = {
+            let mut current = state.0.lock().map_err(|_| "open_failed")?;
+            if current.is_none() {
+                *current = Some(tempfile::tempdir().map_err(|_| "open_failed")?);
+            }
+            let directory = current.as_ref().ok_or("open_failed")?;
+            let name: String = name
+                .chars()
+                .take(48)
+                .map(|c| {
+                    if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
+            // Treat source attachments as text even when their original name is executable.
+            let mut file = tempfile::Builder::new()
+                .prefix("loushang-")
+                .suffix(&format!("-{name}.txt"))
+                .tempfile_in(directory)
+                .map_err(|_| "open_failed")?;
+            file.write_all(text.as_bytes()).map_err(|_| "open_failed")?;
+            let (file, path) = file.keep().map_err(|_| "open_failed")?;
+            drop(file);
+            path
+        };
+        let result = open_as_text(&path);
+        if result.is_err() {
+            let _ = std::fs::remove_file(path);
+        }
+        result
+    })
+    .await
+    .map_err(|_| "open_failed")?
+}
+
+#[cfg(target_os = "linux")]
+fn open_as_text(path: &Path) -> Result<()> {
+    use gtk::gio::{self, prelude::AppInfoExt};
+
+    let editor = gio::AppInfo::default_for_type("text/plain", false).ok_or("open_failed")?;
+    editor
+        .launch(&[gio::File::for_path(path)], None::<&gio::AppLaunchContext>)
+        .map_err(|_| "open_failed")
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_as_text(path: &Path) -> Result<()> {
+    open_in_desktop(path)
 }
 
 async fn dispatch(routed: Routed) -> Result<Value> {
@@ -122,15 +231,27 @@ async fn dispatch(routed: Routed) -> Result<Value> {
             body,
             environment,
         } => {
-            static BACKEND: OnceLock<Backend> = OnceLock::new();
-            let backend =
-                BACKEND.get_or_init(|| Backend::new(root.clone()).with_service_management());
+            let backend = backend(&root);
             let backend = if let Some(port) = tunnel {
                 backend.through_tunnel(root.join("app-tunnels").join(&id), port)
             } else {
                 backend.clone()
             };
-            let creating_workspace = body["operation"] == "workspace" && body["action"] == "create";
+            let editing_workspace = body["operation"] == "workspace"
+                && matches!(
+                    body["action"].as_str(),
+                    Some(
+                        "create"
+                            | "create-workspace"
+                            | "rename-workspace"
+                            | "delete-workspace"
+                            | "delete-workspace-with-history"
+                            | "add-path"
+                            | "remove-path"
+                            | "update-path"
+                            | "set-default-path"
+                    )
+                );
             let inspecting_workspace =
                 body["operation"] == "workspace" && body["action"] == "inspect";
             let previewing_workspace =
@@ -162,7 +283,7 @@ async fn dispatch(routed: Routed) -> Result<Value> {
                             _ => "workspace_preview_unavailable",
                         }
                     } else {
-                        workspace_error(creating_workspace, &code)
+                        workspace_error(editing_workspace, &code)
                     }
                 })?;
             if environment {
@@ -179,15 +300,22 @@ async fn dispatch(routed: Routed) -> Result<Value> {
 fn open_project_path(backend: &Backend, body: &Value) -> Result<Value> {
     let workspace = body["workspace"].as_str().ok_or("invalid_request")?;
     let fingerprint = body["fingerprint"].as_str().ok_or("invalid_request")?;
-    let workspaces = backend
-        .call(json!({"operation":"workspace","action":"list"}))
-        .map_err(|_| "connection_failed")?;
+    let logical = workspace.len() == 32
+        && workspace
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+    let request = if workspace != "@temporary" {
+        json!({"operation":"workspace","action":"inspect","path": workspace,"fingerprint": fingerprint})
+    } else {
+        json!({"operation":"workspace","action":"list"})
+    };
+    let workspaces = backend.call(request).map_err(|_| "workspace_unavailable")?;
     let mut admitted = workspaces["workspaces"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|row| {
-            (workspace == "@temporary" || row["path"] == workspace)
+            (logical || workspace == "@temporary" || row["path"] == workspace)
                 && row["scope"] == "cwd"
                 && row["scopeFingerprint"] == fingerprint
         });

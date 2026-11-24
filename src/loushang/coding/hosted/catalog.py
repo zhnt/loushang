@@ -111,19 +111,24 @@ class CodingHostedScopeV1:
     session_dir: Path = field(repr=False)
     cwd: Path = field(repr=False)
 
+    workspace_id: str | None = field(default=None, kw_only=True)
+    historical_origin: bool = field(default=False, kw_only=True)
+
     def __post_init__(self) -> None:
         if type(self.scope) is not SessionScopeV1:
             raise ValueError("invalid hosted scope")
         for value in (self.session_dir, self.cwd):
             if not isinstance(value, Path) or not value.is_absolute():
                 raise ValueError("hosted scope requires admitted absolute paths")
-            if value != value.resolve():
+            if (value != self.cwd or not self.historical_origin) and value != value.resolve():
                 raise ValueError("hosted scope paths must already be canonical")
-        if not self.cwd.is_dir():
+        if not self.historical_origin and not self.cwd.is_dir():
             raise ValueError("hosted workspace must exist")
 
     @property
     def fingerprint(self) -> str:
+        if self.workspace_id is not None:
+            return hashlib.sha256(f"coding.workspace.scope/v1\0{self.scope.value}\0{self.workspace_id}".encode()).hexdigest()
         return _scope_fingerprint(self.scope, self.session_dir, str(self.cwd))
 
     @property
@@ -526,6 +531,35 @@ class CodingHostedSessionCatalogV1(
 
     async def delete_session_history(self, identity: SessionIdentityV1) -> None:
         await self._delete_canonical_history(identity, _hosted_session_path)
+
+    def _workspace_transcripts(self) -> tuple[Path, ...]:
+        paths: list[Path] = []
+        scopes = {scope.session_dir: scope for scope in self.scopes}
+        for directory, scope in scopes.items():
+            if directory != directory.resolve():
+                raise CodingHostedCatalogError()
+            if self._directory_revision(directory) is None:
+                continue
+            layout = self._candidate_layout(directory)
+            scan = layout.scan_candidate_path_snapshot(layout.namespace, raise_on_error=True)
+            if not scan.complete:
+                raise CodingHostedCatalogError()
+            paths.extend(
+                path for path in scan.paths if self._read_record(scope, path) is not None
+            )
+        return tuple(paths)
+
+    async def delete_workspace_history(self) -> None:
+        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
+
+        async with self._lock:
+            if not self._closing:
+                for path in await settled_io(self._workspace_transcripts):
+                    await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
+                    self._records.clear()
+        # Fence only after deletion has finished, then let retries settle
+        # any original factory cleanup before removing the registration.
+        await self.close()
 
     async def preview_history_header(
         self, reference: SessionCandidateRefV1,

@@ -35,6 +35,7 @@ from loushang.coding.composition.product_capability_plugins import (
 from loushang.coding.composition.sets import (
     resolve_coding_composition_set as resolve_coding_composition_set,
 )
+from loushang.coding.hosted_workspace import CodingHostedWorkspace
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
@@ -90,6 +91,7 @@ from loushang.coding.resume.input_lookup import (
 )
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session.manager import SessionManager
+from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.approval._plugin_resume_parents import plugin_resume_journals
 from loushang.harness.approval.plugin_activation import (
@@ -98,6 +100,7 @@ from loushang.harness.approval.plugin_activation import (
 from loushang.harness.approval.plugin_execution import (
     PluginExecutionJournalError as PluginExecutionJournalError,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
@@ -243,6 +246,7 @@ async def prepare_coding_resume_continuation(
         [CodingActivationAttemptV1, Mapping[str, object]], None
     ],
     images: list[ImagePart] | None = None,
+    input_metadata: Mapping[str, JSONValue] | None = None,
     services: BootstrapServices | None = None,
     model: Model | ModelSelection | None = None,
     thinking_level: ThinkingLevel | None = None,
@@ -250,6 +254,7 @@ async def prepare_coding_resume_continuation(
     tools: list[ToolDefinition] | None = None,
     output_capture_factory: ExecCaptureFactory | None = None,
     no_tools: NoToolsMode | bool | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     observe_input_identity: Callable[[CodingResumeInputLookupQueryV1], None]
@@ -260,6 +265,7 @@ async def prepare_coding_resume_continuation(
         RuntimeProfileBinding,
     ]
     | None = None,
+    _hosted_workspace: CodingHostedWorkspace | None = None,
     worker_candidates: bool = False,
     worker_candidate_plugin_id: str | None = None,
 ) -> CodingResumePreparedContinuation:
@@ -353,7 +359,7 @@ async def prepare_coding_resume_continuation(
         raise TypeError('Coding Resume requires synchronous current owner checks')
 
     async def open_writer() -> SessionManager:
-        return await manager_type._load_resume_writer(
+        manager = await manager_type._load_resume_writer(
             session_file,
             plan=plan,
             current_owner_inputs=current_owner_inputs,
@@ -363,7 +369,11 @@ async def prepare_coding_resume_continuation(
                 else frozenset()
             ),
             _factory=resume_writer_factory,
+            **({"_hosted_workspace": _hosted_workspace} if _hosted_workspace is not None else {}),
         )
+
+        manager._hosted_workspace = _hosted_workspace
+        return manager
 
     def enroll_native_owners(manager: SessionManager) -> Callable[[], None]:
         parents = resume_plugin_parents
@@ -397,6 +407,7 @@ async def prepare_coding_resume_continuation(
             tools=tools,
             output_capture_factory=output_capture_factory,
             no_tools=no_tools,
+            allowed_tool_names=allowed_tool_names,
             approval_resolver=approval_resolver,
             tool_policy_evaluator=tool_policy_evaluator,
             product_owner_selection=product_owner_selection,
@@ -441,6 +452,7 @@ async def prepare_coding_resume_continuation(
         input_record_id=input_record_id,
         text=text,
         images=images,
+        input_metadata=input_metadata,
         created_at=created_at,
         require_current_admission=require_current_admission,
         require_current_epoch_settlement=require_current_epoch_settlement,

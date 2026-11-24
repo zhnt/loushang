@@ -15,6 +15,16 @@ from loushang.apphost.integrations._canonical_transcript_catalog import (
 from loushang.apphost.integrations.session_control import (
     _ExecutionSessionServiceAdapter,
 )
+from loushang.appserver.execution.model import ExecutionInputV1, ResourceRefV1
+from loushang.appserver.execution.resources import (
+    SessionResourceQueryV1,
+    SessionResourceResultV1,
+)
+from loushang.appserver.execution.session_commands import (
+    SessionCommandCatalogV1,
+    SessionCommandInvocationV1,
+    SessionCommandResultV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -40,7 +50,9 @@ from ._execution_work import (
 from ._execution_work import (
     current_coding_hosted_resume_submission_id as current_coding_hosted_resume_submission_id,
 )
+from ._session_commands import CodingHostedSessionCommands
 from .execution_goal import _HostedExecutionGoal
+from .resources import SUBMISSION_DIGEST, SUBMISSION_ID, HostedResourceAccess
 from .resume import CodingDeferredHostedSessionV1
 from .service_adapter import (
     CodingHostedEventProjectionV1,
@@ -137,6 +149,7 @@ class CodingHostedExecutionSessionV1(
                     or owner.identity != binding.identity and not projected):
                 raise ValueError("execution close owner must own the exact Product binding")
         self._product_binding = binding
+        self._resource_access: HostedResourceAccess | None = None
         if type(binding) is CodingRealHostedSessionV1:
             binding.claim_execution(self._idle_for_interactive_goal)
         try:
@@ -159,12 +172,72 @@ class CodingHostedExecutionSessionV1(
         ):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
 
+    def _resources(self) -> HostedResourceAccess:
+        if self._resource_access is None:
+            self._resource_access = self._product_binding.create_resource_access()
+        return self._resource_access
+
+    def resource_submission_digest(self, submission_id: str) -> str | None:
+        try:
+            return self._resources().submission_digest(submission_id)
+        except (ValueError, OSError):
+            raise AppServiceError(AppErrorCodeV1.RESOURCE_UNAVAILABLE) from None
+
+    def require_resource_input(self, refs: tuple[ResourceRefV1, ...]) -> None:
+        model = self._product_binding.current_model
+        if self._resources().images(refs) and (not model or not model.supports_image_input):
+            raise AppServiceError(AppErrorCodeV1.IMAGE_INPUT_UNSUPPORTED)
+
+    def session_resource(self, query: SessionResourceQueryV1) -> SessionResourceResultV1:
+        self._require_open()
+        return self._resources().exchange(query)
+
+    def _session_commands(self) -> CodingHostedSessionCommands | None:
+        binding = self._product_binding
+        active = binding._active if isinstance(binding, CodingDeferredHostedSessionV1) else binding
+        return CodingHostedSessionCommands(active._session) if active is not None else None
+
+    async def session_command_catalog(self, prefix: str) -> SessionCommandCatalogV1:
+        self._require_open()
+        commands = self._session_commands()
+        if commands is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await commands.catalog(prefix)
+
+    async def read_session_command(self, invocation: SessionCommandInvocationV1) -> SessionCommandResultV1:
+        self._require_open()
+        commands = self._session_commands()
+        if commands is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await commands.read(invocation)
+
+    def require_command_ready(self, invocation: SessionCommandInvocationV1) -> None:
+        self._require_open()
+        commands = self._session_commands()
+        if commands is None or not self._product_binding.execution_available or self._model_lock.locked():
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        commands.require_ready(invocation)
+
     def start_execution(self, request: ExecutionRequestV1) -> None:
+        if request.command is not None:
+            self.require_command_ready(request.command)
+            commands = self._session_commands()
+            assert commands is not None
+            self._guard.start(request, commands.create_work(request.command, self._product_binding.wait_for_title))
+            return
         self.require_submission_ready()
+        metadata = {
+            SUBMISSION_ID: request.submission_id,
+            SUBMISSION_DIGEST: ExecutionInputV1(request.text, request.resource_refs).digest(),
+            **self._resources().input_metadata(request.resource_refs),
+        } if request.resource_refs and request.submission_id is not None else None
+        images = self._resources().images(request.resource_refs) if request.resource_refs else None
+        text = request.text if request.text or images else "Use the attached Session resources."
         self._guard.start(
             request,
             self._product_binding.create_execution_work(
-                request.text, lambda: self._guard.interrupt_requested
+                text, lambda: self._guard.interrupt_requested, images,
+                metadata
             ),
         )
 
@@ -175,7 +248,14 @@ class CodingHostedExecutionSessionV1(
         if isinstance(binding, CodingRealHostedSessionV1) and binding.goal_command_running:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         await binding.wait_for_title()
+        state = self._guard.state
+        if state is not None and not state.status.terminal:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return await super()._select_model(model_id, thinking_level)
+
+    def _release_execution_resources(self) -> None:
+        if self._resource_access is not None:
+            self._resource_access.close()
 
 
 def _select_coding_execution_port(port: object) -> CodingHostedExecutionSessionV1 | None:

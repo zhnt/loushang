@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import inspect
 import sys
-from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import replace
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -14,14 +14,15 @@ from typing import TYPE_CHECKING, cast
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
+from loushang.ai.types import AssistantMessage, ImagePart, ToolCall, UserMessage
 from loushang.apphost import SessionBindingKeyV1
 from loushang.apphost.integrations._canonical_transcript_catalog import (
     close_unpublished_candidate,
 )
 from loushang.apphost.integrations._session_projection import (
+    _TEXT_LIMIT,
+    _bounded,
     _first_user_prompt,
-    _hosted_session_title,
-    _hosted_transcript_window,
     _HostedApprovalPresentation,
     _HostedConversationProjection,
 )
@@ -49,6 +50,17 @@ from loushang.coding.hosted.catalog import (
     CodingHostedCandidateBindingV1,
     CodingHostedCatalogError,
     CodingHostedHistoryCandidateBindingV1,
+    CodingHostedScopeV1,
+)
+from loushang.coding.hosted.resource_tools import (
+    SESSION_FILES,
+    HostReferencePolicy,
+    hosted_resource_tools,
+)
+from loushang.coding.hosted.resources import (
+    SUBMISSION_ID,
+    HostedResourceAccess,
+    record_resource_ids,
 )
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
@@ -61,6 +73,7 @@ from loushang.coding.hosted.user_choice import (
     HostedUserChoice,
     pending_choice_from_transcript,
 )
+from loushang.coding.hosted_workspace import CodingHostedWorkspace
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
@@ -71,18 +84,30 @@ from loushang.coding.resume.input_lookup import (
 )
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session.manager import SessionManager
+from loushang.foundation.json import JSONValue
 from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
 from loushang.harness.capabilities.tools import ToolSelection
+from loushang.harness.effects import FilesystemEffect, ProcessEffect
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeFactoryPort,
     guard_unbound_factory,
 )
-from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
+from loushang.harness.policy import (
+    CommandPolicySubject,
+    PathPolicySubject,
+    PolicyDecision,
+    PolicyEvaluator,
+    PolicyEvaluatorChain,
+    PolicySubject,
+    ToolPolicySubject,
+    evaluate_policy,
+)
 from loushang.harness.runtime._owned_tasks import _get_close_task
 from loushang.harness.session import SessionControlPort
 from loushang.harness.session.model_resolution import resolve_default_model
@@ -92,7 +117,10 @@ from loushang.harness.transcript.session_catalog import (
     build_agent_transcript_session_context,
     load_agent_transcript_session_metadata,
 )
-from loushang.harness.transcript.types import AgentTranscriptContext
+from loushang.harness.transcript.types import (
+    AgentTranscriptContext,
+    AgentTranscriptRecord,
+)
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 CodingHostedProductRuntimeFactoryForSession = Callable[
@@ -124,16 +152,31 @@ class CodingHostedHistoryBindingV1:
         self.identity = identity
         self._history = history
         self._closed = False
-        records, truncated = _hosted_transcript_window(
-            (entry.payload for entry in reversed(history.selected_records)),
-            flag_clipped_rows=False,
-        )
+        records: list[TranscriptRecordV1] = []
+        remaining = _TEXT_LIMIT
+        omitted = False
+        for entry in reversed(history.selected_records):
+            record = _committed_message_record(entry)
+            if record is None:
+                continue
+            if len(records) >= 128 or len(record.text) > remaining:
+                omitted = True
+                break
+            records.append(record)
+            remaining -= len(record.text)
+        records.reverse()
+        if omitted:
+            records.insert(0, TranscriptRecordV1(
+                TranscriptRecordKindV1.STATUS,
+                "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
+            ))
         title = load_agent_transcript_session_metadata(
             history.header_preview.header, history.records
         ).name
+        self._explicit_title = _session_title(title, ()) if title and title.strip() else None
         self._projection = CodingHostedSnapshotProjectionV1(
-            title=_hosted_session_title(title, (entry.payload for entry in history.records)),
-            revision=0, running=False, records=records, truncated=truncated,
+            title=_session_title(title, (entry.payload for entry in history.records)),
+            revision=0, running=False, records=tuple(records), truncated=omitted,
             user_choice=pending_choice_from_transcript(history.selected_records, identity.session_id),
         )
 
@@ -151,6 +194,12 @@ class CodingHostedHistoryBindingV1:
         if self._closed:
             raise RuntimeError("coding_hosted_session_closed")
         return self._history
+
+    def project_explicit_title(self) -> str | None:
+        return self._explicit_title
+
+    def project_title(self) -> str:
+        return self._projection.title
 
     def project_snapshot(self, *, resume_on_submit: bool = False) -> CodingHostedSnapshotProjectionV1:
         if self._closed:
@@ -190,8 +239,10 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
         approval: InteractiveApprovalResolver,
         *,
         workspace: Path | None = None,
+        resource_access: HostedResourceAccess | None = None,
     ) -> None:
         self._session = session
+        self._resource_access = resource_access
         self.identity = identity
         self._approval = approval
         self._interactions: dict[str, str] = {}
@@ -255,14 +306,48 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
             raise CodingHostedCatalogError()
         return await manager.lookup_resume_input(query)
 
+    def project_explicit_title(self) -> str | None:
+        name = self._session.session_name
+        return _session_title(name, ()) if name and name.strip() else None
+
+    def project_title(self) -> str:
+        return _session_title(self._session.session_name, _title_messages(self._session))
+
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
-        records, truncated = _hosted_transcript_window(reversed(self._session.messages))
+        records: list[TranscriptRecordV1] = []
+        remaining = _TEXT_LIMIT
+        omitted = False
+        truncated = False
+        manager = self._session.session_manager
+        messages = (
+            ((entry.payload, _committed_message_record(entry)) for entry in reversed(manager.get_active_entries()))
+            if isinstance(manager, SessionManager) and manager.persist
+            else ((message, _message_record(message)) for message in reversed(self._session.messages))
+        )
+        for message, record in messages:
+            if record is None:
+                continue
+            if len(records) >= 128 or len(record.text) > remaining:
+                omitted = True
+                break
+            records.append(record)
+            truncated |= len(_message_text(message)) > _TEXT_LIMIT
+            remaining -= len(record.text)
+        records.reverse()
+        if omitted:
+            records.insert(
+                0,
+                TranscriptRecordV1(
+                    TranscriptRecordKindV1.STATUS,
+                    "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
+                ),
+            )
         return CodingHostedSnapshotProjectionV1(
-            title=_hosted_session_title(self._session.session_name, _title_messages(self._session)),
+            title=self.project_title(),
             revision=self._projection.revision,
             running=self._session.is_streaming,
-            records=records,
-            truncated=truncated,
+            records=tuple(records),
+            truncated=omitted or truncated,
             user_choice=self._user_choice.pending,
         )
 
@@ -302,13 +387,26 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
     def execution_available(self) -> bool:
         return self._goal.execution_available
 
+    def canonical_records(self) -> list[AgentTranscriptRecord]:
+        return self._session.session_manager.entries
+
+    def create_resource_access(self) -> HostedResourceAccess:
+        if self._resource_access is None:
+            manager = self._session._coding_session_manager
+            self._resource_access = HostedResourceAccess(
+                self.identity.session_id, manager.session_dir, self.canonical_records, manager._hosted_workspace,
+            )
+        return self._resource_access
+
     def create_execution_work(
         self, text: str, cancel_requested: Callable[[], bool],
+        images: list[ImagePart] | None = None,
+        input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> ExecutionWorkV1:
         from loushang.coding.hosted._execution_work import CodingExecutionWorkV1
 
         return CodingExecutionWorkV1(
-            self._session, text, cancel_requested,
+            self._session, text, cancel_requested, images=images, input_metadata=input_metadata,
             start_title=self.start_title_if_unnamed,
             wait_for_title=self.wait_for_title,
         )
@@ -340,7 +438,8 @@ class CodingRealHostedSessionFactoryV1:
     def __init__(
         self,
         *,
-        services_factory: Callable[[Path], BootstrapServices],
+        services_factory: Callable[[Path | None], BootstrapServices],
+        workspace_environment: Callable[[CodingHostedScopeV1], CodingHostedWorkspace] | None = None,
         model: Model | ModelSelection | None = None,
         stream_fn: StreamFn | None = None,
         tools: list[ToolDefinition] | None = None,
@@ -354,6 +453,7 @@ class CodingRealHostedSessionFactoryV1:
         ) = None,
     ) -> None:
         self._services_factory = services_factory
+        self._workspace_environment = workspace_environment
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
@@ -413,20 +513,42 @@ class CodingRealHostedSessionFactoryV1:
             identity.product_id, identity.continuity_id, identity.session_id
         ):
             raise CodingHostedCatalogError()
+        if (
+            isinstance(opaque_session_binding, CodingHostedHistoryCandidateBindingV1)
+            and not opaque_session_binding.supports_writable_resume
+        ):
+            return opaque_session_binding.take_binding()
+        scope = opaque_session_binding.record.scope
+        hosted_workspace = (
+            await settled_io(self._workspace_environment, scope)
+            if self._workspace_environment is not None else None
+        )
+        workspace = hosted_workspace.cwd if hosted_workspace is not None else scope.cwd
+        workspace_tools = hosted_workspace is None or bool(hosted_workspace.roots)
+        resource_tools = hosted_workspace is not None and all(
+            names is None or SESSION_FILES in names
+            for names in (self._session_active_tools, self._session_allowed_tools)
+        )
+        workspace_policy = (
+            _HostedWorkspacePolicy(self._session_tool_policy)
+            if hosted_workspace is not None else self._session_tool_policy
+        )
+        settings_cwd = hosted_workspace.project_cwd if hosted_workspace is not None else workspace
         if isinstance(opaque_session_binding, CodingHostedHistoryCandidateBindingV1):
-            if not opaque_session_binding.supports_writable_resume:
-                return opaque_session_binding.take_binding()
             from loushang.coding.hosted.resume import CodingDeferredHostedSessionV1
 
             source = opaque_session_binding.take_resume_source()
             async with close_unpublished_candidate(lambda: source.close()):
                 binding = CodingDeferredHostedSessionV1(
                     source,
-                    services=self._services_factory(source.record.scope.cwd),
+                    services=self._services_factory(settings_cwd),
                     model=self._model,
                     stream_fn=self._stream_fn,
                     tools=self._tools,
-                    user_choice_enabled=self._user_choice_enabled,
+                    resource_tools=resource_tools,
+                    hosted_workspace=hosted_workspace,
+                    workspace_policy=workspace_policy,
+                    user_choice_enabled=self._user_choice_enabled and workspace_tools,
                     output_capture_factory=self._output_capture_factory,
                     product_owner_selection=self._product_owner_selection,
                 )
@@ -437,7 +559,14 @@ class CodingRealHostedSessionFactoryV1:
         # takes ownership, including when cleanup must be retried by AppHost.
         async with close_unpublished_candidate(lambda: opaque_session_binding.close()):
             approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
-            services = self._services_factory(opaque_session_binding.record.scope.cwd)
+            manager._hosted_workspace = hosted_workspace
+            tools = self._tools
+            access = HostedResourceAccess(
+                identity.session_id, manager.session_dir, lambda: manager.entries, hosted_workspace,
+            )
+            if resource_tools:
+                tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=workspace_tools)]
+            services = self._services_factory(settings_cwd)
             policy = workspace_tool_runtime_settings(services.settings_manager)
             runtime_factory = None
             if self._package_product_runtime_factory_for_session is not None:
@@ -458,10 +587,10 @@ class CodingRealHostedSessionFactoryV1:
                 )
             tool_policy = (
                 PolicyEvaluatorChain(
-                    tuple(p for p in (self._session_tool_policy, policy.policy_engine) if p is not None),
+                    tuple(p for p in (workspace_policy, policy.policy_engine) if p is not None),
                     strategy="most_restrictive",
                 )
-                if self._session_tool_policy is not None
+                if workspace_policy is not None
                 else policy.policy_engine
             )
             selected_factory = select_ordinary_coding_session_factory(
@@ -476,12 +605,14 @@ class CodingRealHostedSessionFactoryV1:
                     use_default_model=created,
                     stream_fn=self._stream_fn,
                     services=services,
-                    tools=self._tools,
+                    tools=tools,
+                    no_tools=None if workspace_tools else "builtin" if resource_tools else "all",
                     approval_resolver=approval,
-                    tool_policy_evaluator=tool_policy,
+                    tool_policy_evaluator=HostReferencePolicy(tool_policy) if tool_policy else None,
                     active_tool_names=self._session_active_tools,
                     allowed_tool_names=(
-                        self._session_allowed_tools
+                        [SESSION_FILES] if resource_tools and not workspace_tools
+                        else self._session_allowed_tools
                         if self._session_allowed_tools is not None
                         else ToolSelection.ALL
                     ),
@@ -499,12 +630,31 @@ class CodingRealHostedSessionFactoryV1:
                 if session.agent.thinking_level is not None:
                     await manager.append_thinking_level_change(session.agent.thinking_level)
             real_binding = CodingRealHostedSessionV1(
-                session, identity, approval, workspace=opaque_session_binding.record.scope.cwd,
+                session, identity, approval, workspace=workspace, resource_access=access,
             )
-            if self._user_choice_enabled:
+            if self._user_choice_enabled and workspace_tools:
                 real_binding.enable_user_choice()
             opaque_session_binding.take_manager()
             return real_binding
+
+
+@dataclass(frozen=True)
+class _HostedWorkspacePolicy:
+    policy: PolicyEvaluator | None
+
+    async def evaluate(self, subject: PolicySubject, /) -> PolicyDecision | None:
+        previous = await evaluate_policy(self.policy, subject) if self.policy is not None else None
+        if previous is not None and previous.disposition != "allow":
+            return previous
+        if isinstance(subject, (PathPolicySubject, CommandPolicySubject)) or (
+            isinstance(subject, ToolPolicySubject) and (
+                subject.paths or subject.command is not None or
+                any(isinstance(effect, (FilesystemEffect, ProcessEffect)) for effect in subject.effects)
+            )
+        ):
+            return PolicyDecision.ask("Allow this operation on an attached Workspace directory?",
+                                      code="workspace.resource_approval")
+        return previous
 
 
 def _resolve_hosted_saved_model(
@@ -528,8 +678,71 @@ def _uses_automatic_title(identity: SessionIdentityV1) -> bool:
 def _title_messages(session: AgentSession) -> Iterable[object]:
     manager = getattr(session, "session_manager", None)
     if isinstance(manager, SessionManager):
-        return (entry.payload for entry in manager.entries)
-    return session.messages
+        yield from (entry.payload for entry in manager.entries)
+    else:
+        yield from session.messages
+
+
+def _session_title(name: str | None, messages: Iterable[object]) -> str:
+    if name and name.strip():
+        return _bounded(name.strip(), limit=256)
+    # Read the first prompt from the full transcript, including turns omitted
+    # by the display window or by context compaction.
+    for message in messages:
+        if isinstance(message, UserMessage) and (title := " ".join(_message_text(message).split())):
+            if len(title) <= 48:
+                return title
+            prefix = title[:47].rstrip()
+            word_boundary = prefix.rfind(" ")
+            if word_boundary >= 30:
+                prefix = prefix[:word_boundary]
+            return f"{prefix}…"
+    return "New Session"
+
+
+def _committed_message_record(entry: AgentTranscriptRecord) -> TranscriptRecordV1 | None:
+    submission = entry.metadata.get(SUBMISSION_ID)
+    return _message_record(
+        entry.payload, entry.record_id, submission if isinstance(submission, str) else None,
+        record_resource_ids(entry)[:16],
+    )
+
+
+def _message_record(
+    message: object, record_id: str | None = None, submission: str | None = None,
+    resource_ids: tuple[str, ...] = (),
+) -> TranscriptRecordV1 | None:
+    if not isinstance(message, UserMessage | AssistantMessage):
+        return None
+    text = _message_text(message)
+    if (
+        isinstance(message, AssistantMessage)
+        and message.stop_reason not in {"error", "aborted"}
+        and not text
+        and any(isinstance(part, ToolCall) for part in message.content)
+    ):
+        return None
+    return TranscriptRecordV1(
+        TranscriptRecordKindV1.USER
+        if isinstance(message, UserMessage)
+        else TranscriptRecordKindV1.ASSISTANT,
+        _bounded(text),
+        record_id,
+        resource_ids,
+        submission,
+    )
+
+
+def _message_text(message: object) -> str:
+    if not isinstance(message, UserMessage | AssistantMessage):
+        return ""
+    if isinstance(message.content, str):
+        return message.content
+    return "".join(
+        getattr(part, "text", "")
+        for part in message.content
+        if getattr(part, "type", None) == "text"
+    )
 
 
 __all__ = [

@@ -135,7 +135,8 @@ class PrivateManagedDirectory:
 
     def __init__(self, root: Path, *, create: bool = False, defer_open: bool = False,
                  create_parents: bool = False, exclusive_create: bool = False,
-                 inherit_windows_children: bool = False) -> None:
+                 inherit_windows_children: bool = False,
+                 maximum_record_bytes: int = MAX_RECORD_BYTES) -> None:
         self._fd: int | None = None
         self._parents: list[tuple[int, str, int, FileIdentity]] = []
         self._anchor: int | None = None
@@ -160,13 +161,16 @@ class PrivateManagedDirectory:
         self._create_parents = create_parents
         self._exclusive_create = exclusive_create
         self._inherit_windows_children = inherit_windows_children
+        self._maximum_record_bytes = maximum_record_bytes
         self._attempted = self._opened = self._closing = False
         if sys.platform not in {"linux", "darwin", "win32"}:
             raise ManagedStorageError("unsupported")
         if (type(create) is not bool or type(defer_open) is not bool or not isinstance(root, Path)
                 or type(create_parents) is not bool or (create_parents and not create)
                 or type(exclusive_create) is not bool or (exclusive_create and not create)
-                or type(inherit_windows_children) is not bool):
+                or type(inherit_windows_children) is not bool
+                or type(maximum_record_bytes) is not int
+                or not MAX_RECORD_BYTES <= maximum_record_bytes <= 512 * 1024):
             raise ManagedStorageError("unavailable")
         if create_parents:
             try:
@@ -501,16 +505,16 @@ class PrivateManagedDirectory:
             primary = None
             try:
                 before = os.fstat(fd)
-                if before.st_size > MAX_RECORD_BYTES:
+                if before.st_size > self._maximum_record_bytes:
                     raise ManagedStorageError("invalid_record")
                 chunks = bytearray()
-                while len(chunks) <= MAX_RECORD_BYTES:
-                    block = os.read(fd, MAX_RECORD_BYTES + 1 - len(chunks))
+                while len(chunks) <= self._maximum_record_bytes:
+                    block = os.read(fd, self._maximum_record_bytes + 1 - len(chunks))
                     if not block:
                         break
                     chunks.extend(block)
                 after = os.fstat(fd)
-                if len(chunks) > MAX_RECORD_BYTES:
+                if len(chunks) > self._maximum_record_bytes:
                     raise ManagedStorageError("invalid_record")
                 identity = self._validate_fd(fd, after)
                 self._check_named(name, identity)
@@ -1100,7 +1104,7 @@ class PrivateManagedDirectory:
         The caller must serialize cooperating writers via lock().
         """
         _name(name)
-        if name.endswith(".lock") or type(content) is not bytes or len(content) > MAX_RECORD_BYTES:
+        if name.endswith(".lock") or type(content) is not bytes or len(content) > self._maximum_record_bytes:
             raise ManagedStorageError("invalid_record")
         if expected is not None and type(expected) is not ManagedFileSnapshot:
             raise ManagedStorageError("invalid_record")

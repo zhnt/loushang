@@ -46,7 +46,7 @@ function FileReferenceButton({ file, children }: { readonly file: FileReference;
   }
   return <>
     <button className="markdown-file-reference" type="button" aria-haspopup={open?.preview ? "dialog" : undefined}
-      title={open?.reveal ? t("inspection.revealFile") : undefined}
+      data-tooltip={open?.reveal ? t("inspection.revealFile") : undefined}
       onClick={(event) => {
         if (open?.reveal) void reveal(open.reveal);
         else open?.preview?.(file, event.currentTarget);

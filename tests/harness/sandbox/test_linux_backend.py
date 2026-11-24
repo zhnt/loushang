@@ -230,8 +230,9 @@ def test_linux_backend_probe_reports_enforcement_capabilities(tmp_path: Path) ->
     sys.platform != "linux",
     reason="asserts the Linux-only bubblewrap backend command shape",
 )
+@pytest.mark.parametrize("retained", [False, True])
 def test_linux_scope_wraps_the_materialized_request_and_common_exec_backend(
-    tmp_path: Path,
+    tmp_path: Path, retained: bool,
 ) -> None:
     captured: list[ExecRequest] = []
     updates: list[ExecOutputChunk] = []
@@ -246,11 +247,31 @@ def test_linux_scope_wraps_the_materialized_request_and_common_exec_backend(
                 await update
         return ExecResult(exit_code=0, stdout=chunk.text, output_chunks=(chunk,))
 
+    class CaptureSink:
+        def __init__(self):
+            self.chunks = []
+
+        async def append(self, chunk):
+            self.chunks.append(chunk)
+
+        def stop_accepting(self):
+            pass
+
+    class CaptureBackend:
+        async def __call__(self, *args, **kwargs):
+            pytest.fail("captured execution must use its own backend operation")
+
+        async def execute_captured(self, request, *, capture, signal, on_update):
+            result = await local_backend(request, signal=signal, on_update=on_update)
+            for chunk in result.output_chunks:
+                await capture.append(chunk)
+            return result
+
     bwrap_path = _fake_bwrap(tmp_path)
     backend = LinuxBubblewrapBackend(
         bwrap_path=bwrap_path,
         probe_runner=_successful_probe,
-        local_backend=local_backend,
+        local_backend=CaptureBackend() if retained else local_backend,
     )
     assert backend.probe(_linux_environment()).state == "available"
     writable = tmp_path / "writable"
@@ -283,7 +304,12 @@ def test_linux_scope_wraps_the_materialized_request_and_common_exec_backend(
             ),
             environ={"BASE": "value"},
         )
-        result = await scope(request, on_update=on_update)
+        if retained:
+            sink = CaptureSink()
+            result = await scope.execute_captured(request, capture=sink, on_update=on_update)
+            assert sink.chunks == updates
+        else:
+            result = await scope(request, on_update=on_update)
         await scope.close()
 
         assert result.stdout == "sandboxed\n"

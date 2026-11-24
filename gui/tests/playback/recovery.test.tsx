@@ -73,7 +73,7 @@ describe("fixture synchronization", () => {
       await fixture.source.advanceFixture();
       fixture.requests[2].resolve(snapshot);
     });
-    await user.click(screen.getByRole("button", { name: "Tasks" }));
+    await user.click(screen.getByRole("button", { name: "Execution" }));
     expect(await screen.findByRole("button", { name: /Build the Workspace.*Activities: 5/ })).toBeVisible();
     expect(screen.getByRole("button", { name: "Interrupt" })).toBeEnabled();
     expect(input).toHaveValue("Keep this draft");

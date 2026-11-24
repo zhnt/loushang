@@ -230,6 +230,7 @@ def _shell_provider_parameters() -> dict[str, Any]:
         "type": "object",
         "properties": {
             "command": {"type": "string"},
+            "cwd": {"type": "string"},
             "timeout": {"type": "number"},
         },
         "required": ["command"],

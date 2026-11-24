@@ -5,6 +5,7 @@ import LocalHostGate from "../src/LocalHostGate";
 import { ProjectNavigation } from "../src/ProjectNavigation";
 import type { ProjectNavigationProps } from "../src/client/projectDirectory";
 const backend = vi.hoisted(() => ({ invoke: vi.fn(), settings: vi.fn(), create: vi.fn(), listeners: new Map<string, (event: any) => void>() }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main" }) }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: backend.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async (name: string, callback: (event: any) => void) => {
   backend.listeners.set(name, callback);
@@ -15,7 +16,7 @@ vi.mock("../src/client/hostApi", () => ({
   webRequest: (request: any, id?: string) => backend.settings({ operation: "host/request", connectionId: id, request }),
 }));
 vi.mock("../src/client/nativeLiveClient", () => ({ nativeLiveAvailable: async () => false }));
-vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: backend.create }));
+vi.mock("../src/client/webLiveClient", () => ({ createWebLiveClient: backend.create, clientDirectoryControls: () => undefined }));
 vi.mock("../src/App", () => ({ default: () => null, HarnessGui: ({ client, hostSettings, hostSettingsRequest, onConnectionChange, projectNavigation }: {
   projectNavigation: ProjectNavigationProps;
   client: { id: string } | null; hostSettings: ReactNode; hostSettingsRequest: number; onConnectionChange: (state: string) => void;

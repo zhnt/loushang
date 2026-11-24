@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unicodedata
+from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from loushang.tui.ui_parts.text_pager import TextPager
 from ..conversation.screen_app import ScreenConversationApp
 from ..conversation.screen_frame import ScreenFrameCopy, ScreenFramePresentation
 from ..conversation.screen_state import ScreenConversationState
+from ..selection.model import ModelSelectorSurface
 from ..status.line import StatusLineSettings
 from .projection import project_active_conversation
 
@@ -30,6 +32,7 @@ PageUp / PageDown scrolls history, or the open read-only details.
 F1 or /help opens this help. Esc closes details without changing a draft.
 Details and the picker consume ordinary keys; Ctrl+B remains a mux shortcut.
 F2 or /question opens the current approval details.
+/commands lists Session commands. /command-result ID retrieves a known submission.
 F3 or /sessions [cwd|user_home|global] discovers saved Sessions.
 In the picker: Tab scope, arrows select, n next page, r refresh, Enter resume.
 global means admitted user_home, not a union or filesystem-wide search.
@@ -71,6 +74,8 @@ class HostedMuxScreenV1(ScreenConversationApp):
         self._view_key: object = None
         self._view_revision = 0
         self._detail: TextPager | None = None
+        self._model_picker: ModelSelectorSurface | None = None
+        self._select_model: Callable[[str], None] | None = None
         self._detail_key: tuple[object, ...] | None = None
         self._reviewed_key: tuple[object, ...] | None = None
         self._help_capabilities: object = None
@@ -132,6 +137,15 @@ class HostedMuxScreenV1(ScreenConversationApp):
         self._help_capabilities = capabilities
         self._detail, self._detail_key = TextPager("Hosted help", _HELP.format(exit_help=exit_help, management_help=management_help) + summary), None
 
+    def show_command_details(self, title: str, body: str) -> None:
+        self.dismiss_details()
+        self._detail = TextPager(safe_text(title), safe_text(body))
+
+    def show_model_picker(self, picker: ModelSelectorSurface, select: Callable[[str], None]) -> None:
+        self.dismiss_details()
+        self._model_picker, self._select_model = picker, select
+        picker.focus()
+
     def show_approval(self) -> None:
         self._help_capabilities = None
         key = self._approval_key()
@@ -150,6 +164,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
     def dismiss_details(self) -> None:
         self._help_capabilities = None
         self._detail, self._detail_key = None, None
+        self._model_picker, self._select_model = None, None
         # The detail surface replaced the conversation frame. Rebuild that
         # frame even when its underlying transcript cursor did not change.
         self._view_key = None
@@ -171,6 +186,15 @@ class HostedMuxScreenV1(ScreenConversationApp):
 
     def handle_details(self, event: InputEvent) -> bool:
         self._sync_details()
+        if self._model_picker is not None:
+            if event.kind == "key" and event.key in {"esc", "escape"}:
+                self.dismiss_details()
+            elif (intent := self._model_picker.handle_input(event)) is not None and intent.kind == "select":
+                select = self._select_model
+                self.dismiss_details()
+                if select is not None:
+                    select(intent.text)
+            return True
         if self._detail is None:
             return False
         if event.kind == "key" and event.key in {"esc", "escape"}:
@@ -193,7 +217,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
             self._approval_key(),
             None
             if window is None
-            else (window.last_cursor, window.scroll_anchor, window.title, window.request_presentation),
+            else (window.last_cursor, window.scroll_anchor, window.title, window.model_label, window.request_presentation),
         )
         if key != self._view_key:
             self._view_key = key
@@ -224,7 +248,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
                     windows.append(item)
             self.state = project_active_conversation(replace(mux, windows=windows))
             self.state.records_revision = self._view_revision
-            self.state.model_label = "Hosted"
+            self.state.model_label = safe_text(window.model_label) if window and window.model_label else "Hosted"
             self.state.permission_profile = None
             self.state.statusline_settings = StatusLineSettings(
                 workspace=False,
@@ -267,6 +291,8 @@ class HostedMuxScreenV1(ScreenConversationApp):
         self._sync_details()
         if self.shell.picker.visible:
             rendered = self.shell.picker.render(inner)
+        elif self._model_picker is not None:
+            rendered = self._model_picker.render(inner)
         else:
             rendered = (
                 self._detail.render(inner) if self._detail else super().render(inner)

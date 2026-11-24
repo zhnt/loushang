@@ -1,5 +1,6 @@
 //! Native presentation only. Host actions are routed to the existing GUI owner.
 use crate::web_link::safe_web_url;
+use crate::windows::{activate, show_main_window, MAIN};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Mutex};
 use tauri::{
@@ -61,24 +62,6 @@ struct TrayState {
     web_url: Mutex<Option<String>>,
 }
 
-pub fn show_main_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        // Some X11 window managers leave an iconified GTK window unmapped after
-        // deiconify/present. Remap that existing window before restoring focus.
-        #[cfg(target_os = "linux")]
-        if window.is_minimized().unwrap_or(false) {
-            let _ = window.hide();
-        }
-        let result = window
-            .unminimize()
-            .and_then(|()| window.show())
-            .and_then(|()| window.set_focus());
-        if let Err(error) = result {
-            eprintln!("Unable to show main window from system tray: {error}");
-        }
-    }
-}
-
 fn open_web(app: &AppHandle) {
     let url = app.state::<TrayState>().web_url.lock().unwrap().clone();
     let Some(url) = url.filter(|value| safe_web_url(value)) else {
@@ -96,7 +79,7 @@ fn open_web(app: &AppHandle) {
             .status();
         if !result.is_ok_and(|status| status.success()) {
             show_main_window(&app);
-            let _ = app.emit_to("main", "gui://tray-error", "open_web_failed");
+            let _ = app.emit_to(MAIN, "gui://tray-error", "open_web_failed");
         }
     });
 }
@@ -231,7 +214,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "tray-show" => show_main_window(app),
+            "tray-show" => activate(app),
             "tray-web" => open_web(app),
             "tray-quit" => app.exit(0),
             id => {
@@ -246,7 +229,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
                     if matches!(action.action.as_str(), "info" | "stop" | "restart") {
                         show_main_window(app);
                     }
-                    let _ = app.emit_to("main", "gui://tray-host-action", action);
+                    let _ = app.emit_to(MAIN, "gui://tray-host-action", action);
                 }
             }
         })
@@ -257,7 +240,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
                 ..
             } = event
             {
-                show_main_window(tray.app_handle());
+                activate(tray.app_handle());
             }
         });
     if let Some(icon) = app.default_window_icon() {
@@ -275,7 +258,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         actions: Mutex::default(),
         web_url: Mutex::default(),
     });
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(MAIN) {
         let handle = window.clone();
         window.on_window_event(move |event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

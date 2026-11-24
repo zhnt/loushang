@@ -266,6 +266,7 @@ def _coding_foreground_request(
         execution=execution,
         session_factory=CodingRealHostedSessionFactoryV1(
             services_factory=create_hosted_services,
+            workspace_environment=catalog.runtime_workspace if type(catalog) is CodingWorkspaceCatalog else None,
             model=model,
             stream_fn=stream_fn,
             tools=tools,
