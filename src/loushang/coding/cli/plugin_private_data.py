@@ -7,7 +7,6 @@ import os
 import secrets
 import sys
 from collections.abc import Sequence
-from dataclasses import replace
 from importlib.metadata import version
 from operator import attrgetter
 from pathlib import Path
@@ -36,10 +35,6 @@ from loushang.coding.package.private_data_restore import (
     CodingArchPrivateDataRestoreOwner,
     CodingArchPrivateDataRestorePlanV1,
     CodingArchPrivateDataRestoreResultV1,
-)
-from loushang.coding.package.private_data_restore_journal import (
-    CodingArchPrivateDataRestoreJournal,
-    restore_id_for,
 )
 from loushang.coding.package.private_data_windows_backup_client import (
     CodingWindowsArchBackupCandidateClientV1,
@@ -351,19 +346,9 @@ def _run_restore(
     plan = _read_restore_plan(Path(args.plan_file))
     if plan.installation_key != key or args.accept_fingerprint != plan.fingerprint:
         raise ValueError("Coding Arch restore plan was not accepted")
-    current = owner.preview(key, plan.backup_id)
-    if current != plan:
-        if (
-            plan.target_state != "absent"
-            or current.target_state != "same_bytes"
-            or replace(current, target_state="absent") != plan
-        ):
-            raise ValueError("Coding Arch restore plan is stale")
-        restore_id = restore_id_for(key, plan.backup_id, plan.deletion_receipt_id)
-        CodingArchPrivateDataRestoreJournal(product.state_root).require_started(
-            restore_id, error="Coding Arch restore plan has no prior start"
-        )
-    return _restore_document(owner.restore(key, plan.backup_id, expected_plan=plan))
+    return _restore_document(
+        owner._restore(key, plan.backup_id, expected_plan=plan, operator_submission=True)
+    )
 
 
 def _restore_document(result: CodingArchPrivateDataRestoreResultV1) -> dict[str, object]:

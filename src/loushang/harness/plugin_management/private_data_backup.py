@@ -754,6 +754,19 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             installation_error=f"{label} restore Installation changed",
             deletion_error=f"{label} restore lacks completed deletion",
         )
+        target_present = self._observe_restore_target(target, source, name)
+        return create_plan(
+            installation_key=key,
+            backup_id=name,
+            deletion_receipt_id=receipt.receipt_id,
+            source_target_id=source.target_id,
+            desired_inventory_revision=desired.inventory_revision,
+            target_state="same_bytes" if target_present else "absent",
+        )
+
+    def _observe_restore_target(
+        self, target: Path, source: _RestoreSourceT, name: str
+    ) -> bool:
         target_present = self.capture_target(target).root_identity is not None
         if target_present:
             verify_posix_restored_target(self.private_base, target, source, io=self.io)
@@ -765,14 +778,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             stage_suffix=self.stage_suffix,
             target_present=target_present,
         )
-        return create_plan(
-            installation_key=key,
-            backup_id=name,
-            deletion_receipt_id=receipt.receipt_id,
-            source_target_id=source.target_id,
-            desired_inventory_revision=desired.inventory_revision,
-            target_state="same_bytes" if target_present else "absent",
-        )
+        return target_present
 
     def preview_expiry(
         self,
@@ -944,12 +950,15 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         verify_files: Callable[[int, _RestoreSourceT], None],
         write_file_factory: Callable[[], Callable[[int, str, bytes], None]],
         result_factory: Callable[[str, str, str], _RestoreResultT],
+        operator_submission: bool = False,
     ) -> _RestoreResultT:
         """Verify and restore the exact archive under the caller's offline fence."""
-        _, deletion = self._admit(
+        if operator_submission and expected_plan is None:
+            raise ValueError(f"{self.io.label} restore requires an accepted plan")
+        desired, deletion = self._admit(
             key,
             removal_error=f"{self.io.label} restore requires a removed Installation",
-            expected_plan=expected_plan,
+            expected_plan=None if operator_submission else expected_plan,
         )
         expected_archive = (
             None if expected_plan is None else (
@@ -972,9 +981,14 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
                 installation_error=f"{io.label} restore Installation changed",
                 deletion_error=f"{io.label} restore lacks completed deletion",
             )
-            if expected_archive is not None and expected_archive != (
+            archive_evidence = (
                 source.target_id,
                 deletion_receipt.receipt_id,
+            )
+            if (
+                not operator_submission
+                and expected_archive is not None
+                and expected_archive != archive_evidence
             ):
                 raise ValueError(f"{io.label} restore plan evidence changed")
             archive_identity = metadata_identity(
@@ -983,6 +997,20 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             verify_private_archive(
                 parent_fd, name, key, source, receipt, io=io, codec=codec
             )
+            if operator_submission:
+                assert expected_plan is not None
+                target_present = self._observe_restore_target(target, source, name)
+                if (
+                    expected_archive != archive_evidence
+                    or desired.inventory_revision != expected_plan.desired_inventory_revision
+                    or (expected_target_state == "same_bytes" and not target_present)
+                ):
+                    raise ValueError(f"{io.label} restore plan is stale")
+                if target_present and expected_target_state == "absent":
+                    self.restore_journal().require_started(
+                        self.identity_for(key, name, deletion_receipt.receipt_id),
+                        error=f"{io.label} restore plan has no prior start",
+                    )
             with closing_descriptor(io.open_directory(parent_fd, name)) as archive_fd:
                 if metadata_identity(os.fstat(archive_fd)) != archive_identity:
                     raise ValueError(f"{io.label} restore archive changed")
