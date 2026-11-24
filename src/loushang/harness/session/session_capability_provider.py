@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from typing import Protocol, TypeVar, cast
 
 from loushang.foundation.json import dump_json_value
-from loushang.harness.capabilities.contracts import CapabilityContractRange
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
     CapabilityPackComposition,
@@ -312,14 +311,10 @@ def session_capability_provider_binding(
         raise RuntimeError("side-question candidate is not root-owned")
     if staged_transcript.ownership_state != "root_owned":
         raise RuntimeError("transcript candidate is not root-owned")
-    provider = CapabilityBundleProvider(
-        capability_id=SESSION_CAPABILITY_DEFINITION.capability_id,
+    provider = CapabilityBundleProvider.for_definition(
+        SESSION_CAPABILITY_DEFINITION,
         provider_id=provider_id,
         implementation_version=4,
-        compatible_contract=CapabilityContractRange.exact(
-            SESSION_CAPABILITY_DEFINITION.contract_version
-        ),
-        facets=SESSION_CAPABILITY_DEFINITION.facets,
         requirements=(
             RESOURCES_SESSION_COMPOSITION_REQUIREMENT,
             WORKSPACE_SESSION_COMPOSITION_REQUIREMENT,

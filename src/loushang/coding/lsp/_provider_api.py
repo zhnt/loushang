@@ -360,14 +360,10 @@ _BUNDLE_VIEWS = (
 def coding_lsp_capability_provider() -> CapabilityBundleProvider:
     """Describe the fixed private Provider without constructing live state."""
 
-    return CapabilityBundleProvider(
-        capability_id=CODING_LSP_CAPABILITY_DEFINITION.capability_id,
+    return CapabilityBundleProvider.for_definition(
+        CODING_LSP_CAPABILITY_DEFINITION,
         provider_id="coding.lsp.default",
         implementation_version=1,
-        compatible_contract=CapabilityContractRange.exact(
-            CODING_LSP_CAPABILITY_DEFINITION.contract_version
-        ),
-        facets=CODING_LSP_CAPABILITY_DEFINITION.facets,
         requirements=(CODING_LSP_WORKSPACE_REQUIREMENT,),
         required_authorities=frozenset({"filesystem", "process"}),
         source_id="plugin:coding.lsp.default",

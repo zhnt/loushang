@@ -451,12 +451,10 @@ _BUNDLE_VIEWS = (
 def coding_arch_capability_provider() -> CapabilityBundleProvider:
     """Describe the fixed private Provider without constructing live state."""
 
-    return CapabilityBundleProvider(
-        capability_id=CODING_ARCH_CAPABILITY,
+    return CapabilityBundleProvider.for_definition(
+        CODING_ARCH_CAPABILITY_DEFINITION,
         provider_id="coding.arch.default",
         implementation_version=1,
-        compatible_contract=CapabilityContractRange.exact(1),
-        facets=CODING_ARCH_CAPABILITY_DEFINITION.facets,
         requirements=(CODING_ARCH_WORKSPACE_REQUIREMENT,),
         required_authorities=frozenset({"filesystem"}),
         source_id="plugin:coding.arch.default",

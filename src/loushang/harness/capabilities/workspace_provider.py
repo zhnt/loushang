@@ -15,7 +15,6 @@ from loushang.harness.authorization import (
     constrain_execution_profile,
 )
 from loushang.harness.authorization.execution_profile import WorkspaceExecutionSelection
-from loushang.harness.capabilities.contracts import CapabilityContractRange
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
     CapabilityBundleValue,
@@ -279,14 +278,10 @@ def workspace_capability_provider_binding(
     approval gateways, sandbox backends, and credentials never enter the Bundle.
     """
 
-    provider = CapabilityBundleProvider(
-        capability_id=WORKSPACE_CAPABILITY_DEFINITION.capability_id,
+    provider = CapabilityBundleProvider.for_definition(
+        WORKSPACE_CAPABILITY_DEFINITION,
         provider_id=provider_id,
         implementation_version=1,
-        compatible_contract=CapabilityContractRange.exact(
-            WORKSPACE_CAPABILITY_DEFINITION.contract_version
-        ),
-        facets=WORKSPACE_CAPABILITY_DEFINITION.facets,
         required_authorities=frozenset({"filesystem", "process"}),
         source_id=source_id,
         selection_rule="Product workspace selection",
