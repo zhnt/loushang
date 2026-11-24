@@ -10,6 +10,7 @@ from pathlib import Path
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
+from loushang.apphost.foreground import _observe as _observe
 from loushang.apphost.integrations._foreground_process import run_foreground_process
 from loushang.apphost.integrations._foreground_stdio import _InheritedStdioForeground
 from loushang.appserver.framing import require_timeout
