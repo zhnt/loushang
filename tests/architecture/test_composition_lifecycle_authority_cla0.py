@@ -121,8 +121,8 @@ EXPECTED_COMPOSITION_BIND_CALLERS = {
         "_create_query_only_session",
     ),
     (
-        Path('src/loushang/coding/composition/runtime_admission.py'),
-        "CodingCapabilityProfileResolution.bind",
+        Path("src/loushang/harness/session/extension_profiles.py"),
+        "SessionExtensionProfileResolution.bind",
     ),
     (
         Path("src/loushang/coding/session/agent_session.py"),

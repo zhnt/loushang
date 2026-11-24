@@ -6,10 +6,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from loushang.coding.composition.plan import CODING_CAPABILITY_PLAN
-from loushang.harness.capabilities import (
-    StagedResourceCompositionCandidate,
-    stage_resource_composition_candidate,
-)
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.declarations import (
     ExtensionCapabilityDeclarationSnapshot,
@@ -21,14 +17,12 @@ from loushang.harness.runtime import (
     RuntimeCapabilityImplementation,
 )
 from loushang.harness.session.extension_profiles import (
+    SessionExtensionProfileResolution,
     prepare_extension_profile,
     require_compatible_declaration_change,
     require_supported_resource_baseline,
 )
-from loushang.harness.session.legacy_side_question import (
-    LegacySideQuestionBinding,
-    bind_legacy_side_question,
-)
+from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 
 SIDE_QUESTION_RUNTIME_PERMISSION = SIDE_QUESTION_PROVIDER_SLOT.key
 _EXTENSION_SLOT_PERMISSIONS = {
@@ -37,23 +31,11 @@ _EXTENSION_SLOT_PERMISSIONS = {
 
 
 @dataclass(frozen=True)
-class CodingCapabilityProfileResolution:
+class CodingCapabilityProfileResolution(SessionExtensionProfileResolution):
     """Pure resolved profile plus the Product-approved executable factories."""
 
     profile: ResolvedRuntimeProfile
     implementations: tuple[RuntimeCapabilityImplementation, ...]
-
-    def bind(self) -> StagedResourceCompositionCandidate:
-        return stage_resource_composition_candidate(
-            self.profile,
-            additional_implementations=self.implementations,
-        )
-
-    def bind_side_question(self) -> LegacySideQuestionBinding:
-        return bind_legacy_side_question(
-            self.profile,
-            additional_implementations=self.implementations,
-        )
 
 
 def resolve_coding_capability_profile(

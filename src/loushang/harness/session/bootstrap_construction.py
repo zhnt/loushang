@@ -96,6 +96,9 @@ from loushang.harness.session.bootstrap_utils import (
     resolve_base_system_prompt,
     resolve_initial_active_tool_names,
 )
+from loushang.harness.session.extension_profiles import (
+    SessionExtensionProfileResolution,
+)
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.model_resolution import (
     resolve_session_model,
@@ -562,7 +565,10 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         Callable[[StandardExtensionT], LegacySideQuestionBinding] | None
     ) = None
     resolve_session_capability_profile: (
-        Callable[[StandardExtensionT], ResolvedRuntimeProfile] | None
+        Callable[
+            [StandardExtensionT],
+            ResolvedRuntimeProfile | SessionExtensionProfileResolution,
+        ] | None
     ) = None
 
     def construct(
@@ -694,77 +700,35 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             product_inventory: PackageProductLifecycleInventoryPort | None,
             product_lifecycle_mode: PackageProductLifecycleMode,
         ) -> SessionT:
+            factory_prefix: tuple[
+                StagedResourceCompositionCandidate | LegacySideQuestionBinding, ...
+            ] = (bootstrap_capability_runtime,)
+            prepare_side_question = None
             if self.resolve_session_capability_profile is not None:
-                bootstrap_capability_runtime.select_final_profile(
-                    self.resolve_session_capability_profile(extension_runtime)
-                )
-            side_question_binding = (
-                self.bind_session_side_question(extension_runtime)
-                if self.bind_session_side_question is not None
-                else None
-            )
+                resolved = self.resolve_session_capability_profile(extension_runtime)
+                if isinstance(resolved, SessionExtensionProfileResolution):
+                    bootstrap_capability_runtime.select_final_profile(resolved.profile)
+                    prepare_side_question = resolved.bind_side_question
+                else:
+                    bootstrap_capability_runtime.select_final_profile(resolved)
+            if self.bind_session_side_question is not None:
+                side_question_binding = self.bind_session_side_question(extension_runtime)
+            elif prepare_side_question is not None:
+                side_question_binding = prepare_side_question()
+            else:
+                side_question_binding = None
             if side_question_binding is not None:
                 session_side_question_bindings.append(side_question_binding)
-            if self.bind_session_side_question is None:
-                legacy_factory = cast(
-                    Callable[
-                        [
-                            StagedResourceCompositionCandidate,
-                            AgentT,
-                            ResourceBundle,
-                            StandardExtensionT,
-                            WorkspaceToolRegistry | None,
-                            list[str] | None,
-                            str,
-                            NoToolsMode | None,
-                            PackageProductLifecycleOperationPort | None,
-                            PackageProductLifecycleInventoryPort | None,
-                            PackageProductLifecycleMode,
-                        ],
-                        SessionT,
-                    ],
-                    session_factory,
-                )
-                return bind_package_runtime(
-                    legacy_factory(
-                        bootstrap_capability_runtime,
-                        agent,
-                        bundle,
-                        extension_runtime,
-                        registry,
-                        active,
-                        prompt,
-                        mode,
-                        product_lifecycle,
-                        product_inventory,
-                        product_lifecycle_mode,
-                    )
-                )
-            factory_with_side_question = cast(
-                Callable[
-                    [
-                        StagedResourceCompositionCandidate,
-                        LegacySideQuestionBinding,
-                        AgentT,
-                        ResourceBundle,
-                        StandardExtensionT,
-                        WorkspaceToolRegistry | None,
-                        list[str] | None,
-                        str,
-                        NoToolsMode | None,
-                        PackageProductLifecycleOperationPort | None,
-                        PackageProductLifecycleInventoryPort | None,
-                        PackageProductLifecycleMode,
-                    ],
-                    SessionT,
-                ],
-                session_factory,
-            )
-            assert side_question_binding is not None
+                factory_prefix += (side_question_binding,)
+            elif (
+                self.bind_session_side_question is not None
+                or prepare_side_question is not None
+            ):
+                raise AssertionError("Session side-question binding is unavailable")
+            factory = cast(Callable[..., SessionT], session_factory)
             return bind_package_runtime(
-                factory_with_side_question(
-                    bootstrap_capability_runtime,
-                    side_question_binding,
+                factory(
+                    *factory_prefix,
                     agent,
                     bundle,
                     extension_runtime,
