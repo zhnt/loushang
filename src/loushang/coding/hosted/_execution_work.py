@@ -12,7 +12,7 @@ from loushang.agent import Agent
 from loushang.ai.model import OpenAIResponsesConfig
 from loushang.ai.options import RetryOptions
 from loushang.ai.types import AssistantMessage, ImagePart, UserMessage
-from loushang.apphost.integrations.session_control import _HostedAgentExecutionWork
+from loushang.apphost.integrations.session_control import _HostedPromptExecutionWork
 from loushang.appserver.protocol import SessionSnapshotRequestV1
 from loushang.appservice.client_scope import ScopedAppServicePortV1
 from loushang.appservice.execution_contract import (
@@ -54,7 +54,7 @@ def current_coding_hosted_resume_submission_id() -> str | None:
     return ScopedAppServicePortV1.current_resume_submission_id()
 
 
-class CodingExecutionWorkV1(_HostedAgentExecutionWork):
+class CodingExecutionWorkV1(_HostedPromptExecutionWork):
     def __init__(
         self, session: AgentSession, text: str, cancel_requested: Callable[[], bool],
         *,
@@ -63,56 +63,38 @@ class CodingExecutionWorkV1(_HostedAgentExecutionWork):
         start_title: Callable[[], None] | None = None,
         wait_for_title: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
-        super().__init__(cancel_requested)
+        super().__init__(
+            session, text, cancel_requested, start_title=start_title, wait_for_title=wait_for_title,
+        )
         self.session = session
-        self.text = text
         self._images = images
         self._input_metadata = input_metadata
-        self._start_title = start_title
-        self._wait_for_title = wait_for_title
 
-    async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
+    async def _execute_hosted_prompt(
+        self, control: ExecutionControlV1, images: list[ImagePart] | None = None,
+    ) -> ExecutionOutcomeV1:
+        images = self._images if images is None else images
+        metadata = self._input_metadata
+        if metadata is None:
+            return await super()._execute_hosted_prompt(control, images)
+        router = self.session._composition.session_runtime.agent_event_router
+        previous = router.prepare_message_metadata
+        first_message: UserMessage | None = None
+
+        def mark(message: object) -> Mapping[str, JSONValue] | None:
+            nonlocal first_message
+            prior = previous(message) if previous is not None else None
+            if not isinstance(message, UserMessage) or (first_message is not None and first_message is not message):
+                return prior
+            first_message = message
+            return {**(prior or {}), **metadata}
+
+        router.prepare_message_metadata = mark
         try:
-            if self._wait_for_title is not None:
-                await self._wait_for_title()
-            self._checkpoint()
-            if self._input_metadata is None:
-                return await self._execute_hosted_prompt(control, self._images)
-            router = self.session._composition.session_runtime.agent_event_router
-            previous = router.prepare_message_metadata
-            metadata = self._input_metadata
-
-            first_message: UserMessage | None = None
-
-            def mark(message: object) -> Mapping[str, JSONValue] | None:
-                nonlocal first_message
-                prior = previous(message) if previous is not None else None
-                if not isinstance(message, UserMessage) or (first_message is not None and first_message is not message):
-                    return prior
-                first_message = message
-                return {**(prior or {}), **metadata}
-
-            router.prepare_message_metadata = mark
-            try:
-                return await self._execute_hosted_prompt(control, self._images)
-            finally:
-                router.prepare_message_metadata = previous
-        except asyncio.CancelledError:
-            self._interrupted = True
-            self._abort_hosted_prompt()
-            raise
+            return await super()._execute_hosted_prompt(control, images)
         finally:
-            self._clear_turn()
+            router.prepare_message_metadata = previous
 
-    async def settle(self) -> None:
-        await self._settle_session(self.session)
-        if (
-            self._start_title is not None and not self._cancel_requested()
-            and self._agent_outcome is not None
-            and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
-        ):
-            start_title, self._start_title = self._start_title, None
-            start_title()
 
 _TITLE_PROMPT = """Write a short session title for the first user message below.
 Describe the topic in the user's language. For greetings use a short greeting topic.

@@ -31,7 +31,6 @@ from loushang.appserver.protocol import (
     SessionModelsV1,
     SessionSnapshotRequestV1,
 )
-from loushang.harness.commands import DEFAULT_LOCAL_COMMANDS_PROFILE
 from loushang.tui import CompletionItem, CompletionProvider
 from loushang.tui.completion import SlashCommand
 
@@ -50,7 +49,11 @@ if TYPE_CHECKING:
     from .shell import HostedMuxShellV1
 
 
-MODEL_COMMANDS = ("model", "models")
+_MODEL_COMMAND_DESCRIPTIONS = {
+    "model": "Select model",
+    "models": "Show available models",
+}
+MODEL_COMMANDS = tuple(_MODEL_COMMAND_DESCRIPTIONS)
 
 
 def _model_choices(models: SessionModelsV1) -> tuple[ModelChoice, ...]:
@@ -110,10 +113,7 @@ class HostedSessionCommandUI:
             [
                 SlashCommand(
                     name,
-                    description=DEFAULT_LOCAL_COMMANDS_PROFILE.local_commands_by_name[
-                        name
-                    ].description
-                    or "",
+                    description=_MODEL_COMMAND_DESCRIPTIONS[name],
                     argument_provider=self._model_arguments
                     if name == "model"
                     else None,
@@ -489,7 +489,7 @@ class HostedSessionCommandUI:
 
     def _show_catalog(self, catalog: SessionCommandCatalogV1) -> None:
         lines = [
-            f"/{name}  {DEFAULT_LOCAL_COMMANDS_PROFILE.local_commands_by_name[name].description}"
+            f"/{name}  {_MODEL_COMMAND_DESCRIPTIONS[name]}"
             for name in MODEL_COMMANDS
             if self.models_available
         ]
