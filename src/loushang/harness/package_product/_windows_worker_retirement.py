@@ -40,6 +40,9 @@ from loushang.harness.worker.history._windows_recovery import (
 from loushang.harness.worker.history._windows_semantic_contracts import (
     _LaunchIntentFacts,
     launch_matches_intent,
+    native_attempt_history_matches,
+    native_attempt_identity_matches,
+    native_attempts_for,
     native_matches_intent,
     no_effect_history_matches,
 )
@@ -1055,33 +1058,18 @@ class WindowsProductWorkerCrashStageRetirement(Generic[_CrashT, _ReceiptT, _Inte
                 runtime_id=receipt.receipt.policy.product_runtime_id,
                 expected=(review.repaired_lease_id, review.lease_repair_revision),
             )
-        native = tuple(
-            (
-                item
-                for item in self.inspect_native(product)
-                if item.attempt_id == review.attempt_id
-            )
-        )
+        native = native_attempts_for(self.inspect_native(product), review.attempt_id)
         if len(native) != 1:
             raise ValueError("Windows Worker crash stage native history changed")
         [provisioned] = native
         identity = provisioned.identity
         if (
-            provisioned.phase != "settled"
-            or provisioned.state_revision != review.native_revision
-            or provisioned.phase_history != attempt.native_phase_history
-            or (
-                provisioned.witness_present_history
-                != attempt.native_witness_present_history
+            not native_attempt_history_matches(
+                provisioned, attempt, phase="settled", revision=review.native_revision
             )
-            or (identity["specFingerprint"] != review.native_spec_fingerprint)
-            or (identity["workerRequestFingerprint"] != intent.request_fingerprint)
-            or (identity["receiptFingerprint"] != receipt.receipt.fingerprint)
-            or (identity["jobObjectName"] != attempt.native_job_name)
-            or (identity["nativeProfileId"] != receipt.receipt.policy.native_profile_id)
-            or (
-                identity["nativeProfileCatalogRevision"]
-                != receipt.receipt.policy.native_profile_catalog_revision
+            or identity["specFingerprint"] != review.native_spec_fingerprint
+            or not native_attempt_identity_matches(
+                identity, attempt, receipt, request_fingerprint=intent.request_fingerprint
             )
         ):
             raise ValueError("Windows Worker crash stage native identity changed")

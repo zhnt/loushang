@@ -860,3 +860,19 @@ wire 预算、Product 标识以及稳定入口。切换预检继续使用同一�
 在 `16597be99` 重现，涉及 Worker 装配消费者清单以及 LPAC canary 标记。
 C50/C54 另有 16 项通过。Ruff、六文件 mypy、架构依赖事实和文档检查通过。
 原生 Windows 路线仍待验证。
+
+### Windows 崩溃历史证明与退休复核
+
+以 `46bf795d2` 为基线，Coding 的孤儿审阅入口直接接入 Package Product 的只读恢复，
+沿用原 Product 标识与名义记录。干净退出的租约修复沿用同一个 admission 和锁内复读，
+仍要求匹配原租约、最新审阅和明确的 Job 不存在证据。
+
+Worker History 统一校验 provisioning 的阶段、修订、witness 历史、启动请求、回执、
+Job 和 Native Profile。崩溃审阅、租约修复、原生结算和退休调用同一组校验，
+各自保留原锁范围、失败码及动作特有的证明。紧邻删除的退休复核仍验证原生规格摘要，
+历史比较本身不持有 IO 或写权限。
+
+本批生产 Python 为 Coding −9 行、Harness −21 行、系统 −30 行。Hosting 和其他
+生产代码不变，测试源码不变。恢复首轮 98 passed、42 skipped、7 deselected，
+最终恢复与退休证明回归 52 passed。两组有交叠。原生 Windows LPAC、Job 和崩溃场景
+仍待平台验证。剩余产品 Profile、名义字段和适配体不计为本批迁移收益。
