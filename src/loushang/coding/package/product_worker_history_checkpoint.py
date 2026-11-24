@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import re
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import cast
 
 from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.package_product._linux_worker_history import (
-    bound_product_worker_history_checkpoint,
     publish_product_worker_history_checkpoint,
     read_product_worker_history_checkpoints,
     repair_product_worker_history_checkpoint_append,
@@ -37,13 +35,9 @@ from loushang.harness.worker.history._checkpoint_history import (
 from loushang.harness.worker.history._checkpoint_history import (
     CheckpointHistory,
 )
-from loushang.harness.worker.history._checkpoint_history import (
-    _is_empty_seal_successor as _is_empty_seal_successor,
-)
 
 from .product_worker_history_checkpoint_anchor import CodingWorkerCheckpointAnchorV1
 from .product_worker_history_retention import _history_proof_bindings
-from .product_worker_history_segments import CodingWorkerSegmentedHistoryV1
 from .product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS as CODING_WORKER_HISTORY_STREAM_STEMS,
 )
@@ -74,43 +68,6 @@ _CHECKPOINT_HISTORY = CheckpointHistory(
     CodingWorkerCheckpointAnchorV1,
     CodingWorkerHistoryCheckpointError,
 )
-
-
-def _read_records(
-    rooted: RootedFile,
-    *,
-    scope_id: str,
-    store_id: str,
-    history: CodingWorkerSegmentedHistoryV1 | None = None,
-) -> tuple[tuple[CodingWorkerHistoryCheckpointV1, ...], CodingWorkerSegmentedHistoryV1]:
-    return _CHECKPOINT_HISTORY.read_records(
-        rooted,
-        scope_id=scope_id,
-        store_id=store_id,
-        history=history,
-        max_record_bytes=_MAX_RECORD_BYTES,
-        max_segment_bytes=_MAX_SEGMENT_BYTES,
-        max_active_records=_MAX_ACTIVE_RECORDS,
-    )
-
-
-def _read_records_or_repair_empty_bootstrap(
-    rooted: RootedFile, *, scope_id: str, store_id: str
-) -> tuple[tuple[CodingWorkerHistoryCheckpointV1, ...], CodingWorkerSegmentedHistoryV1]:
-    return _checkpoint_commands().read_or_repair_empty_bootstrap(
-        rooted, scope_id=scope_id, store_id=store_id
-    )
-
-
-_anchor_for_records = _CHECKPOINT_HISTORY.anchor_for_records
-
-
-def _bound_checkpoint(
-    product: PosixLocalWheelProductSessionOwner,
-) -> AbstractContextManager[RootedFile]:
-    return bound_product_worker_history_checkpoint(
-        product, commands=lambda: _checkpoint_commands()
-    )
 
 
 def read_coding_product_worker_history_checkpoints_under_gc_guard(

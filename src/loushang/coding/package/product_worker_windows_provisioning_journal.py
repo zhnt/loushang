@@ -16,9 +16,6 @@ from loushang.harness.worker._windows_provisioning_journal import (
     _canonical as _canonical,
 )
 from loushang.harness.worker._windows_provisioning_journal import (
-    _inventory_identity as _inventory_identity,
-)
-from loushang.harness.worker._windows_provisioning_journal import (
     _Record as _Record,
 )
 from loushang.harness.worker._windows_provisioning_journal import (

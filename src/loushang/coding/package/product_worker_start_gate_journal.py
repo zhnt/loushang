@@ -29,18 +29,12 @@ from loushang.harness.worker.history._start_gate import (
     _DIGEST as _DIGEST,
 )
 from loushang.harness.worker.history._start_gate import (
-    _IDENTITY_FIELDS as _IDENTITY_FIELDS,
-)
-from loushang.harness.worker.history._start_gate import (
     _MAX_BYTES,
     _MAX_EVENTS,
     _StartGateRecordMethods,
 )
 from loushang.harness.worker.history._start_gate import (
     _identity_dict as _identity_dict,
-)
-from loushang.harness.worker.history._start_gate import (
-    _identity_from_dict as _identity_from_dict,
 )
 from loushang.harness.worker.history._start_gate_store import (
     StartGateHistory,
