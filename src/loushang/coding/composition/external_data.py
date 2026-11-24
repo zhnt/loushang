@@ -6,7 +6,9 @@ from dataclasses import dataclass
 
 from loushang.coding.composition.base_product import (
     _EXTERNAL_DATA_RESOURCES,
+    CodingBaseProductCompilation,
     CodingBaseProductResourceBody,
+    extend_coding_base_product_data_resources,
 )
 from loushang.coding.composition.base_product import (
     _resource_bodies as _resource_bodies,
@@ -88,6 +90,26 @@ def compile_coding_external_data_product_selection(
         product_composition=composition,
         selected_manifests=selected,
         resource_bodies=_resource_bodies(None, composition, external_selected=selected),
+    )
+
+
+def compile_coding_selected_data_resources(
+    base: CodingBaseProductCompilation | None,
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+    evaluated_at: int,
+    *,
+    composition_set: CodingCompositionSetPlan,
+    session_id: str,
+) -> tuple[CodingBaseProductCompilation | None, CodingExternalDataProductCompilation | None]:
+    if base is not None:
+        return extend_coding_base_product_data_resources(
+            base, selected, evaluated_at=evaluated_at
+        ), None
+    return None, compile_coding_external_data_product_selection(
+        selected,
+        composition_set=composition_set,
+        session_id=session_id,
+        evaluated_at=evaluated_at,
     )
 
 

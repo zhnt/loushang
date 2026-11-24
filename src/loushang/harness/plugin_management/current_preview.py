@@ -1,8 +1,8 @@
 """Installed-composition queries and typed Catalog evidence projection.
 
-Product owns source selection, compilation and Catalog construction. This module
-projects their exact evidence; its query port grants no installation, activation,
-repair or live Session authority.
+The installed-resource query reads one Desired snapshot, compiles its selected
+manifests through the Product compiler, and rechecks Desired and the epoch before
+returning evidence. It borrows read-only Package and Catalog authority.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.records import (
@@ -29,9 +29,18 @@ if TYPE_CHECKING:
     from loushang.harness.capabilities.contribution_admission import (
         OwnerContributionAdmissionRecord,
     )
-    from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+        _LocalWheelSelectedManifestReader,
+    )
     from loushang.harness.plugin_management.package_product import (
         PackageProductSelectedRootSnapshotV1,
+    )
+    from loushang.harness.resource_catalog.bootstrap_projection import (
+        ResourceCatalogBootstrapResult,
+    )
+    from loushang.harness.resource_catalog.product_snapshot_source import (
+        ProductSelectedResourceInput,
     )
     from loushang.harness.resources._catalog_input_receipt import (
         ResourceCatalogInputReceipt,
@@ -44,6 +53,7 @@ if TYPE_CHECKING:
         PackageProductLocalWheelBindingV1,
         PackageProductLocalWheelPolicy,
     )
+    from loushang.harness.resources.plugins.selection import PluginSelectionPlanV2
     from loushang.harness.resources.types import ResourceBundle
 
 
@@ -455,9 +465,11 @@ def project_current_product_resource_facts(
     return admissions, catalog_resources
 
 
-class _PreviewedComposition(Protocol):
+class _InstalledResourceCompilation(Protocol):
     @property
     def product_composition(self) -> ProductCompositionCompilation: ...
+
+    def product_resource_inputs(self) -> tuple[ProductSelectedResourceInput, ...]: ...
 
 
 class _PreviewCompositionFailure(Protocol):
@@ -465,101 +477,173 @@ class _PreviewCompositionFailure(Protocol):
     def code(self) -> str: ...
 
 
-def observe_current_product_composition(
-    policy: PackageProductLocalWheelPolicy,
-    desired: PluginDesiredStateLedger,
-    before: PluginDesiredStateSnapshotV1,
-    *,
-    epoch: PackageProductPosixFencedRuntimeOwner,
-    requested_plugin_ids: tuple[str, ...],
-    executable_trust_classes: frozenset[str],
-    excluded_plugin_id: str,
-    observe_clock: Callable[[], int],
-    composition_set_id: str,
-    disabled_skills_known: bool,
-    compiled_plugin_ids: tuple[str, ...],
-    catalog_projection: tuple[ResourceBundle, ResourceCatalogSnapshot] | None = None,
-    product_inputs: tuple[_CurrentProductResourceInput, ...] = (),
-    compiled: _PreviewedComposition | None = None,
-    blocker: _PreviewCompositionFailure | None = None,
-) -> PluginCurrentCompositionPreviewV1:
-    """Project one preview against the same Desired and epoch authorities."""
-    from loushang.harness.capabilities.consumer_requirements import (
-        ProductCompositionError,
-    )
+class _InstalledBaseCompilation(_InstalledResourceCompilation, Protocol):
+    @property
+    def plan(self) -> PluginSelectionPlanV2: ...
 
-    bundle = catalog = None
-    selections: list[PluginCurrentResourceSelectionV1] = []
-    if catalog_projection is not None:
-        bundle, catalog = catalog_projection
-        selections = project_current_product_resource_selections(
-            catalog, product_inputs
-        )
-    after, _ = desired.capture_read_only()
-    epoch.assert_current()
-    executable, gaps = project_current_selection_evidence(
-        policy,
-        before,
-        requested_plugin_ids,
-        executable_trust_classes=executable_trust_classes,
-        excluded_plugin_id=excluded_plugin_id,
+
+_InstalledBaseT = TypeVar("_InstalledBaseT", bound=_InstalledBaseCompilation)
+
+
+def preview_fenced_product_resources(
+    epoch: PackageProductPosixFencedRuntimeOwner,
+    policy: PackageProductLocalWheelPolicy,
+    manifests: _LocalWheelSelectedManifestReader,
+    *,
+    base_plugin_id: str,
+    composition_set_id: str,
+    requested_plugin_ids: tuple[str, ...],
+    disabled_skills_known: bool,
+    executable_trust_classes: frozenset[str],
+    max_files: int,
+    max_total_bytes: int,
+    evaluation_clock: Callable[[], float],
+    observe_clock: Callable[[], int],
+    compile_base: Callable[
+        [PackageProductSelectedPluginManifestV1, int], _InstalledBaseT
+    ],
+    compile_data: Callable[
+        [_InstalledBaseT | None, tuple[PackageProductSelectedPluginManifestV1, ...], int],
+        tuple[_InstalledBaseT | None, _InstalledResourceCompilation | None],
+    ],
+    prepare_catalog: Callable[
+        [_InstalledResourceCompilation | None, int],
+        tuple[ResourceCatalogBootstrapResult, tuple[ProductSelectedResourceInput, ...]],
+    ],
+    base_missing: Callable[[], Exception],
+    composition_errors: tuple[type[Exception], ...],
+) -> PluginCurrentCompositionPreviewV1:
+    """Project exact installed Resources using the caller's read-only Product authority."""
+    desired = manifests.root_reader.desired_state
+    before, _ = desired.capture_read_only()
+    base_key = PluginInstallationKeyV1.workspace(
+        policy.product_id, policy.project_scope_id, base_plugin_id
     )
-    if disabled_skills_known:
-        gaps.discard("disabled_skill_settings")
-    if blocker is not None:
-        gaps.add("resource_catalog_not_reached")
-    if before.inventory_revision != after.inventory_revision:
-        gaps.add("stale_snapshot")
-    admissions, catalog_resources = (
-        project_current_product_resource_facts(
-            compiled.product_composition.resource_admissions
-            if compiled is not None
-            else (),
-            bundle,
-        )
-        if bundle is not None
-        else ((), ())
-    )
-    return PluginCurrentCompositionPreviewV1(
-        product_id=policy.product_id,
-        scope_id=policy.project_scope_id,
-        composition_set_id=composition_set_id,
-        observed_at_unix_ns=observe_clock(),
-        desired_inventory_revision=before.inventory_revision,
-        product_policy_revision=policy.policy_revision,
-        product_authority_revision=policy.authority_revision,
-        compiled_plugin_ids=compiled_plugin_ids,
-        admitted_resources=admissions,
-        catalog_resources=catalog_resources,
-        catalog_diagnostic_codes=(
-            tuple(sorted({item.code for item in bundle.diagnostics}))
-            if bundle is not None
-            else ()
-        ),
-        catalog_generation=catalog.catalog_generation if catalog is not None else None,
-        catalog_snapshot_fingerprint=(
-            catalog.snapshot_fingerprint if catalog is not None else None
-        ),
-        selected_resources=tuple(
-            sorted(
-                selections,
-                key=lambda item: (
-                    item.installation_key.plugin_id,
-                    item.contribution_id,
-                ),
+    base_state = before.installation(base_key).selection.desired_state
+    external_ids = manifests.selected_external_data_plugin_ids()
+    evaluated_at = int(evaluation_clock())
+    read_manifest = manifests.capture_selected_manifest_for_plugin
+
+    def capture(
+        ids: tuple[str, ...],
+    ) -> tuple[PackageProductSelectedPluginManifestV1, ...]:
+        return tuple(
+            read_manifest(
+                plugin_id, max_files=max_files, max_total_bytes=max_total_bytes
             )
-        ),
-        requires_authorized_preflight=tuple(sorted(executable)),
-        evidence_gaps=tuple(sorted(gaps)),
-        disposition="blocked" if blocker is not None else "projected",
-        blocking_owner="product_composition" if blocker is not None else None,
-        blocking_code=blocker.code if blocker is not None else None,
-        blocking_admission_fingerprints=(
-            blocker.admission_fingerprints
-            if isinstance(blocker, ProductCompositionError)
-            else ()
-        ),
-    )
+            for plugin_id in ids
+        )
+
+    def project(
+        bundle: ResourceBundle | None = None,
+        catalog: ResourceCatalogSnapshot | None = None,
+        product_inputs: tuple[ProductSelectedResourceInput, ...] = (),
+        compilation: _InstalledResourceCompilation | None = None,
+        blocker: _PreviewCompositionFailure | None = None,
+    ) -> PluginCurrentCompositionPreviewV1:
+        from loushang.harness.capabilities.consumer_requirements import (
+            ProductCompositionError,
+        )
+
+        selections: list[PluginCurrentResourceSelectionV1] = []
+        if bundle is not None and catalog is not None:
+            selections = project_current_product_resource_selections(
+                catalog, product_inputs
+            )
+        after, _ = desired.capture_read_only()
+        epoch.assert_current()
+        executable, gaps = project_current_selection_evidence(
+            policy,
+            before,
+            requested_plugin_ids,
+            executable_trust_classes=executable_trust_classes,
+            excluded_plugin_id=base_plugin_id,
+        )
+        if disabled_skills_known:
+            gaps.discard("disabled_skill_settings")
+        if blocker is not None:
+            gaps.add("resource_catalog_not_reached")
+        if before.inventory_revision != after.inventory_revision:
+            gaps.add("stale_snapshot")
+        admissions, catalog_resources = (
+            project_current_product_resource_facts(
+                compilation.product_composition.resource_admissions
+                if compilation is not None
+                else (),
+                bundle,
+            )
+            if bundle is not None
+            else ((), ())
+        )
+        return PluginCurrentCompositionPreviewV1(
+            product_id=policy.product_id,
+            scope_id=policy.project_scope_id,
+            composition_set_id=composition_set_id,
+            observed_at_unix_ns=observe_clock(),
+            desired_inventory_revision=before.inventory_revision,
+            product_policy_revision=policy.policy_revision,
+            product_authority_revision=policy.authority_revision,
+            compiled_plugin_ids=plugin_ids,
+            admitted_resources=admissions,
+            catalog_resources=catalog_resources,
+            catalog_diagnostic_codes=(
+                tuple(sorted({item.code for item in bundle.diagnostics}))
+                if bundle is not None
+                else ()
+            ),
+            catalog_generation=catalog.catalog_generation
+            if catalog is not None
+            else None,
+            catalog_snapshot_fingerprint=(
+                catalog.snapshot_fingerprint if catalog is not None else None
+            ),
+            selected_resources=tuple(
+                sorted(
+                    selections,
+                    key=lambda item: (
+                        item.installation_key.plugin_id,
+                        item.contribution_id,
+                    ),
+                )
+            ),
+            requires_authorized_preflight=tuple(sorted(executable)),
+            evidence_gaps=tuple(sorted(gaps)),
+            disposition="blocked" if blocker is not None else "projected",
+            blocking_owner="product_composition" if blocker is not None else None,
+            blocking_code=blocker.code if blocker is not None else None,
+            blocking_admission_fingerprints=(
+                blocker.admission_fingerprints
+                if isinstance(blocker, ProductCompositionError)
+                else ()
+            ),
+        )
+
+    compiled: _InstalledResourceCompilation | None = None
+    plugin_ids: tuple[str, ...] = ()
+    try:
+        if base_state == "absent":
+            raise base_missing()
+        if base_state == "installed_disabled":
+            if external_ids:
+                plugin_ids = external_ids
+                _, compiled = compile_data(None, capture(external_ids), evaluated_at)
+        else:
+            (base,) = capture((base_plugin_id,))
+            compiled_base = compile_base(base, evaluated_at)
+            plugin_ids = compiled_base.plan.selected_plugin_ids
+            if external_ids:
+                plugin_ids = tuple(sorted((*plugin_ids, *external_ids)))
+                extended, _ = compile_data(
+                    compiled_base, capture(external_ids), evaluated_at
+                )
+                assert extended is not None
+                compiled_base = extended
+                plugin_ids = compiled_base.plan.selected_plugin_ids
+            compiled = compiled_base
+    except composition_errors as error:
+        return project(blocker=cast(_PreviewCompositionFailure, error))
+    projection, inputs = prepare_catalog(compiled, evaluated_at)
+    return project(projection.bundle, projection.catalog, inputs, compiled)
 
 
 __all__ = [
