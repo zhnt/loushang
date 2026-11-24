@@ -77,6 +77,8 @@ from loushang.appserver.protocol import (
     WorkspaceRequestV1,
 )
 
+from ._foreground_client_control import mux_member_scopes
+
 
 class _ManagedShell(Protocol):
     async def close(self) -> None: ...
@@ -659,12 +661,7 @@ class _ManagedMuxCommandLifecycle(Generic[ShellT]):
             scopes: tuple[tuple[SessionScopeV1, str], ...] = ()
             if self.creation is None:
                 mux = await connection.client.read_mux(MuxReadV1(selector))
-                scopes = tuple(
-                    dict.fromkeys(
-                        (m.session.scope, m.session.scope_fingerprint)
-                        for m in mux.members
-                    )
-                )
+                scopes = mux_member_scopes(mux)
             if not scopes:
                 if self.workspace is not None:
                     # Register without provisioning a separate GUI Mux.

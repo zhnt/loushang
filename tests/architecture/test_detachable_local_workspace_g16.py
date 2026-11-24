@@ -207,8 +207,12 @@ def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default
     for forbidden in ("LocalAppServerV1", "InheritedStdioTransportV1", "HostedLocalRuntimeV1", "sys.argv", "import subprocess"):
         assert forbidden not in bootstrap
     command = Path("src/loushang/coding/cli/mux.py").read_text()
-    assert 'expected_product_id="coding"' in command
-    assert '"stop_requested"' in command and '"--yes"' in command
+    client_control = Path(
+        "src/loushang/apphost/integrations/_foreground_client_control.py"
+    ).read_text()
+    assert "_LocalMuxClientCommand(" in command and 'product_id="coding"' in command
+    assert "expected_product_id=product_id" in client_control
+    assert '"stop_requested"' in client_control and '"--yes"' in command
     for source in ("src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py", "src/loushang/coding/ui/cli.py",
                    'src/loushang/coding/composition/bootstrap.py', "src/loushang/coding/__init__.py"):
         text = Path(source).read_text()
