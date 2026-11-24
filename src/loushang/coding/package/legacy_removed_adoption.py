@@ -10,7 +10,6 @@ from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateL
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._plugin_bootstrap import (
     ReviewedPluginChoices,
-    adopt_reviewed_product_plugins,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -33,6 +32,9 @@ from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 from .product_runtime import (
+    _adopt_coding_reviewed_plugins,
+)
+from .product_runtime import (
     open_coding_fenced_product_application_owner as open_coding_fenced_product_application_owner,
 )
 
@@ -50,27 +52,13 @@ def adopt_coding_first_b_removed_local(
 ) -> CodingLegacyRemovedAcceptanceV1:
     """Write the accepted absent choices and bootstrap current builtin choices."""
 
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    return adopt_reviewed_product_plugins(
-        open_epoch=lambda: PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs()
-        ),
-        accept_review=lambda epoch_runtime: accept_coding_first_b_removed_local(
-            lifecycle,
-            epoch_runtime,
-            settings_manager=settings_manager,
-            accepted_review_id=accepted_review_id,
-        ),
-        open_application=lambda: open_coding_fenced_product_application_owner(
-            lifecycle,
-            workspace=workspace,
-            runtime_version=runtime_version,
-            runtime_protocol_epoch=runtime_protocol_epoch,
-        ),
-        reviewed_choices=_removed_choices,
-        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-        removal_label=_REMOVAL_LABEL,
-        history_label="Coding builtin-only Product",
+    return _adopt_coding_reviewed_plugins(
+        lifecycle, settings_manager, workspace=workspace, accepted_review_id=accepted_review_id,
+        runtime_version=runtime_version, runtime_protocol_epoch=runtime_protocol_epoch,
+        open_epoch=PackageProductPosixFencedRuntimeOwner.open,
+        open_application=open_coding_fenced_product_application_owner,
+        accept_review=accept_coding_first_b_removed_local,
+        removal_label=_REMOVAL_LABEL, reviewed_choices=_removed_choices,
     )
 
 

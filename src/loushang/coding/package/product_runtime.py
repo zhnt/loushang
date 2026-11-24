@@ -13,7 +13,7 @@ from hashlib import sha256
 from importlib.metadata import version as version
 from pathlib import Path
 from threading import Lock
-from typing import Literal, cast
+from typing import Literal, TypeVar, cast
 
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -36,7 +36,6 @@ from loushang.harness.package_product._application_runtime import (
     bind_fenced_product_session_owner,
     fenced_source_catalog_scope,
     handoff_product_open,
-    hold_accepted_product_adoption,
     open_fenced_product_management_state,
     require_current_product_admission,
 )
@@ -47,7 +46,9 @@ from loushang.harness.package_product._legacy_runtime import (
     read_fresh_product_source_snapshot,
 )
 from loushang.harness.package_product._plugin_bootstrap import (
+    ReviewedPluginChoices,
     _PluginBootstrapPolicy,
+    adopt_reviewed_product_plugins,
     bootstrap_fresh_product_session,
     bootstrap_product_plugin,
     bootstrap_product_plugins,
@@ -684,30 +685,51 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
 ) -> CodingLegacyDisabledOnlyAcceptanceV1:
     """Install builtins from an explicitly accepted, fenced Source snapshot."""
 
+    return _adopt_coding_reviewed_plugins(
+        lifecycle, settings_manager, workspace=workspace, accepted_review_id=accepted_review_id,
+        runtime_version=runtime_version, runtime_protocol_epoch=runtime_protocol_epoch,
+        open_epoch=PackageProductPosixFencedRuntimeOwner.open,
+        accept_review=accept_coding_first_b_disabled_only,
+        open_application=open_coding_fenced_product_application_owner,
+        reviewed_choices=lambda receipt: frozenset(item.plugin_id for item in receipt.review.disabled_plugins),
+    )
+
+
+_AcceptedReviewT = TypeVar("_AcceptedReviewT")
+
+
+def _adopt_coding_reviewed_plugins(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings_manager: SettingsManager,
+    *,
+    workspace: Path,
+    accepted_review_id: str,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+    open_epoch: Callable[..., PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner],
+    accept_review: Callable[..., _AcceptedReviewT],
+    open_application: Callable[..., CodingFencedProductApplicationOwner],
+    reviewed_choices: Callable[[_AcceptedReviewT], ReviewedPluginChoices | frozenset[str]],
+    removal_label: str = "",
+    windows_candidate: bool = False,
+) -> _AcceptedReviewT:
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    with hold_accepted_product_adoption(
-        open_epoch=lambda: PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs()
-        ),
-        accept_review=lambda epoch_runtime: accept_coding_first_b_disabled_only(
-            lifecycle,
-            epoch_runtime,
-            settings_manager=settings_manager,
+    return adopt_reviewed_product_plugins(
+        open_epoch=partial(open_epoch, **epoch.fenced_runtime_open_kwargs()),
+        accept_review=lambda owner: accept_review(
+            lifecycle, owner, settings_manager=settings_manager,
             accepted_review_id=accepted_review_id,
         ),
-        open_application=lambda: open_coding_fenced_product_application_owner(
-            lifecycle,
-            workspace=workspace,
-            runtime_version=runtime_version,
-            runtime_protocol_epoch=runtime_protocol_epoch,
+        open_application=partial(
+            open_application, lifecycle, workspace=workspace,
+            runtime_version=runtime_version, runtime_protocol_epoch=runtime_protocol_epoch,
+            windows_candidate=windows_candidate,
         ),
-    ) as (receipt, owner):
-        bootstrap_product_plugins(
-            owner.runtime_owner.product_owner,
-            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-            disabled_ids={item.plugin_id for item in receipt.review.disabled_plugins},
-        )
-        return receipt
+        reviewed_choices=reviewed_choices,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+        removal_label=removal_label,
+        history_label="Coding builtin-only Product",
+    )
 
 
 def require_fresh_coding_product_inputs(

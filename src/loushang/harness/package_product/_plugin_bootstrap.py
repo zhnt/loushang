@@ -485,24 +485,24 @@ def adopt_reviewed_product_plugins(
     open_epoch: Callable[[], _EpochT],
     accept_review: Callable[[_EpochT], _ReceiptT],
     open_application: Callable[[], FencedOrdinaryProductApplication],
-    reviewed_choices: Callable[[_ReceiptT], ReviewedPluginChoices],
+    reviewed_choices: Callable[[_ReceiptT], ReviewedPluginChoices | frozenset[str]],
     policy: _PluginBootstrapPolicy,
     removal_label: str,
     history_label: str,
 ) -> _ReceiptT:
-    """Commit acceptance and replay the exact reviewed choices against scoped history."""
+    """Release the acceptance epoch before applying reviewed Product choices."""
     with hold_accepted_product_adoption(
         open_epoch=open_epoch,
         accept_review=accept_review,
         open_application=open_application,
     ) as (receipt, application):
         product = application.runtime_owner.product_owner
-        replay_reviewed_product_plugins(
-            product,
-            choices=reviewed_choices(receipt),
-            removal_label=removal_label,
-            policy=policy,
-            strict_history=True,
-            history_label=history_label,
-        )
+        choices = reviewed_choices(receipt)
+        if isinstance(choices, ReviewedPluginChoices):
+            replay_reviewed_product_plugins(
+                product, choices=choices, removal_label=removal_label, policy=policy,
+                strict_history=True, history_label=history_label,
+            )
+        else:
+            bootstrap_product_plugins(product, policy=policy, disabled_ids=choices)
         return receipt

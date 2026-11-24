@@ -214,18 +214,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             if (
                 not args.windows_candidate
                 or not _WINDOWS_CANDIDATE_ROUTE_ADMITTED
+                or args.review_legacy_local_plugin is not None
+                or local_prepare is not None
+                or local_adopt is not None
                 or any(
-                    (
-                        args.review_legacy_disabled_only,
-                        args.review_legacy_removed_only,
-                        args.review_legacy_local_plugin is not None,
-                        args.prepare_legacy_disabled_review,
-                        args.prepare_legacy_removed_review,
-                        local_prepare is not None,
-                        args.adopt_legacy_disabled_review is not None,
-                        args.adopt_legacy_removed_review is not None,
-                        local_adopt is not None,
-                    )
+                    getattr(args, f"review_legacy_{kind}_only")
+                    or getattr(args, f"prepare_legacy_{kind}_review")
+                    or getattr(args, f"adopt_legacy_{kind}_review") is not None
+                    for kind, *_ in review_routes if kind != "builtin"
                 )
             ):
                 raise RuntimeError(
@@ -259,17 +255,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             with closing(open_native_fenced_product_epoch(
                 windows=windows, posix_read_only=True, **epoch.fenced_runtime_open_kwargs()
             )) as owner:
+                # The Windows gate admits only the cross-platform builtin reviewer.
+                review = project_review(
+                    lifecycle, cast(PackageProductPosixFencedRuntimeOwner, owner),
+                    settings_manager=settings,
+                )
                 if windows:
-                    # The Windows gate admits only the builtin review route.
-                    document = review_coding_first_b_builtin_only(
-                        lifecycle, owner, settings_manager=settings
-                    ).to_dict()
-                else:
-                    review = project_review(
-                        lifecycle,
-                        cast(PackageProductPosixFencedRuntimeOwner, owner),
-                        settings_manager=settings,
-                    )
+                    document = review.to_dict()
             return write_package_operator_result(document if windows else review.to_dict())
 
         prepare_kind, review_plugin_id = (
