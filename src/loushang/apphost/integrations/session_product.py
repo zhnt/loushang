@@ -15,10 +15,10 @@ from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
 from loushang.apphost._ownership import (
     _ClaimedCandidateView,
+    _method_descriptor,
     _OpenedCandidateView,
     _settle_owned_closes,
 )
-from loushang.apphost.application import _method_descriptor
 from loushang.apphost.contracts import (
     AppHostSessionLeaseV1,
     OpenedProductCandidateV1,

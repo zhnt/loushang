@@ -36,12 +36,13 @@ from loushang.apphost import (
 )
 from loushang.apphost._ownership import (
     _construct_product_apphost,
+    _require_async_method,
+    _require_session_catalog_methods,
 )
 from loushang.apphost.application import (
     HostedApplicationActivationV1,
     HostedApplicationRequestV1,
     HostedApplicationRuntimeV1,
-    _method_descriptor,
     create_hosted_application_runtime,
 )
 from loushang.apphost.integrations.session_control import (
@@ -169,7 +170,7 @@ class CodingForegroundHostedApplicationRequestV1:
                                             or not self.managed_selection):
             raise ValueError("managed Mux requires managed Coding selection")
         if self.session_owner is not None:
-            _require_async_method(self.session_owner, "close")
+            _require_async_method(self.session_owner, "close", label="Coding hosted application")
             fence = inspect.getattr_static(type(self.session_owner), "fence", None)
             if not callable(fence) or inspect.iscoroutinefunction(fence):
                 raise TypeError("invalid Coding Session owner fence")
@@ -195,16 +196,10 @@ class CodingForegroundHostedApplicationRequestV1:
             self.product_admission_source,
             self.profile_admission_source,
         ):
-            _require_async_method(admission_source, "acquire_pin")
-        _require_async_method(self.candidate_validator, "open_product_candidate")
-        for method in (
-            "list_identities",
-            "open_candidate",
-            "find_created_candidate",
-            "create_candidate",
-        ):
-            _require_async_method(self.sessions, method)
-        _require_async_method(self.session_factory, "create_session")
+            _require_async_method(admission_source, "acquire_pin", label="Coding hosted application")
+        _require_async_method(self.candidate_validator, "open_product_candidate", label="Coding hosted application")
+        _require_session_catalog_methods(self.sessions, label="Coding hosted application")
+        _require_async_method(self.session_factory, "create_session", label="Coding hosted application")
         if type(self.shutdown_budget) is not AppHostShutdownBudgetV1:
             raise TypeError("Coding hosted application shutdown budget is invalid")
         if not callable(self.operation_id_factory) or (
@@ -567,11 +562,6 @@ def _require_managed_selection(
         HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint) for scope in sessions.scopes
     ):
         raise ValueError("managed selection requires the exact owned canonical catalog and scopes")
-
-
-def _require_async_method(value: object, name: str) -> None:
-    if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
-        raise TypeError(f"Coding hosted application {name} port is invalid")
 
 
 __all__ = [

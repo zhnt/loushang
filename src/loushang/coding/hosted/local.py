@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,12 +17,6 @@ from loushang.apphost.local import (
 )
 from loushang.apphost.local import (
     _LocalLaunchFacts as _LocalLaunchFacts,
-)
-from loushang.apphost.local import (
-    _spawn as _spawn,
-)
-from loushang.apphost.local import (
-    _wait as _wait_shared,
 )
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.local_record import (
@@ -192,22 +185,11 @@ class CodingLocalCommandV1(_LocalApplicationStartup):
     def _prepare_unavailable(self) -> bool:
         return self._closing or self._start_task is not None
 
-    def _startup_accepting(self) -> bool:
-        return self._local is not None and self._local.accepting
-
 
 def _require_budget(value: float) -> None:
     require_timeout(value)
     if value > 30:
         raise ValueError("Coding local budget exceeds profile bound")
-
-
-async def _wait(
-    task: asyncio.Task[None], deadline: float, *, ignore_failure: bool = False
-) -> None:
-    await _wait_shared(
-        task, deadline, ignore_failure=ignore_failure, error_prefix="coding_local"
-    )
 
 
 __all__ = ["CodingLocalLaunchV1", "CodingLocalCommandV1"]

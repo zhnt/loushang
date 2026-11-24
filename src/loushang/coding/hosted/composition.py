@@ -22,6 +22,8 @@ from loushang.apphost._ownership import (
     _construct_product_apphost,
     _ExplicitProductAppHostLifecycle,
     _method_descriptor,
+    _require_async_method,
+    _require_session_catalog_methods,
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted.product import (
@@ -141,17 +143,11 @@ class CodingAppHostCompositionRequestV1:
             or any(type(item) is not ProfileRegistrationV1 for item in self.profiles)
         ):
             raise TypeError("Coding AppHost profiles must be a non-empty exact tuple")
-        _require_async_method(self.product_admission_source, "acquire_pin")
-        _require_async_method(self.candidate_validator, "open_product_candidate")
+        _require_async_method(self.product_admission_source, "acquire_pin", label="Coding AppHost")
+        _require_async_method(self.candidate_validator, "open_product_candidate", label="Coding AppHost")
         _require_sync_method(self.attempt_factory, "create_attempt")
-        for method in (
-            "list_identities",
-            "open_candidate",
-            "find_created_candidate",
-            "create_candidate",
-        ):
-            _require_async_method(self.sessions, method)
-        _require_async_method(self.rollback_control, "latch_future_attempts")
+        _require_session_catalog_methods(self.sessions, label="Coding AppHost")
+        _require_async_method(self.rollback_control, "latch_future_attempts", label="Coding AppHost")
         if type(self.shutdown_budget) is not AppHostShutdownBudgetV1:
             raise TypeError("Coding AppHost shutdown budget is invalid")
 
@@ -336,11 +332,6 @@ def _require_opaque(value: object, *, name: str) -> None:
         or any(character.isspace() for character in value)
     ):
         raise ValueError(f"Coding AppHost {name} is invalid")
-
-
-def _require_async_method(value: object, name: str) -> None:
-    if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
-        raise TypeError(f"Coding AppHost {name} port is invalid")
 
 
 def _require_sync_method(value: object, name: str) -> None:

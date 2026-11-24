@@ -197,6 +197,9 @@ class _LocalApplicationStartup(_LocalStartup):
     _deadline: float | None
     _settled: bool
 
+    def _startup_accepting(self) -> bool:
+        return self._local is not None and self._local.accepting
+
     def _prepare_session_roots(self) -> None:
         raise NotImplementedError
 

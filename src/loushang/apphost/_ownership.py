@@ -582,4 +582,14 @@ def _method_descriptor(value: object, name: str) -> object:
     return descriptor
 
 
+def _require_async_method(value: object, name: str, *, label: str) -> None:
+    if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
+        raise TypeError(f"{label} {name} port is invalid")
+
+
+def _require_session_catalog_methods(value: object, *, label: str) -> None:
+    for name in ("list_identities", "open_candidate", "find_created_candidate", "create_candidate"):
+        _require_async_method(value, name, label=label)
+
+
 __all__: list[str] = []
