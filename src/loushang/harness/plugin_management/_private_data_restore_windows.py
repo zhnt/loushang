@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import Field, replace
 from pathlib import Path
 from re import Pattern
@@ -175,6 +176,45 @@ _EventT = TypeVar("_EventT", bound=_RestoreEvent)
 _ConfirmationT = TypeVar("_ConfirmationT", bound=_RestoreConfirmation)
 _SourceT = TypeVar("_SourceT", bound=PrivateDataDeletionTarget)
 _PublicationT = TypeVar("_PublicationT", bound=_RestorePublication)
+
+
+def preview_windows_restore(
+    key: PluginInstallationKeyV1,
+    backup_id: str,
+    *,
+    desired_state: PluginDesiredStateLedger,
+    borrow_state: Callable[[], AbstractContextManager[int]],
+    read_deletions: Callable[
+        [int], tuple[PluginPrivateDataDeletionEventV1[_SourceT], ...]
+    ],
+    archive_io: WindowsPrivateArchiveIO[_SourceT, R],
+    backup_parent: Callable[[], Path],
+    require_absent_target: Callable[[WindowsPrivateDirectoryAcl], None],
+    plan_type: type[_PlanT],
+    label: str,
+) -> _PlanT:
+    """Join read-only restore facts while the caller holds the Product read fence."""
+    with WindowsPrivateDirectoryAcl() as acl:
+        desired = desired_state.snapshot()
+        require_windows_restore_product_state(
+            desired, key, error=f"{label} restore requires Product removal"
+        )
+        with borrow_state() as fd:
+            acl.validate(fd)
+            events = read_deletions(fd)
+        require_finished_windows_deletion(events, label=label)
+        source, deletion = archive_io.read_deleted_restore_source(
+            backup_parent(), backup_id, key, acl, events, label=label
+        )
+        require_absent_target(acl)
+        return plan_type(
+            installation_key=key,
+            backup_id=backup_id,
+            deletion_receipt_id=deletion.receipt_id,
+            source_target_id=source.target_id,
+            desired_inventory_revision=desired.inventory_revision,
+            target_state="absent",
+        )
 
 
 class WindowsPrivateRestoreTransaction(
