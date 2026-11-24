@@ -66,11 +66,11 @@ class WindowsHistorySourceCapture(Generic[_SourceT]):
         self.names.require_known(before)
         if (
             (
-                "worker-history-preparation-v1.json.stage" in before
+                f"{WINDOWS_WORKER_HISTORY_PREPARATION_NAME}.stage" in before
                 and not allow_preparation_stage
             )
             or (
-                "worker-history-checkpoint-v1.json.stage" in before
+                f"{WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME}.stage" in before
                 and not allow_checkpoint_stage
             )
             or (not allow_base_stage and self.base_stage_names.intersection(before))
@@ -143,6 +143,7 @@ class WindowsHistorySourceCapture(Generic[_SourceT]):
             raise ValueError("Windows Worker history inventory changed")
 
 
+WINDOWS_WORKER_HISTORY_PREPARATION_NAME = "worker-history-preparation-v1.json"
 WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME = "worker-history-checkpoint-v1.json"
 WINDOWS_WORKER_HISTORY_CHECKPOINT_MAX_BYTES = 8 * 1024 * 1024
 WINDOWS_WORKER_SEMANTIC_BASE_MAX_BYTES = 32 * 1024 * 1024
@@ -200,10 +201,10 @@ _WINDOWS_HISTORY_EXACT = (
             "worker-native-release-approvals.jsonl",
             "worker-native-release-approvals.jsonl.lock",
             "worker-native-backend-release-v1.whl",
-            "worker-history-preparation-v1.json",
-            "worker-history-preparation-v1.json.stage",
-            "worker-history-checkpoint-v1.json",
-            "worker-history-checkpoint-v1.json.stage",
+            WINDOWS_WORKER_HISTORY_PREPARATION_NAME,
+            f"{WINDOWS_WORKER_HISTORY_PREPARATION_NAME}.stage",
+            WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+            f"{WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME}.stage",
         }
     )
     | WINDOWS_WORKER_BASE_NAMES
@@ -213,10 +214,10 @@ _WINDOWS_HISTORY_EXACT = (
 WINDOWS_WORKER_NON_SOURCE_NAMES = (
     frozenset(
         {
-            "worker-history-preparation-v1.json",
-            "worker-history-preparation-v1.json.stage",
-            "worker-history-checkpoint-v1.json",
-            "worker-history-checkpoint-v1.json.stage",
+            WINDOWS_WORKER_HISTORY_PREPARATION_NAME,
+            f"{WINDOWS_WORKER_HISTORY_PREPARATION_NAME}.stage",
+            WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME,
+            f"{WINDOWS_WORKER_HISTORY_CHECKPOINT_NAME}.stage",
         }
     )
     | WINDOWS_WORKER_BASE_NAMES

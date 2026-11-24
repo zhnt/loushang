@@ -7,43 +7,14 @@ readers and Package GC reject a remaining base stage.
 
 from __future__ import annotations
 
-from loushang.harness.package_product._windows_worker_history import (
-    guard_windows_product_worker_history_bases,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 
-from .legacy_windows_receipt import _receipt_io
 from .product_worker_windows_checkpoint import (
-    _CHECKPOINT_NAME,
+    _HISTORY_COMMANDS,
     CodingWindowsWorkerHistoryCheckpointV1,
-    _current_checkpoint_under_guard,
 )
-from .product_worker_windows_checkpoint import _MAX_BYTES as _MAX_CHECKPOINT_BYTES
-from .product_worker_windows_package_references import (
-    _review_coding_windows_worker_package_references_under_guard,
-)
-
-_MAX_BASE_BYTES = 32 * 1024 * 1024
-
-
-def _guarded_bases(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    publish: bool,
-) -> CodingWindowsWorkerHistoryCheckpointV1:
-    return guard_windows_product_worker_history_bases(
-        product,
-        product_id="coding",
-        publish=publish,
-        record_type=CodingWindowsWorkerHistoryCheckpointV1,
-        review_checkpoint=_current_checkpoint_under_guard,
-        review_references=_review_coding_windows_worker_package_references_under_guard,
-        io=_receipt_io,
-        checkpoint_name=_CHECKPOINT_NAME,
-        limits=lambda: (_MAX_CHECKPOINT_BYTES, _MAX_BASE_BYTES),
-    )
 
 
 def publish_coding_windows_worker_history_bases(
@@ -51,7 +22,7 @@ def publish_coding_windows_worker_history_bases(
 ) -> CodingWindowsWorkerHistoryCheckpointV1:
     """Write exact typed bases after the canonical checkpoint is published."""
 
-    return _guarded_bases(product, publish=True)
+    return _HISTORY_COMMANDS.history_bases(product, publish=True)
 
 
 def read_coding_windows_worker_history_bases(
@@ -59,7 +30,7 @@ def read_coding_windows_worker_history_bases(
 ) -> CodingWindowsWorkerHistoryCheckpointV1:
     """Reprove all six published bases without writing Product state."""
 
-    return _guarded_bases(product, publish=False)
+    return _HISTORY_COMMANDS.history_bases(product, publish=False)
 
 
 __all__ = [
