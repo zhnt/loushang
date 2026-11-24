@@ -50,7 +50,6 @@ from loushang.appserver.protocol import (
     WorkspaceRequestV1,
     WorkspaceResultV1,
 )
-from loushang.appserver.protocol.model import _WORKSPACE_FIELDS
 from loushang.appserver.protocol.workspace_preview import (
     WorkspaceDirectoryPreviewV1,
     WorkspaceFilePreviewV1,
@@ -1334,7 +1333,7 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
             item = await settled_io(self.registry.default_workspace)
             scope = (await self._logical_catalog(item)).scopes[0]
             return WorkspaceResultV1((_workspace_info(scope.cwd, scope),))
-        if request.action in _WORKSPACE_FIELDS:
+        if request.is_logical_workspace_action:
             if self._closed:
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             return await self._logical_workspace(request)

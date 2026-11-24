@@ -811,6 +811,8 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "execution/model.py",
         "execution/recovery.py",
         "execution/remote.py",
+        "execution/resources.py",
+        "execution/session_commands.py",
     }
 
     overview = _read(HOSTING_ROOT / "README.md")
