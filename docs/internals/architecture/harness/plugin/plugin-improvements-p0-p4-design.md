@@ -437,3 +437,15 @@ for +44 system lines. The shared entry adds typed bindings for the actual
 Product and Catalog input producers. Against the original owner, 21
 controlled observations matched both the ordered calls and output, including
 invalid requests, stale settings, absent authority, and fallback failures.
+
+## Installed preview manifest custody
+
+The Package Product application owner opens the POSIX read-only epoch, runs
+the supplied workspace check, and binds the exact Source and manifest readers.
+It rechecks the epoch and the workspace guard before handing the epoch to the
+preview client. Coding supplies its Product Source policy and candidate
+selection. The original epoch scope closes failed handoffs.
+
+Against `65df15f43`, production Python decreases by 14 lines in Coding and
+increases by 46 in Harness. The wider trial added 117 system lines, including
+four separate compilation and Catalog adapters. That trial was withdrawn.

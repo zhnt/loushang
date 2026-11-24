@@ -54,17 +54,13 @@ from loushang.harness.environment.probe import (
     LocalHostEnvironmentProbe as LocalHostEnvironmentProbe,
 )
 from loushang.harness.package_product._application_runtime import (
-    fenced_source_catalog_roots,
-)
-from loushang.harness.package_product._legacy_runtime import (
-    open_read_only_fenced_product,
+    open_fenced_product_manifest_reader,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductHostInputs as PosixLocalWheelProductHostInputs,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     _LocalWheelSelectedManifestReader,
-    bind_read_only_local_wheel_manifests,
 )
 from loushang.harness.package_product.product_worker_candidate import (
     WorkerPackageCandidateV1,
@@ -285,31 +281,21 @@ class CodingFencedProductReadOnlyPreviewOwner:
         if not isinstance(layout, CodingPluginLifecycleStateLayout):
             raise TypeError("Coding Plugin lifecycle layout is required")
         epoch = resolve_coding_package_epoch_layout(layout)
-        with open_read_only_fenced_product(**epoch.fenced_runtime_open_kwargs()) as runtime:
-            if workspace_guard is not None:
-                workspace_guard()
-            roots = fenced_source_catalog_roots(
-                runtime,
-                scope_id=layout.scope_id,
-                no_namespace="Coding Package Product root is not fenced",
-                read_only=True,
-            )
-            policy, _ = _compose_coding_product_source_policy(
+        with open_fenced_product_manifest_reader(
+            epoch.fenced_runtime_open_kwargs(),
+            epoch=epoch,
+            scope_id=layout.scope_id,
+            identity_prefix="coding-product",
+            product_label="Coding",
+            workspace_guard=workspace_guard,
+            read_source_policy=lambda runtime, roots: _compose_coding_product_source_policy(
                 layout,
                 runtime,
                 roots,
                 include_worker_candidates=worker_candidates,
                 read_only=True,
-            )
-            selected_manifests, gc_gate = bind_read_only_local_wheel_manifests(
-                runtime,
-                policy=policy,
-                plugin_store_root=epoch.epoch_root(roots.identity["namespace_id"]),
-                root_store_identity=f"coding-product-root-store:{epoch.store_id}",
-            )
-            runtime.assert_current()
-            if workspace_guard is not None:
-                workspace_guard()
+            )[0],
+        ) as (runtime, policy, selected_manifests, gc_gate):
             return cls(
                 epoch_runtime=runtime,
                 policy=policy,
