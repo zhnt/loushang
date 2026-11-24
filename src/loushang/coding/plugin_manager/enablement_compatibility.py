@@ -30,6 +30,9 @@ from loushang.harness.plugin_management import (
 from loushang.harness.plugin_management import (
     decode_plugin_enablement_migration_snapshots as decode_plugin_enablement_migration_snapshots,
 )
+from loushang.harness.plugin_management.enablement_migration import (
+    assert_captured_legacy_mutation_allowed,
+)
 
 _COMPATIBILITY_CACHE_ATTRIBUTE = (
     "_loushang_coding_plugin_enablement_compatibility_writer"
@@ -75,17 +78,11 @@ class CodingPluginEnablementCompatibilityWriter:
             plugin_id=plugin_id,
         )
         with _capture_existing_plugin_enablement_state(self.layout) as capture:
-            if capture is None:
-                return
-            snapshots = decode_plugin_enablement_migration_snapshots(
-                capture.migration_raw,
-                path=self.layout.enablement_migration,
-            )
-            if any(item.request.installation_key == key for item in snapshots):
-                raise PluginEnablementMigrationError(
-                    "Legacy Plugin enablement is read-only after migration acceptance",
-                    code="plugin_enablement_legacy_mutation_rejected",
+            if capture is not None:
+                assert_captured_legacy_mutation_allowed(
+                    capture.migration_raw,
                     path=self.layout.enablement_migration,
+                    key=key,
                 )
 
 

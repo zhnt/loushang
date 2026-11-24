@@ -8,7 +8,7 @@ import os
 import secrets
 import sys as sys
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from functools import partial
 from importlib.metadata import version as version
@@ -681,40 +681,32 @@ def project_coding_plugin_enablement_compatibility(
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError(_LAYOUT_REQUIRED)
-    if _capture is None:
-        with _capture_existing_plugin_enablement_state(layout) as captured:
-            if captured is None:
-                return _empty_plugin_enablement_compatibility_projection()
-            return project_coding_plugin_enablement_compatibility(
-                layout, _capture=captured
+    with (
+        nullcontext(_capture)
+        if _capture is not None
+        else _capture_existing_plugin_enablement_state(layout)
+    ) as captured:
+        if captured is None:
+            empty = PluginEnablementCompatibilityProjectionV1(
+                desired_inventory_revision=0,
+                migration_journal_revision=0,
+                disabled_plugin_ids=(),
             )
-    desired = decode_plugin_desired_state_snapshot(
-        _capture.desired_raw,
-        path=layout.desired_state,
-        gc_gate=PluginPackageGcReservationJournal(layout.package_gc_reservations),
-    )
-    return PluginEnablementCompatibilityProjector.from_snapshots(
-        desired,
-        decode_plugin_enablement_migration_snapshots(
-            _capture.migration_raw, path=layout.enablement_migration
-        ),
-        product_id=CODING_PRODUCT_ID,
-        installation_scope=_MEMBERSHIP_INSTALLATION_SCOPE,
-        scope_id=layout.scope_id,
-    )
-
-
-def _empty_plugin_enablement_compatibility_projection() -> tuple[
-    PluginEnablementCompatibilityProjectionV1, frozenset[str]
-]:
-    return (
-        PluginEnablementCompatibilityProjectionV1(
-            desired_inventory_revision=0,
-            migration_journal_revision=0,
-            disabled_plugin_ids=(),
-        ),
-        frozenset(),
-    )
+            return empty, frozenset()
+        desired = decode_plugin_desired_state_snapshot(
+            captured.desired_raw,
+            path=layout.desired_state,
+            gc_gate=PluginPackageGcReservationJournal(layout.package_gc_reservations),
+        )
+        return PluginEnablementCompatibilityProjector.from_snapshots(
+            desired,
+            decode_plugin_enablement_migration_snapshots(
+                captured.migration_raw, path=layout.enablement_migration
+            ),
+            product_id=CODING_PRODUCT_ID,
+            installation_scope=_MEMBERSHIP_INSTALLATION_SCOPE,
+            scope_id=layout.scope_id,
+        )
 
 
 def package_revision_ref(
