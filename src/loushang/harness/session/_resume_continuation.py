@@ -943,22 +943,12 @@ async def prepare_resume_continuation(
         )
         phase = "input_commit"
         router = prepared._composition.session_runtime.agent_event_router
-        previous_metadata = router.prepare_message_metadata
-        if input_metadata is not None:
-            def prepare_metadata(value: object) -> Mapping[str, JSONValue] | None:
-                metadata = previous_metadata(value) if previous_metadata is not None else None
-                return {**(metadata or {}), **input_metadata} if value is message else metadata
-
-            router.prepare_message_metadata = prepare_metadata
-        try:
+        with router.bind_user_input_metadata(input_metadata, message=message):
             record_id = await prepared._commit_resume_first_user_input(
                 message,
                 attempt_id=attempt.attempt_id,
                 require_current_admission=require_current_admission,
             )
-        finally:
-            if input_metadata is not None:
-                router.prepare_message_metadata = previous_metadata
         _, committed = writer._require_committed_resume_input(attempt.attempt_id, record_id)
         query = input_query(attempt.request_id, writer._resume_messages.record_digest(committed))
         observed_input = True
