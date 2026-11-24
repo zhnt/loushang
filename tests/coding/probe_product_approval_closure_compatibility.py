@@ -25,6 +25,7 @@ from loushang.harness.capabilities import component_host as component_module
 from loushang.harness.plugin_authoring import host as host_module
 from loushang.harness.resources.plugins import selection as values
 from loushang.harness.resources.plugins.import_realm import PluginImportRealm
+from loushang.harness.session import product_composition_assembly
 from loushang.harness.session.product_composition_assembly import (
     ProductPluginCompositionAssembly,
     ProductPluginPlanSeed,
@@ -396,6 +397,7 @@ def observe(name, base, patch):
             )
 
     patch.setattr(code, "CapabilityComponentHost", ComponentHost)
+    patch.setattr(product_composition_assembly, "CapabilityComponentHost", ComponentHost)
 
     def owner_snapshot():
         trace.append(["owner-snapshot"])
