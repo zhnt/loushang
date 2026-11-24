@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, ClassVar, Protocol, cast
 
 from loushang.agent import Agent, ThinkingLevel
 from loushang.ai.model import (
@@ -126,6 +126,8 @@ class _ReloadableSettings(Protocol):
 class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any]):
     """Typed base for standard Agent Product session adapters."""
 
+    _reserved_peer_runtime_tools: ClassVar[tuple[tuple[str, str], ...]] = ()
+
     agent: Agent
     session_manager: ProductTranscriptSession[Any, Any]
     model_registry: SessionModelCatalogPort | None
@@ -171,6 +173,12 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     async def set_active_tools(self, tool_names: list[str]) -> None:
         await self._operations.set_active_tools(tool_names, emit_refresh=True)
 
+    def _require_peer_runtime_tool(self, tool: object) -> None:
+        if self._reserved_peer_runtime_tools and isinstance(tool, ToolDefinition):
+            for name, message in self._reserved_peer_runtime_tools:
+                if tool.name == name:
+                    raise ValueError(message)
+
     def register_runtime_tools(
         self,
         tools: Iterable[object],
@@ -179,6 +187,12 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         source_info: object | None = None,
     ) -> tuple[ToolDefinition, ...]:
         """Register live-bound tools without exposing composition internals."""
+
+        if self._reserved_peer_runtime_tools:
+            # Reject a reserved name before registering any tool in this batch.
+            tools = tuple(tools)
+            for tool in tools:
+                self._require_peer_runtime_tool(tool)
 
         definitions = tuple(
             self._composition.tool_controller.register_runtime_tool(
@@ -479,6 +493,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _register_extension_runtime_tool(
         self, tool: object, source_info: object | None = None
     ) -> None:
+        self._require_peer_runtime_tool(tool)
         definition = self._composition.tool_controller.register_runtime_tool(
             tool, source_info=source_info
         )
@@ -493,6 +508,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         owner: RegistrationOwner | str,
         source_info: object | None = None,
     ) -> RegistrationLease:
+        self._require_peer_runtime_tool(tool)
         session_id = str(self.session_manager.get_session_record().session_id)
         resolved_owner = (
             owner
@@ -523,6 +539,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         owner: RegistrationOwner,
         source_info: object | None = None,
     ) -> RegistrationLease | None:
+        self._require_peer_runtime_tool(tool)
         return self._composition.tool_controller.adopt_runtime_tool(
             tool,
             owner=owner,
@@ -535,6 +552,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         owner: RegistrationOwner,
         source_info: object | None = None,
     ) -> RegistrationLease:
+        self._require_peer_runtime_tool(tool)
         return self._composition.tool_controller.stage_runtime_tool(
             tool,
             owner=owner,

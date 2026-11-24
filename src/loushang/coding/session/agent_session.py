@@ -177,7 +177,6 @@ from loushang.harness.session.product_composition_assembly import (
 from loushang.harness.session.resource_refresh_gate import (
     ResourceCatalogRefreshGatePort,
 )
-from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.tools.workspace.selection import default_tool_names
 from loushang.harness.transcript import (
@@ -329,29 +328,12 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
     _deferred_lsp_slot: DeferredCapabilitySlot[CodingDeferredLspGeneration] | None
     _deferred_lsp_management_cleanup: Callable[[], None] | None
 
-    @staticmethod
-    def _reject_peer_worker_tool(tool: object) -> None:
-        if (
-            isinstance(tool, ToolDefinition)
-            and tool.name == CODING_WORKER_QUERY_TOOL_NAME
-        ):
-            raise ValueError(
-                "Coding Worker query Tool is reserved for the Product owner"
-            )
-
-    def register_runtime_tools(
-        self,
-        tools: Iterable[object],
-        *,
-        activate: bool = False,
-        source_info: object | None = None,
-    ) -> tuple[ToolDefinition, ...]:
-        definitions = tuple(tools)
-        for definition in definitions:
-            self._reject_peer_worker_tool(definition)
-        return super().register_runtime_tools(
-            definitions, activate=activate, source_info=source_info
-        )
+    _reserved_peer_runtime_tools = (
+        (
+            CODING_WORKER_QUERY_TOOL_NAME,
+            "Coding Worker query Tool is reserved for the Product owner",
+        ),
+    )
 
     async def set_active_tools(self, tool_names: list[str]) -> None:
         slot = self._deferred_lsp_slot
@@ -402,39 +384,6 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             raise ValueError("deferred slot does not declare Coding LSP")
         self._deferred_lsp_slot = slot
         self._deferred_lsp_management_cleanup = management_cleanup
-
-    def _register_extension_runtime_tool(
-        self, tool: object, source_info: object | None = None
-    ) -> None:
-        self._reject_peer_worker_tool(tool)
-        super()._register_extension_runtime_tool(tool, source_info)
-
-    def _bind_extension_runtime_tool(
-        self,
-        tool: object,
-        owner: RegistrationOwner | str,
-        source_info: object | None = None,
-    ) -> RegistrationLease:
-        self._reject_peer_worker_tool(tool)
-        return super()._bind_extension_runtime_tool(tool, owner, source_info)
-
-    def _adopt_extension_runtime_tool(
-        self,
-        tool: object,
-        owner: RegistrationOwner,
-        source_info: object | None = None,
-    ) -> RegistrationLease | None:
-        self._reject_peer_worker_tool(tool)
-        return super()._adopt_extension_runtime_tool(tool, owner, source_info)
-
-    def _stage_extension_runtime_tool(
-        self,
-        tool: object,
-        owner: RegistrationOwner,
-        source_info: object | None = None,
-    ) -> RegistrationLease:
-        self._reject_peer_worker_tool(tool)
-        return super()._stage_extension_runtime_tool(tool, owner, source_info)
 
     def __init__(
         self,
