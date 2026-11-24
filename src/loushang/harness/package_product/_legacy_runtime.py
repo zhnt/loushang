@@ -309,27 +309,41 @@ def legacy_product_state_has_inputs(
     return False
 
 
+class _LegacyCutoverRoots(Protocol):
+    @property
+    def control_root(self) -> Path: ...
+    @property
+    def snapshot_root(self) -> Path: ...
+    @property
+    def epochs_root(self) -> Path: ...
+
+
+_CutoverRootsT = TypeVar("_CutoverRootsT", bound=_LegacyCutoverRoots)
+
+
 def prepare_legacy_product_cutover_roots(
     lifecycle: _LegacyStateRoots,
     *,
-    control_root: Path,
-    snapshot_root: Path,
-    epochs_root: Path,
+    resolve_epoch: Callable[[], _CutoverRootsT],
     label: str,
-) -> None:
+) -> _CutoverRootsT:
     """Prepare the state roots before either Package data root."""
+    if os.name not in {"posix", "nt"}:
+        raise RuntimeError("Native Package cutover preparation is required")
+    epoch = resolve_epoch()
     windows = os.name == "nt"
-    state_roots: tuple[Path, ...] = (lifecycle.root, control_root, snapshot_root)
+    state_roots: tuple[Path, ...] = (lifecycle.root, epoch.control_root, epoch.snapshot_root)
     if windows:
         state_roots += (legacy_product_projection_parent(lifecycle.root),)
     for root in state_roots:
         prepare_legacy_product_cutover_root(
             root, private_base=lifecycle.private_state_base, windows=windows, label=label
         )
-    for root in (lifecycle.package_root, epochs_root):
+    for root in (lifecycle.package_root, epoch.epochs_root):
         prepare_legacy_product_cutover_root(
             root, private_base=lifecycle.private_data_base, windows=windows, label=label
         )
+    return epoch
 
 
 def legacy_product_fence_exists(control_root: Path) -> bool:
