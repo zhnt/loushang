@@ -8,9 +8,10 @@ repair or live Session authority.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
@@ -32,11 +33,15 @@ if TYPE_CHECKING:
     from loushang.harness.plugin_management.package_product import (
         PackageProductSelectedRootSnapshotV1,
     )
+    from loushang.harness.resources._catalog_input_receipt import (
+        ResourceCatalogInputReceipt,
+    )
     from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
     from loushang.harness.resources.packages.product_epoch_guard import (
         PackageProductPosixFencedRuntimeOwner,
     )
     from loushang.harness.resources.packages.product_local_wheel_policy import (
+        PackageProductLocalWheelBindingV1,
         PackageProductLocalWheelPolicy,
     )
     from loushang.harness.resources.types import ResourceBundle
@@ -582,11 +587,16 @@ class LocalDiscoveryEvidenceError(ValueError):
 
 class _LocalDiscoveryReader(Protocol):
     @property
+    def workspace(self) -> Path: ...
+
+    @property
     def scope_id(self) -> str: ...
 
     def management_snapshot(self, *, correlation_id: str) -> dict[str, object]: ...
 
     def support_status(self, *, correlation_id: str) -> dict[str, object]: ...
+
+    def assert_workspace_current(self) -> None: ...
 
 
 _ReadInertKinds = Callable[
@@ -945,6 +955,186 @@ class LocalDiscoveryEvidence:
             "diagnosticCodes": sorted(diagnostics),
             "ownerEvidence": evidence,
         }
+
+
+def discover_local_plugins(
+    client: _LocalDiscoveryReader,
+    *,
+    product_id: str,
+    query: str,
+    kind: LocalKind,
+    source: LocalSource,
+    limit: int,
+    max_rows: int,
+    read_product_fence: Callable[[Path], bool],
+    read_inert_kinds: _ReadInertKinds,
+    capture_settings: Callable[[Path], tuple[tuple[str, ...], str]],
+    prepare_receipt: Callable[[Path], ResourceCatalogInputReceipt],
+    project_catalog: Callable[
+        [Path, ResourceCatalogInputReceipt, tuple[str, ...]], ResourceCatalogSnapshot
+    ],
+    fallback_metadata: Callable[[ResourceCatalogInputReceipt], tuple[list[dict[str, object]], set[str]]],
+    catalog_admission_error: type[RuntimeError],
+    fallback_authority_error: type[RuntimeError],
+) -> dict[str, object]:
+    """Join scoped Product, Catalog and native fallback evidence before projection."""
+    if kind not in {"all", "plugin", "skill", "prompt", "theme"}:
+        raise ValueError("Local discovery kind is invalid")
+    if source not in {"all", "project_local", "user_global", "local", "builtin"}:
+        raise ValueError("Local discovery source is invalid")
+    if type(limit) is not int or not 1 <= limit <= max_rows:
+        raise ValueError("Local discovery limit is invalid")
+    if not isinstance(query, str) or len(query) > 128 or not query.isprintable():
+        raise ValueError("Local discovery query is invalid")
+    client.assert_workspace_current()
+    workspace = client.workspace
+    discovery = LocalDiscoveryEvidence()
+    try:
+        if read_product_fence(workspace):
+            discovery.read_installations(
+                client, product_id=product_id, read_inert_kinds=read_inert_kinds
+            )
+        else:
+            discovery.diagnostics.add("local_discovery_product_not_fenced")
+    except LocalDiscoveryEvidenceError as error:
+        return blocked_local_plugin_discovery(product_id, error.code)
+
+    receipt: ResourceCatalogInputReceipt | None = None
+    try:
+        disabled_skills, settings_revision = capture_settings(workspace)
+        receipt = prepare_receipt(workspace)
+        discovery.project_native_catalog(project_catalog(workspace, receipt, disabled_skills))
+        discovery.owner_evidence["disabledSkillSettingsRevision"] = settings_revision
+        _, after_settings_revision = capture_settings(workspace)
+        if settings_revision != after_settings_revision:
+            discovery.completeness["catalog"] = "partial"
+            discovery.diagnostics.add("local_discovery_settings_stale")
+    except (catalog_admission_error, TypeError, ValueError):
+        return blocked_local_plugin_discovery(product_id, "local_discovery_catalog_authority_invalid")
+    except (OSError, RuntimeError):
+        discovery.completeness["catalog"] = "partial"
+        discovery.diagnostics.add("local_discovery_catalog_unavailable")
+        if receipt is not None:
+            try:
+                rows, diagnostics = fallback_metadata(receipt)
+            except fallback_authority_error:
+                return blocked_local_plugin_discovery(product_id, "local_discovery_catalog_authority_invalid")
+            discovery.rows.extend(rows)
+            discovery.diagnostics.update(diagnostics)
+    try:
+        discovery.recheck_installations(client)
+    except LocalDiscoveryEvidenceError as error:
+        return blocked_local_plugin_discovery(product_id, error.code)
+    client.assert_workspace_current()
+    return discovery.result(
+        product_id=product_id, scope_id=client.scope_id,
+        query=query, kind=kind, source=source, limit=limit,
+    )
+
+
+def read_inert_data_kinds(
+    bindings: Sequence[PackageProductLocalWheelBindingV1],
+    revisions: Mapping[str, PluginPackageRevisionRefV1],
+    *,
+    legacy_kinds: Mapping[str, str],
+    artifact_kinds: frozenset[str],
+    validate_artifact: Callable[[str | Path], Mapping[str, object]],
+) -> tuple[dict[str, tuple[str, ...]], dict[str, str], dict[str, str]]:
+    """Classify exact Product-bound data bytes regardless of enablement."""
+    kinds: dict[str, tuple[str, ...]] = {}
+    diagnostics: dict[str, str] = {}
+    evidence: dict[str, str] = {}
+    for plugin_id, revision in revisions.items():
+        matches = tuple(
+            binding
+            for binding in bindings
+            if binding.plugin_id == plugin_id
+            and binding.source_identity == revision.package_source_identity
+            and binding.artifact_digest == revision.package_content_digest
+        )
+        if len(matches) != 1:
+            diagnostics[plugin_id] = "local_discovery_binding_unavailable"
+            continue
+        binding = matches[0]
+        legacy_kind = legacy_kinds.get(binding.source_trust_class or "")
+        if legacy_kind is not None:
+            kinds[plugin_id] = (legacy_kind,)
+            evidence[plugin_id] = "product_binding"
+            continue
+        if binding.source_trust_class != "local-data-only":
+            continue
+        report = validate_artifact(binding.source_identity)
+        if (
+            report.get("valid") is not True
+            or report.get("pluginId") != plugin_id
+            or report.get("version") != revision.plugin_version
+            or report.get("sha256") != revision.package_content_digest
+            or report.get("resourceKind") not in artifact_kinds
+        ):
+            diagnostics[plugin_id] = "local_discovery_artifact_metadata_unavailable"
+            continue
+        resource_kind = report["resourceKind"]
+        assert isinstance(resource_kind, str)
+        kinds[plugin_id] = (resource_kind,)
+        evidence[plugin_id] = "inert_artifact"
+    return kinds, diagnostics, evidence
+
+
+def format_local_plugin_discovery(document: dict[str, object], output: str) -> str:
+    if output == "json":
+        return json.dumps(document, ensure_ascii=False, sort_keys=True) + "\n"
+    if output != "text":
+        raise ValueError("Local discovery format is invalid")
+    lines = [
+        f"Local discovery: {document['disposition']} "
+        f"({document['totalMatchingRows']} matching; truncated={str(document['truncated']).lower()})"
+    ]
+    rows = document.get("rows")
+    codes = document.get("diagnosticCodes")
+    if not isinstance(rows, list) or not isinstance(codes, list):
+        raise ValueError("Local discovery document is invalid")
+    for row in rows:
+        assert isinstance(row, dict)
+        if row["identityKind"] == "plugin_installation":
+            lines.append(
+                f"plugin {row['name']} version={row.get('version') or 'unknown'} "
+                f"scope={row['sourceScope']} source={row['sourceClass']} "
+                f"availability={row['sourceAvailability']} "
+                f"desired={row['desiredState']} "
+                f"compatibility={row['productCompatibility']} "
+                f"selection={row['productSelection']} "
+                f"kinds={','.join(row.get('resourceKinds', [])) or 'unknown'}"
+            )
+        else:
+            lines.append(
+                f"native {row['resourceKind']} {row['name']} "
+                f"scope={row['sourceScope']} source={row['sourceClass']} "
+                f"enabled={row.get('enabled')} "
+                f"catalog={row['nativeCatalogSelection']} "
+                f"product={row['productSelection']}"
+            )
+        for code in row.get("diagnosticCodes", []):
+            lines.append(f"  diagnostic: {code}")
+    for code in codes:
+        lines.append(f"diagnostic: {code}")
+    return "\n".join(lines) + "\n"
+
+
+def blocked_local_plugin_discovery(product_id: str, code: str) -> dict[str, object]:
+    return {
+        "discoveryVersion": 1,
+        "productId": product_id,
+        "scopeId": None,
+        "disposition": "blocked",
+        "sourceCompleteness": {"product": "blocked", "catalog": "blocked"},
+        "truncated": False,
+        "sourceTruncation": "unknown",
+        "totalMatchingRows": 0,
+        "totalMatchingRowsKnown": False,
+        "rows": [],
+        "diagnosticCodes": [code],
+        "ownerEvidence": {},
+    }
 
 
 def _matches_kind(row: dict[str, object], kind: LocalKind) -> bool:
