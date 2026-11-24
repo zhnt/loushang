@@ -519,11 +519,51 @@ def _validate_providers(seam: CapabilitySeam) -> None:
             and _mentions(node, definition_symbol)
             for node in ast.walk(tree)
         )
-        if not provider_call:
+        if not provider_call and not _provider_factory_uses_definition(
+            tree, _parts(provider)[1], definition_symbol
+        ):
             raise RuntimeError(
                 f"catalog Provider does not construct {definition_symbol}: "
                 f"{_label(provider)}"
             )
+
+
+def _provider_factory_uses_definition(
+    tree: ast.Module, provider_symbol: str, definition_symbol: str
+) -> bool:
+    """Recognize the shared factory and its local definition selection."""
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or function.name != provider_symbol:
+            continue
+        assigned: dict[str, ast.expr] = {}
+        for statement in function.body:
+            for node in ast.walk(statement):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "for_definition"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "CapabilityBundleProvider"
+                    and node.args
+                ):
+                    argument = node.args[0]
+                    if isinstance(argument, ast.Name):
+                        argument = assigned.get(argument.id, argument)
+                    if _definition_choice_mentions(argument, definition_symbol):
+                        return True
+            if isinstance(statement, ast.Assign):
+                for target in statement.targets:
+                    if isinstance(target, ast.Name):
+                        assigned[target.id] = statement.value
+    return False
+
+
+def _definition_choice_mentions(node: ast.expr, symbol: str) -> bool:
+    if isinstance(node, ast.IfExp):
+        return _definition_choice_mentions(node.body, symbol) or _definition_choice_mentions(
+            node.orelse, symbol
+        )
+    return isinstance(node, ast.Name) and node.id == symbol
 
 
 def _validate_consumers(
