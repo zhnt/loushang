@@ -45,7 +45,6 @@ from loushang.harnesswork.goal.contracts import GoalBasis, GoalFacts
 from loushang.harnesswork.goal.records import plain, replay
 from loushang.harnesswork.integrations.session import SessionWorkRuntime
 from loushang.harnesswork.integrations.session_goal import (
-    SessionGoalCoordinator,
     SessionGoalPrompt,
     _SessionGoalLifetime,
 )
@@ -221,22 +220,15 @@ class CodingGoal(_SessionGoalLifetime):
         policy = profile.tool_policy(owner.workspace) if profile is not None else PlanningToolPolicy(owner.workspace)
         try:
             owner._attach_scope()
-            assert owner._scope is not None
 
-            async def initialize():
-                admission = session.runtime.execution_admission
-                reservation = admission.reserve_candidate()
-                try:
-                    _validate_goal_session(session, owner.workspace, True, ordinary=True)
-                    await owner._assemble_session(
-                        policy_id=profile.policy_id if profile is not None else PLANNING_POLICY_ID,
-                        create=True, planning_tool_policy=policy,
-                    )
-                    admission.validate_reservation(reservation, require_operation=False)
-                finally:
-                    reservation.release()
+            async def initialize() -> None:
+                _validate_goal_session(session, owner.workspace, True, ordinary=True)
+                await owner._assemble_session(
+                    policy_id=profile.policy_id if profile is not None else PLANNING_POLICY_ID,
+                    create=True, planning_tool_policy=policy,
+                )
 
-            await owner._scope.invoke(initialize)
+            await owner._initialize_attached_goal(initialize)
             return owner
         except BaseException as error:
             try:
@@ -391,31 +383,22 @@ class CodingGoal(_SessionGoalLifetime):
         profile, model_planning = self._profile, self._model_planning
         self._planning_tool_policy = planning_tool_policy
         work_path = goal_journal_path(self._journal_directory, self.session_id).with_suffix(".work.jsonl")
-        existing = self._session.work_execution_backend
-        if existing is None:
-            log = JsonlEventLogBackend(work_path)
-            self._session_work = create_coding_work_runtime(
+        log = self._prepare_goal_work(
+            work_path, profile=CODING_WORK_PROFILE, ordinary_session=self._ordinary_session,
+            create=lambda log, timeout: create_coding_work_runtime(
                 session=self._session, event_log=log, recording_policy=WorkRecordingPolicy(),
-                cancellation_timeout=30.0 if self._ordinary_session else None,
-            )
-        else:
-            if (not isinstance(existing, SessionWorkRuntime) or existing.session is not self._session
-                    or existing.profile != CODING_WORK_PROFILE or existing.recording_version != 1
-                    or not isinstance(existing.event_log, JsonlEventLogBackend)
-                    or existing.event_log.storage_path.resolve() != work_path.resolve()):
-                raise GoalError("existing Session Work backend is incompatible with this Goal history")
-            existing.require_goal_compatibility(require_unbounded_cancellation=not self._ordinary_session)
-            self._session_work, log = existing, existing.event_log
-        self._work = self._session_work.work_runtime
+                cancellation_timeout=timeout,
+            ),
+        )
         self._execution_session = SessionGoalPrompt(
             self._session, self._current_execution, before_prompt=self._before_goal_prompt,
             stop=self._stop_goal_session,
         )
         header = GoalHeader(self.session_id, self.session_id, policy_id)
-        self._store = GoalJournal(self._journal_directory, header)
-        self._store.open(create=create)
-        if self._ordinary_session and self._store.load()[1]:
-            raise GoalError("current Session already has Goal history; retain its original execution owner")
+        self._open_goal_store(
+            GoalJournal(self._journal_directory, header), create=create,
+            require_empty=self._ordinary_session,
+        )
         transcript_source = None
         delegated = getattr(profile, "execution_policy", None) is not None
         if transcript_retained_until is not None or delegated:
@@ -461,50 +444,35 @@ class CodingGoal(_SessionGoalLifetime):
                 executor, policy=planning_tool_policy, session=self._session, execution=self._current_execution
             )
         self._verification_executor = verification_executor
-        self._policy = CalculatorPolicy(
-            workspace=self.workspace,
-            session=self._session,
-            blobs=blobs,
-            event_log=log,
-            prepared=self._prepared,
-            transcript_source=transcript_source,
-            execution_session=self._execution_session, execution=self._current_execution,
-        )
+        policy_inputs: dict[str, Any] = {
+            "workspace": self.workspace,
+            "session": self._session,
+            "blobs": blobs,
+            "event_log": log,
+            "prepared": self._prepared,
+            "transcript_source": transcript_source,
+            "execution_session": self._execution_session,
+            "execution": self._current_execution,
+        }
         if model_planning:
             from ._goal_planning import ModelPlanningPolicy
 
             factory = profile.policy if profile is not None else ModelPlanningPolicy
             self._policy = factory(
-                workspace=self.workspace,
-                session=self._session,
-                blobs=blobs,
-                event_log=log,
-                prepared=self._prepared,
-                transcript_source=transcript_source,
+                **policy_inputs,
                 allowance=self._allowance,
                 tool_policy=planning_tool_policy,
                 history=lambda: self.controller.history,
-                execution_session=self._execution_session, execution=self._current_execution,            )
+            )
+        else:
+            self._policy = CalculatorPolicy(**policy_inputs)
         if self._delegation is not None:
             self._policy.delegation = self._delegation
             self._policy.source_reader = self._source_reader
-        self._coordinator = SessionGoalCoordinator(
-            admission=self._session.runtime.execution_admission, scope=self._scope,
-            work=self._session_work, next_work=self._policy, acceptance=self._policy,
+        self._bind_goal_controller(
+            header, next_work=self._policy, acceptance=self._policy,
             binding=self._goal_binding,
-            release_configuration=self._session.runtime.execution_configuration.release_execution,
             allow_queued_input=lambda candidate: candidate.source.get("phase") == "repair",
-            recording_policy=WorkRecordingPolicy(require_persistence=True),
-        )
-        from loushang.harnesswork.integrations.session_goal import SessionGoalController
-
-        self._core = SessionGoalController(
-            coordinator=self._coordinator,
-            header=header,
-            store=self._store,
-            work=self._work,
-            next_work=self._coordinator,
-            acceptance=self._coordinator,
         )
 
     @property
