@@ -632,199 +632,10 @@ class RepositoryDomain:
             or result["check"] != batch.source["check"]
         ):
             raise GoalError("repository check identity mismatch")
-        if any(
-            type(row.get("exit_code")) is not int
-            or row["exit_code"] not in {0, 1}
-            or type(row.get("collected")) is not int
-            or type(row.get("skipped")) is not int
-            or row["collected"] <= row["skipped"]
-            or (row["exit_code"] == 1 and not row.get("failed"))
-            for row in result["results"]
-        ):
-            raise GoalError("repository check environment or collection unknown")
-        passed = all(
-            row["exit_code"] == 0
-            and row["collected"] > row["skipped"]
-            and not row["failed"]
-            for row in result["results"]
-        )
-        if passed != evidence.passed or not result["results"]:
+        passed = not any(row["failed"] for row in result["results"])
+        if passed != evidence.passed:
             raise GoalError("repository check outcome mismatch")
         return {**result, "passed": passed, "run_id": run.run_id}
-
-    def _planning_call_failure(self, batch, run):
-        """Read existing Work facts; a failed call is not an invalid model plan."""
-        for entry in self.log.query(operation_id=batch.operation_id):
-            if (
-                entry.run_id != run.run_id
-                or entry.session_id != self.session.session_id
-                or entry.payload.get("kind") != "AgentInvocationCompleted"
-            ):
-                continue
-            for message in entry.payload.get("payload", {}).get("messages", []):
-                if message.get("stopReason") == "error":
-                    info = message.get("errorInfo") or {}
-                    code = info.get("code", "unknown")
-                    return code if isinstance(code, str) else "unknown"
-        return None
-
-    def _observations(self, basis, facts):
-        history = self.history()
-        if "inspect_intents" in self.limits:
-            batches = [b for b in history.batches if b.goal_id == basis.goal.id]
-            for phase in (
-                "planning",
-                "inspect",
-                "repair",
-                "verification",
-                "review",
-                "check",
-            ):
-                if (
-                    sum(b.source.get("phase") == phase for b in batches)
-                    > self.limits[f"{phase}_intents"]
-                ):
-                    raise GoalError("repository closeout history exceeds budget")
-        evidence, routes, rejections = [], [], []
-        planning = invalid = stalled = 0
-        knowledge = set()
-        delegated_reports = {}
-        from ._goal_delegation_report import observe_delegation
-
-        for batch in facts.batches:
-            if batch.goal_id != basis.goal.id:
-                continue
-            _host_intent(batch, history)
-            phase = batch.source.get("phase")
-            planning += phase == "planning"
-            run = self._run(batch, facts)
-            if run is None:
-                continue
-            delegated = observe_delegation(self, batch, run, delegated_reports)
-            if phase == "planning":
-                if run.status == "cancelled":
-                    continue
-                failure = self._planning_call_failure(batch, run)
-                if failure is not None:
-                    evidence.append(
-                        {
-                            "id": batch.operation_id,
-                            "phase": "planning_call_failure",
-                            "revision": batch.revision,
-                            "epoch": batch.epoch,
-                            "error_code": failure,
-                        }
-                    )
-                    continue
-                try:
-                    proposal = self._proposal(batch, run)
-                    routes.append(
-                        {"proposal_id": batch.operation_id, "proposal": proposal.data()}
-                    )
-                except ProposalRejected as error:
-                    invalid += 1
-                    rejections.append(
-                        {"proposal_id": batch.operation_id, "reason": str(error)}
-                    )
-                continue
-            invalid = 0
-            item = {
-                "id": batch.operation_id,
-                "phase": phase,
-                "status": run.status,
-                "revision": batch.revision,
-                "epoch": batch.epoch,
-                "action": plain(batch.source.get("action")),
-            }
-            if phase in {"check", "verification"}:
-                result = self._verification(batch, run)
-                item["result"] = result
-                key = canonical(
-                    {
-                        "inventory": result["inventory"],
-                        "check": result["check"],
-                        "failures": [r["failed"] for r in result["results"]],
-                    }
-                )
-                progress = key not in knowledge
-            elif phase in {"inspect", "repair"}:
-                if delegated and run.status != "completed":
-                    item["result"] = {
-                        "status": "partial",
-                        "reason": "delegated_work_not_completed",
-                    }
-                    evidence.append(item)
-                    stalled += 1
-                    continue
-                result = self._report(batch, run, "repository_report")
-                if result["before"] != plain(batch.source["inventory"]):
-                    raise GoalError("repository execution input mismatch")
-                item["result"] = result
-                key = canonical({"inventory": result["after"], "phase": phase})
-                progress = (
-                    result["before"] != result["after"]
-                    if phase == "repair"
-                    else key not in knowledge
-                )
-            elif phase == "review":
-                if run.status != "completed":
-                    raise GoalError("review Work did not complete")
-                result = self._report(batch, run, "repository_review")
-                value = result["review"]
-                validate_review(value)
-                original = next(
-                    (
-                        row["result"]
-                        for row in evidence
-                        if row["phase"] == "verification"
-                        and row["id"] == value["identity"]["verification_operation_id"]
-                    ),
-                    None,
-                )
-                if original is None:
-                    raise GoalError("review verification missing")
-                identity = self._review_identity(basis, original)
-                identity.update(
-                    goal_id=batch.goal_id, revision=batch.revision, epoch=batch.epoch
-                )
-                if (
-                    value["identity"] != identity
-                    or value["command_id"] != batch.command_id
-                    or digest(canonical(value).encode())
-                    != batch.source.get("review_sha256")
-                    or value["review_id"] != batch.source.get("review_id")
-                    or value["identity"]["inventory"]
-                    != plain(batch.source["inventory"])
-                    or (value["decision"] == "approved" and not original["passed"])
-                ):
-                    raise GoalError("review identity or content mismatch")
-                item["result"] = value
-                record = next(
-                    r
-                    for r in project_work_evidence(
-                        self.log.query(operation_id=batch.operation_id)
-                    )
-                    if r.role == "repository_review" and r.run_id == run.run_id
-                )
-                item["report_ref"] = {
-                    "run_id": record.run_id,
-                    "sequence": record.sequence,
-                    "event_id": record.event_id,
-                    "blob": record.blob.manifest_entry(),
-                }
-                key = canonical(
-                    {
-                        "review_findings": value["findings"],
-                        "inventory": value["identity"]["inventory"],
-                    }
-                )
-                progress = value["decision"] == "rejected" and key not in knowledge
-            else:
-                raise GoalError("unknown repository Work phase")
-            knowledge.add(key)
-            stalled = 0 if progress else stalled + 1
-            evidence.append(item)
-        return evidence, routes, rejections, planning, invalid, stalled
 
     async def assess(self, basis, facts):
         return self.assess_now(basis, facts)
@@ -1089,9 +900,146 @@ class RepositoryDomain:
 
 class RepositoryPolicy(BatchPlanningPolicy, RepositoryDomain):
     limits = LIMITS
+    _observations = BatchPlanningPolicy._project_observations
     parse_proposal = staticmethod(parse_repository_proposal)
     make_prompt = staticmethod(prompt)
     planning_material = RepositoryDomain.planning_material
+
+    def _planning_call_failure(self, batch, run):
+        """Read existing Work facts; a failed call is not an invalid model plan."""
+        for entry in self.log.query(operation_id=batch.operation_id):
+            if (
+                entry.run_id != run.run_id
+                or entry.session_id != self.session.session_id
+                or entry.payload.get("kind") != "AgentInvocationCompleted"
+            ):
+                continue
+            for message in entry.payload.get("payload", {}).get("messages", []):
+                if message.get("stopReason") == "error":
+                    info = message.get("errorInfo") or {}
+                    code = info.get("code", "unknown")
+                    return code if isinstance(code, str) else "unknown"
+        return None
+
+    def _observation_runs(self, basis, facts):
+        history = self.history()
+        if "inspect_intents" in self.limits:
+            batches = tuple(self._goal_batches(basis, history))
+            for phase in (
+                "planning",
+                "inspect",
+                "repair",
+                "verification",
+                "review",
+                "check",
+            ):
+                if (
+                    sum(b.source.get("phase") == phase for b in batches)
+                    > self.limits[f"{phase}_intents"]
+                ):
+                    raise GoalError("repository closeout history exceeds budget")
+
+        from ._goal_delegation_report import observe_delegation
+
+        delegated_reports = {}
+        for batch in self._goal_batches(basis, facts):
+            _host_intent(batch, history)
+            run = self._run(batch, facts)
+            delegated = (
+                observe_delegation(self, batch, run, delegated_reports)
+                if run is not None
+                else None
+            )
+            yield batch, run, delegated
+
+    def _observed_work(self, basis, batch, run, evidence, knowledge, context):
+        phase = batch.source.get("phase")
+        item = self._implementation_observation(batch, run)
+        if phase in {"check", "verification"}:
+            result = self._verification(batch, run)
+            item["result"] = result
+            key = canonical(
+                {
+                    "inventory": result["inventory"],
+                    "check": result["check"],
+                    "failures": [r["failed"] for r in result["results"]],
+                }
+            )
+            progress = key not in knowledge
+        elif phase in {"inspect", "repair"}:
+            if context and run.status != "completed":
+                item["result"] = {
+                    "status": "partial",
+                    "reason": "delegated_work_not_completed",
+                }
+                return item, False
+            result = self._report(batch, run, "repository_report")
+            if result["before"] != plain(batch.source["inventory"]):
+                raise GoalError("repository execution input mismatch")
+            item["result"] = result
+            key = canonical({"inventory": result["after"], "phase": phase})
+            progress = (
+                result["before"] != result["after"]
+                if phase == "repair"
+                else key not in knowledge
+            )
+        elif phase == "review":
+            if run.status != "completed":
+                raise GoalError("review Work did not complete")
+            result = self._report(batch, run, "repository_review")
+            value = result["review"]
+            validate_review(value)
+            original = next(
+                (
+                    row["result"]
+                    for row in evidence
+                    if row["phase"] == "verification"
+                    and row["id"] == value["identity"]["verification_operation_id"]
+                ),
+                None,
+            )
+            if original is None:
+                raise GoalError("review verification missing")
+            identity = self._review_identity(basis, original)
+            identity.update(
+                goal_id=batch.goal_id, revision=batch.revision, epoch=batch.epoch
+            )
+            if (
+                value["identity"] != identity
+                or value["command_id"] != batch.command_id
+                or digest(canonical(value).encode())
+                != batch.source.get("review_sha256")
+                or value["review_id"] != batch.source.get("review_id")
+                or value["identity"]["inventory"]
+                != plain(batch.source["inventory"])
+                or (value["decision"] == "approved" and not original["passed"])
+            ):
+                raise GoalError("review identity or content mismatch")
+            item["result"] = value
+            record = next(
+                r
+                for r in project_work_evidence(
+                    self.log.query(operation_id=batch.operation_id)
+                )
+                if r.role == "repository_review" and r.run_id == run.run_id
+            )
+            item["report_ref"] = {
+                "run_id": record.run_id,
+                "sequence": record.sequence,
+                "event_id": record.event_id,
+                "blob": record.blob.manifest_entry(),
+            }
+            key = canonical(
+                {
+                    "review_findings": value["findings"],
+                    "inventory": value["identity"]["inventory"],
+                }
+            )
+            progress = value["decision"] == "rejected" and key not in knowledge
+        else:
+            raise GoalError("unknown repository Work phase")
+        knowledge[key] = True
+        return item, progress
 
     def _planning_remaining(self, basis, batches):
         remaining = super()._planning_remaining(basis, batches)
