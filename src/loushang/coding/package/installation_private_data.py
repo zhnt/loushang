@@ -157,19 +157,6 @@ def _require_windows_state_root(
     return root
 
 
-def _bind_windows_arch_installation_root(
-    layout: CodingPluginLifecycleStateLayout,
-    key: PluginInstallationKeyV1,
-    *,
-    state_root: Path,
-) -> tuple[int, int]:
-    """Bind the current Installation root generation to Product state."""
-    installation_root = coding_arch_installation_private_data_root(layout, key)
-    return _windows_root_lineage.bind(
-        key, installation_root, state_root=state_root, package_root=layout.package_root
-    )
-
-
 def inspect_coding_windows_arch_installation_root(
     layout: CodingPluginLifecycleStateLayout,
     key: PluginInstallationKeyV1,

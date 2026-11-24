@@ -7,7 +7,6 @@ or ordinary Session routing authority. An incomplete stage stays as debt.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -24,7 +23,6 @@ from loushang.harness.plugin_management.application import (
     PluginBackupRetentionSnapshotV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages._tree_observation import logical_tree_members
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     prepare_windows_product_private_directory_chain,
 )
@@ -42,7 +40,6 @@ from .private_data_backup_records import (
     backup_parent,
     make_backup_receipt,
 )
-from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .private_data_windows_preview import (
     CodingWindowsArchPrivateDataReadPreview,
     _capture_windows_target_snapshot,
@@ -166,9 +163,6 @@ class CodingWindowsArchPrivateDataBackupOwner:
         )
 
 
-_logical_members = logical_tree_members
-
-
 def _retained_receipts(
     layout: CodingPluginLifecycleStateLayout,
     key: PluginInstallationKeyV1,
@@ -189,30 +183,6 @@ def _retained_receipts(
         allowed_tombstone=allowed_tombstone,
         pending_backup_id=pending_backup_id,
     )
-
-
-_open_or_create_directory = _native_io.open_or_create_directory
-
-
-_copy_members = _native_io.copy_members
-
-
-def _read_archive_manifest(
-    parent_fd: int, name: str, acl: WindowsPrivateDirectoryAcl
-) -> tuple[CodingArchPrivateDataBackupReceiptV1, CodingArchPrivateDataTargetSnapshotV1]:
-    return _archive_io.read_manifest(parent_fd, name, acl)
-
-
-def _verify_archive(
-    parent_fd: int,
-    parent_path: Path,
-    name: str,
-    key: PluginInstallationKeyV1,
-    source: CodingArchPrivateDataTargetSnapshotV1,
-    receipt: CodingArchPrivateDataBackupReceiptV1,
-    acl: WindowsPrivateDirectoryAcl,
-) -> None:
-    _archive_io.verify_archive(parent_fd, parent_path, name, key, source, receipt, acl)
 
 
 __all__ = ["CodingWindowsArchPrivateDataBackupOwner"]

@@ -363,10 +363,7 @@ def observe(case):
     owner = object.__new__(coding.CodingWindowsArchPrivateDataBackupOwner)
     object.__setattr__(owner, "layout", SimpleNamespace(package_root=base))
     object.__setattr__(owner, "product", product)
-    old_verify, new_verify = (
-        coding._verify_archive,
-        action.WindowsPrivateArchiveIO.verify_archive,
-    )
+    original_verify = action.WindowsPrivateArchiveIO.verify_archive
 
     def verification(delegate, args, name):
         trace.append("verify:" + name.replace(backup_id, "<backup>"))
@@ -429,23 +426,15 @@ def observe(case):
                 lambda *_: trace.append("prepare"),
             )
         )
-        stack.enter_context(patch.object(coding, "_copy_members", copy))
         stack.enter_context(
             patch.object(type(coding._native_io), "copy_members", lambda *_: copy())
-        )
-        stack.enter_context(
-            patch.object(
-                coding,
-                "_verify_archive",
-                lambda *args: verification(old_verify, args, args[2]),
-            )
         )
         stack.enter_context(
             patch.object(
                 action.WindowsPrivateArchiveIO,
                 "verify_archive",
                 lambda self, *args: verification(
-                    lambda *values: new_verify(self, *values), args, args[2]
+                    lambda *values: original_verify(self, *values), args, args[2]
                 ),
             )
         )
@@ -581,7 +570,7 @@ def observe_read_fds(root, case, reader_module=None):
                     )
                 )
             try:
-                receipt, source = module._read_archive_manifest(
+                receipt, source = module._archive_io.read_manifest(
                     parent, "archive", ACL()
                 )
                 result = {

@@ -54,9 +54,6 @@ from .private_data_windows_archive_snapshot import (
     capture_windows_arch_backup_archive as capture_windows_arch_backup_archive,
 )
 from .private_data_windows_backup import _archive_io
-from .private_data_windows_backup import (
-    _read_archive_manifest as _read_archive_manifest,
-)
 from .private_data_windows_backup_expiry_preview import (
     CodingWindowsArchPrivateDataBackupExpiryPreview,
 )
@@ -176,7 +173,7 @@ class CodingWindowsArchBackupExpiryTransaction(
         acl: WindowsPrivateDirectoryAcl,
     ) -> CodingWindowsArchBackupArchiveSnapshotV1:
         self._require_current_plan(plan)
-        receipt, source = _read_archive_manifest(parent_fd, plan.backup_id, acl)
+        receipt, source = _archive_io.read_manifest(parent_fd, plan.backup_id, acl)
         archive = capture_windows_arch_backup_archive(
             self.layout, plan.installation_key, plan.backup_id, source, receipt
         )

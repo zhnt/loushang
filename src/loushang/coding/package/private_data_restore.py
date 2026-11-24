@@ -34,7 +34,6 @@ from .installation_private_data import (
 from .private_data_backup import (
     CodingArchPrivateDataBackupReceiptV1,
     _private_io,
-    _verify_files,
 )
 from .private_data_backup import (
     _archive_codec as _archive_codec,
@@ -44,9 +43,6 @@ from .private_data_backup import (
 )
 from .private_data_backup import (
     _digest as _digest,
-)
-from .private_data_backup import (
-    _write_or_verify_file as _write_or_verify_file,
 )
 from .private_data_deletion_journal import (
     CodingArchPrivateDataDeletionJournal as CodingArchPrivateDataDeletionJournal,
@@ -196,8 +192,6 @@ class CodingArchPrivateDataRestoreOwner:
                 key,
                 expected_plan=expected_plan,
                 prepare=_prepare_private_tree,
-                verify_files=lambda fd, source: _verify_files(fd, source),
-                write_file_factory=lambda: _write_or_verify_file,
                 result_factory=CodingArchPrivateDataRestoreResultV1,
                 operator_submission=operator_submission,
             )

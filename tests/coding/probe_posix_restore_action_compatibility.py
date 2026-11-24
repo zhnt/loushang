@@ -149,10 +149,11 @@ def observe(case, patch):
 
         def restore_verified_tree(self, private_base, path, members, fd, **kwargs):
             assert fd == 30 and fd in opened
+            write_file = self.write_file
             effect("transfer")
-            kwargs["write_file"](30, "member", b"content")
+            write_file(30, "member", b"content")
             if case == "writer_snapshot":
-                kwargs["write_file"](30, "member2", b"content")
+                write_file(30, "member2", b"content")
             return "restored"
 
     class Journal:
@@ -189,23 +190,23 @@ def observe(case, patch):
         effect("result")
         return list(args)
 
-    def verify_files(fd, actual_source):
+    def verify_files(fd, members):
         nonlocal verify_count
-        assert fd in opened and actual_source is source
+        assert fd in opened and members is source.members
         verify_count += 1
         trace.append(f"verify:{fd}")
         if case == "dynamic_hooks" and verify_count == 1:
 
-            def changed_verify(fd, source):
+            def changed_verify(fd, members):
                 trace.append("changed_verify")
-                verify_files(fd, source)
+                verify_files(fd, members)
 
             def changed_write(*args):
                 trace.append("changed_write")
                 write(*args)
 
-            patch.setattr(code, "_verify_files", changed_verify)
-            patch.setattr(code, "_write_or_verify_file", changed_write)
+            patch.setattr(io, "verify_tree", changed_verify)
+            patch.setattr(io, "write_file", changed_write)
         if (case == "post_verify" and verify_count == 2) or (
             case == "replay_verify" and fd == 40
         ):
@@ -229,12 +230,14 @@ def observe(case, patch):
         trace.append("write")
         if case == "writer_snapshot":
             patch.setattr(
-                code,
-                "_write_or_verify_file",
+                io,
+                "write_file",
                 lambda *args: trace.append("changed_write"),
             )
 
     io = IO()
+    io.verify_tree = verify_files
+    io.write_file = write
     patch.setattr(
         code, "CodingArchPrivateDataDeletionPreview", lambda *a: NS(_offline=offline)
     )
@@ -248,11 +251,7 @@ def observe(case, patch):
     patch.setattr(code, "_backup_parent", lambda *a: base / "backups")
     patch.setattr(archive, "read_private_archive", lambda *a, **kw: (receipt, source))
     patch.setattr(code, "_private_io", io)
-    if hasattr(code, "_open_private_dir"):
-        patch.setattr(code, "_open_private_dir", io.open_directory)
     patch.setattr(archive, "verify_private_archive", verify_archive)
-    patch.setattr(code, "_verify_files", verify_files)
-    patch.setattr(code, "_write_or_verify_file", write)
     patch.setattr(code, "_prepare_private_tree", prepare)
     patch.setattr(code, "CodingArchPrivateDataRestoreJournal", Journal)
     patch.setattr(code, "restore_id_for", identity)

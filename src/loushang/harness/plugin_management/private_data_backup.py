@@ -14,7 +14,6 @@ from loushang.harness.resources.packages._file_consumption import closing_descri
 from loushang.harness.resources.packages._private_tree_posix import (
     PrivatePosixTreeIO,
     metadata_identity,
-    verify_private_tree,
 )
 from loushang.harness.resources.packages._tree_observation import (
     MetadataIdentity,
@@ -206,12 +205,7 @@ def verify_private_archive(
         with closing_descriptor(
             io.open_directory(archive_fd, codec.files_name)
         ) as files_fd:
-            verify_private_tree(
-                files_fd,
-                source.members,
-                label=io.label,
-                max_read_bytes=io.max_read_bytes,
-            )
+            io.verify_tree(files_fd, source.members)
 
 
 def _verify_retained_private_archive_at(
@@ -306,9 +300,7 @@ def verify_posix_restored_target(
     io: PrivatePosixTreeIO,
 ) -> None:
     with closing_descriptor(io.open_path(private_base, target)) as target_fd:
-        verify_private_tree(
-            target_fd, source.members, label=io.label, max_read_bytes=io.max_read_bytes
-        )
+        io.verify_tree(target_fd, source.members)
 
 
 def inspect_private_expiry_archive(
@@ -355,7 +347,6 @@ def retain_private_archive(
     codec: PrivateArchiveCodec[S, R],
     recapture: Callable[[], S],
     prepare: PrivateTreePreparePort,
-    write_file: Callable[[int, str, bytes], None],
 ) -> R:
     """Caller owns its original maintenance admission and Product selection."""
     prepare(backup_parent, private_base=private_base, label="backup")
@@ -383,17 +374,11 @@ def retain_private_archive(
                     source.members,
                     files_fd,
                     private_base=private_base,
-                    write_file=write_file,
                 )
                 if recapture() != source:
                     raise ValueError(f"{io.label} backup source changed")
-                verify_private_tree(
-                    files_fd,
-                    source.members,
-                    label=io.label,
-                    max_read_bytes=io.max_read_bytes,
-                )
-            write_file(
+                io.verify_tree(files_fd, source.members)
+            io.write_file(
                 stage_fd, codec.manifest_name, codec.encode(key, source, receipt)
             )
             os.fsync(stage_fd)
@@ -947,8 +932,6 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         *,
         expected_plan: PrivateDataRestorePlan | None,
         prepare: PrivateTreePreparePort,
-        verify_files: Callable[[int, _RestoreSourceT], None],
-        write_file_factory: Callable[[], Callable[[int, str, bytes], None]],
         result_factory: Callable[[str, str, str], _RestoreResultT],
         operator_submission: bool = False,
     ) -> _RestoreResultT:
@@ -1017,7 +1000,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
                 with closing_descriptor(
                     io.open_directory(archive_fd, codec.files_name)
                 ) as files_fd:
-                    verify_files(files_fd, source)
+                    io.verify_tree(files_fd, source.members)
                     prepare(target.parent, private_base=private_base, label="data")
                     existing_target = io.preflight_restore_target(
                         private_base,
@@ -1045,7 +1028,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
                         with closing_descriptor(
                             io.open_path(private_base, target)
                         ) as target_fd:
-                            verify_files(target_fd, source)
+                            io.verify_tree(target_fd, source.members)
                         disposition = "already_present"
                     else:
                         prepare(target.parent, private_base=private_base, label="data")
@@ -1057,9 +1040,8 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
                             stage_name=stage_name,
                             stage_prefix=stage_prefix,
                             stage_suffix=stage_suffix,
-                            write_file=write_file_factory(),
                         )
-                    verify_files(files_fd, source)
+                    io.verify_tree(files_fd, source.members)
                 if metadata_identity(os.fstat(archive_fd)) != metadata_identity(
                     os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
                 ):

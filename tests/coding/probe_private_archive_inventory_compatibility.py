@@ -191,12 +191,9 @@ def observe(platform, case, monkeypatch):
             type(code._archive_io), "verify_archive", lambda self, *args: verify(*args)
         )
     else:
-        monkeypatch.setattr(code, "_open_private_path", posix_open)
         monkeypatch.setattr(
             type(code._private_io), "open_path", lambda self, *args: posix_open(*args)
         )
-        monkeypatch.setattr(code, "_read_manifest", read)
-        monkeypatch.setattr(code, "_verify_archive", verify)
 
         def shared_read(*args, io, codec):
             assert io is code._private_io and codec is code._archive_codec
