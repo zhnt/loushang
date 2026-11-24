@@ -36,6 +36,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackageProductPreBSnapshotSharedMemberV1,
+    _ProductPreBSnapshotOwner,
 )
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageWindowsFirstEpochCutoverCoordinationOwner,
@@ -93,7 +94,7 @@ def reopen_windows_product_cutover(
             control.close()
 
 
-class PackageProductWindowsPreBSnapshotOwner:
+class PackageProductWindowsPreBSnapshotOwner(_ProductPreBSnapshotOwner):
     """Keep Windows snapshot publication behind the Product Package boundary."""
 
     def __init__(
@@ -122,44 +123,6 @@ class PackageProductWindowsPreBSnapshotOwner:
                 for item in shared_members
             ),
         )
-
-    def capture(
-        self,
-        *,
-        store_id: str,
-        legacy_root_identity: str,
-        quiescence_receipt_id: str,
-    ) -> PackageEpochCutoverSnapshotReceiptV1:
-        return self._owner.capture(
-            store_id=store_id,
-            legacy_root_identity=legacy_root_identity,
-            quiescence_receipt_id=quiescence_receipt_id,
-        )
-
-    def snapshot(
-        self, snapshot_receipt_id: str
-    ) -> PackageOfflineRestoreSnapshotEvidenceV1 | None:
-        return self._owner.snapshot(snapshot_receipt_id)
-
-    def read_regular_member(
-        self,
-        snapshot_receipt_id: str,
-        *,
-        domain: str,
-        member_name: str,
-        maximum_bytes: int = 2 * 1024 * 1024,
-    ) -> bytes | None:
-        return self._owner.read_regular_member(
-            snapshot_receipt_id,
-            domain=domain,
-            member_name=member_name,
-            maximum_bytes=maximum_bytes,
-        )
-
-    def list_domain_members(
-        self, snapshot_receipt_id: str, *, domain: str
-    ) -> tuple[str, ...] | None:
-        return self._owner.list_domain_members(snapshot_receipt_id, domain=domain)
 
     def cutover_from_legacy(
         self,

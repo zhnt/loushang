@@ -23,14 +23,16 @@ from .._segmented_history import (
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
 )
-from ..activation_state_journal import _MAX_JOURNAL_BYTES as _MAX_BYTES
-from ..activation_state_journal import _MAX_REVISIONS as _MAX_REVISIONS
 from ..activation_state_journal import (
+    _CODEC,
+    _FORMAT,
     WorkerActivationStateJournal,
     WorkerActivationStateJournalError,
     _canonical_json_bytes,
     _StateRecord,
 )
+from ..activation_state_journal import _MAX_JOURNAL_BYTES as _MAX_BYTES
+from ..activation_state_journal import _MAX_REVISIONS as _MAX_REVISIONS
 from ._activation import (
     _RetainedAttemptFields,
     fold_activation_attempt_history,
@@ -40,7 +42,6 @@ from ._activation import (
 from ._activation_base import _ActivationReplayFields, _parse_c5_segment
 from ._checkpoint import _CheckpointMethods
 from ._read_v2 import RetainedHistoryReader
-from ._v2_names import PRODUCT_OWNER_INDEX_NAME
 
 _STEM = "worker-activation-state"
 
@@ -287,41 +288,18 @@ class SegmentedActivationJournal(WorkerActivationStateJournal):
         """Read typed C5 state while its retired source generation may be absent."""
 
         try:
-            owner = (
-                self._history_reader.preparation.prepared_type._index_type.from_bytes(
-                    rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
-                )
-            )
-            if (
-                self._checkpoint_scope_id is not None
-                and self._checkpoint_scope_id != owner.scope_id
-            ) or (
-                self._checkpoint_store_id is not None
-                and self._checkpoint_store_id != owner.store_id
-            ):
-                raise WorkerActivationStateJournalError(
-                    "worker_activation_state_v2_owner_changed"
-                )
-            retained = self._history_reader.read(rooted, stem=_STEM)
-            replay = retained.replay
-            if not isinstance(
-                replay,
-                self._history_reader.preparation.prepared_type._activation_type._replay_type,
-            ):
-                raise WorkerActivationStateJournalError(
-                    "worker_activation_state_v2_owner_changed"
-                )
-            return (
-                self._history_reader.history_from_retained(
-                    rooted,
-                    retained,
-                    stem=_STEM,
-                    manifest_changed=lambda: WorkerActivationStateJournalError(
-                        "worker_activation_state_v2_manifest_changed"
-                    ),
+            _, history, replay = self._history_reader.read_owned_stream(
+                rooted,
+                stem=_STEM,
+                scope_id=self._checkpoint_scope_id,
+                store_id=self._checkpoint_store_id,
+                replay_type=self._history_reader.preparation.prepared_type._activation_type._replay_type,
+                failure=lambda reason: WorkerActivationStateJournalError(
+                    f"worker_activation_state_v2_{reason}"
                 ),
-                cast(_ActivationReplayFields, replay),
+                allow_unbound=True,
             )
+            return history, replay
         except (
             self._history_reader.error_type,
             CodingWorkerHistorySegmentError,
@@ -462,11 +440,11 @@ class SegmentedActivationJournal(WorkerActivationStateJournal):
 
     @property
     def _record_codec(self) -> JournalRecordCodec[_StateRecord]:
-        raise NotImplementedError("the original value codec is required")
+        return _CODEC
 
     @property
     def _record_format(self) -> JournalFormatProfile:
-        raise NotImplementedError("the original format is required")
+        return _FORMAT
 
     def _max_history_bytes(self) -> int:
         return _MAX_BYTES

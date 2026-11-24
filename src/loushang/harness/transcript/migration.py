@@ -19,7 +19,6 @@ from loushang.harness.conversation import (
     ConversationJsonlRecordCodec,
     ConversationKey,
     ConversationRecord,
-    ConversationRepository,
     ConversationSnapshot,
     ConversationStore,
     OpaquePayload,
@@ -41,6 +40,7 @@ from loushang.harness.transcript.kinds import (
     RECORD_ANNOTATION_PATCH_KIND,
     THINKING_SELECTION_KIND,
 )
+from loushang.harness.transcript.profile import create_transcript_branch_repository
 from loushang.harness.transcript.types import (
     AgentTranscriptRecord,
     ApplicationDeliveryMode,
@@ -472,13 +472,7 @@ def _validate_conversation_jsonl_snapshot(
     header_codec.encode_header(header)
     for record in records:
         record_codec.encode_record(record)
-    ConversationRepository.create(
-        header=header,
-        records=records,
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        mode="strict",
-    )
+    create_transcript_branch_repository(header=header, records=records, mode="strict")
 
 
 def _parse_jsonl(

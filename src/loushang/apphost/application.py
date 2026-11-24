@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import inspect
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
 from loushang.appservice import (
@@ -33,6 +33,8 @@ from loushang.foundation._owned_tasks import (
     _task_failed_or_cancelled as _phase_task_failed,
 )
 
+from ._ownership import _method_descriptor as _method_descriptor
+from ._ownership import _report_task_needs_retry
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
 
 if TYPE_CHECKING:
@@ -335,14 +337,7 @@ class HostedApplicationRuntimeV1:
 
         async with self._control_lock:
             task = self._shutdown_task
-            if task is None or (
-                task.done()
-                and (
-                    task.cancelled()
-                    or task.exception() is not None
-                    or not task.result().completed
-                )
-            ):
+            if task is None or _report_task_needs_retry(task):
                 task = asyncio.create_task(self._shutdown_once())
                 task.add_done_callback(_observe_background_result)
                 self._shutdown_task = task
@@ -359,14 +354,14 @@ class HostedApplicationRuntimeV1:
         failed: list[HostedApplicationShutdownPhase] = []
 
         service = self._service
-        service_result = (
-            "completed"
-            if service is None
-            else await self._run_phase(
+        service_result = "completed"
+        if service is not None:
+            service_result, _ = await _run_owned_shutdown_phase(
+                self._phase_tasks,
                 HostedApplicationShutdownPhase.SERVICE,
                 service.close,
+                timeout_seconds=self._phase_timeout_seconds,
             )
-        )
         if service_result == "timed_out":
             timed_out.append(HostedApplicationShutdownPhase.SERVICE)
         elif service_result == "failed":
@@ -387,9 +382,11 @@ class HostedApplicationRuntimeV1:
         if timed_out or failed:
             return _shutdown_report(timed_out, failed, apphost_report, False)
 
-        product_result = await self._run_phase(
+        product_result, _ = await _run_owned_shutdown_phase(
+            self._phase_tasks,
             HostedApplicationShutdownPhase.PRODUCT,
             self._product_owner.close,
+            timeout_seconds=self._phase_timeout_seconds,
         )
         if product_result == "timed_out":
             timed_out.append(HostedApplicationShutdownPhase.PRODUCT)
@@ -402,45 +399,18 @@ class HostedApplicationRuntimeV1:
             product_result == "completed",
         )
 
-    async def _run_phase(
-        self,
-        phase: HostedApplicationShutdownPhase,
-        callback: object,
-    ) -> str:
-        task = self._phase_tasks.get(phase)
-        if task is None or _phase_task_failed(task):
-            task = asyncio.create_task(callback())  # type: ignore[operator]
-            task.add_done_callback(_observe_background_result)
-            self._phase_tasks[phase] = task
-        try:
-            async with asyncio.timeout(self._phase_timeout_seconds):
-                await asyncio.shield(task)
-        except TimeoutError:
-            return "timed_out"
-        except asyncio.CancelledError:
-            raise
-        except BaseException:
-            return "failed"
-        return "completed"
-
     async def _run_apphost_phase(
         self,
     ) -> tuple[str, AppHostShutdownReportV1 | None]:
-        phase = HostedApplicationShutdownPhase.APPHOST
-        task = self._phase_tasks.get(phase)
-        if task is None or _apphost_phase_needs_retry(task):
-            task = asyncio.create_task(self._apphost.shutdown(self._shutdown_budget))
-            task.add_done_callback(_observe_background_result)
-            self._phase_tasks[phase] = task
-        try:
-            async with asyncio.timeout(self._phase_timeout_seconds):
-                raw = await asyncio.shield(task)
-        except TimeoutError:
-            return "timed_out", None
-        except asyncio.CancelledError:
-            raise
-        except BaseException:
-            return "failed", None
+        outcome, raw = await _run_owned_shutdown_phase(
+            self._phase_tasks,
+            HostedApplicationShutdownPhase.APPHOST,
+            lambda: self._apphost.shutdown(self._shutdown_budget),
+            timeout_seconds=self._phase_timeout_seconds,
+            needs_retry=_apphost_phase_needs_retry,
+        )
+        if outcome != "completed":
+            return outcome, None
         if type(raw) is not AppHostShutdownReportV1:
             return "failed", None
         return "completed", raw
@@ -518,11 +488,32 @@ def _shutdown_report(
 _join_owned = _join_failure_first
 
 
-def _method_descriptor(value: object, name: str) -> object:
-    descriptor = inspect.getattr_static(type(value), name, None)
-    if isinstance(descriptor, (classmethod, staticmethod)):
-        return descriptor.__func__
-    return descriptor
+_PhaseT = TypeVar("_PhaseT")
+
+
+async def _run_owned_shutdown_phase(
+    tasks: dict[_PhaseT, asyncio.Task[object]],
+    phase: _PhaseT,
+    callback: Callable[[], Coroutine[Any, Any, object]],
+    *,
+    timeout_seconds: float,
+    needs_retry: Callable[[asyncio.Task[object]], bool] = _phase_task_failed,
+) -> tuple[Literal["completed", "failed", "timed_out"], object | None]:
+    """Keep a timed-out phase owned, and retry only a terminal failure."""
+    task = tasks.get(phase)
+    if task is None or needs_retry(task):
+        task = asyncio.create_task(callback())
+        task.add_done_callback(_observe_background_result)
+        tasks[phase] = task
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            return "completed", await asyncio.shield(task)
+    except TimeoutError:
+        return "timed_out", None
+    except asyncio.CancelledError:
+        raise
+    except BaseException:
+        return "failed", None
 
 
 def _apphost_phase_needs_retry(task: asyncio.Task[object]) -> bool:

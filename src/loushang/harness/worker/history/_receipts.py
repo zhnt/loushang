@@ -37,6 +37,10 @@ _SOURCE_PATH = Path("worker-activation-receipts.jsonl")
 _STRICT_LOAD = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 
+def is_receipt_fingerprint(value: object) -> bool:
+    return type(value) is str and _DIGEST.fullmatch(value) is not None
+
+
 class _ReceiptRecordMethods:
     __slots__ = ()
 

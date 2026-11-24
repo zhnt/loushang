@@ -10,6 +10,7 @@ from typing import Generic, Literal, TypeVar, cast
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
+    SORTED_UNICODE_JSONL_FORMAT,
     JournalCodecError,
     JournalFormatProfile,
     JournalLoadPolicy,
@@ -43,8 +44,8 @@ from ._start_gate import (
     _StartGateReplayFields,
     fold_start_gate_records,
 )
-from ._v2_names import PRODUCT_OWNER_INDEX_NAME
 
+_FORMAT = replace(SORTED_UNICODE_JSONL_FORMAT, separators=(",", ":"))
 _RecordT = TypeVar("_RecordT", bound=_StartGateRecordMethods)
 
 
@@ -105,7 +106,7 @@ class StartGateHistory(Generic[_RecordT]):
 
     @property
     def _record_format(self) -> JournalFormatProfile:
-        raise NotImplementedError("the original format is required")
+        return _FORMAT
 
     @contextmanager
     def _append_position(
@@ -381,43 +382,19 @@ class StartGateHistory(Generic[_RecordT]):
     ) -> tuple[CodingWorkerSegmentedHistoryV1, _StartGateReplayFields]:
         """Read a committed base and retained physical Start Gate generations."""
 
-        stem = "worker-start-gates"
-        try:
-            owner = (
-                self._history_reader.preparation.prepared_type._index_type.from_bytes(
-                    rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
-                )
+        with self._history_reader.translate_stream_errors(
+            self._error_type,
+            prefix="coding_worker_start_gate_v2",
+        ) as failure:
+            _, history, replay = self._history_reader.read_owned_stream(
+                rooted,
+                stem="worker-start-gates",
+                scope_id=self._access.scope_id,
+                store_id=self._access.store_id,
+                replay_type=self._history_reader.preparation.prepared_type._gate_type._replay_type,
+                failure=failure,
             )
-            if (
-                owner.scope_id != self._access.scope_id
-                or owner.store_id != self._access.store_id
-            ):
-                raise self._error_type("coding_worker_start_gate_v2_owner_changed")
-            retained = self._history_reader.read(rooted, stem=stem)
-            replay = retained.replay
-            if not isinstance(
-                replay,
-                self._history_reader.preparation.prepared_type._gate_type._replay_type,
-            ):
-                raise self._error_type("coding_worker_start_gate_v2_owner_changed")
-            return (
-                self._history_reader.history_from_retained(
-                    rooted,
-                    retained,
-                    stem=stem,
-                    manifest_changed=lambda: self._error_type(
-                        "coding_worker_start_gate_v2_manifest_changed"
-                    ),
-                ),
-                cast(_StartGateReplayFields, replay),
-            )
-        except (
-            self._history_reader.error_type,
-            CodingWorkerHistorySegmentError,
-        ) as exc:
-            raise self._error_type(cast(_CodedFailure, exc).code) from exc
-        except (OSError, ValueError) as exc:
-            raise self._error_type("coding_worker_start_gate_v2_corrupt") from exc
+            return history, replay
 
     def _load_history(
         self, rooted: RootedFile

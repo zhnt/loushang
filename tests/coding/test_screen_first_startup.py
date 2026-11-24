@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -26,13 +26,13 @@ class TTY(StringIO):
 def test_threaded_loading_selection_requires_native_terminal_on_every_platform(
     monkeypatch, platform, native_tty
 ):
-    from loushang.coding.cli import screen_startup as module
+    from loushang.harnesstui.conversation import startup_host
 
     monkeypatch.setattr(sys, "platform", platform)
     monkeypatch.setattr(os, "isatty", lambda fd: native_tty and fd == 123)
     stream = SimpleNamespace(fileno=lambda: 123)
-    assert module.native_terminal_input_is_tty(stream) == native_tty
-    assert not module.native_terminal_input_is_tty(TTY())
+    assert startup_host.native_terminal_input_is_tty(stream) == native_tty
+    assert not startup_host.native_terminal_input_is_tty(TTY())
 
 
 @pytest.mark.parametrize(
@@ -89,6 +89,7 @@ def test_output_capture_preserves_tty_is_bounded_and_drains_once():
         ("configure-error", 2),
         ("cancel-resolve", 130),
         ("cleanup-error", 1),
+        ("cleanup-recovers", 1),
         ("cleanup-cancel-ready", 1),
         ("cleanup-cancel-eof", 1),
         ("resolve-and-cleanup-error", 1),
@@ -104,13 +105,14 @@ def test_product_first_frame_runtime_owner_and_output_order(
         pytest.skip("POSIX pipe transport")
     from loushang.coding.cli import screen_startup as module
     from loushang.harness.host.product_host import ProductHostLifecycle
+    from loushang.harnesstui.conversation import startup_host
     from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
-    from loushang.harnesstui.conversation.startup_host import ScreenConversationStartup
     from loushang.tui.terminal import TerminalSize
+
+    ScreenConversationStartup = startup_host.ScreenConversationStartup
 
     @dataclass
     class Binding:
-        runtime_builder: object
         host_lifecycle: object
         run_host: object = None
 
@@ -146,7 +148,9 @@ def test_product_first_frame_runtime_owner_and_output_order(
                         os.write(write_fd, value.encode())
 
             queue = NativeQueue()
-            monkeypatch.setattr(module, "native_terminal_input_is_tty", lambda _: True)
+            monkeypatch.setattr(
+                startup_host, "native_terminal_input_is_tty", lambda _: True
+            )
             original_threaded_run = ThreadedScreenStartup.run
 
             async def run_threaded(self, **kwargs):
@@ -201,7 +205,9 @@ def test_product_first_frame_runtime_owner_and_output_order(
             async def dispose_session_runtime(self):
                 events.append("runtime.dispose")
                 self.captured_errors.write("cleanup diagnostic\n")
-                if phase == "cleanup-error":
+                if phase == "cleanup-error" or (
+                    phase == "cleanup-recovers" and events.count("runtime.dispose") == 1
+                ):
                     raise RuntimeError("cleanup failed")
                 if phase in {"cleanup-cancel-ready", "cleanup-cancel-eof"}:
                     raise asyncio.CancelledError
@@ -210,44 +216,71 @@ def test_product_first_frame_runtime_owner_and_output_order(
 
         runtime = Runtime()
 
-        def builder(**_kwargs):
-            assert "Loading session" in output.getvalue()
-            assert "perm=" not in output.getvalue()
-            events.append("runtime.create")
-            return runtime
-
-        async def fake_cli(_argv, *, binding, cwd):
+        def compile_ports(binding):
             streams = binding.host_lifecycle.streams
             assert streams.stdout.isatty() and streams.stderr.isatty()
             assert streams.stdin is stdin
-            streams.stdout.write("bootstrap note\n")
-            created = await binding.runtime_builder(
-                args=object(),
-                cwd=Path("/repo"),
-                session_dir=Path("/sessions"),
-                services=object(),
-                tool_registry=object(),
-                approval_resolver=None,
-            )
-            runtime.captured_errors = streams.stderr
-            if phase in {"resolve-error", "resolve-and-cleanup-error"}:
-                queue.put_nowait("\x04")
-                raise RuntimeError("resolve failed")
-            if phase == "configure-error":
-                queue.put_nowait("\x04")
-                return 2
-            if phase == "cancel-resolve":
-                queue.put_nowait("\x03")
-                await asyncio.Event().wait()
-            if phase == "cleanup-cancel-eof":
-                queue.put_nowait("")
-                await asyncio.Event().wait()
-            return await binding.run_host(
-                runtime=created,
-                session=object(),
-                stdin=streams.stdin,
-                stdout=streams.stdout,
-                stderr=streams.stderr,
+            args = parse_args(())
+            launch_plan = _cli_launch_plan(args)
+
+            def build(_context, _state):
+                assert "Loading session" in output.getvalue()
+                assert "perm=" not in output.getvalue()
+                events.append("runtime.create")
+                streams.stdout.write("bootstrap note\n")
+                runtime.captured_errors = streams.stderr
+                return runtime
+
+            async def resolve(_context):
+                if phase == "resolve-error":
+                    queue.put_nowait("\x04")
+                    raise RuntimeError("resolve failed")
+                if phase == "resolve-and-cleanup-error":
+                    queue.put_nowait("\x04")
+                    raise LookupError("resolve failed")
+                if phase == "cancel-resolve":
+                    queue.put_nowait("\x03")
+                    await asyncio.Event().wait()
+                if phase == "cleanup-cancel-eof":
+                    queue.put_nowait("")
+                    await asyncio.Event().wait()
+                return object()
+
+            def configure(_context):
+                if phase == "configure-error":
+                    queue.put_nowait("\x04")
+                    return 2
+                return None
+
+            async def run_host(context):
+                return await binding.run_host(
+                    runtime=context.runtime,
+                    session=context.session,
+                    stdin=streams.stdin,
+                    stdout=streams.stdout,
+                    stderr=streams.stderr,
+                )
+
+            return harness_application.CliApplicationPorts(
+                parse_args=lambda *_: harness_application.CliParseResult(args),
+                initialize_args=lambda _: None,
+                launch_plan=lambda _: launch_plan,
+                args_cwd=lambda _: None,
+                early_operation=lambda _: None,
+                validated_operation=lambda _: None,
+                prepare_state=lambda _: (
+                    harness_application.CliPhaseResult.continue_with(object())
+                ),
+                startup_context=lambda *_: nullcontext(),
+                build_runtime=build,
+                runtime_operation=lambda _: None,
+                resolve_session=resolve,
+                collect_extension_flags=lambda _: {},
+                configure_session=configure,
+                session_operations=lambda _: None,
+                run_host=run_host,
+                output_guard=lambda _: nullcontext(),
+                dispose_runtime=lambda owned: owned.dispose_session_runtime(),
             )
 
         async def fake_tui(*, startup_app, prepared_screen_runner, **kwargs):
@@ -287,10 +320,11 @@ def test_product_first_frame_runtime_owner_and_output_order(
         from loushang.coding.ui import mode
         from loushang.harness.cli import application as harness_application
 
-        monkeypatch.setattr(harness_application, "run_agent_cli_application", fake_cli)
+        monkeypatch.setattr(
+            harness_application, "build_agent_cli_application_ports", compile_ports
+        )
         monkeypatch.setattr(mode, "run_coding_tui", fake_tui)
         binding = Binding(
-            builder,
             ProductHostLifecycle.resolve(stdin=stdin, stdout=output, stderr=errors),
         )
         host_binding = SimpleNamespace(bind=lambda runners: runners.tui)
@@ -314,24 +348,34 @@ def test_product_first_frame_runtime_owner_and_output_order(
             cwd=None,
         )
         assert result == expected
+        attempts = (
+            2
+            if phase.startswith("cleanup-") or phase == "resolve-and-cleanup-error"
+            else 1
+        )
         assert events == [
             "terminal.enter",
             "runtime.create",
-            "runtime.dispose",
+            *(["runtime.dispose"] * attempts),
             "terminal.exit",
         ]
         before_restore, _, after_restore = output.getvalue().partition("<restored>")
         assert after_restore.count("bootstrap note") == 1
-        if phase not in {"ui-error", "configure-error"}:
+        if phase not in {"ui-error", "configure-error", "resolve-error"}:
             assert "bootstrap note" not in before_restore
-        if phase == "configure-error" and "bootstrap note" in before_restore:
+        if (
+            phase in {"configure-error", "resolve-error"}
+            and "bootstrap note" in before_restore
+        ):
             # The main runner may present buffered diagnostics before consuming
             # queued EOF. That is a rendered failure summary, not an early drain.
             assert "Error: bootstrap note" in before_restore
-        assert errors.getvalue().count("cleanup diagnostic") == 1
+        assert errors.getvalue().count("cleanup diagnostic") == attempts
         if phase == "ui-error":
             assert len(summaries) == 1
             assert "completion preparation failed" in summaries[0]
+        if phase == "resolve-error":
+            assert "Error: resolve failed" in errors.getvalue()
         if phase.startswith("cleanup-cancel"):
             assert "cleanup cancelled before settlement" in errors.getvalue()
         if phase == "resolve-and-cleanup-error":
@@ -340,7 +384,7 @@ def test_product_first_frame_runtime_owner_and_output_order(
             diagnostics = output.getvalue() + errors.getvalue()
             assert "resolve failed" in diagnostics
             assert "second cleanup failure" in diagnostics
-        if phase in {"ready", "cleanup-error"}:
+        if phase in {"ready", "cleanup-error", "cleanup-recovers"}:
             assert output.getvalue().count("resume hint") == 1
             assert output.getvalue().index("<restored>") < output.getvalue().index(
                 "resume hint"

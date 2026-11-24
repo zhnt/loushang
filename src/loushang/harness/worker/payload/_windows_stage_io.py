@@ -95,9 +95,9 @@ class WindowsStageInspection:
     error_type: type[Exception]
     error_prefix: str
     max_payload_bytes: int
-    read_chunk: int
-    directory_attributes: int
-    file_attributes: int
+    read_chunk: int = 1024 * 1024
+    directory_attributes: int = 0x00000010 | 0x00000020 | 0x00002000
+    file_attributes: int = 0x00000020 | 0x00000080 | 0x00002000
 
     def verify_marker(
         self, raw: bytes, *, intent: LaunchIntent, stage_identity: tuple[int, int]

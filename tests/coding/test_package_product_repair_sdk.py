@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import closing
 from importlib.metadata import version
 from pathlib import Path
 
@@ -22,6 +23,13 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PosixLocalWheelProductRuntimeFactory,
+)
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeBindingV1,
+    PackageProductRuntimeRequestV1,
+)
 
 
 def test_package_repair_client_refuses_replaced_workspace_before_product_open(
@@ -54,10 +62,8 @@ def test_package_repair_client_rejects_bad_operation_before_product_open(
     assert not (tmp_path / "home").exists()
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX Package repair SDK")
-def test_package_repair_client_refuses_workspace_replaced_after_product_open(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.fixture
+def fenced_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
@@ -73,6 +79,15 @@ def test_package_repair_client_refuses_workspace_replaced_after_product_open(
         runtime_version=version("loushang"),
         runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     )
+    return workspace
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Package repair SDK")
+def test_package_repair_client_refuses_workspace_replaced_after_product_open(
+    fenced_workspace: Path,
+    tmp_path: Path,
+) -> None:
+    workspace = fenced_workspace
     client = open_coding_package_repair_client(workspace)
 
     def replace_after_open(*args: object, **kwargs: object):
@@ -90,3 +105,36 @@ def test_package_repair_client_refuses_workspace_replaced_after_product_open(
         )
     assert changed.value.code == "package_repair_workspace_changed"
     assert list(workspace.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Package repair SDK")
+def test_package_repair_releases_unbound_factory_after_create_fails(
+    fenced_workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = ValueError("injected Package repair factory failure")
+
+    def fail_create(
+        self: PosixLocalWheelProductRuntimeFactory,
+        request: PackageProductRuntimeRequestV1,
+    ) -> PackageProductRuntimeBindingV1:
+        assert request.session_id.startswith("package-repair:")
+        raise failure
+
+    monkeypatch.setattr(PosixLocalWheelProductRuntimeFactory, "create", fail_create)
+    client = open_coding_package_repair_client(fenced_workspace)
+    with pytest.raises(ValueError) as observed:
+        client.perform("repair-handoff", "operation:missing")
+    assert observed.value is failure
+
+    with closing(
+        open_coding_fenced_product_application_owner(
+            client.layout,
+            workspace=fenced_workspace,
+            runtime_version=client.runtime_version,
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        )
+    ) as owner:
+        registry = owner.epoch_runtime.registry
+        with registry.exclusive_runtime_quiescence(store_id=registry.store_id) as proof:
+            assert not proof.active_runtime_lease_ids

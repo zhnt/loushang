@@ -8,17 +8,26 @@ The original Transcript owner still performs all writes, blobs and lookups.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterable, Mapping
-from dataclasses import replace
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import ClassVar, Generic, Protocol, TypeVar, cast
+from functools import partial
+from pathlib import Path
+from typing import ClassVar, Generic, Literal, NamedTuple, Protocol, Self, TypeVar
 
 from loushang.ai.types import UserMessage
 from loushang.foundation.json import JSONValue, require_json_mapping
-from loushang.harness.conversation import ConversationRecord, StoreCommitOutcomeUnknown
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationRecord,
+    StoreCommitOutcomeUnknown,
+)
+from loushang.harness.journal._owned_io import settled_io
 
+from ._resume_records import _HistoricalBinding, select_input_record
 from .committer import CommitResult, PrebuiltUserMessageLookupResult
 from .product_session import BindingInputT, ProductBindingT, ProductTranscriptSession
+from .session_factory import AgentTranscriptSessionFactory
 from .types import AgentTranscriptRecord, ExtensionData
 
 
@@ -55,13 +64,37 @@ class _ResumePlanRead(Protocol):
     @property
     def ancestry_digest(self) -> str | None: ...
 
+    @property
+    def status(self) -> str: ...
+
+    @property
+    def workspace_root(self) -> str: ...
+
+
+class _ResumeHistoryHeader(Protocol):
+    @property
+    def header(self) -> ConversationHeader: ...
+
+
+class _ResumeWriterHistory(Protocol):
+    @property
+    def header_preview(self) -> _ResumeHistoryHeader: ...
+
+    @property
+    def records(self) -> tuple[AgentTranscriptRecord, ...]: ...
+
+    @property
+    def selected_leaf_id(self) -> str | None: ...
+
+    @property
+    def selected_records(self) -> tuple[AgentTranscriptRecord, ...]: ...
+
 
 IntentT = TypeVar("IntentT", bound=_ResumeIntentRead)
 IntentCo = TypeVar("IntentCo", bound=_ResumeIntentRead, covariant=True)
 BindingT = TypeVar("BindingT")
-BindingCo = TypeVar("BindingCo", covariant=True)
-BindingContra = TypeVar("BindingContra", contravariant=True)
 PlanT = TypeVar("PlanT", bound=_ResumePlanRead)
+WriterHistoryT = TypeVar("WriterHistoryT", bound=_ResumeWriterHistory)
 
 
 class _ResumeProjection(Protocol[IntentCo]):
@@ -78,38 +111,29 @@ class _ResumeProjection(Protocol[IntentCo]):
     @property
     def binding_status(self) -> str: ...
     @property
+    def binding(self) -> _HistoricalBinding | None: ...
+    @property
     def binding_record_id(self) -> str | None: ...
 
 
-class _ResumePendingInput(Protocol[IntentCo, BindingCo]):
-    """Borrow original data; only metadata/record/outcome fields are writable."""
+@dataclass(slots=True)
+class _ResumePendingInput(Generic[IntentT, BindingT]):
+    """The original Writer's in-memory state for its first input commit."""
 
-    @property
-    def expected_message(self) -> UserMessage: ...
-    @property
-    def expected_message_digest(self) -> str: ...
-    @property
-    def prepare_binding(self) -> Callable[[UserMessage], BindingCo]: ...
-    @property
-    def created_at(self) -> datetime: ...
-    @property
-    def original_leaf_id(self) -> str | None: ...
-    @property
-    def commit_parent_id(self) -> str: ...
-    @property
-    def attempt_id(self) -> str: ...
-    @property
-    def attempt(self) -> IntentCo: ...
-    @property
-    def revision(self) -> int: ...
-    @property
-    def ancestry_digest(self) -> str: ...
-    @property
-    def lock(self) -> asyncio.Lock: ...
-
-    expected_metadata: dict[str, JSONValue] | None
-    prepared_record: AgentTranscriptRecord | None
-    outcome_unknown: bool
+    expected_message: UserMessage
+    expected_message_digest: str
+    prepare_binding: Callable[[UserMessage], BindingT]
+    created_at: datetime
+    original_leaf_id: str | None
+    commit_parent_id: str
+    attempt_id: str
+    attempt: IntentT
+    revision: int
+    ancestry_digest: str
+    lock: asyncio.Lock
+    expected_metadata: dict[str, JSONValue] | None = None
+    prepared_record: AgentTranscriptRecord | None = None
+    outcome_unknown: bool = False
 
 
 class _ResumeMessageCodec(Protocol):
@@ -118,14 +142,17 @@ class _ResumeMessageCodec(Protocol):
     def record_digest(self, record: AgentTranscriptRecord) -> str: ...
 
 
-class _ResumeRecordCodec(Protocol[IntentT, BindingContra]):
+class _ResumeRecordCodec(Protocol[IntentT, BindingT]):
     def validate_attempt(self, record: AgentTranscriptRecord) -> IntentT: ...
+    def input_binding_identity(
+        self, metadata: Mapping[str, JSONValue]
+    ) -> tuple[str, str] | None: ...
     def prepare_attempt(
         self, attempt: IntentT, *, created_at: datetime
     ) -> AgentTranscriptRecord: ...
     def prepare_first_input_record(
         self,
-        pending: _ResumePendingInput[IntentT, BindingContra],
+        pending: _ResumePendingInput[IntentT, BindingT],
         persisted: UserMessage,
         *,
         read_session_id: Callable[[], str],
@@ -151,6 +178,50 @@ class _ResumeHistory(Protocol[IntentCo]):
     @property
     def project_async(self) -> _AsyncResumeProjector[IntentCo]: ...
 
+    def find_input_records(
+        self,
+        records: Iterable[AgentTranscriptRecord],
+        *,
+        current_session_id: str,
+        input_id: str,
+    ) -> list[AgentTranscriptRecord] | None: ...
+
+
+class _ResumeInputObservation(NamedTuple):
+    record_id: str | None
+    status: Literal["committed", "not_committed_verified", "unknown", "conflict"]
+
+
+def lookup_detached_resume_input(
+    records: Sequence[AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+    input_id: str,
+    expected_digest: str,
+    digest: Callable[[AgentTranscriptRecord], str],
+    project: _ResumeProjector[_ResumeIntentRead],
+) -> _ResumeInputObservation | None:
+    """Observe the latest bound input from a borrowed, read-only selected path."""
+    projection = project(records, current_session_id=current_session_id)
+    binding = projection.binding
+    record_id = projection.binding_record_id
+    if (
+        projection.binding_status != "bound"
+        or binding is None
+        or binding.input_id != input_id
+        or record_id is None
+    ):
+        return None
+    selected = select_input_record(
+        [record for record in records if record.record_id == record_id],
+        expected_digest=expected_digest,
+        digest=digest,
+        duplicate="unknown",
+    )
+    if isinstance(selected, str):
+        return _ResumeInputObservation(None, selected)
+    return _ResumeInputObservation(selected.record_id, "committed")
+
 
 class _ResumeContinuationTranscript(
     ProductTranscriptSession[BindingInputT, ProductBindingT],
@@ -165,9 +236,9 @@ class _ResumeContinuationTranscript(
     _resume_messages: ClassVar[_ResumeMessageCodec]
     _resume_records: _ResumeRecordCodec[IntentT, BindingT]
     _resume_history: _ResumeHistory[IntentT]
-    _resume_pending_type: type[_ResumePendingInput[IntentT, BindingT]]
     _resume_recovery_error: ClassVar[type[RuntimeError]]
     _resume_label: ClassVar[str]
+    _resume_writer_capabilities: ClassVar[frozenset[str]] = frozenset()
 
     _resume_first_input: _ResumePendingInput[IntentT, BindingT] | None = None
     _resume_runtime_publication_pending: bool = False
@@ -189,11 +260,99 @@ class _ResumeContinuationTranscript(
     def _activation_neutral_record(record: AgentTranscriptRecord) -> bool:
         raise NotImplementedError("The Product must classify neutral records")
 
+    @classmethod
+    def _require_resume_writer_capabilities(
+        cls, required_writer_capabilities: frozenset[str]
+    ) -> None:
+        """Negotiate wire support without acquiring or reading a source."""
+        if type(required_writer_capabilities) is not frozenset or any(
+            type(item) is not str for item in required_writer_capabilities
+        ):
+            raise TypeError("Resume Writer capabilities require exact strings")
+        if not required_writer_capabilities <= cls._resume_writer_capabilities:
+            raise cls._resume_recovery_error("writer.resume_protocol_unsupported")
+
+    @classmethod
+    async def _load_verified_resume_writer(
+        cls,
+        session_file: str | Path,
+        *,
+        plan: PlanT,
+        plan_type: type[PlanT],
+        required_writer_capabilities: frozenset[str],
+        factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT] | None,
+        require_plan_inputs: Callable[[], None],
+        read_history: Callable[[Path], WriterHistoryT],
+        require_plan_source: Callable[[WriterHistoryT], None],
+        rebuild_plan: Callable[[WriterHistoryT], PlanT],
+        validate_historical_header: Callable[
+            [ConversationHeader, BindingInputT, bool], None
+        ],
+        stale_error: type[ValueError],
+        workspace_cwd: str | None = None,
+    ) -> Self:
+        """Acquire the original Writer only after matching its read-only evidence."""
+        cls._require_resume_writer_capabilities(required_writer_capabilities)
+        if factory is None:
+            factory = cls._factory_for_persistence(True)
+        label = f"{cls._resume_label} Writer"
+        if not isinstance(factory, AgentTranscriptSessionFactory):
+            raise TypeError(f"{label} factory is invalid")
+        if not factory.owns_persistent_sessions:
+            raise ValueError(f"{label} requires its application-owned factory")
+        if not isinstance(plan, plan_type) or plan.status != "needs_final_validation":
+            raise ValueError(f"{label} requires an available activation Plan")
+        require_plan_inputs()
+        context = factory._discover_owned_context(session_file)
+        history = await settled_io(read_history, context.session_file)
+        require_plan_source(history)
+        if (
+            context.header != history.header_preview.header
+            or (context.cwd if workspace_cwd is None else workspace_cwd) != plan.workspace_root
+            or rebuild_plan(history) != plan
+        ):
+            raise stale_error(f"{label} Plan differs from current history")
+
+        binding = factory._resolve_binding_input(True)
+        validate_historical_header(context.header, binding, False)
+        records = history.records
+        selected_leaf_id = history.selected_leaf_id
+        selected_records = history.selected_records
+
+        def prepare(writer: Self) -> None:
+            writer._resume_runtime_publication_pending = True
+            changed = f"{cls._resume_label} Writer history changed during acquisition"
+            if tuple(writer.get_entries()) != records:
+                raise stale_error(changed)
+            if selected_leaf_id is not None:
+                writer.branch(selected_leaf_id)
+            if (
+                writer.leaf_id != selected_leaf_id
+                or tuple(writer.get_active_entries()) != selected_records
+            ):
+                raise stale_error(changed)
+            writer._resume_writer_plan = plan
+
+        return await cls._construct_product(
+            factory,
+            partial(factory._construct_owned, context, binding, restore=True),
+            prepare_owned=prepare,
+        )
+
     @property
     def resume_runtime_publication_pending(self) -> bool:
         """Local readiness only; historical Binding cannot prove publication."""
 
         return self._resume_runtime_publication_pending
+
+    def _require_fresh_resume_input(self, attempt: IntentT, input_record_id: str) -> None:
+        reserved = {input_record_id, attempt.attempt_id}
+        if any(record.record_id in reserved for record in self.get_entries()):
+            raise self._resume_recovery_error("input.record_identity_conflict")
+        identity = (attempt.session_id, attempt.request_id)
+        for record in self.get_active_entries():
+            if self._resume_records.input_binding_identity(record.metadata) == identity:
+                raise self._resume_recovery_error("input.recovery_required")
 
     async def _commit_resume_activation_intent(
         self,
@@ -323,7 +482,7 @@ class _ResumeContinuationTranscript(
         metadata: Mapping[str, JSONValue] | None = None,
     ) -> str:
         pending = self._resume_first_input
-        if isinstance(pending, self._resume_pending_type):
+        if isinstance(pending, _ResumePendingInput):
             if not isinstance(message, UserMessage):
                 raise ValueError(f"{self._resume_label} first user input is pending")
             return await self._append_resume_first_user_message(
@@ -430,10 +589,7 @@ class _ResumeContinuationTranscript(
                 f"{self._resume_label} activation attempt differs from selected history"
             )
         frozen_message = self._resume_messages.freeze_input(message)
-        self._resume_first_input = cast(
-            Callable[..., _ResumePendingInput[IntentT, BindingT]],
-            self._resume_pending_type,
-        )(
+        self._resume_first_input = _ResumePendingInput(
             expected_message=frozen_message,
             expected_message_digest=self._resume_messages.input_digest(frozen_message),
             prepare_binding=prepare_binding,
@@ -644,6 +800,42 @@ class _ResumeContinuationTranscript(
         self._require_committed_resume_input(attempt_id, record_id)
         return attempt
 
+    async def _lookup_resume_input_observation(
+        self, *, input_id: str, expected_digest: str, max_records: int
+    ) -> _ResumeInputObservation:
+        """Find exact selected or staged evidence and ask the original Writer."""
+        unknown = _ResumeInputObservation(None, "unknown")
+        if not self.persist or len(self._transcript.records) > max_records:
+            return unknown
+        session_id = self.get_header().conversation_id
+        try:
+            candidates = self._resume_history.find_input_records(
+                self._transcript.active_path(),
+                current_session_id=session_id,
+                input_id=input_id,
+            )
+        except ValueError:
+            return unknown
+        if candidates is None:
+            return unknown
+        pending = self._resume_first_input
+        if (
+            not candidates
+            and isinstance(pending, _ResumePendingInput)
+            and pending.attempt.request_id == input_id
+            and pending.prepared_record is not None
+        ):
+            candidates.append(pending.prepared_record)
+        selected = select_input_record(
+            candidates,
+            expected_digest=expected_digest,
+            digest=self._resume_messages.record_digest,
+        )
+        if isinstance(selected, str):
+            return _ResumeInputObservation(None, selected)
+        observed = await self.lookup_prebuilt_user_message(selected)
+        return _ResumeInputObservation(observed.record_id, observed.status)
+
     async def _lookup_resume_first_user_input(
         self,
         *,
@@ -658,7 +850,7 @@ class _ResumeContinuationTranscript(
         """
 
         pending = self._resume_first_input
-        if not isinstance(pending, self._resume_pending_type):
+        if not isinstance(pending, _ResumePendingInput):
             raise ValueError(f"{self._resume_label} has no staged input to observe")
         async with pending.lock:
             if self._resume_first_input is not pending:

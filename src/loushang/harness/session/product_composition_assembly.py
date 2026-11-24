@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+import secrets
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Literal, Protocol, cast
+from hashlib import sha256
+from itertools import chain
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -71,6 +74,9 @@ from loushang.harness.plugin_authoring.resource_item import (
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.plugins.contribution_types import (
     PLUGIN_OWNER_CONTRIBUTION_KINDS,
 )
@@ -92,6 +98,9 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
+from loushang.harness.resources.plugins.selection import (
+    build_product_plugin_selection_plan as build_product_plugin_selection_plan,
+)
 from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     PublishedPluginPackage,
@@ -103,10 +112,29 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityWorkerComponentRequest,
     validate_session_capability_composition_closure,
 )
+from loushang.harness.session.composition_evidence import (
+    _capture_worker_startup_selection,
+    read_composition_receipt,
+)
+from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 if TYPE_CHECKING:
+    from loushang.harness.config.agent import CapabilityMountMode
+    from loushang.harness.package_product._selected_plugin_revisions import (
+        ProductSessionSelection,
+    )
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
+    )
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductPluginDesiredSelectionV1,
+        PackageProductRuntimeBindingV1,
+    )
+    from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
+    from loushang.harness.resume_effects import ResumeEffectParentContextV1
+    from loushang.harness.transcript.product_session import ProductTranscriptSession
+    from loushang.harness.worker.product_activation import (
+        ProductWorkerActivationReceiptV1,
     )
 
 
@@ -118,6 +146,280 @@ ProductCapabilityProviderSelector = Callable[
     [tuple[CapabilityProviderAdmissionRecord, ...]],
     tuple[ProductCapabilityProviderChoice, ...],
 ]
+
+
+_AGENT_HOST_DEFINITIONS = (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
+    WORKSPACE_CAPABILITY_DEFINITION,
+)
+_AGENT_HOST_CAPABILITY_IDS = tuple(
+    definition.capability_id for definition in _AGENT_HOST_DEFINITIONS
+)
+
+
+class _PreparedBaseCompilation(Protocol):
+    @property
+    def plan(self) -> PluginSelectionPlanV2: ...
+    @property
+    def product_composition(self) -> ProductCompositionCompilation: ...
+    @property
+    def selected_manifest(self) -> PackageProductSelectedPluginManifestV1: ...
+    @property
+    def selected_capability_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+    @property
+    def selected_external_data_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+
+
+class _PreparedBaseSession(Protocol):
+    @property
+    def compilation(self) -> _PreparedBaseCompilation: ...
+    @property
+    def workspace_binding(self) -> CapabilityBundleProviderBinding: ...
+    @property
+    def session_inputs(self) -> SessionCapabilityCompositionInputs: ...
+
+
+class _PreparedCapabilitySession(Protocol):
+    @property
+    def runtime(self) -> PluginRuntimeResolution: ...
+    @property
+    def session_inputs(self) -> SessionCapabilityCompositionInputs: ...
+    @property
+    def selection(self) -> PluginSelection: ...
+    @property
+    def plugin_assembly(self) -> ProductPluginCompositionAssembly: ...
+
+
+_WorkspaceAssemblyCo = TypeVar("_WorkspaceAssemblyCo", covariant=True)
+_ProductBaseAssemblyCo = TypeVar("_ProductBaseAssemblyCo", covariant=True)
+_CapabilityAssemblyT = TypeVar("_CapabilityAssemblyT")
+_LegacyBaseAssemblyT = TypeVar("_LegacyBaseAssemblyT")
+_ProductBaseAssemblyT = TypeVar("_ProductBaseAssemblyT")
+
+
+class _PreparedWorkspacePlugin(Protocol[_WorkspaceAssemblyCo]):
+    def bind_workspace(
+        self,
+        workspace_binding: CapabilityBundleProviderBinding,
+        *,
+        host_boot_id: str,
+        tool_modes: Mapping[str, CapabilityMountMode],
+        clock: Callable[[], int],
+    ) -> _WorkspaceAssemblyCo: ...
+
+
+class _PreparedWorkspaceBase(Protocol[_WorkspaceAssemblyCo]):
+    def bind_workspace(
+        self, workspace_binding: CapabilityBundleProviderBinding, /
+    ) -> _WorkspaceAssemblyCo: ...
+
+
+class _CombinedWorkspaceAssembly(Protocol[_WorkspaceAssemblyCo, _ProductBaseAssemblyCo]):
+    @property
+    def capability_assembly(self) -> _WorkspaceAssemblyCo: ...
+
+    @property
+    def base_session(self) -> _ProductBaseAssemblyCo: ...
+
+
+def bind_workspace_plugins(
+    workspace_binding: CapabilityBundleProviderBinding,
+    *,
+    builtin_product_preparation: _PreparedWorkspacePlugin[
+        _CombinedWorkspaceAssembly[_CapabilityAssemblyT, _ProductBaseAssemblyT]
+    ] | None,
+    capability_preparation: _PreparedWorkspacePlugin[_CapabilityAssemblyT] | None,
+    base_plugin_session_preparation: _PreparedWorkspaceBase[_LegacyBaseAssemblyT] | None,
+    product_base_compilation: _PreparedWorkspaceBase[_ProductBaseAssemblyT] | None,
+    host_boot_id: str,
+    tool_modes: Mapping[str, CapabilityMountMode],
+    clock: Callable[[], int],
+) -> tuple[_CapabilityAssemblyT | None, _LegacyBaseAssemblyT | None, _ProductBaseAssemblyT | None]:
+    """Bind one prepared Product graph, retaining the order of its owner handoffs."""
+    builtin_product_session = (
+        builtin_product_preparation.bind_workspace(
+            workspace_binding,
+            host_boot_id=host_boot_id,
+            tool_modes=tool_modes,
+            clock=clock,
+        )
+        if builtin_product_preparation is not None
+        else None
+    )
+    capability_plugin_assembly = (
+        builtin_product_session.capability_assembly
+        if builtin_product_session is not None
+        else capability_preparation.bind_workspace(
+            workspace_binding=workspace_binding,
+            host_boot_id=host_boot_id,
+            tool_modes=tool_modes,
+            clock=clock,
+        )
+        if capability_preparation is not None
+        else None
+    )
+    base_plugin_session_assembly = (
+        base_plugin_session_preparation.bind_workspace(workspace_binding)
+        if base_plugin_session_preparation is not None
+        else None
+    )
+    product_base_session_assembly = (
+        builtin_product_session.base_session
+        if builtin_product_session is not None
+        else product_base_compilation.bind_workspace(workspace_binding)
+        if product_base_compilation is not None
+        else None
+    )
+    return capability_plugin_assembly, base_plugin_session_assembly, product_base_session_assembly
+
+
+def admit_prepared_product_session(
+    *,
+    base: _PreparedBaseSession | None,
+    capabilities: _PreparedCapabilitySession | None,
+    runtime: PackageProductRuntimeBindingV1 | None,
+    selected_capabilities: tuple[PackageProductSelectedPluginManifestV1, ...],
+    selected_external: tuple[PackageProductSelectedPluginManifestV1, ...],
+    desired_selections: tuple[PackageProductPluginDesiredSelectionV1, ...],
+    selected_worker: PackageProductSelectedPluginManifestV1 | None,
+    workspace_binding: CapabilityBundleProviderBinding | None,
+    has_peer_materializer: bool,
+    has_catalog_bootstrap: bool,
+    get_session_id: Callable[[], str],
+    product_id: str,
+    product_label: str,
+) -> ProductSessionSelection:
+    """Admit an exact prepared graph and pin its Package Product evidence."""
+    from loushang.harness.package_product._selected_plugin_revisions import (
+        ProductSessionSelection,
+    )
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeBindingV1,
+    )
+
+    if (
+        base is not None
+        and capabilities is not None
+        and (
+            capabilities.session_inputs is not base.session_inputs
+            or capabilities.selection.plan != base.compilation.plan
+            or capabilities.plugin_assembly.product_composition
+            is not base.compilation.product_composition
+        )
+    ):
+        raise ValueError(f"{product_label} Product Session composition changed")
+    compilation = base.compilation if base is not None else None
+    pinned = ProductSessionSelection(
+        runtime=runtime,
+        desired=desired_selections,
+        base=compilation.selected_manifest if compilation is not None else None,
+        capabilities=(
+            compilation.selected_capability_manifests
+            if compilation is not None
+            else selected_capabilities
+        ),
+        external=(
+            compilation.selected_external_data_manifests
+            if compilation is not None
+            else selected_external
+        ),
+        worker=selected_worker,
+    )
+    if capabilities is not None and (
+        base is not None or runtime is not None or selected_capabilities
+    ):
+        # Managed plugins have no Product Package pins.
+        pinned.require_prepared_inventory(
+            capabilities.runtime.packages, product_label=product_label
+        )
+    if base is not None:
+        if has_peer_materializer:
+            raise ValueError(
+                f"{product_label} base Product cannot use a peer materializer"
+            )
+        if not has_catalog_bootstrap:
+            raise ValueError(f"{product_label} base Product requires Catalog bootstrap")
+        if workspace_binding is not base.workspace_binding:
+            raise ValueError(f"{product_label} base Product workspace binding changed")
+        if runtime is None:
+            raise ValueError(f"{product_label} base Product requires runtime binding")
+        if (
+            base.compilation.plan.context.scope_id
+            != f"session:{get_session_id()}"
+        ):
+            raise ValueError(f"{product_label} base Product Session identity changed")
+    if runtime is not None and (
+        not isinstance(runtime, PackageProductRuntimeBindingV1)
+        or runtime.product_id != product_id
+    ):
+        raise ValueError(f"{product_label} Product runtime binding is invalid")
+    return pinned
+
+def bind_agent_host_session_inputs(
+    compilation: ProductCompositionCompilation,
+    workspace_provider: CapabilityBundleProvider,
+) -> SessionCapabilityCompositionInputs:
+    """Bind a compiled data-only Session to the standard Agent host."""
+    context = compilation.authority_context
+    providers = (workspace_provider,)
+    resolved = ProductCapabilityProviderResolver().resolve(
+        ProductCapabilityProviderSelectionPlanV1(
+            product_id=context.product_id,
+            roots=(),
+            choices=(),
+            policy_revision=context.product_policy_revision,
+        ),
+        definitions=_AGENT_HOST_DEFINITIONS,
+        admissions=(),
+        owner_snapshots=(),
+        evaluated_at=context.evaluated_at,
+        prebound_providers=providers,
+    )
+    validate_session_capability_composition_closure(
+        compilation,
+        resolved,
+        host_capability_ids=_AGENT_HOST_CAPABILITY_IDS,
+        host_providers=providers,
+    )
+    return SessionCapabilityCompositionInputs(
+        product_composition=compilation,
+        resolved_providers=resolved,
+        component_requests=(),
+    )
+
+
+def assemble_agent_data_composition(
+    plan: PluginSelectionPlanV2,
+    candidates: tuple[OwnerContributionCandidateEnvelope, ...],
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+    *,
+    evaluated_at: int,
+) -> ProductCompositionCompilation:
+    """Compile selected data contributions against the standard Agent host."""
+    return _assemble_product_contribution_candidates(
+        plan=plan,
+        candidates=candidates,
+        owner_bindings=owner_bindings,
+        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        definitions=_AGENT_HOST_DEFINITIONS,
+        select_optional_requirements=lambda _: (),
+        evaluated_at=evaluated_at,
+    )
+
+
+_WorkerBindingT = TypeVar("_WorkerBindingT")
+
+
+class _StartupReceiptOwner(Protocol):
+    def issue(self) -> ProductWorkerActivationReceiptV1 | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _OrdinaryWorkerPlatform:
+    receipt_owner_type: type[_StartupReceiptOwner]
+    open_receipt_owner: Callable[..., _StartupReceiptOwner]
+    plan_launch: Callable[..., object]
+    prepare_pending: Callable[..., SessionCapabilityCompositionInputs]
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +437,110 @@ class _WorkerSessionComposition:
     error_prefix: str
     invalid_composition_inputs: str
     invalid_session_inputs: str
+
+    def prepare_ordinary(
+        self,
+        ordinary: _PreparedBaseSession,
+        *,
+        transcript: ProductTranscriptSession,
+        runtime: PackageProductRuntimeBindingV1,
+        product_owner: object,
+        plugin_id: str,
+        definition: CapabilityDefinition,
+        platform: _OrdinaryWorkerPlatform,
+        startup_type: str,
+        startup_label: str,
+        manifest_limits: tuple[int, int],
+        startup_failure: Callable[[str], RuntimeError],
+        bind_receipt_context: Callable[[ProductWorkerActivationReceiptV1], object],
+        make_base_policy: Callable[..., object],
+        make_provider_owner: Callable[[], CapabilityProviderOwnerAuthority],
+        resolve_provider: Callable[..., tuple[ResolvedCapabilityProviderSet, int]],
+        clock: Callable[[], int],
+        resume_parent_context: ResumeEffectParentContextV1 | None,
+        binding_type: Callable[..., _WorkerBindingT],
+    ) -> _WorkerBindingT:
+        """Prove one receipt and compile its deferred Worker into the Session graph."""
+        if not transcript.is_persisted():
+            raise startup_failure("transcript_not_materialized")
+        base_context = ordinary.session_inputs.product_composition.authority_context
+        plan_context = ordinary.compilation.plan.context
+        if (
+            runtime.session_id != transcript.get_header().conversation_id
+            or plan_context.scope_id != f"session:{runtime.session_id}"
+            or base_context.product_policy_revision != plan_context.policy_revision
+        ):
+            raise startup_failure("product_scope_changed")
+        startup = read_composition_receipt(
+            transcript.get_entries(), extension_type=startup_type, label=startup_label
+        )
+        if startup is None and transcript.get_entries():
+            raise startup_failure("startup_provenance_missing")
+        owner = platform.open_receipt_owner(
+            product_owner=product_owner,
+            runtime=runtime,
+            plugin_id=plugin_id,
+            transcript_directory=AgentTranscriptDirectoryRuntime(
+                session_dir=transcript.get_session_dir()
+            ),
+            session_manager=transcript,
+            active_session=True,
+        )
+        receipt = owner.issue()
+        if receipt is None:
+            raise startup_failure("candidate_not_allowed")
+        settlement = bind_receipt_context(receipt)
+        selected = _capture_worker_startup_selection(
+            runtime=runtime,
+            plugin_id=plugin_id,
+            receipt=receipt,
+            existing_startup=startup,
+            max_files=manifest_limits[0],
+            max_total_bytes=manifest_limits[1],
+            failure=startup_failure,
+        )
+        base_policy = make_base_policy(
+            base=ordinary.compilation, receipt_owner=owner, receipt=receipt
+        )
+        provider_owner = make_provider_owner()
+        resolved, evaluated_at = resolve_provider(
+            owner=provider_owner,
+            receipt_owner=owner,
+            receipt=receipt,
+            plugin_id=plugin_id,
+            clock=lambda: base_context.evaluated_at,
+            base_policy_binding=base_policy,
+        )
+        assert type(owner) is platform.receipt_owner_type
+        pending = platform.plan_launch(
+            receipt_owner=owner, receipt=receipt, attempt_id=secrets.token_hex(16)
+        )
+        worker = platform.prepare_pending(
+            resolved_providers=resolved,
+            provider_owner=provider_owner,
+            receipt_owner=owner,
+            receipt=receipt,
+            pending_launch=pending,
+            evaluated_at=evaluated_at,
+            clock=clock,
+            base_policy_binding=base_policy,
+            resume_parent_context=resume_parent_context,
+            resume_settlement=settlement,
+        )
+        combined = self.compose_selected(
+            ordinary=ordinary.session_inputs,
+            worker=worker,
+            worker_definition=definition,
+            workspace_binding=ordinary.workspace_binding,
+        )
+        return binding_type(
+            ordinary=ordinary.session_inputs,
+            combined=combined,
+            workspace_binding=ordinary.workspace_binding,
+            selected_worker_manifest=selected,
+            activation_receipt=receipt,
+            resume_settlement=settlement,
+        )
 
     def select_provider(
         self,
@@ -172,6 +578,27 @@ class _WorkerSessionComposition:
             admissions=(admission,),
             owner_snapshots=(owner.snapshot(),),
             evaluated_at=evaluated_at,
+        )
+
+    def compose_selected(
+        self,
+        *,
+        ordinary: SessionCapabilityCompositionInputs,
+        worker: SessionCapabilityCompositionInputs,
+        worker_definition: CapabilityDefinition,
+        workspace_binding: CapabilityBundleProviderBinding,
+    ) -> SessionCapabilityCompositionInputs:
+        definitions = {
+            item.capability_id: item
+            for item in (
+                *_AGENT_HOST_DEFINITIONS,
+                worker_definition,
+                *(entry.definition for entry in ordinary.resolved_providers.entries),
+            )
+        }
+        return self.compose(
+            ordinary=ordinary, worker=worker, definitions=tuple(definitions.values()),
+            workspace_binding=workspace_binding,
         )
 
     def compose(
@@ -492,10 +919,7 @@ class _WorkerSessionComposition:
         validate_session_capability_composition_closure(
             compilation,
             resolved,
-            host_capability_ids=(
-                MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-                WORKSPACE_CAPABILITY_DEFINITION.capability_id,
-            ),
+            host_capability_ids=_AGENT_HOST_CAPABILITY_IDS,
             host_providers=(workspace_binding.provider,),
         )
 
@@ -617,6 +1041,55 @@ class ProductPluginPlanSeed:
     bindings: tuple[PluginSourceBinding, ...]
     owner_bindings: tuple[ProductContributionOwnerBinding, ...]
 
+    @classmethod
+    def from_package_bindings(
+        cls,
+        plan: PluginSelectionPlanV2,
+        package_bindings: Iterable[tuple[PublishedPluginPackage, PluginSourceBinding]],
+        *,
+        owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+        extend_seed: ProductPluginPlanSeed | None = None,
+    ) -> ProductPluginPlanSeed:
+        """Bind the plan to ordered exact package evidence and its Product owners."""
+        if extend_seed is not None:
+            package_bindings = chain(
+                zip(extend_seed.packages, extend_seed.bindings, strict=True),
+                package_bindings,
+            )
+            owner_bindings = (*extend_seed.owner_bindings, *owner_bindings)
+        ordered = sorted(package_bindings, key=lambda pair: pair[0].manifest.name)
+        return cls(
+            plan=plan,
+            packages=tuple(package for package, _ in ordered),
+            bindings=tuple(binding for _, binding in ordered),
+            owner_bindings=owner_bindings,
+        )
+
+    def select_resources(
+        self, package: PublishedPluginPackage, *, plugin_id: str
+    ) -> ProductPluginPlanSeed | None:
+        """Retain exact package evidence but narrow the plan and owners to Resources."""
+        resource_ids = {
+            item.contribution_id
+            for item in package.contribution_index.items
+            if item.kind == "resource_item"
+        }
+        selected_resources = tuple(
+            item
+            for item in self.plan.selected_contributions
+            if item.plugin_id == plugin_id and item.contribution_id in resource_ids
+        )
+        if not selected_resources:
+            return None
+        return ProductPluginPlanSeed(
+            plan=replace(self.plan, selected_contributions=selected_resources),
+            packages=self.packages,
+            bindings=self.bindings,
+            owner_bindings=tuple(
+                item for item in self.owner_bindings if item.owner_key[1] == "resource_item"
+            ),
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.plan, PluginSelectionPlanV2):
             raise TypeError("Product Plugin seed plan is invalid")
@@ -654,47 +1127,40 @@ class ProductPluginSelectionSeed:
         object.__setattr__(self, "owner_bindings", owners)
 
 
-OwnerCompletionRejection = Literal[
-    "invalid_package_resource_declaration",
-    "invalid_product_owner_binding_kind",
-    "duplicate_product_owner_binding",
-    "product_owner_binding_extra",
-]
+@dataclass(frozen=True, slots=True)
+class CatalogContributionOwnerPolicy:
+    """Product policy for a default owner of configured Catalog resources."""
+
+    product_id: str
+    configured_trust_class: str
+    policy_revision: Callable[[str, OwnerContributionKind], str]
 
 
-class ProductContributionOwnerResolver(Protocol):
-    """Product policy for one grouped owner's exact binding or default."""
-
-    def __call__(
-        self,
-        *,
-        owner_id: str,
-        contribution_kind: OwnerContributionKind,
-        trust_classes: set[str],
-        collection_ids: set[str],
-        supplied_binding: ProductContributionOwnerBinding | None,
-    ) -> ProductContributionOwnerBinding: ...
-
-
-def _complete_product_plugin_selection_seed(
+def _complete_catalog_plugin_selection_seed(
     seed: ProductPluginPlanSeed,
     *,
     selection: PluginSelection,
-    candidates: tuple[OwnerContributionCandidateEnvelope, ...],
-    resolve_owner: ProductContributionOwnerResolver,
-    reject: Callable[[OwnerCompletionRejection], Exception],
+    owner_policy: CatalogContributionOwnerPolicy,
+    reject: Callable[[Sequence[str]], Exception],
+    product_label: str,
 ) -> ProductPluginSelectionSeed:
-    """Group already-projected inputs without making Product policy decisions."""
+    """Attach exact contribution owners to one already-finalized Catalog selection."""
+    if not isinstance(seed, ProductPluginPlanSeed):
+        raise TypeError(f"{product_label} package Product plan seed is invalid")
+    if not isinstance(selection, PluginSelection) or selection.plan != seed.plan:
+        raise ValueError(
+            f"{product_label} package Product selection does not match its plan"
+        )
 
     owner_collections: dict[tuple[str, OwnerContributionKind], set[str]] = {}
     owner_trust_classes: dict[tuple[str, OwnerContributionKind], set[str]] = {}
-    for candidate in candidates:
+    for candidate in project_product_owner_candidates(selection):
         contribution = candidate.contribution
         if not isinstance(
             contribution,
             ResourceContributionSpec | CatalogConsumerContributionSpec,
         ):
-            raise reject("invalid_package_resource_declaration")
+            raise reject(("invalid_package_resource_declaration",))
         owner_key = (candidate.owner_id, candidate.contribution_kind)
         owner_collections.setdefault(owner_key, set()).add(contribution.collection_id)
         owner_trust_classes.setdefault(owner_key, set()).add(
@@ -703,36 +1169,54 @@ def _complete_product_plugin_selection_seed(
     supplied: dict[
         tuple[str, OwnerContributionKind], ProductContributionOwnerBinding
     ] = {}
-    for binding in seed.owner_bindings:
-        owner_id, raw_contribution_kind, _ = binding.owner_key
+    for supplied_binding in seed.owner_bindings:
+        owner_id, raw_contribution_kind, _ = supplied_binding.owner_key
         if raw_contribution_kind not in PLUGIN_OWNER_CONTRIBUTION_KINDS:
-            raise reject("invalid_product_owner_binding_kind")
+            raise reject(("invalid_product_owner_binding_kind",))
         contribution_kind = cast(OwnerContributionKind, raw_contribution_kind)
         owner_key = (owner_id, contribution_kind)
         if owner_key in supplied:
-            raise reject("duplicate_product_owner_binding")
-        supplied[owner_key] = binding
+            raise reject(("duplicate_product_owner_binding",))
+        supplied[owner_key] = supplied_binding
 
     if set(supplied) - set(owner_collections):
-        raise reject("product_owner_binding_extra")
+        raise reject(("product_owner_binding_extra",))
 
-    owner_bindings_list: list[ProductContributionOwnerBinding] = []
+    owner_bindings: list[ProductContributionOwnerBinding] = []
     for owner_key, collection_ids in sorted(owner_collections.items()):
-        owner_bindings_list.append(
-            resolve_owner(
-                owner_id=owner_key[0],
-                contribution_kind=owner_key[1],
-                trust_classes=owner_trust_classes[owner_key],
+        owner_id, contribution_kind = owner_key
+        trust_classes = owner_trust_classes[owner_key]
+        binding = supplied.get(owner_key)
+        if binding is not None:
+            if not binding.authority.policy.covers_direct_session(
+                owner_id=owner_id,
+                contribution_kind=contribution_kind,
+                product_id=owner_policy.product_id,
+                trust_classes=trust_classes,
                 collection_ids=collection_ids,
-                supplied_binding=supplied.get(owner_key),
+            ):
+                raise reject(("product_owner_binding_boundary_mismatch",))
+        else:
+            if contribution_kind != "resource_item" or trust_classes != {
+                owner_policy.configured_trust_class
+            }:
+                raise reject(("product_owner_binding_missing",))
+            binding = ProductContributionOwnerBinding(
+                authority=OwnerContributionAuthority.for_direct_session(
+                    owner_id=owner_id,
+                    contribution_kind=contribution_kind,
+                    product_id=owner_policy.product_id,
+                    policy_revision=owner_policy.policy_revision(owner_id, contribution_kind),
+                    trust_classes=tuple(sorted(trust_classes)),
+                    collection_ids=tuple(sorted(collection_ids)),
+                )
             )
-        )
-    owner_bindings = tuple(owner_bindings_list)
+        owner_bindings.append(binding)
     return ProductPluginSelectionSeed(
         selection=selection,
         packages=seed.packages,
         bindings=seed.bindings,
-        owner_bindings=owner_bindings,
+        owner_bindings=tuple(owner_bindings),
     )
 
 
@@ -839,6 +1323,34 @@ class ProductPluginCompositionAssemblyRequest:
         compare=False,
     )
     prebound_providers: tuple[CapabilityBundleProvider, ...] = ()
+
+    @classmethod
+    def for_agent_session(
+        cls,
+        seed: ProductPluginSelectionSeed,
+        *,
+        provider_definitions: tuple[CapabilityDefinition, ...] = (),
+        provider_owner_bindings: tuple[ProductCapabilityProviderOwnerBinding, ...] = (),
+        select_capability_providers: ProductCapabilityProviderSelector = lambda _: (),
+        owner_candidates: tuple[OwnerContributionCandidateEnvelope, ...] | None = None,
+    ) -> ProductPluginCompositionAssemblyRequest:
+        """Compile Plugin contributions against the standard Agent host capabilities."""
+
+        return cls(
+            contribution_request=ProductCompositionAssemblyRequest(
+                selection=seed.selection,
+                owner_bindings=seed.owner_bindings,
+                owner_candidates=owner_candidates,
+                mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+                definitions=(*_AGENT_HOST_DEFINITIONS, *provider_definitions),
+            ),
+            provider_owner_bindings=provider_owner_bindings,
+            provider_roots=tuple(
+                sorted(item.capability_id for item in provider_owner_bindings)
+            ),
+            host_capability_ids=_AGENT_HOST_CAPABILITY_IDS,
+            select_capability_providers=select_capability_providers,
+        )
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -1116,6 +1628,42 @@ class ProductPluginCompositionPreparation:
         )
 
 
+def project_product_owner_candidates(
+    selection: PluginSelection,
+    *,
+    selected_manifests: tuple[PackageProductSelectedPluginManifestV1, ...] = (),
+    selection_changed: str = "Product owner changed Store selection",
+) -> tuple[OwnerContributionCandidateEnvelope, ...]:
+    """Project exact owner candidates and preserve available Product Store locks."""
+    snapshots = {item.manifest.name: item.snapshot for item in selected_manifests}
+    candidates = tuple(
+        prepare_owner_contribution_candidate(selection, item)
+        for item in selection.candidates
+        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
+    )
+    if not snapshots:
+        return candidates
+    projected: list[OwnerContributionCandidateEnvelope] = []
+    for candidate in candidates:
+        snapshot = snapshots.get(candidate.plugin_id)
+        if snapshot is not None:
+            if (
+                candidate.product_id != snapshot.installation_key.product_id
+                or candidate.instance_revision_ref != snapshot.instance_revision_ref
+                or candidate.package_content_digest
+                != snapshot.package_revision.package_content_digest
+                or candidate.package_source_identity
+                != snapshot.package_revision.package_source_identity
+            ):
+                raise ValueError(selection_changed)
+            candidate = replace(
+                candidate,
+                dependency_lock_digest=snapshot.package_revision.dependency_lock_digest,
+            )
+        projected.append(candidate)
+    return tuple(projected)
+
+
 def assemble_product_composition(
     request: ProductCompositionAssemblyRequest,
     *,
@@ -1131,11 +1679,7 @@ def assemble_product_composition(
         raise ValueError("Product composition evaluation time cannot be negative")
 
     selection = request.selection
-    candidates = tuple(
-        prepare_owner_contribution_candidate(selection, item)
-        for item in selection.candidates
-        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
-    )
+    candidates = project_product_owner_candidates(selection)
     if request.owner_candidates is not None:
         projected = request.owner_candidates
         if len(projected) != len(candidates) or any(
@@ -1265,27 +1809,6 @@ def _assemble_product_contribution_candidates(
         definitions=definitions,
         optional_choices=optional_choices,
     )
-
-
-def select_resource_plan(
-    plan: PluginSelectionPlanV2,
-    package: PublishedPluginPackage,
-    *,
-    plugin_id: str,
-) -> PluginSelectionPlanV2 | None:
-    resource_ids = {
-        item.contribution_id
-        for item in package.contribution_index.items
-        if item.kind == "resource_item"
-    }
-    selected_resources = tuple(
-        item
-        for item in plan.selected_contributions
-        if item.plugin_id == plugin_id and item.contribution_id in resource_ids
-    )
-    if not selected_resources:
-        return None
-    return replace(plan, selected_contributions=selected_resources)
 
 
 def bind_compiled_registration_authority(
@@ -1772,82 +2295,202 @@ def _prepare_catalog_plugin_plan_seed(
     )
 
 
-def extend_product_data_selection_plan(
-    original: PluginSelectionPlanV2,
-    external: tuple[PackageProductSelectedPluginManifestV1, ...],
-) -> PluginSelectionPlanV2:
-    """Extend a Product plan with verified data declarations and exact Store facts."""
-    return PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id=original.context.product_id,
-            scope_id=original.context.scope_id,
-            policy_revision=original.context.policy_revision,
-            instance_revision_refs=tuple(
-                sorted(
-                    (
-                        *original.context.instance_revision_refs,
-                        *(item.snapshot.instance_revision_ref for item in external),
-                    ),
-                    key=lambda item: item.plugin_id,
-                )
-            ),
-        ),
-        selected_plugin_ids=tuple(
-            sorted(
-                (
-                    *original.selected_plugin_ids,
-                    *(item.manifest.name for item in external),
-                )
-            )
-        ),
-        selected_contributions=tuple(
-            sorted(
-                (
-                    *original.selected_contributions,
-                    *(
-                        PluginContributionRef(
-                            item.manifest.name, reservation.contribution_id
-                        )
-                        for item in external
-                        for reservation, _ in item.verified_data_only_declarations()
-                    ),
-                )
-            )
-        ),
-        source_trust_snapshots=tuple(
-            sorted(
-                (
-                    *original.source_trust_snapshots,
-                    *(
-                        item.source_trust_snapshot
-                        for item in external
-                        if item.source_trust_snapshot is not None
-                    ),
-                ),
-                key=lambda item: item.plugin_id,
-            )
-        ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        *original.effective_configuration_set.entries,
-                        *(
-                            PluginEffectiveConfigurationEntry(
-                                plugin_id=item.manifest.name,
-                                contribution_id=reservation.contribution_id,
-                                configuration=reservation.configuration,
-                            )
-                            for item in external
-                            for reservation, _ in item.verified_data_only_declarations()
-                        ),
-                    ),
-                    key=lambda item: (item.plugin_id, item.contribution_id),
-                )
-            )
-        ),
-        allowed_authority_ceiling=original.allowed_authority_ceiling,
+SelectedProductDataDeclaration = tuple[
+    "PackageProductSelectedPluginManifestV1",
+    PluginContributionReservation,
+    PluginDeclaration,
+]
+
+
+SelectedProductDataCandidatePreparer = Callable[
+    [
+        "PackageProductSelectedPluginManifestV1",
+        PluginSelectionPlanV2,
+        PluginContributionReservation,
+        PluginDeclaration,
+    ],
+    OwnerContributionCandidateEnvelope,
+]
+
+
+def project_selected_product_data_candidates(
+    plan: PluginSelectionPlanV2,
+    declarations: Iterable[SelectedProductDataDeclaration],
+    *,
+    prepare: SelectedProductDataCandidatePreparer,
+) -> tuple[OwnerContributionCandidateEnvelope, ...]:
+    """Project precisely the plan's admitted declarations in capture order."""
+    selected_refs = set(plan.selected_contributions)
+    return tuple(
+        prepare(item, plan, reservation, declaration)
+        for item, reservation, declaration in declarations
+        if PluginContributionRef(item.manifest.name, reservation.contribution_id)
+        in selected_refs
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ProductDataBaseSelection:
+    """Existing facts for extending a base-only plan with external resources."""
+
+    plan: PluginSelectionPlanV2
+    manifest: PackageProductSelectedPluginManifestV1
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...]
+    trust_classes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class StandaloneProductDataSelection:
+    """Product context for Resources compiled without a base Plugin."""
+
+    product_id: str
+    scope_id: str
+    policy_revision_prefix: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProductDataResourcePolicy:
+    """Compile captured external Resources using their Product's trust policy."""
+
+    trust_classes: tuple[str, ...]
+    resource_owners: frozenset[str]
+    permits_owner: Callable[[str, str], bool]
+    prepare_candidate: SelectedProductDataCandidatePreparer
+    make_resource_owners: Callable[[set[str]], tuple[ProductContributionOwnerBinding, ...]]
+
+    def bind_owners(
+        self,
+        bindings: tuple[ProductContributionOwnerBinding, ...],
+        trust_by_owner: Mapping[str, tuple[str, ...]],
+    ) -> tuple[ProductContributionOwnerBinding, ...]:
+        missing = trust_by_owner.keys() - {item.owner_key[0] for item in bindings}
+        if missing:
+            bindings = (*bindings, *self.make_resource_owners(missing))
+        return tuple(
+            _rebind_resource_owner_trust(binding, trust_by_owner[binding.owner_key[0]])
+            if binding.owner_key[0] in trust_by_owner
+            else binding
+            for binding in bindings
+        )
+
+    def compile(
+        self,
+        external: tuple[PackageProductSelectedPluginManifestV1, ...],
+        read_context: Callable[[], ProductDataBaseSelection | StandaloneProductDataSelection],
+        *,
+        standalone: bool = False,
+        evaluated_at: int,
+    ) -> tuple[
+        PluginSelectionPlanV2,
+        ProductCompositionCompilation,
+        tuple[ProductContributionOwnerBinding, ...],
+    ]:
+        """Capture typed declarations before compiling or binding their owners."""
+        from loushang.harness.package_product._selected_plugin_revisions import (
+            capture_external_data_declaration,
+        )
+
+        invalid = (
+            "Product external data Resource selection changed"
+            if standalone
+            else "External Product data Resource selection changed"
+        )
+        trust_classes = frozenset(self.trust_classes)
+        declarations = tuple(
+            (
+                item,
+                *capture_external_data_declaration(
+                    item,
+                    trust_classes=trust_classes,
+                    resource_owners=self.resource_owners,
+                    permits_owner=self.permits_owner,
+                    invalid=invalid,
+                    standalone=standalone,
+                ),
+            )
+            for item in external
+        )
+        base: ProductDataBaseSelection | None = None
+        if standalone:
+            digest = sha256(
+                canonical_json_bytes(
+                    [
+                        {
+                            "pluginId": item.manifest.name,
+                            "committedSetId": item.snapshot.committed_record.committed_set.set_id,
+                            "instanceRevision": item.snapshot.instance_revision_ref.to_dict(),
+                        }
+                        for item in external
+                    ]
+                )
+            ).hexdigest()
+            context = read_context()
+            assert isinstance(context, StandaloneProductDataSelection)
+            product_id, scope_id = context.product_id, context.scope_id
+            policy_revision = f"{context.policy_revision_prefix}:{digest}"
+        else:
+            context = read_context()
+            assert isinstance(context, ProductDataBaseSelection)
+            base = context
+            base_context = base.plan.context
+            product_id, scope_id = base_context.product_id, base_context.scope_id
+            policy_revision = base_context.policy_revision
+        plan = build_product_plugin_selection_plan(
+            product_id=product_id,
+            scope_id=scope_id,
+            policy_revision=policy_revision,
+            plugin_ids=tuple(item.manifest.name for item in external),
+            instance_refs=tuple(item.snapshot.instance_revision_ref for item in external),
+            source_trust=(
+                item.source_trust_snapshot
+                for item in external
+                if item.source_trust_snapshot is not None
+            ),
+            additions=(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=item.manifest.name,
+                    contribution_id=reservation.contribution_id,
+                    configuration=reservation.configuration,
+                )
+                for item, reservation, _ in declarations
+            ),
+            base=base.plan if base is not None else None,
+            extend_base_selection=True,
+            allowed_authority_ceiling=()
+            if base is None
+            else base.plan.allowed_authority_ceiling,
+        )
+        inputs: Iterable[SelectedProductDataDeclaration] = declarations
+        if base is not None:
+            manifest = base.manifest
+            inputs = chain(
+                (
+                    (manifest, reservation, declaration)
+                    for reservation, declaration in manifest.verified_data_only_declarations()
+                ),
+                declarations,
+            )
+        candidates = project_selected_product_data_candidates(plan, inputs, prepare=self.prepare_candidate)
+        trust_by_owner = {
+            reservation.owner: self.trust_classes for _, reservation, _ in declarations
+        }
+        if base is not None:
+            base_plugin_id = base.plan.selected_plugin_ids[0]
+            for owner in {
+                candidate.owner_id
+                for candidate in candidates
+                if candidate.plugin_id == base_plugin_id
+            } & trust_by_owner.keys():
+                trust_by_owner[owner] = (*base.trust_classes, *self.trust_classes)
+        owners = self.bind_owners(
+            base.owner_bindings if base is not None else (), trust_by_owner
+        )
+        if base is not None:
+            owners = tuple(sorted(owners, key=lambda binding: binding.owner_key))
+        compilation = assemble_agent_data_composition(
+            plan, candidates, owners, evaluated_at=evaluated_at
+        )
+        return plan, compilation, owners
 
 
 def _extend_configured_resource_owner_binding(
@@ -1857,16 +2500,28 @@ def _extend_configured_resource_owner_binding(
     policy = binding.authority.policy
     if configured_trust_class in policy.allowed_source_trust_classes:
         return binding
+    return _rebind_resource_owner_trust(
+        binding,
+        tuple(sorted((*policy.allowed_source_trust_classes, configured_trust_class))),
+        policy_revision=f"{policy.policy_revision}+configured-resources",
+    )
+
+
+def _rebind_resource_owner_trust(
+    binding: ProductContributionOwnerBinding,
+    trust_classes: tuple[str, ...],
+    *,
+    policy_revision: str | None = None,
+) -> ProductContributionOwnerBinding:
+    policy = binding.authority.policy
     return ProductContributionOwnerBinding(
         authority=OwnerContributionAuthority(
             replace(
                 policy,
-                policy_revision=f"{policy.policy_revision}+configured-resources",
-                allowed_source_trust_classes=tuple(
-                    sorted(
-                        (*policy.allowed_source_trust_classes, configured_trust_class)
-                    )
+                policy_revision=(
+                    policy.policy_revision if policy_revision is None else policy_revision
                 ),
+                allowed_source_trust_classes=trust_classes,
             )
         ),
         admission_ttl_seconds=binding.admission_ttl_seconds,
@@ -1877,7 +2532,7 @@ def _finalize_catalog_plugin_plan_seed(
     seed: ProductPluginPlanSeed,
     *,
     resolve: Callable[[ProductPluginPlanSeed], PluginSelection] | None = None,
-    resolve_owner: ProductContributionOwnerResolver,
+    owner_policy: CatalogContributionOwnerPolicy,
     reject: Callable[[Sequence[str]], Exception],
     product_label: str,
 ) -> ProductPluginSelectionSeed:
@@ -1905,40 +2560,9 @@ def _finalize_catalog_plugin_plan_seed(
     return _complete_catalog_plugin_selection_seed(
         seed,
         selection=selection,
-        resolve_owner=resolve_owner,
+        owner_policy=owner_policy,
         reject=reject,
         product_label=product_label,
-    )
-
-
-def _complete_catalog_plugin_selection_seed(
-    seed: ProductPluginPlanSeed,
-    *,
-    selection: PluginSelection,
-    resolve_owner: ProductContributionOwnerResolver,
-    reject: Callable[[Sequence[str]], Exception],
-    product_label: str,
-) -> ProductPluginSelectionSeed:
-    """Attach exact contribution owners to one already-finalized selection."""
-    if not isinstance(seed, ProductPluginPlanSeed):
-        raise TypeError(f"{product_label} package Product plan seed is invalid")
-    if not isinstance(selection, PluginSelection) or selection.plan != seed.plan:
-        raise ValueError(
-            f"{product_label} package Product selection does not match its plan"
-        )
-    candidates = tuple(
-        (
-            prepare_owner_contribution_candidate(selection, item)
-            for item in selection.candidates
-            if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
-        )
-    )
-    return _complete_product_plugin_selection_seed(
-        seed,
-        selection=selection,
-        candidates=candidates,
-        resolve_owner=resolve_owner,
-        reject=lambda reason: reject((reason,)),
     )
 
 

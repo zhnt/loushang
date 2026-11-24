@@ -284,15 +284,15 @@ class ProductHostTaskTracker:
             await asyncio.gather(*tuple(self._tasks), return_exceptions=True)
 
 
-async def dispose_product_host(*candidates: object) -> bool:
-    """Dispose the first candidate that exposes an async or sync ``dispose`` hook.
+async def dispose_product_host(*candidates: object, method: str = "dispose") -> bool:
+    """Dispose the first candidate that exposes the selected async or sync hook.
 
     A Product decides which runtime object owns shutdown. This helper only
     centralizes the common fallback needed by CLI and embedded hosts.
     """
 
     for candidate in candidates:
-        disposer = getattr(candidate, "dispose", None)
+        disposer = getattr(candidate, method, None)
         if not callable(disposer):
             continue
         result = disposer()
@@ -300,6 +300,17 @@ async def dispose_product_host(*candidates: object) -> bool:
             await result
         return True
     return False
+
+
+async def dispose_runtime_or_session(
+    runtime: object | None,
+    session: object | None = None,
+    *,
+    runtime_method: str = "dispose",
+) -> None:
+    """Dispose a Product runtime, falling back to its session if supplied."""
+    if not await dispose_product_host(runtime, method=runtime_method):
+        await dispose_product_host(session)
 
 
 async def _resolve(value: Awaitable[None] | None) -> None:

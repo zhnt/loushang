@@ -17,7 +17,7 @@ from typing import ClassVar
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._private_data_custody import (
-    private_data_mutation_fence,
+    windows_private_data_mutation_transaction,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -41,7 +41,6 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     _windows_arch_current_root_generation,
     coding_arch_installation_private_data_root,
@@ -74,35 +73,23 @@ class CodingWindowsArchPrivateDataDeletionJournal:
     product: WindowsLocalWheelProductSessionOwner
 
     def __post_init__(self) -> None:
-        CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
-        if (
-            self.product.state_root
-            != resolve_coding_package_epoch_layout(self.layout).control_root
-            / "product-state"
-        ):
-            raise ValueError("Windows Coding Arch deletion Product state changed")
+        preview = CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
+        preview._require_product_state_root("deletion")
 
     @contextmanager
     def transaction(self) -> Iterator[CodingWindowsArchPrivateDataDeletionTransaction]:
         """Hold one offline Product gate from start through physical effects."""
 
-        with (
-            private_data_mutation_fence(
-                self.product,
-                active_message="Windows Coding Arch deletion runtime is active",
-                require_write=True,
-            ),
-            self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd,
-        ):
-            transaction = CodingWindowsArchPrivateDataDeletionTransaction(
+        with windows_private_data_mutation_transaction(
+            self.product,
+            lambda fd: CodingWindowsArchPrivateDataDeletionTransaction(
                 self.product.state_root,
                 fd,
                 CodingWindowsArchPrivateDataConfirmationOwner(self.layout, self.product),
-            )
-            try:
-                yield transaction
-            finally:
-                transaction._close()
+            ),
+            active_message="Windows Coding Arch deletion runtime is active",
+        ) as transaction:
+            yield transaction
 
 
 @dataclass(frozen=True, slots=True)

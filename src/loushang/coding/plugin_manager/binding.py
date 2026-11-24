@@ -101,7 +101,7 @@ class CodingConfiguredPluginSourceProjection:
                 "configured Plugin Sources are invalid",
                 code="coding_plugin_sources_invalid",
             )
-        return tuple(sorted(set(raw_sources)))
+        return tuple(raw_sources)
 
 
 @dataclass(frozen=True, slots=True)

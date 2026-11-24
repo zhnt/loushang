@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import os
 import platform
-import stat
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
-from typing import Any, TextIO, cast
+from typing import Any, Literal, TextIO, cast
 
 from loushang.ai.model import (
     model_selection_ref,
@@ -29,17 +28,16 @@ from loushang.coding.cli.apphost import (
 from loushang.coding.cli.args import (
     CliArgs,
     ExtensionFlag,
-    current_preview_option_requested,
     help_text,
-    local_discovery_option_requested,
+    package_mutation_option_requested,
     parse_args,
-    plugin_explanation_option_requested,
-    plugin_repair_option_requested,
+    plugin_management_option_requested,
     removed_legacy_resource_option,
 )
 from loushang.coding.cli.composition_choice import resolve_cli_composition_choice
 from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
+from loushang.coding.cli.prompt import run_prompt_command, run_prompt_plan_command
 from loushang.coding.cli.startup_route import _cli_launch_plan
 from loushang.coding.cli.workspace import (
     extract_workspace_argv,
@@ -103,7 +101,6 @@ from loushang.coding.plugin_manager.binding import (
 )
 from loushang.coding.plugin_manager.explanation import (
     CodingPluginOperationExplanationError,
-    bind_coding_plugin_operation_explanation_query,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
@@ -134,7 +131,6 @@ from loushang.harness.approval import (
     InteractiveApprovalResolver,
     configure_persistent_approval_policy,
 )
-from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.cli import (
     AgentCliApplicationBinding,
     AgentCliApplicationState,
@@ -157,8 +153,6 @@ from loushang.harness.cli import (
     agent_tool_selection,
     capture_cli_parse,
     configure_agent_cli_session,
-    configure_agent_resource_loader,
-    cwd_bound_services_factory,
     distribution_version,
     extract_machine_resource_argv,
     extract_multiagent_argv,
@@ -178,6 +172,11 @@ from loushang.harness.cli import (
 from loushang.harness.cli import (
     format_cli_error as _format_cli_error,
 )
+from loushang.harness.cli.agent_args import prepare_agent_cli_runtime_options
+from loushang.harness.cli.application import (
+    cli_options_match_defaults,
+    run_guarded_cli_operation,
+)
 from loushang.harness.cli.plugin_explanation import (
     format_plugin_operation_explanation,
 )
@@ -185,28 +184,28 @@ from loushang.harness.cli.plugin_listing import (
     format_plugin_records,
     list_plugin_records,
 )
-from loushang.harness.cli.plugin_preview import format_plugin_current_preview
+from loushang.harness.cli.session_resolution import (
+    configure_agent_cli_session_discovery,
+    resolve_agent_cli_continuity_session,
+)
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.continuity import consume_prepared_activation
 from loushang.harness.diagnostics.observability_runtime import (
     session_observability_context,
     startup_observability_context,
 )
-from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
-from loushang.harness.host.rpc import run_rpc_host
-from loushang.harness.machine_resources import (
-    prepare_private_directory_chain,
-    resolve_machine_resource_layout,
+from loushang.harness.host.product_host import (
+    ProductHostLifecycle,
+    dispose_runtime_or_session,
+    stream_is_tty,
 )
+from loushang.harness.host.rpc import run_rpc_host
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
+    project_plugin_current_preview,
 )
 from loushang.harness.plugin_management.desired_command import (
     PluginDesiredCommandRepairError,
-)
-from loushang.harness.plugin_management.operation_explanation import (
-    PluginOperationExplanationRequestV1,
-    project_plugin_operation_explanation,
+    PluginDesiredRepairResultV1,
 )
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.resources.packages import (
@@ -221,10 +220,7 @@ from loushang.harness.tools.workspace import (
     workspace_tool_runtime_settings,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-from loushang.harness.transcript import (
-    SessionDiscoverySource,
-    session_origin_from_resource_id,
-)
+from loushang.harness.workspace.paths import capture_workspace_directory_identity
 from loushang.harnesstui.continuity import run_continuity_picker
 from loushang.harnesstui.conversation.agent_binding import (
     run_agent_mode,
@@ -247,83 +243,6 @@ from loushang.method import (
 )
 
 _WORK_LOG_INSPECT_LIMIT = 20
-
-
-async def run_prompt_command(
-    *,
-    runtime: Any,
-    session: Any,
-    prompt: str,
-    stdout: TextIO,
-    stderr: TextIO,
-    images: list[object] | None = None,
-    follow_up_messages: Sequence[str] = (),
-    verbose: bool = False,
-    work_event_log: Any = None,
-    work_runtime: Any = None,
-    method_id: str | None = None,
-    plan_id: str | None = None,
-    step_id: str | None = None,
-    step_index: int | None = None,
-    step_title: str | None = None,
-    planned_constraint: Mapping[str, object] | None = None,
-    audit_policy: Mapping[str, object] | None = None,
-    plan_facts: Mapping[str, object] | None = None,
-    step_facts: Mapping[str, object] | None = None,
-    dispose: bool = True,
-) -> int:
-    """Load plain prompt presentation only for a plain prompt invocation."""
-    from loushang.coding.cli.prompt import run_prompt_command as run
-
-    return await run(
-        runtime=runtime,
-        session=session,
-        prompt=prompt,
-        stdout=stdout,
-        stderr=stderr,
-        images=images,
-        follow_up_messages=follow_up_messages,
-        verbose=verbose,
-        work_event_log=work_event_log,
-        work_runtime=work_runtime,
-        method_id=method_id,
-        plan_id=plan_id,
-        step_id=step_id,
-        step_index=step_index,
-        step_title=step_title,
-        planned_constraint=planned_constraint,
-        audit_policy=audit_policy,
-        plan_facts=plan_facts,
-        step_facts=step_facts,
-        dispose=dispose,
-    )
-
-
-async def run_prompt_plan_command(
-    *,
-    runtime: Any,
-    session: Any,
-    turns: Sequence[Any],
-    stdout: TextIO,
-    stderr: TextIO,
-    work_event_log: Any,
-    work_runtime: Any = None,
-    verbose: bool = False,
-    dispose: bool = True,
-) -> int:
-    from loushang.coding.cli.prompt import run_prompt_plan_command as run
-
-    return await run(
-        runtime=runtime,
-        session=session,
-        turns=turns,
-        stdout=stdout,
-        stderr=stderr,
-        work_event_log=work_event_log,
-        work_runtime=work_runtime,
-        verbose=verbose,
-        dispose=dispose,
-    )
 
 
 def build_default_services(project_root: Path) -> BootstrapServices:
@@ -429,13 +348,10 @@ def default_runtime_builder(
         if invocation_product_profile is not None
         else args
     )
-    resource_loader_options = configure_agent_resource_loader(
-        services.resource_loader,
+    runtime_options = prepare_agent_cli_runtime_options(
         resource_profile_args,
-    )
-    services_factory = cwd_bound_services_factory(
-        services,
-        resource_loader_options,
+        session_dir=session_dir,
+        services=services,
         create_services=_create_agent_session_services,
         create_services_options=(
             {
@@ -446,32 +362,16 @@ def default_runtime_builder(
             if invocation_product_profile is not None
             else None
         ),
+        tool_registry=runtime_tool_registry,
+        tool_selection=(allowed_tool_names, active_tool_names),
+        approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
     )
+    runtime_options["enable_multiagent"] = True
     runtime_factory = (
         _create_agent_invocation_session_runtime
         if invocation_product_profile is not None
         else create_agent_session_runtime
-    )
-    runtime_options = dict(
-        session_dir=session_dir,
-        services=services,
-        services_factory=services_factory,
-        tool_registry=runtime_tool_registry,
-        allowed_tool_names=(
-            ToolSelection.ALL if allowed_tool_names is None else allowed_tool_names
-        ),
-        active_tool_names=active_tool_names,
-        no_tools=(
-            "all"
-            if getattr(args, "no_tools", False)
-            else "builtin"
-            if getattr(args, "no_builtin_tools", False)
-            else None
-        ),
-        persist=not args.no_session,
-        approval_resolver=approval_resolver,
-        tool_policy_evaluator=tool_policy_evaluator,
-        enable_multiagent=True,
     )
     if invocation_product_profile is not None:
         runtime_options["product_profile"] = invocation_product_profile
@@ -533,49 +433,7 @@ def default_runtime_builder(
                     subject_digest=runtime._current_embedded_resume_subject_digest,
                     policy_digest=policy_fingerprint,
                 )
-    resource_layout = resolve_machine_resource_layout(cwd=cwd)
-    platform_sessions = resource_layout.sessions
-    if session_dir.expanduser().resolve(strict=False) == platform_sessions:
-        prepare_private_directory_chain(platform_sessions)
-        platform_sessions.chmod(0o700)
-        set_authority = getattr(runtime, "set_session_authority_source", None)
-        if callable(set_authority):
-            set_authority(
-                SessionDiscoverySource(
-                    source_id="sessions.global",
-                    root=platform_sessions,
-                    mode="canonical",
-                    origin="global",
-                    priority=0,
-                )
-            )
-        add_source = getattr(runtime, "add_session_discovery_source", None)
-        if callable(add_source):
-            for resource in resource_layout.resources:
-                if not (
-                    resource.resource_id.startswith("sessions.")
-                    and resource.mode == "compatibility"
-                ):
-                    continue
-                add_source(
-                    SessionDiscoverySource(
-                        source_id=resource.resource_id,
-                        root=resource.path,
-                        mode="compatibility",
-                        origin=session_origin_from_resource_id(resource.resource_id),
-                        priority=(
-                            10
-                            if resource.resource_id == "sessions.cwd_compatibility"
-                            else 20
-                            if resource.resource_id == "sessions.home_compatibility"
-                            else 100
-                        ),
-                    )
-                )
-        else:
-            add_legacy_source = getattr(runtime, "add_session_discovery_dir", None)
-            if callable(add_legacy_source):
-                add_legacy_source(cwd / ".loushang" / "sessions")
+    configure_agent_cli_session_discovery(runtime, cwd=cwd, session_dir=session_dir)
     return runtime
 
 
@@ -607,11 +465,7 @@ async def run_cli(
     resolved_stderr = stderr or sys.stderr
     if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
         return 2
-    if any(
-        argument == option or argument.startswith(f"{option}=")
-        for option in ("--install-package", "--update-package", "--uninstall-package")
-        for argument in raw_argv
-    ):
+    if package_mutation_option_requested(raw_argv):
         candidate = _parse_application_args(raw_argv, resolved_stderr, None, True)
         # Wheels use the fenced Product installer. Existing source-package
         # commands keep their compatible owner in an unfenced workspace.
@@ -642,12 +496,7 @@ async def run_cli(
             except (OSError, RuntimeError, ValueError) as error:
                 resolved_stderr.write(f"Error: {error}\n")
                 return 1
-    if (
-        current_preview_option_requested(raw_argv)
-        or local_discovery_option_requested(raw_argv)
-        or plugin_explanation_option_requested(raw_argv)
-        or plugin_repair_option_requested(raw_argv)
-    ):
+    if plugin_management_option_requested(raw_argv):
         parsed = _parse_application_args(raw_argv, resolved_stderr, None, False)
         if parsed.args is None:
             return parsed.exit_code or 2
@@ -659,48 +508,32 @@ async def run_cli(
             project_root = (
                 Path(cwd or args.cwd or Path.cwd()).expanduser().resolve(strict=True)
             )
-            workspace_stat = project_root.lstat()
-            if not stat.S_ISDIR(workspace_stat.st_mode):
-                raise ValueError("Coding management workspace is unavailable")
             workspace_client = open_coding_plugin_management_read_client(
                 project_root,
-                expected_workspace_identity=(
-                    workspace_stat.st_dev,
-                    workspace_stat.st_ino,
+                expected_workspace_identity=capture_workspace_directory_identity(
+                    project_root, unavailable="Coding management workspace is unavailable"
                 ),
             )
-        except CodingPluginManagementReadSdkError as error:
+        except (OSError, RuntimeError, ValueError) as error:
+            if isinstance(error, CodingPluginManagementReadSdkError):
+                code = error.code
+            elif args.discover_local_plugins:
+                code = "local_discovery_workspace_unavailable"
+            elif args.repair_plugin_desired_operation is not None:
+                code = "plugin_repair_workspace_unavailable"
+            elif args.explain_plugin_operation is not None:
+                code = "plugin_explanation_workspace_unavailable"
+            else:
+                code = "plugin_preview_workspace_unavailable"
             if args.discover_local_plugins:
                 (stdout or sys.stdout).write(
                     format_coding_local_discovery(
-                        blocked_coding_local_discovery(error.code),
+                        blocked_coding_local_discovery(code),
                         args.discover_local_plugins_format,
                     )
                 )
-                return 1
-            resolved_stderr.write(f"Error: {error.code}\n")
-            return 1
-        except (OSError, RuntimeError, ValueError):
-            if args.discover_local_plugins:
-                (stdout or sys.stdout).write(
-                    format_coding_local_discovery(
-                        blocked_coding_local_discovery(
-                            "local_discovery_workspace_unavailable"
-                        ),
-                        args.discover_local_plugins_format,
-                    )
-                )
-                return 1
-            code = (
-                "plugin_repair_workspace_unavailable"
-                if args.repair_plugin_desired_operation is not None
-                else (
-                    "plugin_explanation_workspace_unavailable"
-                    if args.explain_plugin_operation is not None
-                    else "plugin_preview_workspace_unavailable"
-                )
-            )
-            resolved_stderr.write(f"Error: {code}\n")
+            else:
+                resolved_stderr.write(f"Error: {code}\n")
             return 1
         if args.repair_plugin_desired_operation is not None:
             return _run_coding_plugin_desired_repair_cli(
@@ -720,8 +553,7 @@ async def run_cli(
         if args.explain_plugin_operation is not None:
             return _run_coding_plugin_operation_explanation_cli(
                 args,
-                project_root=project_root,
-                workspace_guard=workspace_client.assert_workspace_current,
+                client=workspace_client,
                 stdout=stdout or sys.stdout,
                 stderr=resolved_stderr,
             )
@@ -855,7 +687,9 @@ async def run_cli(
         session_operations=_run_coding_cli_operations,
         run_host=host_binding.bind(host_runners),
         host_lifecycle=host_lifecycle,
-        dispose_runtime=_dispose_coding_cli_runtime,
+        dispose_runtime=partial(
+            dispose_runtime_or_session, runtime_method="dispose_session_runtime"
+        ),
         services=services,
         session_resolution_error=_coding_session_resolution_error,
         pre_session_bootstrap=lambda context: _run_coding_pre_session_bootstrap(
@@ -899,16 +733,6 @@ async def run_cli(
     )
 
 
-async def _dispose_coding_cli_runtime(runtime: object) -> None:
-    """Release a one-shot CLI Session and its Product runtime lease on exit."""
-
-    dispose = getattr(runtime, "dispose_session_runtime", None)
-    if callable(dispose):
-        result = dispose()
-        if inspect.isawaitable(result):
-            await result
-
-
 def _coding_session_resolution_error(context) -> str | None:
     args = context.state.args
     if args.resume is True and not resolve_effective_tui(
@@ -931,19 +755,14 @@ async def _run_coding_pre_session_bootstrap(
     args = context.state.args
     if args.resume is not True:
         return None
-    if not resolve_effective_tui(
-        context.bootstrap.launch_plan,
-        stdin_is_tty=stream_is_tty(context.bootstrap.stdin),
-        stdout_is_tty=stream_is_tty(context.bootstrap.stdout),
-    ):
-        raise RuntimeError(
-            "--resume without a session reference requires an interactive TUI; "
-            "use --continue for the latest session or --resume <session>"
-        )
+    message = _coding_session_resolution_error(context)
+    if message is not None:
+        raise RuntimeError(message)
 
     settings_manager = context.state.settings_manager
-    try:
-        composition = await bind_coding_configured_continuity(
+    session = await resolve_agent_cli_continuity_session(
+        context.runtime,
+        open_composition=lambda: bind_coding_configured_continuity(
             context.runtime,
             settings_manager=settings_manager,
             session_dir=context.state.session_dir,
@@ -954,54 +773,17 @@ async def _run_coding_pre_session_bootstrap(
                 "diagnostics_service",
                 None,
             ),
-        )
-    except BaseException as bootstrap_error:
-        try:
-            await shutdown_coding_continuity(context.runtime)
-        except BaseException as cleanup_error:
-            bootstrap_error.add_note(
-                "Coding Continuity bootstrap cleanup also failed: "
-                f"{type(cleanup_error).__name__}"
-            )
-        raise
-    continuity_reference = composition.hub.reference()
-    activated = False
-    try:
-
-        async def activate(target):
-            lease = await continuity_reference.prepare(target)
-            return await consume_prepared_activation(lease)
-
-        selection = await continuity_runner(
-            reference=continuity_reference,
-            activate=activate,
-            stdin=context.bootstrap.stdin,
-            stdout=context.bootstrap.stdout,
-            keybindings=_continuity_keybindings(context.state.settings_manager),
-        )
-        if selection is None:
-            return CliPhaseResult.exit(0)
-        result = selection.activation_result
-        session = getattr(result, "current", None)
-        if session is None:
-            getter = getattr(context.runtime, "get_current_session", None)
-            session = getter() if callable(getter) else None
-        if session is None:
-            raise RuntimeError(
-                "Continuity activation did not publish a Product session"
-            )
-        activated = True
-        return CliPhaseResult.continue_with(session)
-    finally:
-        continuity_reference.release()
-        await composition.dispose()
-        if not activated:
-            await shutdown_coding_continuity(context.runtime)
-
-
-def _continuity_keybindings(settings_manager: object | None) -> object | None:
-    getter = getattr(settings_manager, "get_keybindings", None)
-    return getter() if callable(getter) else None
+        ),
+        shutdown_continuity=shutdown_coding_continuity,
+        run_picker=continuity_runner,
+        stdin=context.bootstrap.stdin,
+        stdout=context.bootstrap.stdout,
+        settings_manager=settings_manager,
+        cleanup_label="Coding Continuity bootstrap cleanup",
+    )
+    if session is None:
+        return CliPhaseResult.exit(0)
+    return CliPhaseResult.continue_with(session)
 
 
 def _parse_application_args(
@@ -1101,19 +883,10 @@ def _run_coding_local_discovery_cli(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    baseline = parse_args([])
-    if (
-        replace(
-            args,
-            cwd=None,
-            discover_local_plugins=False,
-            discover_local_plugins_format=baseline.discover_local_plugins_format,
-            discover_local_query=baseline.discover_local_query,
-            discover_local_kind=baseline.discover_local_kind,
-            discover_local_source=baseline.discover_local_source,
-            discover_local_limit=baseline.discover_local_limit,
-        )
-        != baseline
+    if not cli_options_match_defaults(
+        args, parse_args([]), "cwd", "discover_local_plugins",
+        "discover_local_plugins_format", "discover_local_query",
+        "discover_local_kind", "discover_local_source", "discover_local_limit",
     ):
         stderr.write("Error: local_discovery_operation_conflict\n")
         return 2
@@ -1129,18 +902,15 @@ def _run_coding_local_discovery_cli(
             format_coding_local_discovery(document, args.discover_local_plugins_format)
         )
         return 1 if document["disposition"] == "blocked" else 0
-    except CodingPluginManagementReadSdkError as error:
-        stdout.write(
-            format_coding_local_discovery(
-                blocked_coding_local_discovery(error.code),
-                args.discover_local_plugins_format,
-            )
+    except (OSError, RuntimeError, ValueError) as error:
+        code = (
+            error.code
+            if isinstance(error, CodingPluginManagementReadSdkError)
+            else "local_discovery_unavailable"
         )
-        return 1
-    except (OSError, RuntimeError, ValueError):
         stdout.write(
             format_coding_local_discovery(
-                blocked_coding_local_discovery("local_discovery_unavailable"),
+                blocked_coding_local_discovery(code),
                 args.discover_local_plugins_format,
             )
         )
@@ -1155,21 +925,14 @@ def _run_coding_current_preview_cli(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    baseline = parse_args([])
-    if (
-        replace(
-            args,
-            cwd=None,
-            preview_current_plugins=False,
-            composition_set=baseline.composition_set,
-            preview_composition_set=baseline.preview_composition_set,
-        )
-        != baseline
+    if not cli_options_match_defaults(
+        args, parse_args([]), "cwd", "preview_current_plugins",
+        "composition_set", "preview_composition_set",
     ):
         stderr.write("Error: plugin_preview_operation_conflict\n")
         return 2
-    try:
-        workspace_guard()
+
+    def project() -> CliPhaseResult[str]:
         layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
         query = bind_coding_current_preview_query(
             project_root, workspace_guard=workspace_guard
@@ -1181,21 +944,19 @@ def _run_coding_current_preview_cli(
             and args.preview_composition_set != args.composition_set
         ):
             stderr.write("Error: plugin_preview_composition_conflict\n")
-            return 2
+            return CliPhaseResult.exit(2)
         selected_set = resolve_cli_composition_choice(
             args.preview_composition_set or args.composition_set,
             configured_capabilities,
         )
-        projected = json.loads(
-            format_plugin_current_preview(
-                query,
-                PluginCurrentPreviewRequestV1(
-                    correlation_id="cli:preview-current-plugins",
-                    product_id=CODING_PRODUCT_ID,
-                    scope_id=layout.scope_id,
-                    composition_set_id=selected_set,
-                ),
-            )
+        projected = project_plugin_current_preview(
+            query,
+            PluginCurrentPreviewRequestV1(
+                correlation_id="cli:preview-current-plugins",
+                product_id=CODING_PRODUCT_ID,
+                scope_id=layout.scope_id,
+                composition_set_id=selected_set,
+            ),
         )
         plan = resolve_coding_composition_set(selected_set)
         projected["requestedComposition"] = {
@@ -1206,30 +967,30 @@ def _run_coding_current_preview_cli(
         document = json.dumps(projected, ensure_ascii=False, sort_keys=True) + "\n"
         if query.configured_capabilities() != configured_capabilities:
             raise CodingCurrentPreviewError(code="plugin_preview_settings_stale")
-        workspace_guard()
-    except CodingPluginManagementReadSdkError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except CodingCurrentPreviewError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except Exception:
-        stderr.write("Error: plugin_preview_unavailable\n")
-        return 1
-    stdout.write(document)
+        return CliPhaseResult.continue_with(document)
+
+    result = run_guarded_cli_operation(
+        project,
+        workspace_guard=workspace_guard,
+        stderr=stderr,
+        coded_errors=(CodingPluginManagementReadSdkError, CodingCurrentPreviewError),
+        unavailable_code="plugin_preview_unavailable",
+    )
+    if result.exit_code is not None:
+        return result.exit_code
+    assert result.value is not None
+    stdout.write(result.value)
     return 0
 
 
 def _run_coding_plugin_operation_explanation_cli(
     args: CliArgs,
     *,
-    project_root: Path,
-    workspace_guard: Callable[[], None],
+    client: CodingPluginManagementReadClientV1,
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    baseline = parse_args([])
-    if replace(args, cwd=None, explain_plugin_operation=None) != baseline:
+    if not cli_options_match_defaults(args, parse_args([]), "cwd", "explain_plugin_operation"):
         stderr.write("Error: plugin_explanation_operation_conflict\n")
         return 2
     operation_id = args.explain_plugin_operation
@@ -1237,25 +998,10 @@ def _run_coding_plugin_operation_explanation_cli(
         stderr.write("Error: plugin_explanation_invalid_operation\n")
         return 2
     try:
-        workspace_guard()
-        layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
-        request = PluginOperationExplanationRequestV1(
-            correlation_id="cli:explain-plugin-operation",
-            product_id=CODING_PRODUCT_ID,
-            scope_id=layout.scope_id,
-            operation_id=operation_id,
+        document = client.explain_operation(
+            operation_id, correlation_id="cli:explain-plugin-operation"
         )
-        document = project_plugin_operation_explanation(
-            bind_coding_plugin_operation_explanation_query(
-                project_root, workspace_guard=workspace_guard
-            ),
-            request,
-        )
-        workspace_guard()
-    except CodingPluginManagementReadSdkError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except CodingPluginOperationExplanationError as error:
+    except (CodingPluginManagementReadSdkError, CodingPluginOperationExplanationError) as error:
         stderr.write(f"Error: {error.code}\n")
         return 1
     except Exception:
@@ -1273,14 +1019,8 @@ def _run_coding_plugin_desired_repair_cli(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    baseline = parse_args([])
-    if (
-        replace(
-            args,
-            cwd=None,
-            repair_plugin_desired_operation=None,
-        )
-        != baseline
+    if not cli_options_match_defaults(
+        args, parse_args([]), "cwd", "repair_plugin_desired_operation"
     ):
         stderr.write("Error: plugin_repair_operation_conflict\n")
         return 2
@@ -1288,35 +1028,31 @@ def _run_coding_plugin_desired_repair_cli(
     if operation_id is None or not operation_id or operation_id != operation_id.strip():
         stderr.write("Error: plugin_repair_invalid_operation\n")
         return 2
-    try:
-        workspace_guard()
+
+    def repair() -> CliPhaseResult[PluginDesiredRepairResultV1]:
         layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
-        result = repair_coding_fenced_cli_desired_operation(
-            layout,
-            operation_id,
-            workspace=project_root,
-            workspace_guard=workspace_guard,
-            correlation_id="cli:repair-plugin-desired-operation",
+        return CliPhaseResult.continue_with(
+            repair_coding_fenced_cli_desired_operation(
+                layout,
+                operation_id,
+                workspace=project_root,
+                workspace_guard=workspace_guard,
+                correlation_id="cli:repair-plugin-desired-operation",
+            )
         )
-        workspace_guard()
-    except CodingPluginManagementReadSdkError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except PluginDesiredCommandRepairError as error:
-        stderr.write(f"Error: {error.code}\n")
-        return 1
-    except ValueError as error:
-        if str(error) == "coding_product_not_fenced":
-            stderr.write("Error: coding_product_not_fenced\n")
-            return 1
-        if str(error) == "coding_management_workspace_changed":
-            stderr.write("Error: coding_management_workspace_changed\n")
-            return 1
-        stderr.write("Error: plugin_repair_unavailable\n")
-        return 1
-    except Exception:
-        stderr.write("Error: plugin_repair_unavailable\n")
-        return 1
+
+    outcome = run_guarded_cli_operation(
+        repair,
+        workspace_guard=workspace_guard,
+        stderr=stderr,
+        coded_errors=(CodingPluginManagementReadSdkError, PluginDesiredCommandRepairError),
+        unavailable_code="plugin_repair_unavailable",
+        value_error_codes=("coding_product_not_fenced", "coding_management_workspace_changed"),
+    )
+    if outcome.exit_code is not None:
+        return outcome.exit_code
+    result = outcome.value
+    assert result is not None
     stdout.write(json.dumps(result.to_dict(), sort_keys=True) + "\n")
     if result.result is None:
         return 1
@@ -1351,26 +1087,21 @@ async def _run_coding_pre_runtime_operation(
             context.stderr.write(f"Error: {error}\n")
             return 1
     if coding_fenced_product_exists(layout):
-        if args.install_packages:
-            return route_coding_fenced_data_wheels(
-                layout,
-                action="install",
-                workspace=context.project_root,
-                sources=args.install_packages,
-                scope=args.package_scope,
-                stdout=context.stdout,
-                stderr=context.stderr,
-            )
-        if args.update_packages:
-            return route_coding_fenced_data_wheels(
-                layout,
-                action="update",
-                workspace=context.project_root,
-                sources=args.update_packages,
-                scope=args.package_scope,
-                stdout=context.stdout,
-                stderr=context.stderr,
-            )
+        changes: tuple[tuple[Literal["install", "update"], Sequence[str]], ...] = (
+            ("install", args.install_packages),
+            ("update", args.update_packages),
+        )
+        for action, sources in changes:
+            if sources:
+                return route_coding_fenced_data_wheels(
+                    layout,
+                    action=action,
+                    workspace=context.project_root,
+                    sources=sources,
+                    scope=args.package_scope,
+                    stdout=context.stdout,
+                    stderr=context.stderr,
+                )
         if args.uninstall_packages:
             return uninstall_coding_fenced_data_wheels(
                 layout,

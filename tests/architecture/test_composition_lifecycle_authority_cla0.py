@@ -57,8 +57,8 @@ EXPECTED_CONSTRUCTION_SITES = {
     "RuntimeCapabilityGraphRuntime": {
         # ARD-010 accepted Session-owned child lifetime; parent stays sealed.
         (
-            Path("src/loushang/coding/lsp/_deferred_generation.py"),
-            "CodingDeferredLspGeneration.prepare",
+            Path("src/loushang/harness/session/tool_owner_binding.py"),
+            "_DeferredSessionCapabilityGeneration.prepare",
         ),
         (
             Path("src/loushang/harness/session/agent_product.py"),
@@ -117,8 +117,8 @@ EXPECTED_COMPOSITION_BIND_CALLERS = {
         "<lambda>",
     ),
     (
-        Path("src/loushang/coding/package/product_worker_operator_query.py"),
-        "_CodingOperatorQueryPolicy.create_session",
+        Path("src/loushang/harness/session/agent_product.py"),
+        "_create_query_only_session",
     ),
     (
         Path('src/loushang/coding/composition/runtime_admission.py'),
@@ -660,8 +660,8 @@ def test_cla5_workspace_has_one_product_binding_and_no_direct_session_consumer()
     assert _construction_sites("workspace_capability_provider_binding") == Counter(
         {
             (
-                Path("src/loushang/coding/composition/workspace_bootstrap.py"),
-                "bind_session_workspace",
+                Path("src/loushang/harness/capabilities/workspace_provider.py"),
+                "bind_authorized_workspace",
             ): 1
         }
     )

@@ -12,7 +12,7 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loushang.agent import AbortController
 from loushang.agent.types import AgentToolResult, TextPart
@@ -21,6 +21,9 @@ from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.protocol import artifact_cleanup_diagnostic
 from loushang.harness.workspace.exec import ExecOutputChunk
+
+if TYPE_CHECKING:
+    from loushang.harness.artifacts import SessionBlobStore
 
 CommandOutputCallback = Callable[[ExecOutputChunk], Awaitable[None] | None]
 AppendCommandRecord = Callable[[CommandExecutionRecord], Awaitable[object]]
@@ -399,6 +402,140 @@ def _session_blob_from_result(value: object) -> SessionBlobRef | None:
     raise TypeError("command output blob must be a SessionBlobRef manifest")
 
 
+def build_bash_verification_report(
+    command: str,
+    result: Mapping[str, object],
+    *,
+    blobs: SessionBlobStore,
+    output_kind: str,
+    output_source: str,
+) -> dict[str, object]:
+    """Retain complete command evidence in the version 1 report format."""
+    truncated = result.get("truncated")
+    cancelled = result.get("cancelled")
+    stdio_complete = result.get("stdio_complete")
+    drain_reason = result.get("stdio_drain_reason")
+    if any(type(value) is not bool for value in (truncated, cancelled, stdio_complete)):
+        raise ValueError(
+            "SDK must explicitly report truncation, cancellation and stdio completeness"
+        )
+    if drain_reason is not None and not isinstance(drain_reason, str):
+        raise ValueError("invalid SDK stdio drain reason")
+    outputs = []
+    for key in ("stdout_blob", "stderr_blob"):
+        value = result.get(key)
+        if value is not None and not isinstance(value, (SessionBlobRef, Mapping)):
+            raise ValueError("invalid SDK output reference")
+        reference = _session_blob_from_result(value)
+        if reference is not None:
+            blobs.read_bytes(reference)
+            outputs.append(reference)
+    basis = "sdk-retained-streams"
+    output_view = result.get("output")
+    if (
+        not outputs
+        and truncated is False
+        and stdio_complete is True
+        and drain_reason is None
+        and isinstance(output_view, str)
+    ):
+        # A complete SDK text view does not attest to the original OS bytes.
+        outputs.append(
+            blobs.put_bytes(
+                output_view.encode("utf-8"),
+                logical_name="verification/sdk-output.txt",
+                kind=output_kind,
+                media_type="text/plain; charset=utf-8",
+                source=output_source,
+            )
+        )
+        basis = "sdk-text-view"
+    report: dict[str, object] = {
+        "version": 1,
+        "command": command,
+        "exit_code": result.get("exit_code"),
+        "cancelled": cancelled,
+        "truncated": truncated,
+        "stdio_complete": stdio_complete,
+        "stdio_drain_reason": drain_reason,
+        "retention_error": result.get("artifact_retention_error"),
+        "output_basis": basis,
+        "outputs": [ref.manifest_entry() for ref in outputs],
+    }
+    report["output_complete"] = _has_complete_verification_output(report, len(outputs))
+    return report
+
+
+def _has_complete_verification_output(
+    report: Mapping[str, object], output_count: int
+) -> bool:
+    return (
+        report["stdio_complete"] is True
+        and report["stdio_drain_reason"] is None
+        and (
+            output_count == 2
+            if report["output_basis"] == "sdk-retained-streams"
+            else output_count == 1 and report["truncated"] is False
+        )
+    )
+
+
+def bash_verification_output_refs(report: Mapping[str, object]) -> tuple[SessionBlobRef, ...]:
+    """Validate the command report shape and decode the retained output references."""
+    required = {
+        "version",
+        "command",
+        "exit_code",
+        "cancelled",
+        "truncated",
+        "stdio_complete",
+        "stdio_drain_reason",
+        "retention_error",
+        "output_basis",
+        "output_complete",
+        "outputs",
+    }
+    if not required <= report.keys():
+        raise ValueError("verification report fields are missing")
+    if (
+        report["output_basis"] not in {"sdk-text-view", "sdk-retained-streams"}
+        or any(
+            type(report[key]) is not bool
+            for key in ("cancelled", "truncated", "stdio_complete", "output_complete")
+        )
+        or (
+            report["stdio_drain_reason"] is not None
+            and not isinstance(report["stdio_drain_reason"], str)
+        )
+    ):
+        raise ValueError("invalid verification report flags")
+    values = report.get("outputs")
+    if not isinstance(values, list):
+        raise ValueError("invalid verification outputs")
+    if any(not isinstance(value, Mapping) for value in values):
+        raise ValueError("invalid verification output references")
+    return tuple(SessionBlobRef.from_manifest_entry(value) for value in values)
+
+
+def check_bash_verification_report(
+    blobs: SessionBlobStore,
+    report: Mapping[str, object],
+    outputs: tuple[SessionBlobRef, ...],
+) -> bool:
+    """Verify output references decoded from the report and its terminal result."""
+    for reference in outputs:
+        blobs.read_bytes(reference)
+    code = report.get("exit_code")
+    return (
+        _has_complete_verification_output(report, len(outputs))
+        and type(code) is int
+        and code == 0
+        and report.get("cancelled") is False
+        and report.get("retention_error") is None
+        and report["output_complete"] is True
+    )
+
+
 @dataclass(frozen=True)
 class BashExecutionPorts:
     """Product callbacks needed to bind the standard Bash runtime."""
@@ -519,6 +656,9 @@ __all__ = [
     "UserCommandHookResult",
     "UserCommandRequest",
     "bash_result_from_tool_result",
+    "bash_verification_output_refs",
+    "build_bash_verification_report",
+    "check_bash_verification_report",
     "command_execution_record_from_result",
     "command_result_from_tool_result",
 ]

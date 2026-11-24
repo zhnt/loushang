@@ -10,9 +10,10 @@ import sys as sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from importlib.metadata import version as version
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.plugin_manager.owner_generations import (
@@ -39,7 +40,6 @@ from loushang.harness.plugin_management import (
     PluginEnablementMigrationRequestV1,
     PluginEnablementMigrationSnapshotV1,
     PluginInstallationKeyV1,
-    PluginInstanceLeaseFamilyReleaseV1,
     PluginInstanceLeaseFamilyV1,
     PluginInstanceRuntimeLedger,
     PluginManagementApplicationPorts,
@@ -63,21 +63,13 @@ from loushang.harness.plugin_management import (
     decode_plugin_enablement_migration_snapshots as decode_plugin_enablement_migration_snapshots,
 )
 from loushang.harness.plugin_management.assembly import (
-    PluginManagementCoreBindings,
+    LegacyPluginLifecycleBindings,
     _FirstPartyDefaultBootstrap,
     _FirstPartyDefaultPolicy,
     _gc_writer_epoch_ready,
     _prepare_gc_writer_epoch,
     _SettledHostRetirementPolicy,
-    bind_plugin_enablement_migrations,
-    bind_plugin_management_application_ports,
-    prepare_plugin_management_runtime,
-)
-from loushang.harness.plugin_management.assembly import (
-    bind_plugin_management_core as bind_plugin_management_core,
-)
-from loushang.harness.plugin_management.assembly import (
-    bind_plugin_runtime_ledgers as bind_plugin_runtime_ledgers,
+    assemble_legacy_plugin_management,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
@@ -95,9 +87,6 @@ from loushang.harness.session.plugin_lifecycle import _owner_lease
 from loushang.harness.session.plugin_lifecycle._membership import (
     _MembershipPolicy,
     _PluginSessionLifecycle,
-    decode_holder_evidence,
-    encode_holder_reference,
-    normalize_owner_contributions,
 )
 from loushang.harness.session.plugin_lifecycle._session_lease import _PluginSessionLease
 
@@ -109,7 +98,6 @@ _CODING_PLUGIN_RUNTIME_BOOT_ID = secrets.token_hex(16)
 _PRODUCT_LABEL = "Coding"
 _LAYOUT_REQUIRED = "Coding Plugin lifecycle layout is required"
 _MEMBERSHIP_INSTALLATION_SCOPE: Literal["workspace"] = "workspace"
-_SESSION_OWNER_EVIDENCE_INVALID = "coding_plugin_session_owner_evidence_invalid"
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -177,10 +165,6 @@ def _release_process_startup_lease(
     )
 
 
-def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> None:
-    _legacy_runtime.prepare_private_state_layout(layout, policy=_STARTUP_POLICY)
-
-
 def _prepare_private_tree(path: Path, *, private_base: Path, label: str) -> None:
     _legacy_runtime._prepare_tree(
         path,
@@ -222,6 +206,19 @@ _CODING_OWNER_RETIREMENT_REPORT_POLICY = OwnerRetirementReportPolicy(
     outcome_namespace="coding-owner-retired",
     success_result_code="coding.owner.exact_retired",
     unavailable_error=_owner_retirement_unavailable_error,
+)
+
+
+_MEMBERSHIP_POLICY = _MembershipPolicy(
+    product_label=_PRODUCT_LABEL,
+    identity_prefix="coding",
+    error_code_prefix="coding_plugin",
+    make_error=_lifecycle_error,
+    holder_prefix="coding-session-owner-family:v2:",
+    startup_namespace=b"loushang.coding-plugin-startup/v1\0",
+    session_owner_namespace=b"loushang.coding-plugin-session-owner/v1\0",
+    startup_policy=_STARTUP_POLICY,
+    retirement_policy=_CODING_OWNER_RETIREMENT_REPORT_POLICY,
 )
 
 
@@ -278,96 +275,12 @@ class _CodingPluginEnablementStateCapture:
     migration_raw: str
 
 
-_SESSION_HOLDER_PREFIX = "coding-session-owner-family:v2:"
-
-
-def _family_release(
-    family: PluginInstanceLeaseFamilyV1,
-) -> PluginInstanceLeaseFamilyReleaseV1:
-    return PluginInstanceLeaseFamilyReleaseV1(
-        family_id=family.family_id,
-        operation_id=f"coding-plugin-release:{family.family_id}",
-        idempotency_key=f"coding-plugin-release:{family.family_id}",
-        release_reference=family.holder_reference,
-    )
-
-
-def _orphan_family_release(
-    family: PluginInstanceLeaseFamilyV1,
-    *,
-    inactive_startup_id: str,
-) -> PluginInstanceLeaseFamilyReleaseV1:
-    identity = hashlib.sha256(
-        repr((family.family_id, inactive_startup_id)).encode("utf-8")
-    ).hexdigest()
-    return PluginInstanceLeaseFamilyReleaseV1(
-        family_id=family.family_id,
-        operation_id=f"coding-plugin-orphan-release:{identity}",
-        idempotency_key=f"coding-plugin-orphan-release:{identity}",
-        release_reference=(
-            "coding-session-process-exit-confirmed:"
-            f"{inactive_startup_id}:{family.family_id}"
-        ),
-    )
-
-
-def _activation_identity(
-    key: PluginInstallationKeyV1,
-    ref: PluginInstanceRevisionRef,
-) -> str:
-    return hashlib.sha256(repr((key, ref)).encode("utf-8")).hexdigest()
-
-
-def _lease_identity(
-    key: PluginInstallationKeyV1,
-    ref: PluginInstanceRevisionRef,
-    session_id: str,
-    lease_attempt_id: str,
-    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
-) -> str:
-    return hashlib.sha256(
-        repr(
-            (
-                key,
-                ref,
-                _nonempty(session_id, name="Session id"),
-                _nonempty(lease_attempt_id, name="Lease attempt id"),
-                owner_contributions,
-            )
-        ).encode("utf-8")
-    ).hexdigest()
-
-
-@dataclass(frozen=True, slots=True)
-class _CodingSessionHolderEvidence:
-    startup_id: str
-    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...]
-
-
-
-def _decode_coding_holder_evidence(reference: str) -> _CodingSessionHolderEvidence | None:
-    try:
-        fields = decode_holder_evidence(
-            reference, prefix=_SESSION_HOLDER_PREFIX, product_label=_PRODUCT_LABEL
-        )
-        return _CodingSessionHolderEvidence(*fields) if fields is not None else None
-    except (TypeError, ValueError) as exc:
-        raise CodingPluginLifecycleError(
-            f"{_PRODUCT_LABEL} Session family owner evidence is invalid",
-            code=_SESSION_OWNER_EVIDENCE_INVALID,
-        ) from exc
-
-
 def _startup_lease_path(
     layout: CodingPluginLifecycleStateLayout,
     *,
     startup_id: str,
 ) -> Path:
-    identity = hashlib.sha256(
-        b"loushang.coding-plugin-startup/v1\0"
-        + _nonempty(startup_id, name="Startup id").encode("utf-8")
-    ).hexdigest()
-    return (layout.root / "process-startups" / f"{identity}.lease").resolve()
+    return _MEMBERSHIP_POLICY.startup_path(layout, startup_id)
 
 
 def _session_owner_lease_path(
@@ -375,43 +288,7 @@ def _session_owner_lease_path(
     *,
     session_id: str,
 ) -> Path:
-    identity = hashlib.sha256(
-        b"loushang.coding-plugin-session-owner/v1\0"
-        + _nonempty(session_id, name="Session id").encode("utf-8")
-    ).hexdigest()
-    return (layout.root / "session-owners" / f"{identity}.lease").resolve()
-
-
-def _coding_membership_policy() -> _MembershipPolicy[CodingPluginLifecycleStateLayout]:
-    return _MembershipPolicy(
-        product_label="Coding",
-        identity_prefix="coding",
-        error_code_prefix="coding_plugin",
-        make_error=_lifecycle_error,
-        family_release=_family_release,
-        orphan_release=lambda family, startup: _orphan_family_release(
-            family, inactive_startup_id=startup
-        ),
-        activation_identity=_activation_identity,
-        lease_identity=_lease_identity,
-        normalize_owners=lambda values: normalize_owner_contributions(
-            values, product_label=_PRODUCT_LABEL
-        ),
-        holder_reference=lambda session, attempt, owners, startup: (
-            encode_holder_reference(
-                session, attempt, owners, startup, prefix=_SESSION_HOLDER_PREFIX
-            )
-        ),
-        holder_evidence=_decode_coding_holder_evidence,
-        startup_path=lambda layout, startup: _startup_lease_path(
-            layout, startup_id=startup
-        ),
-        owner_path=lambda layout, session: _session_owner_lease_path(
-            layout, session_id=session
-        ),
-        startup_policy=_STARTUP_POLICY,
-        retirement_policy=_CODING_OWNER_RETIREMENT_REPORT_POLICY,
-    )
+    return _MEMBERSHIP_POLICY.owner_path(layout, session_id)
 
 
 @dataclass(slots=True)
@@ -451,7 +328,7 @@ class CodingPluginLifecycle(
     )
 
     _owner_lease_type = _ProcessSessionOwnerLease
-    _membership_policy = _coding_membership_policy()
+    _membership_policy = _MEMBERSHIP_POLICY
     _settled_host_policy = _SettledHostRetirementPolicy(
         cleanup_kind="coding.product_host.shutdown",
         handoff_namespace="coding-host-cleanup",
@@ -461,7 +338,7 @@ class CodingPluginLifecycle(
         outcome_namespace="coding-host-outcome",
         completion_namespace="coding-instance-retired",
         completion_reference_namespace="coding-instance",
-        family_release=_family_release,
+        family_release=_MEMBERSHIP_POLICY.family_release,
     )
 
     def prepare_gc_writer_epoch(self) -> None:
@@ -576,33 +453,16 @@ class CodingPluginSessionLease(
     _membership_policy = CodingPluginLifecycle._membership_policy
 
     def evaluate_management_change(self) -> CodingPluginManagementChange:
-        snapshot = self.lifecycle.desired.snapshot()
-        state = snapshot.installation(self.installation_key)
-        current_ref = state.selection.instance_revision_ref
-        current_package = state.selection.package_revision
-        if (
-            state.selection.desired_state == "installed_enabled"
-            and current_ref == self.instance_revision_ref
-            and current_package == self.package_revision
-        ):
-            disposition: Literal["no_change", "restart_required"] = "no_change"
-            reason = "selected_revision_unchanged"
-        else:
-            disposition = "restart_required"
-            reason = {
-                "absent": "plugin_removed",
-                "installed_disabled": "plugin_disabled",
-                "installed_enabled": "plugin_updated",
-            }[state.selection.desired_state]
+        inventory_revision, selection, disposition, reason = self._read_management_change()
         return CodingPluginManagementChange(
             disposition=disposition,
             reason=reason,
-            inventory_revision=snapshot.inventory_revision,
-            desired_state=state.selection.desired_state,
+            inventory_revision=inventory_revision,
+            desired_state=selection.desired_state,
             pinned_instance_revision_ref=self.instance_revision_ref,
-            current_instance_revision_ref=current_ref,
+            current_instance_revision_ref=selection.instance_revision_ref,
             pinned_package_revision=self.package_revision,
-            current_package_revision=current_package,
+            current_package_revision=selection.package_revision,
         )
 
 
@@ -736,45 +596,15 @@ def build_coding_plugin_lifecycle(
 ) -> CodingPluginLifecycle:
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError(_LAYOUT_REQUIRED)
-    resolved_startup_id = startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID
-    owns_process_startup_lease = _hold_process_startup_lease(
-        layout, startup_id=resolved_startup_id
-    )
-    try:
-        if not owns_process_startup_lease:
-            _prepare_private_state_layout(layout)
-        core = _bind_management_core(layout)
-        prepare_plugin_management_runtime(core, runtime_version=version("loushang"))
-        migrations = bind_plugin_enablement_migrations(
-            core, runtime_version=version("loushang")
-        )
-        runtime = bind_plugin_runtime_ledgers(
-            core,
-            instance_runtime_path=layout.instance_runtime,
-            package_lifecycle_path=layout.package_lifecycle,
-            startup_id=resolved_startup_id,
+    return cast(
+        CodingPluginLifecycle,
+        _assemble_legacy_plugin_management(
+            layout,
+            startup_id=startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID,
+            mode="lifecycle",
             security_acceptances=security_acceptances,
-        )
-        return CodingPluginLifecycle(
-            layout=layout,
-            startup_id=resolved_startup_id,
-            desired=core.desired,
-            management=core.management,
-            enablement_migrations=migrations,
-            instances=runtime.instances,
-            retirement_sets=core.retirement_sets,
-            packages=runtime.packages,
-            _gc_reservations=core.gc_reservations,
-            security=runtime.security,
-            owner_evidence=CodingOwnerGenerationEvidenceLedger(
-                layout.owner_generation_evidence
-            ),
-            _owns_process_startup_lease=owns_process_startup_lease,
-        )
-    except BaseException:
-        if owns_process_startup_lease:
-            _release_process_startup_lease(layout, startup_id=resolved_startup_id)
-        raise
+        ),
+    )
 
 
 def build_coding_plugin_management_application(
@@ -783,59 +613,62 @@ def build_coding_plugin_management_application(
     source: PluginSourceProjectionSourcePort | None = None,
     read_only: bool = False,
 ) -> PluginManagementApplicationPorts:
-    """Compose command/query ports without acquiring a Product runtime lease."""
+    """Bind management ports with pre-fence startup admission on write routes."""
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError(_LAYOUT_REQUIRED)
-    owns_process_startup_lease = (
-        not read_only
-        and (sys.platform.startswith("linux") or os.name == "nt")
-        and _hold_process_startup_lease(
-            layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
-        )
-    )
-    try:
-        if not read_only and not owns_process_startup_lease:
-            _prepare_private_state_layout(layout)
-        core = _bind_management_core(
+    return cast(
+        PluginManagementApplicationPorts,
+        _assemble_legacy_plugin_management(
             layout,
-            load_policy=(
-                JournalLoadPolicy(partial_tail="raise", create_lock=False)
-                if read_only
-                else None
-            ),
-        )
-        prepare_plugin_management_runtime(
-            core, runtime_version=version("loushang"), read_only=read_only
-        )
-        runtime = bind_plugin_runtime_ledgers(
-            core,
-            instance_runtime_path=layout.instance_runtime,
-            package_lifecycle_path=layout.package_lifecycle,
             startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
-        )
-        return bind_plugin_management_application_ports(core, runtime, source=source)
-    except BaseException:
-        if owns_process_startup_lease:
-            _release_process_startup_lease(
-                layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
-            )
-        raise
+            mode="queries" if read_only else "commands",
+            source=source,
+        ),
+    )
 
 
-def _bind_management_core(
+def _assemble_legacy_plugin_management(
     layout: CodingPluginLifecycleStateLayout,
     *,
-    load_policy: JournalLoadPolicy | None = None,
-) -> PluginManagementCoreBindings:
-    return bind_plugin_management_core(
-        gc_reservations_path=layout.package_gc_reservations,
-        desired_state_path=layout.desired_state,
-        operation_journal_path=layout.management_operations,
-        retirement_intents_path=layout.retirement_intents,
-        retirement_sets_path=layout.retirement_sets,
-        migration_journal_path=layout.enablement_migration,
-        load_policy=load_policy,
+    startup_id: str,
+    mode: Literal["lifecycle", "commands", "queries"],
+    source: PluginSourceProjectionSourcePort | None = None,
+    security_acceptances: PluginInstanceSecurityRetirementJournal | None = None,
+) -> CodingPluginLifecycle | PluginManagementApplicationPorts:
+    def build_lifecycle(
+        bindings: LegacyPluginLifecycleBindings,
+    ) -> CodingPluginLifecycle:
+        return CodingPluginLifecycle(
+            layout=layout,
+            startup_id=startup_id,
+            owner_evidence=CodingOwnerGenerationEvidenceLedger(
+                layout.owner_generation_evidence
+            ),
+            **bindings,
+        )
+
+    read_only = mode == "queries"
+    lifecycle = mode == "lifecycle"
+    startup = _legacy_runtime.legacy_plugin_management_startup(
+        layout,
+        policy=_STARTUP_POLICY,
+        hold_startup=partial(_hold_process_startup_lease, layout, startup_id=startup_id),
+        release_startup=partial(
+            _release_process_startup_lease, layout, startup_id=startup_id
+        ),
+        read_only=read_only,
+        lifecycle=lifecycle,
+    )
+    return assemble_legacy_plugin_management(
+        layout,
+        startup_id=startup_id,
+        startup=startup,
+        runtime_version=lambda: version("loushang"),
+        read_only=read_only,
+        source=source,
+        security_acceptances=security_acceptances,
+        build_lifecycle=build_lifecycle if lifecycle else None,
     )
 
 

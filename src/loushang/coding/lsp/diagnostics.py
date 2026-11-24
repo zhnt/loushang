@@ -38,10 +38,17 @@ _TAGS = {1: "unnecessary", 2: "deprecated"}
 
 
 class DiagnosticDocumentState(Protocol):
-    path: Path
-    uri: str
-    version: int
-    content: str
+    @property
+    def path(self) -> Path: ...
+
+    @property
+    def uri(self) -> str: ...
+
+    @property
+    def version(self) -> int: ...
+
+    @property
+    def content(self) -> str: ...
 
 
 DiagnosticDocumentLookup = Callable[

@@ -16,6 +16,7 @@ from loushang.harness.authorization import (
     ExecutionAuthorizationError,
     resolve_effective_execution_profile,
 )
+from loushang.harness.authorization.execution_profile import execution_path_is_covered
 from loushang.harness.effects import (
     FilesystemEffect,
     ToolEffect,
@@ -470,7 +471,7 @@ def _validate_path_authority(
     if not isinstance(fallback_path_value, str):
         return
     path = Path(fallback_path_value).resolve(strict=False)
-    if any(path == root or path.is_relative_to(root) for root in profile.denied_roots):
+    if execution_path_is_covered(path, profile.denied_roots):
         raise ExecutionAuthorizationError(f"path is denied by execution profile: {path}")
     roots = (
         profile.readable_roots
@@ -479,7 +480,7 @@ def _validate_path_authority(
         if tool_name in {"write", "edit"}
         else ()
     )
-    if roots and any(path == root or path.is_relative_to(root) for root in roots):
+    if execution_path_is_covered(path, roots):
         return
     if tool_name in {"read", "grep", "find", "ls", "write", "edit"}:
         raise ExecutionAuthorizationError(
@@ -494,14 +495,11 @@ def _validate_one_path(
     profile: EffectiveExecutionProfile,
 ) -> None:
     path = Path(path_value).resolve(strict=False)
-    if any(
-        path == root or path.is_relative_to(root)
-        for root in profile.denied_roots
-    ):
+    if execution_path_is_covered(path, profile.denied_roots):
         raise ExecutionAuthorizationError(
             f"path is denied by execution profile: {path}"
         )
-    if roots and any(path == root or path.is_relative_to(root) for root in roots):
+    if execution_path_is_covered(path, roots):
         return
     raise ExecutionAuthorizationError(
         f"path is outside the authorized roots: {path}"

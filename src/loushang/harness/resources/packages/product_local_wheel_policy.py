@@ -79,6 +79,25 @@ class PackageProductLocalWorkerAdmissionV1:
         if self.native_platform not in {"linux-x86_64", "windows-amd64"}:
             raise ValueError("Product Worker native platform is unsupported")
 
+    def _to_record_payload(self) -> dict[str, object]:
+        return {
+            "contributionId": self.contribution_id,
+            "nativePlatform": self.native_platform,
+            "ownerId": self.owner_id,
+        }
+
+    @staticmethod
+    def _from_record_payload(value: object) -> PackageProductLocalWorkerAdmissionV1:
+        if type(value) is not dict or set(value) != {
+            "contributionId", "nativePlatform", "ownerId"
+        }:
+            raise ValueError("External Worker Wheel admission record is invalid")
+        return PackageProductLocalWorkerAdmissionV1(
+            contribution_id=value["contributionId"],
+            owner_id=value["ownerId"],
+            native_platform=value["nativePlatform"],
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class PackageProductLocalWheelBindingV1:
@@ -258,11 +277,9 @@ class PackageProductLocalWheelPolicy:
                     ),
                     **(
                         {
-                            "workerAdmission": {
-                                "contributionId": item.worker_admission.contribution_id,
-                                "nativePlatform": item.worker_admission.native_platform,
-                                "ownerId": item.worker_admission.owner_id,
-                            }
+                            "workerAdmission": PackageProductLocalWorkerAdmissionV1._to_record_payload(
+                                item.worker_admission
+                            )
                         }
                         if item.worker_admission is not None
                         else {}

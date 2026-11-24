@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cast
+from weakref import ref
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -29,9 +30,11 @@ from loushang.harness.session.lifecycle import (
     ForkProfile,
     ForkSelection,
     MissingSessionCwdError,
+    PreparedSessionLifecycleOperation,
     SessionLifecycleDecision,
     SessionLifecycleHooks,
     SessionLifecycleTransition,
+    _RetainedResultT,
 )
 from loushang.harness.session.product_runtime import (
     ProductSessionRuntime,
@@ -54,7 +57,13 @@ from loushang.harness.transcript.session_catalog import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harness.resources.loader import ResourceLoader
     from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
+    from loushang.harness.session._resume_continuation import (
+        ResumeContinuationCleanupFailure,
+        _ResumeCleanupSession,
+    )
+    from loushang.harness.transcript._resume_continuation import _ResumePlanRead
     from loushang.harness.transcript.session_factory import (
         AgentTranscriptSessionFactory,
     )
@@ -73,6 +82,8 @@ HistoryPreviewT = TypeVar("HistoryPreviewT", bound=_SessionHistoryPreview)
 
 
 PlanningT = TypeVar("PlanningT")
+_ResumeAttemptT = TypeVar("_ResumeAttemptT")
+_ContinuationT = TypeVar("_ContinuationT")
 
 
 class _SessionPlanningSlot(Generic[PlanningT]):
@@ -94,6 +105,55 @@ class _SessionPlanningSlot(Generic[PlanningT]):
             self._loop = loop
         elif self._loop is not loop:
             raise RuntimeError(f"{self._error_prefix}_loop_changed")
+
+    async def _start_validated_planning(
+        self,
+        build_baseline: Callable[[], _ResumePlanRead],
+        resource_loader: ResourceLoader,
+        *,
+        max_work_units: int,
+        time_budget_seconds: float,
+        work_factory: Callable[[], Coroutine[Any, Any, PlanningT]],
+    ) -> None:
+        """Validate the request before replacing or coalescing queued work."""
+        self._on_loop()
+        if self._closed:
+            raise RuntimeError(f"{self._error_prefix}_closed")
+        baseline = build_baseline()
+        if type(max_work_units) is not int or max_work_units < 1:
+            raise ValueError("invalid Resume planning work budget")
+        if (
+            type(time_budget_seconds) not in {int, float}
+            or not 0 < time_budget_seconds <= 60
+        ):
+            raise ValueError("invalid Resume planning time budget")
+        from loushang.harness.resources.loader import ResourceLoader
+
+        if not isinstance(resource_loader, ResourceLoader):
+            raise TypeError("Resume planning requires the original ResourceLoader")
+        await self._start_work(
+            (baseline.plan_id, ref(resource_loader), max_work_units, time_budget_seconds),
+            work_factory,
+        )
+
+    def _current_validated_plan(
+        self, require_current: Callable[[PlanningT], None], *,
+        stale_error: type[Exception],
+    ) -> PlanningT | None:
+        """Discard stale cache entries after their original owner rechecks."""
+        self._on_loop()
+        if self._closed:
+            return None
+        plan = self._plan
+        if plan is None:
+            return None
+        try:
+            require_current(plan)
+        except stale_error:
+            self._plan = None
+            self._key = None
+            return None
+        return plan
 
     async def _start_work(
         self,
@@ -558,6 +618,81 @@ class AgentProductSessionRuntime(
                     )
         if failure is not None:
             raise failure
+
+    async def _prepare_retained_resume(
+        self,
+        session_ref: str | Path,
+        *,
+        transition_type: Callable[..., SessionLifecycleTransition],
+        current_view: Callable[[], None],
+        admit_current: Callable[[_ResumeAttemptT], None],
+        prepare: Callable[
+            [Callable[[_ResumeAttemptT], None]],
+            Awaitable[tuple[SessionT, _ContinuationT]],
+        ],
+        cleanup_error: type[ResumeContinuationCleanupFailure],
+        deliver: Callable[
+            [PreparedSessionLifecycleOperation[SessionT, str], _ContinuationT],
+            _RetainedResultT,
+        ],
+    ) -> _RetainedResultT:
+        """Retain the exact resumed Session until the original slot delivers it."""
+        prefix = self._resume_shutdown_error_prefix
+        previous = self.current_session
+        operation: PreparedSessionLifecycleOperation[SessionT, str] | None = None
+        prepared_value: tuple[SessionT, _ContinuationT] | None = None
+
+        def admit(attempt: _ResumeAttemptT) -> None:
+            if self._resume_history_closed:
+                raise RuntimeError(f"{prefix}_root_closed")
+            if operation is None or not operation.consumed:
+                current_view()
+            expected = (
+                prepared_value[0]
+                if operation is not None and operation.consumed and prepared_value is not None
+                else previous
+            )
+            if self.current_session is not expected:
+                raise RuntimeError(f"{prefix}_active_session_changed")
+            admit_current(attempt)
+
+        async def build(current: SessionT | None) -> SessionT:
+            nonlocal prepared_value
+            if current is not previous:
+                raise RuntimeError(f"{prefix}_active_session_changed")
+            prepared_value = await prepare(admit)
+            session = cast("_ResumeCleanupSession", prepared_value[0])
+            try:
+                session.set_extension_runtime_host(self)
+            except BaseException as error:
+                await cleanup_error.discard_candidate(session, error)
+                raise
+            return prepared_value[0]
+
+        def bind_operation(
+            prepared: PreparedSessionLifecycleOperation[SessionT, str],
+        ) -> None:
+            nonlocal operation
+            operation = prepared
+            assert prepared_value is not None
+
+        return await self.lifecycle.prepare_retained_candidate(
+            lambda: transition_type(
+                reason="resume",
+                target_session_ref=str(session_ref),
+                metadata={
+                    "activate_extensions": False,
+                    "emit_before_transition": False,
+                    "schedule_index": False,
+                },
+            ),
+            build,
+            cleanup_error_type=cleanup_error,
+            bind_operation=bind_operation,
+            result_factory=lambda prepared: deliver(
+                prepared, cast("tuple[SessionT, _ContinuationT]", prepared_value)[1]
+            ),
+        )
 
     async def _drain_resume_activations(self) -> None:
         await self.lifecycle.drain_retained_preparations(

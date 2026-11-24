@@ -9,7 +9,10 @@ from typing import Literal
 
 from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
-    JournalCodecError,
+)
+from loushang.harness.plugin_management._private_data_records import (
+    PRIVATE_DATA_INSTALLATION_KEY_FIELD,
+    PrivateDataRecordWire,
 )
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -18,10 +21,6 @@ from loushang.harness.plugin_management.private_data_restore_journal import (
     PrivateDataRestoreJournal,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
-    RecordField,
-    RecordSchema,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
@@ -32,7 +31,7 @@ _MAX_JOURNAL_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataRestoreEventV1:
+class CodingArchPrivateDataRestoreEventV1(PrivateDataRecordWire):
     revision: int
     phase: Literal["started", "completed"]
     installation_key: PluginInstallationKeyV1
@@ -106,11 +105,7 @@ class CodingArchPrivateDataRestoreEventV1:
     def to_dict(self) -> dict[str, object]:
         return {**self._unsigned(), "recordDigest": self.record_digest}
 
-    @classmethod
-    def from_dict(cls, value: object) -> CodingArchPrivateDataRestoreEventV1:
-        if type(value) is not dict or set(value) != _SCHEMA_RESTORE_EVENT_V1.keys:
-            raise ValueError("Coding Arch restore event fields are invalid")
-        return _SCHEMA_RESTORE_EVENT_V1.decode(cls, value)
+    _invalid_fields = "Coding Arch restore event fields are invalid"
 
 
 def _event_fields(
@@ -158,19 +153,11 @@ def restore_id_for(
     )
 
 
-def _decode(value: object) -> CodingArchPrivateDataRestoreEventV1:
-    try:
-        return CodingArchPrivateDataRestoreEventV1.from_dict(value)
-    except (TypeError, ValueError) as exc:
-        raise JournalCodecError(
-            "Coding Arch restore event is invalid",
-            code="coding_arch_restore_event_invalid",
-        ) from exc
-
-
-_CODEC = FunctionalJournalRecordCodec(
+_CODEC = FunctionalJournalRecordCodec.with_decode_error(
     encoder=CodingArchPrivateDataRestoreEventV1.to_dict,
-    decoder=_decode,
+    decoder=lambda value: CodingArchPrivateDataRestoreEventV1.from_dict(value),
+    message="Coding Arch restore event is invalid",
+    code="coding_arch_restore_event_invalid",
 )
 
 
@@ -195,14 +182,8 @@ class CodingArchPrivateDataRestoreJournal(
         )
 
 
-_SCHEMA_RESTORE_EVENT_V1 = RecordSchema.for_dataclass(
-    CodingArchPrivateDataRestoreEventV1,
-    lambda value: value,
-    RecordField(
-        "installation_key",
-        decoder=PluginInstallationKeyV1.from_dict,
-        encoder=PluginInstallationKeyV1.to_dict,
-    ),
+_SCHEMA_RESTORE_EVENT_V1 = CodingArchPrivateDataRestoreEventV1._bind_wire_schema(
+    PRIVATE_DATA_INSTALLATION_KEY_FIELD,
 )
 
 __all__ = [

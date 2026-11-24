@@ -19,6 +19,7 @@ from loushang.harness.cli.agent_args import (
     agent_cli_argument_values,
     normalize_agent_cli_argv,
 )
+from loushang.harness.cli.parser import root_option_requested
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.extensions.types import RegisteredFlag, ResolvedFlag
 
@@ -29,6 +30,12 @@ WorkLogInspectFormat = Literal["text", "json", "plans", "plans-json"]
 AgentInvocationProfile = Literal["read-only-v1"]
 ExtensionFlag: TypeAlias = RegisteredFlag | ResolvedFlag
 _AGENT_INVOCATION_PROFILE_OPTION = "--agent-invocation-profile"
+_PLUGIN_MANAGEMENT_OPTIONS = (
+    "--preview-current-plugins",
+    "--discover-local-plugins",
+    "--explain-plugin-operation",
+    "--repair-plugin-desired-operation",
+)
 _BUILTIN_FLAG_NAMES = CODING_CLI_PROFILE.option_names | frozenset(
     {_AGENT_INVOCATION_PROFILE_OPTION.lstrip("-")}
 )
@@ -111,49 +118,39 @@ def removed_legacy_resource_option(
 def current_preview_option_requested(argv: tuple[str, ...]) -> bool:
     """Find the preview option without mistaking explicit prompt values for it."""
 
-    return _early_plugin_read_option_requested(argv, "--preview-current-plugins")
+    return root_option_requested(argv, CODING_CLI_PROFILE, ("--preview-current-plugins",))
 
 
 def local_discovery_option_requested(argv: tuple[str, ...]) -> bool:
     """Find the read-only local inventory route before service initialization."""
 
-    return _early_plugin_read_option_requested(argv, "--discover-local-plugins")
+    return root_option_requested(argv, CODING_CLI_PROFILE, ("--discover-local-plugins",))
 
 
 def plugin_explanation_option_requested(argv: tuple[str, ...]) -> bool:
     """Find the operation explanation option before service initialization."""
 
-    return _early_plugin_read_option_requested(argv, "--explain-plugin-operation")
+    return root_option_requested(argv, CODING_CLI_PROFILE, ("--explain-plugin-operation",))
 
 
 def plugin_repair_option_requested(argv: tuple[str, ...]) -> bool:
     """Find the explicit Desired State repair route before Session startup."""
 
-    return _early_plugin_read_option_requested(
-        argv, "--repair-plugin-desired-operation"
+    return root_option_requested(
+        argv, CODING_CLI_PROFILE, ("--repair-plugin-desired-operation",)
     )
 
 
-def _early_plugin_read_option_requested(argv: tuple[str, ...], option: str) -> bool:
+def plugin_management_option_requested(argv: tuple[str, ...]) -> bool:
+    return root_option_requested(argv, CODING_CLI_PROFILE, _PLUGIN_MANAGEMENT_OPTIONS)
 
-    value_flags = {
-        flag
-        for spec in CODING_CLI_PROFILE.root_arguments
-        if spec.action in {"store", "append"}
-        for flag in spec.flags
-    }
-    index = 0
-    while index < len(argv):
-        token = argv[index]
-        if token == "--":
-            return False
-        if token == option or token.startswith(option + "="):
-            return True
-        if "=" not in token and token in value_flags:
-            index += 2
-            continue
-        index += 1
-    return False
+
+def package_mutation_option_requested(argv: tuple[str, ...]) -> bool:
+    return any(
+        argument.partition("=")[0]
+        in {"--install-package", "--update-package", "--uninstall-package"}
+        for argument in argv
+    )
 
 
 def parse_args(

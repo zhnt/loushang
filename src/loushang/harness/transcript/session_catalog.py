@@ -12,7 +12,7 @@ import json
 import os
 import re
 import stat as stat_module
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -21,6 +21,13 @@ from typing import Any, Generic, Literal, TypeVar, cast
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
+from loushang.foundation.file_identity import (
+    file_status_fingerprint as _status_fingerprint,
+)
+from loushang.foundation.file_identity import same_file_status as _same_file_status
+from loushang.foundation.file_identity import (
+    status_is_link_or_reparse as _status_is_link_or_reparse,
+)
 from loushang.foundation.observability import get_log
 from loushang.harness.conversation import (
     ConversationCatalog,
@@ -32,7 +39,6 @@ from loushang.harness.conversation import (
     ConversationKey,
     ConversationLocator,
     ConversationProviderBinding,
-    ConversationRepository,
     ConversationTreeNode,
     FunctionalConversationProjector,
     FunctionalProjectionCodec,
@@ -47,6 +53,7 @@ from loushang.harness.transcript.discovery import (
     SessionSourceMode,
 )
 from loushang.harness.transcript.jsonl_file import (
+    AgentTranscriptFileError,
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
     load_agent_transcript_file,
@@ -60,7 +67,10 @@ from loushang.harness.transcript.kinds import (
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
 )
-from loushang.harness.transcript.profile import AgentTranscriptProfile
+from loushang.harness.transcript.profile import (
+    AgentTranscriptProfile,
+    create_transcript_branch_repository,
+)
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
@@ -72,6 +82,8 @@ from loushang.harness.transcript.types import (
 )
 
 RecordT = TypeVar("RecordT")
+_FullHistoryT = TypeVar("_FullHistoryT")
+_RecentHistoryT = TypeVar("_RecentHistoryT")
 
 _LEAF_UNSET = object()
 _MISSING = object()
@@ -383,12 +395,8 @@ def build_agent_transcript_session_context(
 
     if resolved_leaf_id is None:
         return _PROFILE.replay(())
-    conversation = ConversationRepository.create(
-        header=None,
-        records=entries,
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        mode="compatible",
+    conversation = create_transcript_branch_repository(
+        header=None, records=entries, mode="compatible"
     )
     if conversation.get(resolved_leaf_id) is None:
         return _PROFILE.replay(())
@@ -422,27 +430,13 @@ def project_agent_transcript_session_summary(
     entries = list(records)
     metadata = load_agent_transcript_session_metadata(header, entries)
     context = build_agent_transcript_session_context(entries, leaf_id)
-    last_message_preview = next(
-        (
-            preview
-            for message in reversed(context.messages)
-            if (preview := _message_preview(message))
-        ),
-        None,
-    )
+    last_message_preview = _last_message_preview(context.messages)
     message_texts = (
         [text for message in context.messages if (text := _message_text(message))]
         if include_all_messages_text
         else []
     )
-    first_message = next(
-        (
-            text
-            for message in context.messages
-            if isinstance(message, UserMessage) and (text := _message_text(message))
-        ),
-        "(no messages)",
-    )
+    first_message = _first_user_message_text(context.messages) or "(no messages)"
     diagnostic_count, last_diagnostic_code, last_diagnostic_level = _diagnostic_index(
         entries
     )
@@ -1445,6 +1439,19 @@ def session_summary_authority_is_current(summary: SessionSummary) -> bool:
     return current is not None and current.fingerprint == summary.authority_fingerprint
 
 
+async def read_transcript_history_or_recent(
+    read_history: Callable[[], Awaitable[_FullHistoryT]],
+    read_recent: Callable[[], Awaitable[_RecentHistoryT]],
+) -> _FullHistoryT | _RecentHistoryT:
+    """Use an unverified tail only when the full read exceeds its byte budget."""
+    try:
+        return await read_history()
+    except AgentTranscriptFileError as error:
+        if error.code != "session_file_too_large":
+            raise
+    return await read_recent()
+
+
 def capture_transcript_history_snapshot(
     path: str | Path,
     *,
@@ -1556,20 +1563,6 @@ def _bounded_candidate(path: Path) -> _BoundedSessionCandidate | None:
     )
 
 
-def _status_fingerprint(status: os.stat_result) -> str:
-    return (
-        f"stat-v1:{status.st_dev}:{status.st_ino}:{status.st_size}:"
-        f"{status.st_mtime_ns}:{status.st_ctime_ns}"
-    )
-
-
-def _status_is_link_or_reparse(status: os.stat_result) -> bool:
-    return stat_module.S_ISLNK(status.st_mode) or bool(
-        getattr(status, "st_file_attributes", 0)
-        & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    )
-
-
 def _open_file_no_follow(path: Path) -> tuple[int, int]:
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -1584,22 +1577,6 @@ def _open_file_no_follow(path: Path) -> tuple[int, int]:
             os.close(parent)
             raise
     return os.open(path, flags), -1
-
-
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
 
 
 def _bounded_candidate_identities(
@@ -1646,18 +1623,10 @@ def _project_bounded_session_summary(
             }
 
     message_texts = [text for item in messages if (text := _message_text(item))]
-    first_message = next(
-        (
-            text
-            for item in messages
-            if isinstance(item, UserMessage) and (text := _message_text(item))
-        ),
-        message_texts[0] if message_texts else "(preview unavailable)",
+    first_message = _first_user_message_text(messages) or (
+        message_texts[0] if message_texts else "(preview unavailable)"
     )
-    last_message_preview = next(
-        (preview for item in reversed(messages) if (preview := _message_preview(item))),
-        None,
-    )
+    last_message_preview = _last_message_preview(messages)
     diagnostic_count, last_diagnostic_code, last_diagnostic_level = _diagnostic_index(
         records
     )
@@ -1938,34 +1907,47 @@ def _same_session_cwd(left: str, right: str) -> bool:
     return normalized_left == normalized_right
 
 
+def _first_user_message_text(messages: Sequence[AgentMessage]) -> str | None:
+    return next(
+        (
+            text
+            for item in messages
+            if isinstance(item, UserMessage) and (text := _message_text(item))
+        ),
+        None,
+    )
+
+
+def _last_message_preview(messages: Sequence[AgentMessage]) -> str | None:
+    return next(
+        (preview for item in reversed(messages) if (preview := _message_preview(item))),
+        None,
+    )
+
+
 def _message_preview(message: AgentMessage) -> str | None:
     if isinstance(message, UserMessage | AssistantMessage | ToolResultMessage):
-        parts = getattr(message, "content", None)
-        if isinstance(parts, str):
-            text = parts
-        elif isinstance(parts, list):
-            text = " ".join(part.text for part in parts if isinstance(part, TextPart))
-        else:
-            text = ""
-        normalized = " ".join(text.split())
-        return normalized[:160] if normalized else None
-    if isinstance(message, ApplicationMessage) and isinstance(message.content, str):
-        return " ".join(message.content.split())[:160] or None
-    return None
+        text = _normalized_agent_message_content(message)
+    elif isinstance(message, ApplicationMessage) and isinstance(message.content, str):
+        text = " ".join(message.content.split())
+    else:
+        return None
+    return text[:160] or None
 
 
 def _message_text(message: AgentMessage) -> str | None:
     if not isinstance(message, UserMessage | AssistantMessage):
         return None
+    return _normalized_agent_message_content(message) or None
+
+
+def _normalized_agent_message_content(
+    message: UserMessage | AssistantMessage | ToolResultMessage,
+) -> str:
     parts = getattr(message, "content", None)
-    if isinstance(parts, str):
-        text = parts
-    elif isinstance(parts, list):
-        text = " ".join(part.text for part in parts if isinstance(part, TextPart))
-    else:
-        text = ""
-    normalized = " ".join(text.split())
-    return normalized or None
+    if isinstance(parts, list):
+        parts = " ".join(part.text for part in parts if isinstance(part, TextPart))
+    return " ".join(parts.split()) if isinstance(parts, str) else ""
 
 
 def _last_activity_timestamp(

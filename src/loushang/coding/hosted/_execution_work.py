@@ -15,7 +15,12 @@ from loushang.ai.types import AssistantMessage, ImagePart, UserMessage
 from loushang.apphost.integrations.session_control import _HostedAgentExecutionWork
 from loushang.appserver.protocol import SessionSnapshotRequestV1
 from loushang.appservice.client_scope import ScopedAppServicePortV1
-from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
+from loushang.appservice.execution_contract import (
+    ExecutionOutcomeV1,
+)
+from loushang.appservice.execution_contract import (
+    ExecutionStatusV1 as ExecutionStatusV1,
+)
 from loushang.appservice.execution_guard import ExecutionControlV1
 from loushang.coding.resume import subject as _resume_subject
 from loushang.coding.session.agent_session import AgentSession
@@ -49,8 +54,6 @@ def current_coding_hosted_resume_submission_id() -> str | None:
     return ScopedAppServicePortV1.current_resume_submission_id()
 
 
-
-
 class CodingExecutionWorkV1(_HostedAgentExecutionWork):
     def __init__(
         self, session: AgentSession, text: str, cancel_requested: Callable[[], bool],
@@ -60,17 +63,13 @@ class CodingExecutionWorkV1(_HostedAgentExecutionWork):
         start_title: Callable[[], None] | None = None,
         wait_for_title: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
+        super().__init__(cancel_requested)
         self.session = session
         self.text = text
         self._images = images
         self._input_metadata = input_metadata
-        self._cancel_requested = cancel_requested
-        self._interrupted = False
         self._start_title = start_title
         self._wait_for_title = wait_for_title
-        self._agent_outcome: ExecutionOutcomeV1 | None = None
-        self._unsubscribe: Callable[[], None] | None = None
-        self._unbind_turn: Callable[[], None] | None = None
 
     async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
         try:
@@ -106,7 +105,7 @@ class CodingExecutionWorkV1(_HostedAgentExecutionWork):
             self._clear_turn()
 
     async def settle(self) -> None:
-        await self._settle_hosted_prompt()
+        await self._settle_session(self.session)
         if (
             self._start_title is not None and not self._cancel_requested()
             and self._agent_outcome is not None

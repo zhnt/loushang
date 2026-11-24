@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from loushang.harness.conversation import ConversationRepository
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.transcript.jsonl_file import decode_agent_transcript_bytes
+from loushang.harness.transcript.profile import create_transcript_branch_repository
 from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
@@ -75,13 +75,7 @@ def _records(
         raise TranscriptSourceError(
             "source conversation or committed line count differs"
         )
-    ConversationRepository.create(
-        header=header,
-        records=records,
-        record_id=lambda r: r.record_id,
-        parent_id=lambda r: r.parent_id,
-        mode="strict",
-    )
+    create_transcript_branch_repository(header=header, records=records, mode="strict")
     indexed = {
         r.record_id: (r, line) for r, line in zip(records, committed[1:], strict=True)
     }

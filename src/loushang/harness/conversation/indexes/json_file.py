@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import secrets
-import stat
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -16,6 +15,10 @@ from threading import Lock
 from time import time_ns
 from typing import Any, Generic, Protocol, TypeVar, cast
 
+from loushang.foundation.file_identity import (
+    regular_file_status_no_follow as _regular_file_status_no_follow,
+)
+from loushang.foundation.file_identity import same_file_status as _same_file_status
 from loushang.harness.conversation.index import (
     ConversationIndexSnapshot,
     ConversationIndexState,
@@ -758,32 +761,6 @@ def _open_file_no_follow(path: Path) -> tuple[int, int]:
             os.close(parent)
             raise
     return os.open(path, flags), -1
-
-
-def _regular_file_status_no_follow(value: os.stat_result) -> bool:
-    return stat.S_ISREG(value.st_mode) and not (
-        stat.S_ISLNK(value.st_mode)
-        or bool(
-            getattr(value, "st_file_attributes", 0)
-            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-        )
-    )
-
-
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
 
 
 def _new_generation() -> str:

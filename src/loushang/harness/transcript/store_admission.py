@@ -16,7 +16,7 @@ from _thread import LockType
 from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
-from threading import Event
+from threading import Event, Lock
 
 from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.journal._directory_lease import DirectoryWriterLease
@@ -492,6 +492,16 @@ class _TranscriptStoreCatalogObservations(_CanonicalTranscriptSourceMethods):
     _store_active_reads: int
     _observed_store_binding: TranscriptStoreBinding | None
     _observed_root_identity: tuple[int, int] | None
+
+    def _initialize_store_observations(self, state_root: Path | None) -> None:
+        self._root_observed = Event()
+        self._store_state_root = state_root
+        self._store_probes = {}
+        self._store_probe_lock = Lock()
+        self._store_probes_fenced = False
+        self._store_active_reads = 0
+        self._observed_store_binding = None
+        self._observed_root_identity = None
 
     def _maximum_store_observations(self) -> int:
         raise NotImplementedError

@@ -93,14 +93,17 @@ def test_phase5e_generation_gate_and_recovery_are_real_code_paths() -> None:
 
 def test_phase5e_coding_binding_is_explicit_and_activation_compatible() -> None:
     coding = CODING.read_text(encoding="utf-8")
+    binding_lifetime = PLUGIN_RUNTIME.with_name("_binding_lifetime.py").read_text(
+        encoding="utf-8"
+    )
 
     assert (
         "deletion_authority: ContinuityDeletionRecoveryAuthority | None = None"
         in coding
     )
-    assert "publish_continuity_plugin_generation_with_mutations" in coding
-    assert "if deletion_authority is None:" in coding
-    assert "publish_continuity_plugin_generation(" in coding
+    assert "publish_continuity_plugin_generation_with_mutations" in binding_lifetime
+    assert "if deletion_authority is None:" in binding_lifetime
+    assert "publish_continuity_plugin_generation(" in binding_lifetime
 
 
 def _imports(path: Path) -> set[str]:

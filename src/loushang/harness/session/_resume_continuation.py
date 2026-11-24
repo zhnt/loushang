@@ -8,20 +8,41 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable, Mapping, Sequence
+import os
+import re
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import replace
+from datetime import datetime
 from hashlib import sha256
-from typing import ClassVar, Generic, Protocol, TypeVar, cast
+from pathlib import Path
+from typing import (
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    Self,
+    TypedDict,
+    TypeVar,
+    cast,
+)
 
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.types import ImagePart, UserMessage
+from loushang.foundation.file_identity import is_file_status_fingerprint
+from loushang.foundation.json import JSONValue
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     execution_profile_expansion_codes,
 )
-from loushang.harness.transcript._resume_continuation import _ResumeIntentRead
+from loushang.harness.transcript._resume_continuation import (
+    _ResumeContinuationTranscript,
+    _ResumeIntentRead,
+    _ResumeProjector,
+)
 from loushang.harness.transcript._resume_records import canonical_binding_bytes
+from loushang.harness.transcript.types import AgentTranscriptRecord
 
 from .agent_product import AgentProductSession
 
@@ -29,13 +50,62 @@ IntentT = TypeVar("IntentT", bound=_ResumeIntentRead)
 IntentCo = TypeVar("IntentCo", bound=_ResumeIntentRead, covariant=True)
 
 
-
 class _ActivationOwnerRef(Protocol):
     @property
     def owner_id(self) -> str: ...
 
+    @property
+    def fingerprint(self) -> str: ...
+
 
 _RefT = TypeVar("_RefT", bound=_ActivationOwnerRef)
+_PLAN_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
+_PLAN_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+
+
+class _ActivationPlanSource(Protocol):
+    @property
+    def selected_leaf_id(self) -> str | None: ...
+    @property
+    def source_fingerprint(self) -> str: ...
+    @property
+    def source_content_digest(self) -> str: ...
+    @property
+    def selected_ancestry_digest(self) -> str | None: ...
+
+
+def require_activation_plan_workspace_root(workspace_root: Path) -> None:
+    if not isinstance(workspace_root, Path) or not workspace_root.is_absolute():
+        raise ValueError("activation Plan requires a canonical absolute workspace root")
+    if str(workspace_root) != os.path.normpath(str(workspace_root)):
+        raise ValueError("activation Plan requires a canonical absolute workspace root")
+    if len(str(workspace_root).encode("utf-8")) > 4096:
+        raise ValueError("activation Plan workspace root exceeds its budget")
+
+
+def require_activation_plan_source(
+    history: _ActivationPlanSource, *, session_id: str
+) -> None:
+    """Check the typed file identity and ancestry facts before fingerprinting a Plan."""
+    if type(session_id) is not str or _PLAN_IDENTIFIER.fullmatch(session_id) is None:
+        raise ValueError("activation Plan Session id is invalid")
+    if history.selected_leaf_id is not None and (
+        type(history.selected_leaf_id) is not str
+        or _PLAN_IDENTIFIER.fullmatch(history.selected_leaf_id) is None
+    ):
+        raise ValueError("activation Plan selected leaf id is invalid")
+    if not is_file_status_fingerprint(history.source_fingerprint):
+        raise ValueError("activation Plan source fingerprint is invalid")
+    if (
+        type(history.source_content_digest) is not str
+        or _PLAN_DIGEST.fullmatch(history.source_content_digest) is None
+    ):
+        raise ValueError("activation Plan source content digest is invalid")
+    if history.selected_ancestry_digest is not None and (
+        type(history.selected_ancestry_digest) is not str
+        or _PLAN_DIGEST.fullmatch(history.selected_ancestry_digest) is None
+    ):
+        raise ValueError("activation Plan ancestry digest is invalid")
 
 
 def checked_activation_plan_owner_refs(
@@ -65,6 +135,113 @@ def activation_plan_fingerprint(
     if len(encoded) > max_bytes:
         raise ValueError("activation Plan exceeds its byte budget")
     return sha256(digest_domain + encoded).hexdigest()
+
+
+class _ActivationSelectionRef(_ActivationOwnerRef, Protocol):
+    @property
+    def generation(self) -> str: ...
+
+
+class _ActivationPlanHistory(_ActivationPlanSource, Protocol):
+    @property
+    def selected_records(self) -> tuple[AgentTranscriptRecord, ...]: ...
+
+    @property
+    def binding_status(self) -> str: ...
+
+    @property
+    def binding(self) -> object: ...
+
+    @property
+    def activation_status(self) -> str: ...
+
+    @property
+    def pending_activation_attempt(self) -> object: ...
+
+    @property
+    def pending_activation_record_id(self) -> str | None: ...
+
+
+class _ActivationPlanIdentity(TypedDict):
+    plan_id: str
+    session_id: str
+    selected_leaf_id: str | None
+    source_fingerprint: str
+    source_content_digest: str
+    ancestry_digest: str | None
+    workspace_root: str
+    status: Literal["needs_final_validation", "unavailable"]
+
+
+def project_activation_plan_identity(
+    history: _ActivationPlanHistory,
+    *,
+    session_id: str,
+    workspace_root: Path,
+    comparison: dict[str, object],
+    inputs: Sequence[_ActivationOwnerRef],
+    selections: Sequence[_ActivationSelectionRef],
+    project_path: _ResumeProjector[_ResumeIntentRead],
+    digest_domain: bytes,
+    label: str,
+    max_bytes: int,
+) -> _ActivationPlanIdentity:
+    """Authenticate the selected path and fingerprint the bounded Plan envelope."""
+    require_activation_plan_source(history, session_id=session_id)
+    unavailable = comparison["status"] == "unavailable"
+    status: Literal["needs_final_validation", "unavailable"] = (
+        "unavailable" if unavailable else "needs_final_validation"
+    )
+    if not unavailable:
+        selected = history.selected_records
+        projection = project_path(selected, current_session_id=session_id)
+        if (
+            projection.ancestry_digest != history.selected_ancestry_digest
+            or projection.binding_status != history.binding_status
+            or projection.binding != history.binding
+            or projection.status != history.activation_status
+            or projection.attempt != history.pending_activation_attempt
+            or projection.record_id != history.pending_activation_record_id
+            or (selected[-1].record_id if selected else None)
+            != history.selected_leaf_id
+        ):
+            raise ValueError("activation Plan selected history facts differ")
+
+    document = {
+        "schemaVersion": 1,
+        "sessionId": session_id,
+        "selectedLeafId": history.selected_leaf_id,
+        "sourceFingerprint": history.source_fingerprint,
+        "sourceContentDigest": history.source_content_digest,
+        "ancestryDigest": history.selected_ancestry_digest,
+        "workspaceRoot": str(workspace_root),
+        "composition": comparison,
+        "ownerSelections": [
+            {
+                "ownerId": item.owner_id,
+                "fingerprint": item.fingerprint,
+                "generation": item.generation,
+            }
+            for item in selections
+        ],
+        "ownerInputs": [
+            {"ownerId": item.owner_id, "fingerprint": item.fingerprint}
+            for item in inputs
+        ],
+        "status": status,
+    }
+    return _ActivationPlanIdentity(
+        plan_id=activation_plan_fingerprint(
+            document, digest_domain=digest_domain, name=label, max_bytes=max_bytes
+        ),
+        session_id=session_id,
+        selected_leaf_id=history.selected_leaf_id,
+        source_fingerprint=history.source_fingerprint,
+        source_content_digest=history.source_content_digest,
+        ancestry_digest=history.selected_ancestry_digest,
+        workspace_root=str(workspace_root),
+        status=status,
+    )
 
 
 def resume_execution_scope(
@@ -116,6 +293,9 @@ class _ResumeTranscriptLifecycle(Protocol):
 class _ResumeTranscript(Protocol[IntentCo]):
     @property
     def _lifecycle_session(self) -> _ResumeTranscriptLifecycle: ...
+    @property
+    def resume_runtime_publication_pending(self) -> bool: ...
+    def require_no_unsettled_resume_activation(self) -> None: ...
     def _require_resume_runtime_preparation(self, attempt_id: str) -> IntentCo: ...
     def _require_resume_staged_input(
         self, attempt_id: str, message: UserMessage
@@ -138,6 +318,27 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
 
     _resume_label: ClassVar[str]
     _resume_recovery_error: ClassVar[type[RuntimeError]]
+
+    @property
+    def execution_available(self) -> bool:
+        return (
+            super().execution_available
+            and not self._resume_transcript.resume_runtime_publication_pending
+        )
+
+    def _require_session_operation_admission(self) -> None:
+        self._resume_transcript.require_no_unsettled_resume_activation()
+        publication = getattr(self, "_resume_publication", None)
+        if publication is not None:
+            self._require_current_resume_publication(publication)
+
+    def _is_current_model_call_session(self) -> bool:
+        if not super()._is_current_model_call_session():
+            return False
+        publication = getattr(self, "_resume_publication", None)
+        if publication is not None:
+            self._require_current_resume_publication(publication)
+        return True
 
     def _init_resume_runtime_state(self) -> None:
         # Called at the Product's original construction point, before graph IO.
@@ -558,70 +759,251 @@ def require_resume_owner_check(
         raise TypeError(invalid_return)
 
 
-async def commit_prepared_resume_input(
-    session: _ResumeContinuationSession[IntentT],
-    *,
-    transcript_lifecycle: _ResumeTranscriptLifecycle,
-    attempt: IntentT,
-    receipt: Mapping[str, object],
-    text: str,
-    images: list[ImagePart] | None,
-    require_current_admission: Callable[[IntentT], None],
-    require_current_epoch_settlement: Callable[[IntentT, Mapping[str, object]], None],
-    stage_input: Callable[[UserMessage], None],
-    observe_commit: Callable[[str], None],
-    record_phase: Callable[[str], None],
-    invalid_check_return: str,
-    missing_candidate: str,
-) -> str:
-    """Keep preflight and publication on the original graph and durable Writer."""
+_WriterT = TypeVar("_WriterT", bound=_ResumeContinuationTranscript[Any, Any, Any, Any, Any])
+_SessionT = TypeVar("_SessionT", bound=_ResumeContinuationSession[Any])
+_QueryT = TypeVar("_QueryT")
+_ContinuationT = TypeVar("_ContinuationT")
+_BindingT = TypeVar("_BindingT")
+_ResumeCleanupSession = _ResumeContinuationSession[Any]
+_ResumeCleanupWriter = _ResumeContinuationTranscript[Any, Any, Any, Any, Any]
+_ResumeCleanupOwner = _ResumeCleanupSession | _ResumeCleanupWriter
 
-    def current() -> None:
-        require_resume_owner_check(
-            lambda: require_current_admission(attempt),
-            invalid_return=invalid_check_return,
+
+class ResumeContinuationCleanupFailure(RuntimeError):
+    """Retain the original undelivered Session or Writer for cleanup retry."""
+
+    _cleanup_label: ClassVar[str]
+
+    def __init__(
+        self,
+        *,
+        original_owner: _ResumeCleanupOwner,
+        original_error: BaseException,
+        cleanup_error: BaseException,
+    ) -> None:
+        super().__init__(f"{self._cleanup_label} continuation cleanup remains pending")
+        self.original_owner = original_owner
+        self.original_error = original_error
+        self.cleanup_error = cleanup_error
+
+    async def retry_cleanup(self) -> None:
+        owner = self.original_owner
+        if isinstance(owner, _ResumeContinuationSession):
+            await owner.dispose()
+        else:
+            await owner.dispose_runtime_profile()
+
+    @classmethod
+    def retain_resume_cleanup_failure(
+        cls,
+        *,
+        original_owner: _ResumeCleanupOwner,
+        original_error: BaseException,
+        cleanup_error: BaseException,
+    ) -> Self:
+        """Fence the admitting factory before retaining its exact owner."""
+        writer = (
+            cast(_ResumeCleanupWriter, original_owner._resume_transcript)
+            if isinstance(original_owner, _ResumeContinuationSession)
+            else original_owner
+        )
+        try:
+            type(writer)._factory_for_persistence(True).fence()
+        except BaseException as fence_error:
+            original_error.add_note(
+                f"Original {cls._cleanup_label} factory fencing also failed: {fence_error!r}"
+            )
+        return cls(
+            original_owner=original_owner,
+            original_error=original_error,
+            cleanup_error=cleanup_error,
         )
 
-    def settled() -> None:
-        with transcript_lifecycle.sync_operation_scope():
+    @classmethod
+    async def discard_candidate(
+        cls,
+        session: _ResumeCleanupSession | None,
+        original_error: BaseException,
+        *,
+        manager: _ResumeCleanupWriter | None = None,
+        cleanup_note: str | None = None,
+    ) -> None:
+        """Dispose the original candidate and retain its owner on failure."""
+        try:
+            if session is not None:
+                await session.dispose()
+            elif manager is not None:
+                await manager.dispose_runtime_profile()
+        except BaseException as cleanup_error:
+            if cleanup_note is not None:
+                original_error.add_note(f"{cleanup_note}{cleanup_error!r}")
+            owner = session if session is not None else manager
+            assert owner is not None
+            raise cls.retain_resume_cleanup_failure(
+                original_owner=owner,
+                original_error=original_error,
+                cleanup_error=cleanup_error,
+            ) from original_error
+
+
+async def prepare_resume_continuation(
+    *,
+    product_label: str,
+    attempt: IntentT,
+    input_record_id: str,
+    text: str,
+    images: list[ImagePart] | None,
+    created_at: datetime,
+    require_current_admission: Callable[[IntentT], None],
+    require_current_epoch_settlement: Callable[[IntentT, Mapping[str, object]], None],
+    open_writer: Callable[[], Awaitable[_WriterT]],
+    build_session: Callable[[_WriterT], Awaitable[_SessionT]],
+    enroll_native_owners: Callable[[_WriterT], Callable[[], None]] | None,
+    prepare_binding: Callable[[UserMessage], _BindingT],
+    input_query: Callable[[str, str], _QueryT],
+    observe_input_identity: Callable[[_QueryT], None] | None,
+    retained_cleanup_error: type[ResumeContinuationCleanupFailure],
+    deliver: Callable[[_SessionT, str, str, _QueryT], _ContinuationT],
+    input_metadata: Mapping[str, JSONValue] | None = None,
+) -> _ContinuationT:
+    """Commit initial input on the original Writer and publish its prepared Session."""
+
+    invalid_check_return = f"{product_label} owner check must return None"
+
+    def checked(check: Callable[[], None]) -> None:
+        require_resume_owner_check(check, invalid_return=invalid_check_return)
+
+    def current() -> None:
+        checked(lambda: require_current_admission(attempt))
+
+    manager: _WriterT | None = None
+    session: _SessionT | None = None
+    observed_input = False
+    phase = "writer_preparation"
+    current()
+    try:
+        writer = manager = await open_writer()
+        with writer._lifecycle_session.sync_operation_scope():
             current()
-            candidate = session._resume_candidate
-            if candidate is None:
-                raise RuntimeError(missing_candidate)
-            session._require_resume_candidate(candidate)
+            writer._require_fresh_resume_input(attempt, input_record_id)
+        phase = "intent_commit"
+        await writer._commit_resume_activation_intent(
+            writer._resume_records.prepare_attempt(attempt, created_at=created_at)
+        )
+        seal = None
+        if enroll_native_owners is not None:
+            phase = "native_owner_enrollment"
             current()
-            session._require_resume_worker_effect_settlement(attempt)
-            current()
-            require_resume_owner_check(
-                lambda: require_current_epoch_settlement(attempt, receipt),
-                invalid_return=invalid_check_return,
-            )
-            current()
-            session._require_resume_candidate(candidate)
+            seal = enroll_native_owners(writer)
             current()
 
-    settled()
-    record_phase("input_preparation")
-    message = await session._prepare_resume_first_user_input(
-        text,
-        images=images,
-        attempt_id=attempt.attempt_id,
-        require_current_admission=require_current_admission,
-    )
-    settled()
-    stage_input(message)
-    record_phase("input_commit")
-    record_id = await session._commit_resume_first_user_input(
-        message,
-        attempt_id=attempt.attempt_id,
-        require_current_admission=require_current_admission,
-    )
-    observe_commit(record_id)
-    record_phase("runtime_publication")
-    await session._publish_resume_runtime(
-        attempt_id=attempt.attempt_id,
-        input_record_id=record_id,
-        require_current_admission=require_current_admission,
-        require_current_epoch_settlement=require_current_epoch_settlement,
-    )
-    return record_id
+        phase = "runtime_preparation"
+        prepared = session = await build_session(writer)
+        receipt = await prepared._prepare_resume_runtime_graph(
+            attempt_id=attempt.attempt_id,
+            require_current_admission=require_current_admission,
+        )
+        if seal is not None:
+            phase = "native_owner_seal"
+            current()
+            seal()
+            current()
+
+        def settled() -> None:
+            with writer._lifecycle_session.sync_operation_scope():
+                current()
+                candidate = prepared._resume_candidate
+                if candidate is None:
+                    raise RuntimeError(f"{product_label} candidate was not delivered")
+                prepared._require_resume_candidate(candidate)
+                current()
+                prepared._require_resume_worker_effect_settlement(attempt)
+                current()
+                checked(lambda: require_current_epoch_settlement(attempt, receipt))
+                current()
+                prepared._require_resume_candidate(candidate)
+                current()
+
+        settled()
+        phase = "input_preparation"
+        message = await prepared._prepare_resume_first_user_input(
+            text,
+            images=images,
+            attempt_id=attempt.attempt_id,
+            require_current_admission=require_current_admission,
+        )
+        settled()
+        writer._stage_resume_first_user_input(
+            message,
+            prepare_binding=prepare_binding,
+            created_at=created_at,
+            original_leaf_id=attempt.original_leaf_id,
+            ancestry_digest=attempt.ancestry_digest,
+            attempt_id=attempt.attempt_id,
+        )
+        phase = "input_commit"
+        router = prepared._composition.session_runtime.agent_event_router
+        previous_metadata = router.prepare_message_metadata
+        if input_metadata is not None:
+            def prepare_metadata(value: object) -> Mapping[str, JSONValue] | None:
+                metadata = previous_metadata(value) if previous_metadata is not None else None
+                return {**(metadata or {}), **input_metadata} if value is message else metadata
+
+            router.prepare_message_metadata = prepare_metadata
+        try:
+            record_id = await prepared._commit_resume_first_user_input(
+                message,
+                attempt_id=attempt.attempt_id,
+                require_current_admission=require_current_admission,
+            )
+        finally:
+            if input_metadata is not None:
+                router.prepare_message_metadata = previous_metadata
+        _, committed = writer._require_committed_resume_input(attempt.attempt_id, record_id)
+        query = input_query(attempt.request_id, writer._resume_messages.record_digest(committed))
+        observed_input = True
+        if observe_input_identity is not None:
+            checked(lambda: observe_input_identity(query))
+        phase = "runtime_publication"
+        await prepared._publish_resume_runtime(
+            attempt_id=attempt.attempt_id,
+            input_record_id=record_id,
+            require_current_admission=require_current_admission,
+            require_current_epoch_settlement=require_current_epoch_settlement,
+        )
+        return deliver(prepared, attempt.attempt_id, record_id, query)
+    except BaseException as error:
+        error.add_note(
+            f"{product_label} continuation failed during {phase}; "
+            "no model was dispatched by this entry."
+        )
+        if isinstance(error, retained_cleanup_error):
+            # The failed bootstrap already retains the complete candidate and Writer.
+            raise
+        if phase in {"input_commit", "runtime_publication"}:
+            error.add_note(
+                "Input may already be committed; use original input lookup before any explicit recovery."
+            )
+            if manager is not None and not observed_input and observe_input_identity is not None:
+                proof = manager._resume_committed_input
+                pending = manager._resume_first_input
+                record = proof[1] if proof is not None else (
+                    pending.prepared_record if pending is not None else None
+                )
+                if record is not None:
+                    try:
+                        recovery_query = input_query(
+                            attempt.request_id, manager._resume_messages.record_digest(record)
+                        )
+                        checked(lambda: observe_input_identity(recovery_query))
+                    except BaseException as observation_error:
+                        error.add_note(
+                            f"Resume input identity delivery also failed: {observation_error!r}"
+                        )
+        await retained_cleanup_error.discard_candidate(
+            session,
+            error,
+            manager=manager,
+            cleanup_note=f"Original {product_label} owner cleanup also failed: ",
+        )
+        raise

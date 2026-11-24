@@ -166,8 +166,10 @@ def test_g8_join_adopts_before_inspection_and_recovers_before_effect() -> None:
     assert source.index("await owner.recover()") < source.index(
         "status = await owner.start("
     )
-    assert "self._active: set[_WorkerAttemptOwner]" in source
-    assert "self._debt: set[_WorkerAttemptOwner]" in source
+    custody = _read(Path("src/loushang/harness/runtime/_owned_tasks.py"))
+    assert "self._active: set[_ProductOwnerT]" in custody
+    assert "self._debt: set[_ProductOwnerT]" in custody
+    assert "_UnpublishedProductOwners[_WorkerAttemptOwner]" in source
     assert "await self.settle_pending_cleanup()" in source
     assert "product_factory: CodingAppHostProductFactoryV1" in source
     assert "attempt_factory: CodingAppHostWorkerAttemptFactoryV1" not in source[

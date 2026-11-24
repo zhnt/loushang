@@ -829,7 +829,11 @@ class SessionFacade(
     def set_auto_compaction_enabled(self, enabled: bool) -> None:
         self.maintenance.set_auto_compaction_enabled(enabled)
 
+    def _require_session_operation_admission(self) -> None:
+        """Allow profiles to check their current owner before an operation."""
+
     async def compact(self, custom_instructions: str | None = None) -> object:
+        self._require_session_operation_admission()
         self.runtime.execution_admission.require_unbound_run()
         ticket = self.runtime.execution_admission.begin_input()
         try:

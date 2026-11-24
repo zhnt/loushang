@@ -35,7 +35,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
-from .epoch_layout import resolve_coding_package_epoch_layout
 from .installation_private_data import (
     coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
 )
@@ -67,13 +66,8 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
     product: WindowsLocalWheelProductSessionOwner
 
     def __post_init__(self) -> None:
-        CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
-        if (
-            self.product.state_root
-            != resolve_coding_package_epoch_layout(self.layout).control_root
-            / "product-state"
-        ):
-            raise ValueError("Windows Coding Arch confirmation Product state changed")
+        preview = CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
+        preview._require_product_state_root("confirmation")
 
     def plan_for(self, key: PluginInstallationKeyV1) -> PluginPrivateDataDeletionPlanV1:
         """Observe the exact current target without creating acceptance."""

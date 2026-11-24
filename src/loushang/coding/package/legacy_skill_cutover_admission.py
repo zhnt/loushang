@@ -12,6 +12,9 @@ from loushang.harness.package_product._legacy_data_admission import (
     LegacyDataSnapshotAdmission,
     verify_legacy_data_wheels,
 )
+from loushang.harness.package_product._legacy_runtime import (
+    guard_legacy_snapshot_admission,
+)
 from loushang.harness.plugin_authoring.resource_item import (
     _inspect_legacy_local_data_wheel,
 )
@@ -26,7 +29,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 
 from .legacy_configured_source import _index_configured_sources
-from .legacy_desired_evidence import CodingLegacyDesiredError
 from .legacy_desired_evidence import (
     parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
 )
@@ -34,9 +36,9 @@ from .legacy_desired_evidence import (
     read_coding_legacy_desired_evidence as read_coding_legacy_desired_evidence,
 )
 from .legacy_installation_inventory import (
+    _BUILTINS,
     _MAX_REMOVAL_BINDINGS,
-    CodingLegacyInventoryError,
-    _bind_legacy_inventory_query,
+    _legacy_inventory_reader,
 )
 from .legacy_installation_inventory import (
     classify_coding_legacy_installations as classify_coding_legacy_installations,
@@ -48,24 +50,18 @@ from .legacy_installation_inventory import (
     read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
 )
 from .legacy_instance_evidence import (
-    CodingLegacyInstanceEvidenceError,
-    _management_capture_paths,
-)
-from .legacy_instance_evidence import (
     parse_coding_legacy_retired_instance_capture as parse_coding_legacy_retired_instance_capture,
 )
 from .legacy_local_wheel import (
     CodingLegacyLocalWheelCandidateV1,
     _new_wheel_candidate,
 )
-from .legacy_lock_evidence import CodingLegacyLockError
 from .legacy_lock_evidence import (
     parse_coding_legacy_local_binding_heads as parse_coding_legacy_local_binding_heads,
 )
 from .legacy_lock_evidence import (
     read_coding_legacy_local_binding_heads as read_coding_legacy_local_binding_heads,
 )
-from .legacy_operation_evidence import CodingLegacyOperationEvidenceError
 from .legacy_operation_evidence import (
     CodingLegacyRetirementCaptureV1 as CodingLegacyRetirementCaptureV1,
 )
@@ -96,9 +92,7 @@ from .source_snapshot import _PROJECTION_NAME
 
 # Each member is reacquired and rebuilt while the first-fence lock is held.
 _MAX_LOCAL_DATA_PLUGINS = 16
-_REMOVABLE_BUILTIN_PLUGIN_IDS = frozenset(
-    {"coding.base", "coding.lsp.default", "coding.arch.default"}
-)
+_REMOVABLE_BUILTIN_PLUGIN_IDS = _BUILTINS
 
 
 _RESOURCE_REFUSAL_CODES = {
@@ -138,7 +132,11 @@ def admit_coding_single_legacy_skill_snapshot(
         raise ValueError("Coding legacy Plugin identity is required")
     if resource_kind not in _RESOURCE_REFUSAL_CODES:
         raise ValueError("Unsupported legacy Resource type")
-    try:
+    with guard_legacy_snapshot_admission(
+        "Coding legacy data snapshot cannot be admitted before first fence",
+        code=_RESOURCE_REFUSAL_CODES[resource_kind],
+        extra_errors=(KeyError, zipfile.BadZipFile),
+    ):
         evidence = _data_snapshot_admission(lifecycle).before_fence(
             prepared.owner,
             snapshot,
@@ -157,13 +155,6 @@ def admit_coding_single_legacy_skill_snapshot(
             required_kind=resource_kind,
             result_factory=_new_wheel_candidate,
         )
-    except PackagePosixEpochCutoverError:
-        raise
-    except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile) as exc:
-        raise PackagePosixEpochCutoverError(
-            "Coding legacy data snapshot cannot be admitted before first fence",
-            code=_RESOURCE_REFUSAL_CODES[resource_kind],
-        ) from exc
 
 
 def require_coding_fenced_single_legacy_skill_snapshot(
@@ -175,10 +166,7 @@ def require_coding_fenced_single_legacy_skill_snapshot(
     """Check frozen old inputs without depending on the original live Source."""
 
     reader = _snapshot_reader(lifecycle, epoch_runtime)
-    evidence = _data_snapshot_admission(lifecycle).after_fence(
-        reader,
-        _bind_legacy_inventory_query(lifecycle, reader),
-    )
+    evidence = _data_snapshot_admission(lifecycle).after_fence(reader)
     identities = _adoptable_source_identities(
         evidence, plugin_id, "Coding first-B Installation set is unsupported"
     )
@@ -230,18 +218,8 @@ def _data_snapshot_admission(
 ) -> LegacyDataSnapshotAdmission:
     return LegacyDataSnapshotAdmission(
         source_member=_PROJECTION_NAME,
-        desired_path=lifecycle.desired_state,
-        management_paths=_management_capture_paths(lifecycle),
-        product_id="coding",
-        scope_id=lifecycle.scope_id,
-        builtin_ids=_REMOVABLE_BUILTIN_PLUGIN_IDS,
+        inventory_reader=_legacy_inventory_reader(lifecycle),
         maximum_bindings=_MAX_REMOVAL_BINDINGS,
-        inventory_error=CodingLegacyInventoryError,
-        lock_error=CodingLegacyLockError,
-        desired_error=CodingLegacyDesiredError,
-        operation_error=CodingLegacyOperationEvidenceError,
-        instance_error=CodingLegacyInstanceEvidenceError,
-        label="Coding",
     )
 
 

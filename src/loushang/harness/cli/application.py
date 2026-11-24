@@ -11,6 +11,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Generic, TextIO, TypeAlias, TypeVar, cast
 
+from loushang.foundation._owned_tasks import _join_failure_first
 from loushang.harness.cli.agent_args import (
     AgentCliArgs,
     agent_cli_bootstrap_args,
@@ -78,6 +79,44 @@ class CliPhaseResult(Generic[ResultT]):
     @classmethod
     def exit(cls, exit_code: int) -> "CliPhaseResult[ResultT]":
         return cls(exit_code=exit_code)
+
+
+def cli_options_match_defaults(
+    args: AgentCliArgs, defaults: AgentCliArgs, *operation_fields: str
+) -> bool:
+    """Compare parsed CLI values after removing a standalone operation's inputs."""
+    return replace(
+        args, **{field: getattr(defaults, field) for field in operation_fields}
+    ) == defaults
+
+
+def run_guarded_cli_operation(
+    operation: Callable[[], CliPhaseResult[ResultT]],
+    *,
+    workspace_guard: Callable[[], None],
+    stderr: TextIO,
+    coded_errors: tuple[type[Exception], ...],
+    unavailable_code: str,
+    value_error_codes: tuple[str, ...] = (),
+) -> CliPhaseResult[ResultT]:
+    """Check the original workspace before execution and before publishing a value."""
+    try:
+        workspace_guard()
+        result = operation()
+        if result.exit_code is None:
+            workspace_guard()
+        return result
+    except Exception as error:
+        if isinstance(error, coded_errors):
+            code = getattr(error, "code")
+        else:
+            code = unavailable_code
+            if value_error_codes and isinstance(error, ValueError):
+                message = str(error)
+                if message in value_error_codes:
+                    code = message
+        stderr.write(f"Error: {code}\n")
+        return CliPhaseResult.exit(1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -817,16 +856,7 @@ async def _settle_runtime_disposal(
     async def run() -> None:
         await _resolve(dispose(runtime))
 
-    task = asyncio.create_task(run())
-    interrupted = False
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError:
-            interrupted = True
-    task.result()
-    if interrupted:
-        raise asyncio.CancelledError
+    await _join_failure_first(asyncio.create_task(run()))
 
 
 def capture_cli_parse(

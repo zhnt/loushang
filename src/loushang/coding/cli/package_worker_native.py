@@ -4,21 +4,17 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
-import re
-import secrets
-import stat
 import sys
 from collections.abc import Sequence
-from hashlib import sha256
-from importlib.metadata import PackageNotFoundError, version
+from contextlib import closing
+from functools import partial
+from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
 
 from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
-    CodingWorkerCandidateReadEvidenceV1,
 )
 from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
@@ -39,7 +35,6 @@ from loushang.coding.package.product_worker_native_install import (
 from loushang.coding.package.product_worker_operator_query import (
     query_coding_product_worker,
 )
-from loushang.coding.package.product_worker_opt_in import CodingWorkerOptInDecisionV1
 from loushang.coding.package.product_worker_opt_in_owner import (
     CodingWorkerProductOptInOwner,
 )
@@ -47,12 +42,7 @@ from loushang.coding.package.product_worker_payload import (
     CodingWorkerPayloadDebtPlanV1,
     preview_coding_product_worker_empty_payload_debt,
     preview_coding_product_worker_payload_debt,
-    read_coding_product_worker_payload_repair_intent,
-    read_coding_product_worker_unmarked_payload_repair_intent,
-    reopen_coding_product_worker_empty_payload_repair,
-    repair_coding_product_worker_empty_payload_debt,
-    repair_coding_product_worker_payload_debt,
-    repair_coding_product_worker_unmarked_payload_debt,
+    repair_reviewed_coding_product_worker_payload,
     review_coding_product_worker_unmarked_payload_debt,
 )
 from loushang.coding.package.product_worker_registered_recovery import (
@@ -70,32 +60,24 @@ from loushang.coding.package.product_worker_start_gate_recovery import (
     settle_coding_product_worker_gated_attempt,
 )
 from loushang.coding.plugin_manager.lifecycle import (
+    CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.harness.cli.worker_candidate import (
+    NativeWorkerCandidateOperator,
+    NativeWorkerReleaseInput,
+    add_native_worker_review_commands,
+    add_worker_candidate_commands,
+    add_worker_candidate_opt_in_commands,
+    read_worker_candidate_status,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.package_product.product_worker_candidate import (
-    _run_worker_candidate_lifecycle,
-    _update_worker_candidate,
-)
-from loushang.harness.plugin_management.operations import (
-    PluginManagementCommandV1,
-    PluginManagementOperationEventV1,
-)
-from loushang.harness.plugin_management.package_product import (
-    PackageProductRuntimeReadError,
-)
-from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWorkerAdmissionV1,
-)
 
-_MAX_WHEEL_BYTES = 4 * 1024 * 1024
-_SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
+_RELEASE_INPUT = NativeWorkerReleaseInput(
+    "Coding Worker native Wheel", 4 * 1024 * 1024, "linux-x86_64"
+)
 
 
 class CodingWorkerNativeCandidateCommandError(ValueError):
@@ -104,84 +86,52 @@ class CodingWorkerNativeCandidateCommandError(ValueError):
         self.code = code
 
 
+_CANDIDATE_OPERATOR = NativeWorkerCandidateOperator(
+    product_id="coding",
+    native_platform="linux-x86_64",
+    label="Coding Worker",
+    error_type=CodingWorkerNativeCandidateCommandError,
+    error_prefix="coding_worker",
+    not_directory="Coding workspace is not a directory",
+    refused="Coding Worker native command refused",
+    failure_code="coding_worker_native_command_unavailable",
+    ordinary_session_routing="python_sdk_explicit_linux",
+    compact=True,
+)
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-worker-native")
     parser.add_argument("--workspace", default=".", help="fenced Coding workspace")
     actions = parser.add_subparsers(dest="action", required=True)
-    candidate_capture = actions.add_parser(
-        "candidate-capture", help="capture one inert Product Worker Wheel candidate"
+    add_worker_candidate_commands(
+        actions,
+        help_text={
+            "candidate-capture": "capture one inert Product Worker Wheel candidate",
+            "candidate-install": "install one captured Worker candidate disabled",
+            "candidate-update": "update one installed Worker from an exact revision",
+            "candidate-enable": "enable one exact installed Worker candidate",
+            "candidate-disable": "disable one exact installed Worker candidate",
+            "candidate-remove": "remove one Worker candidate from Desired State",
+        },
+        native_platform_option=_CANDIDATE_OPERATOR.native_platform,
     )
-    candidate_capture.add_argument("--wheel", required=True)
-    candidate_capture.add_argument("--contribution-id", required=True)
-    candidate_capture.add_argument("--owner-id", required=True)
-    candidate_capture.add_argument(
-        "--native-platform", choices=("linux-x86_64",), required=True
-    )
-    candidate_install = actions.add_parser(
-        "candidate-install", help="install one captured Worker candidate disabled"
-    )
-    candidate_install.add_argument("--plugin-id", required=True)
-    candidate_install.add_argument("--artifact-digest", required=True)
-    candidate_install.add_argument("--operation-id", required=True)
-    candidate_update = actions.add_parser(
-        "candidate-update", help="update one installed Worker from an exact revision"
-    )
-    candidate_update.add_argument("--plugin-id", required=True)
-    candidate_update.add_argument("--from-artifact-digest", required=True)
-    candidate_update.add_argument("--artifact-digest", required=True)
-    candidate_update.add_argument("--operation-id", required=True)
-    candidate_update.add_argument(
-        "--expected-inventory-revision", type=int, required=True
-    )
-    candidate_enable = actions.add_parser(
-        "candidate-enable", help="enable one exact installed Worker candidate"
-    )
-    candidate_enable.add_argument("--plugin-id", required=True)
-    candidate_enable.add_argument("--artifact-digest", required=True)
-    candidate_enable.add_argument("--operation-id", required=True)
-    candidate_enable.add_argument(
-        "--expected-inventory-revision", type=int, required=True
-    )
-    for action, help_text in (
-        ("candidate-disable", "disable one exact installed Worker candidate"),
-        ("candidate-remove", "remove one Worker candidate from Desired State"),
-    ):
-        candidate_change = actions.add_parser(action, help=help_text)
-        candidate_change.add_argument("--plugin-id", required=True)
-        candidate_change.add_argument("--artifact-digest", required=True)
-        candidate_change.add_argument("--operation-id", required=True)
-        candidate_change.add_argument(
-            "--expected-inventory-revision", type=int, required=True
-        )
     actions.add_parser("status", help="read the current Product approval decision")
-    review = actions.add_parser("review", help="verify and review one native Wheel")
-    review.add_argument("--wheel", required=True)
-    approve = actions.add_parser("approve", help="approve one unchanged review")
-    approve.add_argument("--wheel", required=True)
-    approve.add_argument("--review-id", required=True)
-    approve.add_argument("--operation-id", required=True)
-    approve.add_argument("--expected-generation", type=int, required=True)
+    add_native_worker_review_commands(
+        actions,
+        review_help="verify and review one native Wheel",
+        approve_help="approve one unchanged review",
+    )
     revoke = actions.add_parser("revoke", help="revoke the current release approval")
     revoke.add_argument("--operation-id", required=True)
     revoke.add_argument("--expected-generation", type=int, required=True)
-    candidate_status = actions.add_parser(
-        "candidate-status", help="read one explicit Product Worker opt-in decision"
+    add_worker_candidate_opt_in_commands(
+        actions,
+        help_text={
+            "candidate-status": "read one explicit Product Worker opt-in decision",
+            "candidate-allow": "allow one selected Worker candidate, without routing Sessions",
+            "candidate-revoke": "revoke one Product Worker candidate opt-in",
+        },
     )
-    candidate_status.add_argument("--plugin-id", required=True)
-    candidate_allow = actions.add_parser(
-        "candidate-allow",
-        help="allow one selected Worker candidate, without routing Sessions",
-    )
-    candidate_allow.add_argument("--plugin-id", required=True)
-    candidate_allow.add_argument("--operation-id", required=True)
-    candidate_allow.add_argument("--expected-generation", type=int, required=True)
-    candidate_allow.add_argument("--require-worker", action="store_true")
-    candidate_revoke = actions.add_parser(
-        "candidate-revoke", help="revoke one Product Worker candidate opt-in"
-    )
-    candidate_revoke.add_argument("--plugin-id", required=True)
-    candidate_revoke.add_argument("--operation-id", required=True)
-    candidate_revoke.add_argument("--expected-generation", type=int, required=True)
     query = actions.add_parser(
         "query", help="query an installed, selected Worker in an existing Session"
     )
@@ -253,329 +203,71 @@ def main(argv: Sequence[str] | None = None) -> int:
     if os.name != "posix" or not sys.platform.startswith("linux"):
         sys.stderr.write("Coding Worker native command refused: platform_unsupported\n")
         return 1
-    try:
-        workspace = Path(args.workspace).expanduser().resolve(strict=True)
-        if not workspace.is_dir():
-            raise ValueError("Coding workspace is not a directory")
-        lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-        result: dict[str, object]
-        if args.action == "candidate-capture":
-            binding = admit_coding_external_worker_wheel(
-                lifecycle,
-                source=Path(args.wheel).expanduser().absolute(),
-                admission=PackageProductLocalWorkerAdmissionV1(
-                    contribution_id=args.contribution_id,
-                    owner_id=args.owner_id,
-                    native_platform=args.native_platform,
-                ),
-            )
-            result = {
-                "workerCandidateBinding": binding.to_dict(),
-                "candidateCapture": "recorded",
-                "productAdmission": "not_checked",
-                "productUse": "not_checked",
-            }
-        elif args.action == "candidate-status":
-            with CodingFencedProductReadOnlyPreviewOwner.open(
-                lifecycle, worker_candidates=True
-            ) as read_owner:
-                result = _read_candidate_status_document(read_owner, args.plugin_id)
-        else:
-            application = open_coding_fenced_product_application_owner(
-                lifecycle,
-                workspace=workspace,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                worker_candidates=True,
-            )
-            try:
-                product = application.runtime_owner.product_owner
-                if not isinstance(product, PosixLocalWheelProductSessionOwner):
-                    raise ValueError(
-                        "Coding Worker native Product owner is unsupported"
-                    )
-                result = _execute(product, args)
-            finally:
-                application.close()
-    except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
-        reason = getattr(error, "code", None)
-        if not isinstance(reason, str) or _SAFE_ERROR_CODE.fullmatch(reason) is None:
-            reason = "coding_worker_native_command_unavailable"
-        sys.stderr.write(f"Coding Worker native command refused: {reason}\n")
-        return 1
-    sys.stdout.write(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n")
-    return 0
+
+    return _CANDIDATE_OPERATOR.run(
+        args,
+        resolve_layout=resolve_coding_plugin_lifecycle_state_layout,
+        admit=lambda layout: partial(admit_coding_external_worker_wheel, layout),
+        execute=_run_product_action,
+    )
 
 
-def _candidate_status_document(
-    decision: CodingWorkerOptInDecisionV1 | None,
+def _run_product_action(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    workspace: Path,
+    args: argparse.Namespace,
 ) -> dict[str, object]:
-    return {
-        "candidateOptInDecision": None if decision is None else decision.to_dict(),
-        "ordinarySessionRouting": "python_sdk_explicit_linux",
-        "defaultSessionRouting": "closed",
-    }
+    if args.action == "candidate-status":
+        with CodingFencedProductReadOnlyPreviewOwner.open(
+            lifecycle, worker_candidates=True
+        ) as read_owner:
+            return _read_candidate_status_document(read_owner, args.plugin_id)
+    application = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    with closing(application):
+        product = application.runtime_owner.product_owner
+        if not isinstance(product, PosixLocalWheelProductSessionOwner):
+            raise ValueError("Coding Worker native Product owner is unsupported")
+        return _execute(product, args)
 
 
 def _read_candidate_status_document(
     owner: CodingFencedProductReadOnlyPreviewOwner, plugin_id: str
 ) -> dict[str, object]:
-    """Join read-only selection and opt-in observations as partial evidence."""
-
-    before = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
-    decision_before = owner.worker_opt_in_decision(plugin_id)
-    selection: dict[str, object] = {"stage": "not_selected"}
-    evidence: CodingWorkerCandidateReadEvidenceV1 | None = None
-    if before.desired_state == "installed_enabled":
-        try:
-            evidence = owner.selected_worker_candidate_evidence(plugin_id)
-        except PackageProductRuntimeReadError as error:
-            if error.code != "package_product_root_not_selected":
-                raise
-            selection = {"stage": "blocked", "reasonCode": error.code}
-        else:
-            selected = evidence.candidate
-            selection = {
-                "stage": "observed_in_read",
-                "pluginVersion": selected.plugin_version,
-                "executableDigest": selected.executable_digest,
-            }
-    after = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
-    decision_after = owner.worker_opt_in_decision(plugin_id)
-    stale = (
-        before.inventory_revision != after.inventory_revision
-        or decision_before != decision_after
+    return read_worker_candidate_status(
+        owner,
+        plugin_id,
+        ordinary_session_routing=_CANDIDATE_OPERATOR.ordinary_session_routing,
     )
-    if stale:
-        selection = {"stage": "stale_evidence"}
-        alignment = "stale_evidence"
-    elif selection["stage"] == "blocked":
-        alignment = "blocked"
-    elif evidence is None:
-        alignment = "not_selected"
-    elif decision_after is None or decision_after.action != "allow":
-        alignment = "not_allowed"
-    else:
-        opt_in = decision_after.opt_in
-        candidate = evidence.candidate
-        alignment = (
-            "identity_match_in_read"
-            if opt_in is not None
-            and opt_in.plugin_id == candidate.plugin_id
-            and opt_in.contribution_id == candidate.contribution_id
-            and opt_in.owner_id == candidate.owner_id
-            and opt_in.artifact_digest == evidence.artifact_digest
-            and opt_in.native_platform == evidence.native_platform
-            else "identity_mismatch"
-        )
-    return {
-        **_candidate_status_document(decision_after),
-        "candidateStatusVersion": 2,
-        "snapshotStatus": "stale_evidence" if stale else "partial_evidence",
-        "desiredInventoryRevision": after.inventory_revision,
-        "candidateSelection": selection,
-        "candidateOptInAlignment": alignment,
-        "productUse": "not_checked",
-    }
+
+
+_PAYLOAD_REPAIRS: dict[
+    str, tuple[Literal["complete", "empty", "unmarked"], str, str]
+] = {
+    "repair-payload-debt": ("complete", "payloadDebtRepair", "planId"),
+    "repair-empty-payload-debt": ("empty", "emptyPayloadDebtRepair", "planId"),
+    "repair-unmarked-payload-debt": (
+        "unmarked",
+        "unmarkedPayloadDebtRepair",
+        "reviewId",
+    ),
+}
 
 
 def _execute(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    if args.action in {
-        "candidate-install",
-        "candidate-update",
-        "candidate-enable",
-        "candidate-disable",
-        "candidate-remove",
-    }:
-        matching = tuple(
-            binding
-            for binding in product.policy.bindings
-            if binding.source_trust_class == "local-worker-candidate"
-            and binding.plugin_id == args.plugin_id
-            and binding.artifact_digest == args.artifact_digest
-        )
-        if len(matching) != 1:
-            raise ValueError("Coding Worker candidate is unavailable or ambiguous")
-        binding = matching[0]
-        snapshot = product.desired_state.snapshot()
-        installed = tuple(
-            item
-            for item in snapshot.installations
-            if item.installation_key.plugin_id == args.plugin_id
-            and item.installation_key.product_id == "coding"
-            and item.installation_key.installation_scope == "workspace"
-        )
-        if len(installed) > 1:
-            raise ValueError("Coding Worker candidate installation is ambiguous")
-        selected = installed[0] if installed else None
-        selected_revision = (
-            None if selected is None else selected.selection.package_revision
-        )
-        if args.action == "candidate-update":
-
-            def require_revoked() -> None:
-                current_opt_in = CodingWorkerProductOptInOwner(product).current(
-                    args.plugin_id
-                )
-                if current_opt_in is not None and current_opt_in.action == "allow":
-                    raise CodingWorkerNativeCandidateCommandError(
-                        "coding_worker_candidate_opt_in_revoke_required",
-                        "Coding Worker candidate opt-in must be revoked",
-                    )
-
-            lifecycle, inventory_revision, already_updated = _update_worker_candidate(
-                product,
-                binding,
-                snapshot,
-                selected,
-                args,
-                product_id="coding",
-                label="Coding Worker",
-                require_revoked=require_revoked,
-                error_type=CodingWorkerNativeCandidateCommandError,
-                error_code="coding_worker_candidate_update_selection_stale",
-                post_selection_error_type=CodingWorkerNativeCandidateCommandError,
-            )
-            return {
-                "candidateUpdate": {
-                    "pluginId": args.plugin_id,
-                    "fromArtifactDigest": args.from_artifact_digest,
-                    "artifactDigest": args.artifact_digest,
-                    "lifecycle": lifecycle,
-                    "inventoryRevision": inventory_revision,
-                    "alreadyUpdated": already_updated,
-                },
-                "productAdmission": "installed",
-                "productSelection": "not_checked",
-                "productUse": "not_checked",
-            }
-        if selected_revision is not None and (
-            selected_revision.package_source_identity != binding.source_identity
-            or selected_revision.package_content_digest != binding.artifact_digest
-        ):
-            raise ValueError("Coding Worker candidate installation changed")
-        if args.action == "candidate-install":
-            if selected_revision is not None:
-                return {
-                    "candidateInstall": {
-                        "pluginId": args.plugin_id,
-                        "artifactDigest": args.artifact_digest,
-                        "lifecycle": "installed",
-                        "inventoryRevision": snapshot.inventory_revision,
-                        "alreadyInstalled": True,
-                    },
-                    "productAdmission": "installed",
-                    "productSelection": "not_checked",
-                    "productUse": "not_checked",
-                }
-            session_id = f"worker-candidate-install-{secrets.token_hex(16)}"
-            lifecycle, inventory_revision = _run_worker_candidate_lifecycle(
-                product,
-                binding,
-                product_id="coding",
-                plugin_id=args.plugin_id,
-                operation_id=args.operation_id,
-                session_id=session_id,
-                action="install",
-                label="Coding Worker",
-                entrypoint="cli",
-            )
-            return {
-                "candidateInstall": {
-                    "pluginId": args.plugin_id,
-                    "artifactDigest": args.artifact_digest,
-                    "lifecycle": lifecycle,
-                    "inventoryRevision": inventory_revision,
-                    "alreadyInstalled": False,
-                },
-                "productAdmission": "installed",
-                "productSelection": "not_checked",
-                "productUse": "not_checked",
-            }
-        if args.action == "candidate-remove":
-            current_opt_in = CodingWorkerProductOptInOwner(product).current(
-                args.plugin_id
-            )
-            if current_opt_in is not None and current_opt_in.action == "allow":
-                raise CodingWorkerNativeCandidateCommandError(
-                    "coding_worker_candidate_opt_in_revoke_required",
-                    "Coding Worker candidate opt-in must be revoked",
-                )
-        if selected is None:
-            raise ValueError("Coding Worker candidate installation changed")
-        if selected_revision is None:
-            prior = product.management.operation(args.operation_id)
-            if (
-                args.action != "candidate-remove"
-                or selected.selection.desired_state != "absent"
-                or not isinstance(prior, PluginManagementOperationEventV1)
-                or prior.command.action != "remove"
-                or prior.command.mutation.installation_key != selected.installation_key
-                or prior.command.mutation.expected_inventory_revision
-                != args.expected_inventory_revision
-                or prior.status != "terminal"
-                or prior.result is None
-                or prior.result.disposition != "succeeded"
-                or prior.result.transition is None
-                or (
-                    previous
-                    := prior.result.transition.previous_state.selection.package_revision
-                )
-                is None
-                or previous.package_source_identity != binding.source_identity
-                or previous.package_content_digest != binding.artifact_digest
-            ):
-                raise ValueError("Coding Worker candidate removal changed")
-            return {
-                "candidateManagementOperation": prior.to_dict(),
-                "inventoryRevision": snapshot.inventory_revision,
-                "productSelection": "not_checked",
-                "productUse": "not_checked",
-                "packageRetirement": "not_checked",
-            }
-        desired_action: Literal["enable", "disable", "remove"]
-        desired_state: Literal["installed_enabled", "installed_disabled", "absent"]
-        if args.action == "candidate-enable":
-            desired_action, desired_state = "enable", "installed_enabled"
-        elif args.action == "candidate-disable":
-            desired_action, desired_state = "disable", "installed_disabled"
-        else:
-            desired_action, desired_state = "remove", "absent"
-        operation = product.management.submit(
-            PluginManagementCommandV1(
-                action=desired_action,
-                mutation=PluginDesiredStateMutationV1(
-                    operation_id=args.operation_id,
-                    idempotency_key=args.operation_id,
-                    expected_inventory_revision=args.expected_inventory_revision,
-                    installation_key=selected.installation_key,
-                    desired_state=desired_state,
-                    package_revision=None,
-                    actor_id=product.actor_id,
-                    policy_revision=product.desired_policy_revision,
-                ),
-            )
-        )
-        if (
-            operation.status != "terminal"
-            or operation.result is None
-            or operation.result.disposition != "succeeded"
-        ):
-            raise ValueError("Coding Worker candidate enable did not settle")
-        return {
-            "candidateManagementOperation": operation.to_dict(),
-            "inventoryRevision": product.desired_state.snapshot().inventory_revision,
-            "productSelection": "not_checked",
-            "productUse": "not_checked",
-            **(
-                {"packageRetirement": "not_checked"}
-                if args.action == "candidate-remove"
-                else {}
-            ),
-        }
+    candidate_result = _CANDIDATE_OPERATOR.execute_candidate_action(
+        product, args, opt_in_owner=lambda: CodingWorkerProductOptInOwner(product)
+    )
+    if candidate_result is not None:
+        return candidate_result
     if args.action == "list-gated-attempts":
         return {
             "gatedAttempts": [
@@ -594,28 +286,6 @@ def _execute(
             )
         )
         return {"workerQuery": {"text": answer}}
-    if args.action in {"candidate-status", "candidate-allow", "candidate-revoke"}:
-        opt_in = CodingWorkerProductOptInOwner(product)
-        if args.action == "candidate-status":
-            return _candidate_status_document(opt_in.current(args.plugin_id))
-        if args.action == "candidate-allow":
-            candidate_decision = opt_in.allow(
-                plugin_id=args.plugin_id,
-                operation_id=args.operation_id,
-                expected_generation=args.expected_generation,
-                require_worker=args.require_worker,
-            )
-        else:
-            candidate_decision = opt_in.revoke(
-                plugin_id=args.plugin_id,
-                operation_id=args.operation_id,
-                expected_generation=args.expected_generation,
-            )
-        return {
-            "candidateOptInDecision": candidate_decision.to_dict(),
-            "ordinarySessionRouting": "python_sdk_explicit_linux",
-            "defaultSessionRouting": "closed",
-        }
     if args.action in {"review-orphan-runtime", "repair-orphan-runtime"}:
         orphan_review = review_coding_product_worker_orphan_runtime(
             product, attempt_id=args.attempt_id
@@ -684,38 +354,21 @@ def _execute(
             product, expected_review=gated, expected_plan=plan
         )
         return {"gatedAttemptSettlement": settled.to_dict()}
-    if args.action == "repair-payload-debt":
-        prior_payload = read_coding_product_worker_payload_repair_intent(
-            product, attempt_id=args.attempt_id
-        )
-        if prior_payload is not None:
-            if args.plan_id != prior_payload.fingerprint:
-                raise CodingWorkerGatedRecoveryError(
-                    "coding_worker_payload_debt_plan_stale"
-                )
-            repaired_payload_prior = repair_coding_product_worker_payload_debt(
-                product, expected_plan=prior_payload
-            )
-            return {
-                "payloadDebtRepair": {
-                    "attemptId": repaired_payload_prior.attempt_id,
-                    "planId": repaired_payload_prior.fingerprint,
-                }
-            }
-        plan = preview_coding_product_worker_payload_debt(
-            product, attempt_id=args.attempt_id
-        )
-        if args.plan_id != plan.fingerprint:
-            raise CodingWorkerGatedRecoveryError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        repaired_plan = repair_coding_product_worker_payload_debt(
-            product, expected_plan=plan
+    if args.action in _PAYLOAD_REPAIRS:
+        stage, response, identifier = _PAYLOAD_REPAIRS[args.action]
+        repaired_payload = repair_reviewed_coding_product_worker_payload(
+            product,
+            stage=stage,
+            attempt_id=args.attempt_id,
+            expected_fingerprint=(
+                args.review_id if stage == "unmarked" else args.plan_id
+            ),
+            stale_error=CodingWorkerGatedRecoveryError,
         )
         return {
-            "payloadDebtRepair": {
-                "attemptId": repaired_plan.attempt_id,
-                "planId": repaired_plan.fingerprint,
+            response: {
+                "attemptId": repaired_payload.attempt_id,
+                identifier: repaired_payload.fingerprint,
             }
         }
     if args.action == "settle-crashed-c5":
@@ -741,81 +394,25 @@ def _execute(
                 "noEffect": registered_settled.no_effect,
             }
         }
-    if args.action in {"review-unmarked-payload-debt", "repair-unmarked-payload-debt"}:
-        prior_unmarked = (
-            read_coding_product_worker_unmarked_payload_repair_intent(
-                product, attempt_id=args.attempt_id
-            )
-            if args.action == "repair-unmarked-payload-debt"
-            else None
-        )
-        unmarked_review = (
-            prior_unmarked
-            or review_coding_product_worker_unmarked_payload_debt(
-                product, attempt_id=args.attempt_id
-            )
-        )
-        if args.action == "review-unmarked-payload-debt":
-            return {
-                "unmarkedPayloadDebtReview": {
-                    "attemptId": unmarked_review.attempt_id,
-                    "reviewId": unmarked_review.fingerprint,
-                    "members": [member.to_dict() for member in unmarked_review.members],
-                }
-            }
-        if args.review_id != unmarked_review.fingerprint:
-            raise CodingWorkerGatedRecoveryError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        unmarked_repaired = repair_coding_product_worker_unmarked_payload_debt(
-            product, expected_review=unmarked_review
+    if args.action == "review-unmarked-payload-debt":
+        unmarked_review = review_coding_product_worker_unmarked_payload_debt(
+            product, attempt_id=args.attempt_id
         )
         return {
-            "unmarkedPayloadDebtRepair": {
-                "attemptId": unmarked_repaired.attempt_id,
-                "reviewId": unmarked_repaired.fingerprint,
+            "unmarkedPayloadDebtReview": {
+                "attemptId": unmarked_review.attempt_id,
+                "reviewId": unmarked_review.fingerprint,
+                "members": [member.to_dict() for member in unmarked_review.members],
             }
         }
-    if args.action in {"review-empty-payload-debt", "repair-empty-payload-debt"}:
-        if args.action == "repair-empty-payload-debt":
-            prior_empty = reopen_coding_product_worker_empty_payload_repair(
-                product, attempt_id=args.attempt_id
-            )
-            if prior_empty is not None:
-                if args.plan_id != prior_empty.fingerprint:
-                    raise CodingWorkerGatedRecoveryError(
-                        "coding_worker_payload_debt_plan_stale"
-                    )
-                repaired_empty_prior = repair_coding_product_worker_empty_payload_debt(
-                    product, expected_plan=prior_empty
-                )
-                return {
-                    "emptyPayloadDebtRepair": {
-                        "attemptId": repaired_empty_prior.attempt_id,
-                        "planId": repaired_empty_prior.fingerprint,
-                    }
-                }
+    if args.action == "review-empty-payload-debt":
         empty_plan = preview_coding_product_worker_empty_payload_debt(
             product, attempt_id=args.attempt_id
         )
-        if args.action == "review-empty-payload-debt":
-            return {
-                "emptyPayloadDebtReview": {
-                    "attemptId": empty_plan.attempt_id,
-                    "planId": empty_plan.fingerprint,
-                }
-            }
-        if args.plan_id != empty_plan.fingerprint:
-            raise CodingWorkerGatedRecoveryError(
-                "coding_worker_payload_debt_plan_stale"
-            )
-        repaired_empty = repair_coding_product_worker_empty_payload_debt(
-            product, expected_plan=empty_plan
-        )
         return {
-            "emptyPayloadDebtRepair": {
-                "attemptId": repaired_empty.attempt_id,
-                "planId": repaired_empty.fingerprint,
+            "emptyPayloadDebtReview": {
+                "attemptId": empty_plan.attempt_id,
+                "planId": empty_plan.fingerprint,
             }
         }
     owner = CodingWorkerNativeApprovalJournal(product)
@@ -842,7 +439,7 @@ def _execute(
             product, approval_owner=owner, approved=decision.approval
         )
         return {"nativeClosure": reader.current_closure().to_dict()}
-    wheel = _read_wheel(Path(args.wheel))
+    wheel = _RELEASE_INPUT.read(args.wheel)
     review = review_coding_product_worker_native_release(product, wheel=wheel)
     if args.action == "review":
         return {"nativeReleaseReview": review.to_dict()}
@@ -882,54 +479,11 @@ def _gated_review_id(
     fence = product.epoch_runtime.cutover_result.fence
     if fence is None:
         raise ValueError("Coding Worker Product fence is unavailable")
-    return sha256(
-        canonical_json_bytes(
-            {
-                "reviewVersion": 1,
-                "productScopeId": product.policy.project_scope_id,
-                "storeRootIdentity": fence.fenced_root_identity,
-                "attemptId": gated.attempt_id,
-                "gateRecord": (
-                    None if gated.gate_record is None else gated.gate_record.to_dict()
-                ),
-                "attemptRecord": (
-                    None
-                    if gated.attempt_record is None
-                    else gated.attempt_record.to_dict()
-                ),
-                "nativeClosureCurrent": gated.native_closure_current,
-                "groupStatus": gated.group_status,
-                "planId": plan.fingerprint,
-            }
-        )
-    ).hexdigest()
-
-
-def _read_wheel(path: Path) -> bytes:
-    target = path.expanduser().absolute()
-    descriptor = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    try:
-        metadata = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or not 0 < metadata.st_size <= _MAX_WHEEL_BYTES
-        ):
-            raise ValueError("Coding Worker native Wheel source is invalid")
-        chunks: list[bytes] = []
-        size = 0
-        while True:
-            chunk = os.read(descriptor, min(64 * 1024, _MAX_WHEEL_BYTES + 1 - size))
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > _MAX_WHEEL_BYTES:
-                raise ValueError("Coding Worker native Wheel exceeds its bound")
-            chunks.append(chunk)
-        if size != metadata.st_size:
-            raise ValueError("Coding Worker native Wheel changed during read")
-        return b"".join(chunks)
-    finally:
-        os.close(descriptor)
+    return gated.payload_settlement_review_id(
+        product_scope_id=product.policy.project_scope_id,
+        store_root_identity=fence.fenced_root_identity,
+        plan=plan,
+    )
 
 
 if __name__ == "__main__":

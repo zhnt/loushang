@@ -13,12 +13,13 @@ import os
 import re
 import secrets
 import sys as sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from time import time_ns
-from typing import Literal, Protocol
+from typing import Literal, NoReturn, Protocol
 
 from loushang.coding.composition.dependency_grants import (
     coding_plugin_distribution_evidence_resolver as coding_plugin_distribution_evidence_resolver,
@@ -60,39 +61,26 @@ from loushang.coding.session.continuity import (
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.approval.plugin_activation import (
     OwnerComponentActivationApprovalSubject,
-    PluginActivationDecisionJournal,
 )
 from loushang.harness.approval.plugin_execution import (
     PluginApprovalAuthorizationV1,
+    PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
-)
-from loushang.harness.capabilities.component_admission import (
-    CapabilityComponentOwnerAuthority,
-    CapabilityComponentOwnerPolicy,
-)
-from loushang.harness.capabilities.owner_component_host import (
-    CapabilityOwnerComponentHost,
 )
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
-    CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
-    continuity_provider_component_id,
-    validate_continuity_provider_component_payload,
 )
-from loushang.harness.continuity.plugin_runtime import ResolvedContinuityPluginSelection
+from loushang.harness.continuity.plugin_runtime import prepare_continuity_activation
 from loushang.harness.continuity.plugin_runtime import (
     resolve_continuity_plugin_selection as resolve_continuity_plugin_selection,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
-from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionAuthority,
     PluginContinuityDeletionJournal,
-    PluginDesiredStateLedger,
-    PluginInstanceRuntimeLedger,
-    PluginManagementService,
-    PluginPackageLifecycleLedger,
+)
+from loushang.harness.plugin_management.configured_sources import (
+    resolve_configured_plugin_local_path,
 )
 from loushang.harness.plugin_management.continuity_adapter import (
     PluginContinuitySecurityRetirementJournal,
@@ -100,20 +88,15 @@ from loushang.harness.plugin_management.continuity_adapter import (
 )
 from loushang.harness.resources.packages._private_directory import (
     prepare_private_directory,
+    prepare_private_directory_tree,
 )
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     PackageMaterializer,
 )
 from loushang.harness.resources.plugins import (
-    PluginContributionRef,
-    PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
-    PluginPreflightContextV1,
-    PluginPreflightDeniedOutcome,
-    PluginResolutionAuthority,
     PluginRuntimeResolution,
     PluginSelection,
     PluginSelectionPlanV2,
@@ -122,12 +105,9 @@ from loushang.harness.resources.plugins import (
     PublishedPluginPackage,
     is_remote_plugin_source,
 )
-from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.session.plugin_lifecycle._continuity_installed_plugins import (
-    publish_continuity_runtime,
-    reconcile_enabled_continuity_instances,
-    resolve_installed_continuity_sources,
-    retain_enabled_continuity_runtime,
+    hold_installed_continuity_runtime,
+    resolve_installed_continuity_definitions,
 )
 
 _PRODUCT_POLICY_REVISION = "coding-continuity-production-1"
@@ -138,13 +118,12 @@ _CONTINUITY_REVOCATION_EPOCH = 0
 _APPROVAL_TTL_MS = 300_000
 _BOOTSTRAP_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_status"
 _CONTINUITY_COMPOSITION_ATTRIBUTE = "_loushang_coding_continuity"
-_CONTINUITY_INSTALLATION_SCOPE: Literal["workspace"] = "workspace"
 _CONTINUITY_ACTIVATION_ID_PREFIX = "continuity-bootstrap-activate"
 _CONTINUITY_ALREADY_BOUND = "coding_continuity_composition_already_bound"
-_CONTINUITY_STAGING_UNSUPPORTED = "coding_continuity_secure_staging_unsupported"
 _REVISION_CLEANUP_NOTE = "Coding Continuity revision cleanup failed: "
 _LAST_READY_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_last_ready_status"
 _STABLE_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,95}$")
+_STATE_PERMISSIONS_FAILED = "coding_continuity_state_permissions_failed"
 
 
 class CodingContinuitySettingsPort(Protocol):
@@ -223,17 +202,9 @@ def _continuity_lifecycle_error(
     )
 
 
-def _continuity_host_reference(scope_id: str) -> str:
-    return f"coding-continuity-host:{scope_id}"
-
-
 @dataclass(slots=True)
 class _InstalledLifecycle:
     common: CodingPluginLifecycle
-    desired: PluginDesiredStateLedger
-    management: PluginManagementService
-    instances: PluginInstanceRuntimeLedger
-    packages: PluginPackageLifecycleLedger
     family_authority: PluginInstanceLedgerContinuityFamilyAuthority
     deletion_authority: PluginContinuityDeletionAuthority
 
@@ -332,14 +303,9 @@ async def bind_coding_configured_continuity(
                 retryable=False,
             )
     except BaseException as error:
-        if not isinstance(error, Exception):
-            raise
-        stable_code = _record_bootstrap_failure(
+        _raise_bootstrap_failure(
             runtime, diagnostics_service, error, configured_source_count=0
         )
-        if isinstance(error, CodingContinuityBootstrapError):
-            raise
-        raise CodingContinuityBootstrapError(code=stable_code) from None
 
     configured_count = len(sources)
     common_layout: CodingPluginLifecycleStateLayout | None = None
@@ -447,8 +413,6 @@ async def bind_coding_configured_continuity(
             existing is None or existing.plugin_publication is None
         ):
             release_early_startup_lease()
-        if not isinstance(error, Exception):
-            raise
         if (
             isinstance(error, CodingContinuityBootstrapError)
             and error.code == _CONTINUITY_ALREADY_BOUND
@@ -456,17 +420,10 @@ async def bind_coding_configured_continuity(
             # The already-published composition remains healthy.  Reject the
             # conflicting rebind without overwriting its ready status.
             raise
-        stable_code = _record_bootstrap_failure(
-            runtime,
-            diagnostics_service,
-            error,
-            configured_source_count=configured_count,
+        _raise_bootstrap_failure(
+            runtime, diagnostics_service, error, configured_source_count=configured_count
         )
-        if isinstance(error, CodingContinuityBootstrapError):
-            raise
-        raise CodingContinuityBootstrapError(code=stable_code) from None
 
-    runtime_resolution: PluginRuntimeResolution | None = None
     lifecycle_started = False
     try:
         resolved_runtime_id = runtime_id or _new_runtime_id()
@@ -479,96 +436,57 @@ async def bind_coding_configured_continuity(
         _prepare_private_runtime_roots(layout)
         lifecycle = _build_lifecycle(layout)
         lifecycle_started = True
-        lifecycle.common.reconcile_retirements()
-        replayed_runtime, inspections = resolve_installed_continuity_sources(
+        with hold_installed_continuity_runtime(
             sources,
-            materializer=resolved_materializer,
-            desired_state=lifecycle.desired,
-            product_id=CODING_EXPERIENCE_ID,
-            scope_id=layout.scope_id,
-            lifecycle_error=_continuity_lifecycle_error,
-        )
-        if compatibility is not None:
-            compatibility.reconcile()
-        if not replayed_runtime.packages and not inspections:
-            lifecycle.common.complete_startup_recovery()
-            return finish_base_binding()
-
-        if not supports_coding_continuity_secure_staging():
-            replayed_runtime.close()
-            raise CodingContinuityBootstrapError(
-                code=_CONTINUITY_STAGING_UNSUPPORTED,
-                retryable=False,
-            )
-
-        resolution_authority = PluginResolutionAuthority()
-        runtime_resolution = publish_continuity_runtime(
-            replayed_runtime,
-            inspections=inspections,
-            authority=resolution_authority,
-            materializer=resolved_materializer,
-            lifecycle_error=_continuity_lifecycle_error,
-        )
-        instance_refs = reconcile_enabled_continuity_instances(
-            runtime_resolution,
             lifecycle.common,
-            desired_state=lifecycle.desired,
-            instances=lifecycle.instances,
+            materializer=resolved_materializer,
             product_id=CODING_EXPERIENCE_ID,
             scope_id=layout.scope_id,
-            installation_scope=_CONTINUITY_INSTALLATION_SCOPE,
             activation_id_prefix=_CONTINUITY_ACTIVATION_ID_PREFIX,
-            read_direct_host_reference=lambda: _continuity_host_reference(layout.scope_id),
+            direct_host_reference=f"coding-continuity-host:{layout.scope_id}",
             lifecycle_error=_continuity_lifecycle_error,
             legacy_disabled_plugin_ids=disabled_plugins,
-        )
-        if compatibility is not None:
-            compatibility.reconcile()
-        runtime_resolution = retain_enabled_continuity_runtime(
-            runtime_resolution,
-            enabled_plugin_ids=frozenset(item.plugin_id for item in instance_refs),
-        )
-        lifecycle.common.complete_startup_recovery()
-        if not runtime_resolution.packages:
-            return finish_base_binding()
-        selection = _finalize_selection(
-            runtime_resolution,
-            instance_refs=instance_refs,
-            layout=layout,
-            clock=clock,
-        )
-        owner_authority = _owner_authority(selection)
-        now = _read_clock(clock)
-        resolved = resolve_continuity_plugin_selection(
-            selection,
-            owner_authority=owner_authority,
-            issued_at=now,
-            expires_at=now + _APPROVAL_TTL_MS,
-            now=now,
-        )
-        component_host, decisions = _component_host_and_decisions(
-            resolved,
-            owner_authority=owner_authority,
-            layout=layout,
-            clock=clock,
-        )
-        pending_before = len(lifecycle.deletion_authority.journal.pending())
-        result = await bind_coding_plugin_continuity(
-            runtime,
-            resolved_plugins=resolved,
-            component_host=component_host,
-            activation_decision_ids=decisions,
-            instance_family_authority=lifecycle.family_authority,
-            runtime_id=resolved_runtime_id,
-            deletion_authority=lifecycle.deletion_authority,
-            owned_cleanup=runtime_resolution.close,
-            cwd=cwd,
-            all_sessions=all_sessions,
-            temporary_root=layout.temporary_root,
-            fallback_cwd=cwd,
-        )
-        result.configured_request_fingerprint = request_fingerprint
-        runtime_resolution = None  # ownership transferred to the composition
+            reconcile_compatibility=(
+                compatibility.reconcile if compatibility is not None else None
+            ),
+            supports_secure_staging=supports_coding_continuity_secure_staging,
+            cleanup_note=_REVISION_CLEANUP_NOTE,
+        ) as (runtime_resolution, instance_refs):
+            if not runtime_resolution.packages:
+                return finish_base_binding()
+            selection = _finalize_selection(
+                runtime_resolution,
+                instance_refs=instance_refs,
+                layout=layout,
+                clock=clock,
+            )
+            resolved, component_host, decisions = prepare_continuity_activation(
+                selection,
+                owner_policy_revision=_OWNER_POLICY_REVISION,
+                revocation_epoch=_CONTINUITY_REVOCATION_EPOCH,
+                decision_path=layout.activation_decisions,
+                approval_ttl_ms=_APPROVAL_TTL_MS,
+                clock=clock,
+                read_clock=partial(_read_clock, clock),
+                validate_subject=partial(_validate_activation_subject, layout=layout),
+                authorization=_approval_authorization,
+            )
+            pending_before = len(lifecycle.deletion_authority.journal.pending())
+            result = await bind_coding_plugin_continuity(
+                runtime,
+                resolved_plugins=resolved,
+                component_host=component_host,
+                activation_decision_ids=decisions,
+                instance_family_authority=lifecycle.family_authority,
+                runtime_id=resolved_runtime_id,
+                deletion_authority=lifecycle.deletion_authority,
+                owned_cleanup=runtime_resolution.close,
+                cwd=cwd,
+                all_sessions=all_sessions,
+                temporary_root=layout.temporary_root,
+                fallback_cwd=cwd,
+            )
+            result.configured_request_fingerprint = request_fingerprint
         _record_ready_status(
             runtime,
             diagnostics_service,
@@ -581,95 +499,25 @@ async def bind_coding_configured_continuity(
     except BaseException as error:
         if not lifecycle_started and compatibility is None:
             release_early_startup_lease()
-        if runtime_resolution is not None:
-            try:
-                runtime_resolution.close()
-            except BaseException as cleanup_error:
-                error.add_note(
-                    _REVISION_CLEANUP_NOTE + type(cleanup_error).__name__
-                )
-        if not isinstance(error, Exception):
-            raise
-        stable_code = _record_bootstrap_failure(
-            runtime,
-            diagnostics_service,
-            error,
-            configured_source_count=configured_count,
+        _raise_bootstrap_failure(
+            runtime, diagnostics_service, error, configured_source_count=configured_count
         )
-        if isinstance(error, CodingContinuityBootstrapError):
-            raise
-        raise CodingContinuityBootstrapError(code=stable_code) from None
 
 
-def _finalize_selection(
-    runtime: PluginRuntimeResolution,
-    *,
-    instance_refs: tuple[PluginInstanceRevisionRef, ...],
-    layout: CodingContinuityStateLayout,
-    clock: Callable[[], int],
-) -> PluginSelection:
-    bindings = {item.plugin_id: item for item in runtime.bindings}
-    packages = tuple(sorted(runtime.packages, key=lambda item: item.manifest.name))
-    contributions = tuple(
-        sorted(
-            (
-                (package, item)
-                for package in packages
-                for item in package.contribution_index.items
-                if item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
-            ),
-            key=lambda pair: (pair[0].manifest.name, pair[1].contribution_id),
-        )
-    )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id=CODING_EXPERIENCE_ID,
-            scope_id=layout.scope_id,
-            policy_revision=_PRODUCT_POLICY_REVISION,
-            instance_revision_refs=instance_refs,
-        ),
-        selected_plugin_ids=tuple(package.manifest.name for package in packages),
-        selected_contributions=tuple(
-            PluginContributionRef(package.manifest.name, item.contribution_id)
-            for package, item in contributions
-        ),
-        source_trust_snapshots=tuple(
-            _configured_source_trust(package, bindings[package.manifest.name])
-            for package in packages
-        ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                PluginEffectiveConfigurationEntry(
-                    plugin_id=package.manifest.name,
-                    contribution_id=item.contribution_id,
-                    configuration=item.configuration,
-                )
-                for package, item in contributions
-            )
-        ),
-        allowed_authority_ceiling=_AUTHORITY_CEILING,
-    )
-    journal = PluginExecutionDecisionJournal(
-        layout.definition_decisions,
-        scope_kind=_CONTINUITY_INSTALLATION_SCOPE,
-        scope_id=layout.scope_id,
-        clock=clock,
-    )
-    host = PluginDeclarationHost(
-        execution_evaluator=PluginDefinitionEvaluator(
-            decision_journal=journal,
-            import_realm=PluginImportRealm(),
-            clock=clock,
-            distribution_evidence_resolver=(
-                coding_plugin_distribution_evidence_resolver()
-            ),
-        )
-    )
+@dataclass(frozen=True, slots=True)
+class _ContinuityDefinitionApprovalOwner:
+    plan: PluginSelectionPlanV2
+    clock: Callable[[], int]
 
-    def approve(subject: PluginExecutionApprovalSubject) -> None:
-        _validate_definition_subject(subject, plan)
-        now = _read_clock(clock)
-        journal.issue_execution_decision(
+    def approve_definition(
+        self,
+        *,
+        journal: PluginExecutionDecisionJournal,
+        subject: PluginExecutionApprovalSubject,
+    ) -> PluginApprovalDecisionRecordV1:
+        _validate_definition_subject(subject, self.plan)
+        now = _read_clock(self.clock)
+        return journal.issue_execution_decision(
             subject,
             disposition="approved",
             authorization=_approval_authorization(),
@@ -679,113 +527,31 @@ def _finalize_selection(
             expected_journal_revision=journal.snapshot().journal_revision,
         )
 
-    outcome = host.resolve_with_definition_approval(
-        packages,
-        bindings=tuple(bindings[item.manifest.name] for item in packages),
-        plan=plan,
-        journal=journal,
-        approve=approve,
-    )
-    if not isinstance(outcome, PluginSelection):
-        reason = (
-            "definition_denied"
-            if isinstance(outcome, PluginPreflightDeniedOutcome)
-            else f"definition_{outcome.disposition}"
-        )
-        raise _continuity_lifecycle_error(reason, retryable=False)
-    return outcome
 
-
-def _component_host_and_decisions(
-    resolved: ResolvedContinuityPluginSelection,
+def _finalize_selection(
+    runtime: PluginRuntimeResolution,
     *,
-    owner_authority: CapabilityComponentOwnerAuthority,
+    instance_refs: tuple[PluginInstanceRevisionRef, ...],
     layout: CodingContinuityStateLayout,
     clock: Callable[[], int],
-) -> tuple[CapabilityOwnerComponentHost, dict[str, str]]:
-    selection = resolved.plugin_selection
-    trust_by_key = {
-        (item.plugin_id, item.package_source_identity): item
-        for item in selection.plan.source_trust_snapshots
-    }
-
-    def read_owner(capability_id: str, component_kind: str):
-        definition = CONTINUITY_PROVIDER_COMPONENT_DEFINITION
-        if (
-            capability_id != definition.capability_id
-            or component_kind != definition.component_kind
-        ):
-            raise ValueError("Continuity owner reader received another Definition")
-        return owner_authority.snapshot()
-
-    def read_trust(plugin_id: str, source_identity: str):
-        return trust_by_key[(plugin_id, source_identity)]
-
-    def read_policy(product_id: str, scope_id: str) -> str:
-        if product_id != CODING_EXPERIENCE_ID or scope_id != layout.scope_id:
-            raise ValueError("Continuity policy reader received another Product scope")
-        return _PRODUCT_POLICY_REVISION
-
-    journal = PluginActivationDecisionJournal(
-        layout.activation_decisions,
+) -> PluginSelection:
+    return resolve_installed_continuity_definitions(
+        runtime,
+        instance_refs=instance_refs,
+        product_id=CODING_EXPERIENCE_ID,
         scope_id=layout.scope_id,
+        policy_revision=_PRODUCT_POLICY_REVISION,
+        allowed_authority_ceiling=_AUTHORITY_CEILING,
+        source_trust=_configured_source_trust,
+        journal_path=layout.definition_decisions,
         clock=clock,
-    )
-    host = CapabilityOwnerComponentHost(
-        decision_journal=journal,
-        import_realm=PluginImportRealm(),
-        host_boot_id=secrets.token_hex(16),
-        clock=clock,
-        owner_snapshot_reader=read_owner,
-        trust_snapshot_reader=read_trust,
-        product_policy_revision_reader=read_policy,
-        payload_validator_reader=(
-            lambda definition: (
-                validate_continuity_provider_component_payload
-                if definition == CONTINUITY_PROVIDER_COMPONENT_DEFINITION
-                else _reject_payload_validator(definition)
-            )
+        approval_owner=lambda plan: _ContinuityDefinitionApprovalOwner(plan, clock),
+        distribution_evidence_resolver=coding_plugin_distribution_evidence_resolver,
+        error_code_prefix="coding_continuity",
+        error_factory=lambda _message, code: CodingContinuityBootstrapError(
+            code=code, retryable=False
         ),
     )
-    decision_ids: dict[str, str] = {}
-    trust_by_plugin = {
-        item.plugin_id: item for item in selection.plan.source_trust_snapshots
-    }
-    for component in resolved.resolved_set.components:
-        plugin_id = component.admission.candidate.binding_spec.plugin_id
-        if plugin_id is None:
-            raise TypeError("Continuity component has no Plugin identity")
-        trust = trust_by_plugin[plugin_id]
-        subject = host.activation_subject(
-            component,
-            owner_snapshot=resolved.owner_snapshot,
-            trust_snapshot=trust,
-        )
-        _validate_activation_subject(subject, layout=layout)
-        now = _read_clock(clock)
-        snapshot = journal.snapshot()
-        decision = next(
-            (
-                item
-                for item in snapshot.decisions
-                if item.subject_digest == subject.digest
-                and item.disposition == "approved"
-                and item.consumption_state == "AVAILABLE"
-                and now < item.expires_at_unix_ms
-            ),
-            None,
-        )
-        if decision is None:
-            decision = journal.issue_activation_decision(
-                subject,
-                disposition="approved",
-                authorization=_approval_authorization(),
-                issued_at_unix_ms=now,
-                expires_at_unix_ms=now + _APPROVAL_TTL_MS,
-                expected_journal_revision=snapshot.journal_revision,
-            )
-        decision_ids[component.component_id] = decision.decision_id
-    return host, decision_ids
 
 
 async def retry_coding_continuity_bootstrap(
@@ -824,12 +590,14 @@ def _configured_sources(
         )
     sources = tuple(
         dict.fromkeys(
-            _normalize_configured_source(
-                item.strip(),
-                settings_manager=settings_manager,
-                cwd=cwd,
+            source
+            if is_remote_plugin_source(source)
+            else str(
+                resolve_configured_plugin_local_path(
+                    source, cwd, settings_manager=settings_manager
+                )
             )
-            for item in raw_sources
+            for source in (item.strip() for item in raw_sources)
         )
     )
     return sources, frozenset(item.strip() for item in raw_disabled)
@@ -867,49 +635,6 @@ def _bootstrap_request_fingerprint(
     return digest.hexdigest()
 
 
-def _normalize_configured_source(
-    source: str,
-    *,
-    settings_manager: object,
-    cwd: str | Path,
-) -> str:
-    if is_remote_plugin_source(source):
-        return source
-    path = Path(source).expanduser()
-    if path.is_absolute():
-        return str(path.resolve())
-    base = _configured_source_base(source, settings_manager=settings_manager)
-    return str(((base or Path(cwd)) / path).expanduser().resolve())
-
-
-def _configured_source_base(
-    source: str,
-    *,
-    settings_manager: object,
-) -> Path | None:
-    # Layer precedence is session > project > global.  A session-relative
-    # source intentionally falls back to the requested Coding cwd.
-    for getter_name, base_name in (
-        ("get_session_settings", None),
-        ("get_project_settings", "project_base_dir"),
-        ("get_global_settings", "global_base_dir"),
-    ):
-        getter = getattr(settings_manager, getter_name, None)
-        if not callable(getter):
-            continue
-        patch = getter()
-        if not isinstance(patch, Mapping):
-            continue
-        values = patch.get("plugin_sources")
-        if not isinstance(values, list | tuple) or source not in values:
-            continue
-        if base_name is None:
-            return None
-        base = getattr(settings_manager, base_name, None)
-        return None if base is None else Path(base).expanduser().resolve()
-    return None
-
-
 def _require_continuity_package_authority(
     layout: CodingContinuityStateLayout, materializer: PackageMaterializer
 ) -> None:
@@ -945,13 +670,9 @@ def _build_lifecycle(
         _common_lifecycle_layout(layout),
         security_acceptances=security,
     )
-    desired = common.desired
-    management = common.management
-    instances = common.instances
-    packages = common.packages
     family_authority = PluginInstanceLedgerContinuityFamilyAuthority(
-        ledger=instances,
-        package_lifecycle=packages,
+        ledger=common.instances,
+        package_lifecycle=common.packages,
         security_acceptance_journal=security,
     )
     deletion_journal = PluginContinuityDeletionJournal.for_instance_runtime(
@@ -959,10 +680,6 @@ def _build_lifecycle(
     )
     return _InstalledLifecycle(
         common=common,
-        desired=desired,
-        management=management,
-        instances=instances,
-        packages=packages,
         family_authority=family_authority,
         deletion_authority=PluginContinuityDeletionAuthority(deletion_journal),
     )
@@ -983,39 +700,6 @@ def _common_lifecycle_layout(
         retirement_sets=layout.retirement_sets,
         instance_runtime=layout.instance_runtime,
         package_lifecycle=layout.package_lifecycle,
-    )
-
-
-def _owner_authority(
-    selection: PluginSelection,
-) -> CapabilityComponentOwnerAuthority:
-    component_ids = tuple(
-        sorted(
-            continuity_provider_component_id(
-                candidate.package.manifest.name,
-                candidate.declaration.contribution_id,
-            )
-            for candidate in selection.candidates
-            if candidate.declaration.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
-        )
-    )
-    trust_classes = tuple(
-        sorted(
-            {item.source_trust_class for item in selection.plan.source_trust_snapshots}
-        )
-    )
-    return CapabilityComponentOwnerAuthority(
-        CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
-        CapabilityComponentOwnerPolicy(
-            capability_id=CONTINUITY_PROVIDER_COMPONENT_DEFINITION.capability_id,
-            owner_id=CONTINUITY_PROVIDER_COMPONENT_DEFINITION.owner_id,
-            component_kind=CONTINUITY_PROVIDER_COMPONENT_DEFINITION.component_kind,
-            policy_revision=_OWNER_POLICY_REVISION,
-            revocation_epoch=_CONTINUITY_REVOCATION_EPOCH,
-            allowed_component_ids=component_ids,
-            allowed_source_trust_classes=trust_classes,
-            authority_ceiling=_AUTHORITY_CEILING,
-        ),
     )
 
 
@@ -1089,30 +773,17 @@ def _prepare_private_directory(root: Path, *, code: str) -> None:
         raise CodingContinuityBootstrapError(code=code) from None
 
 
-def _prepare_private_state_root(root: Path) -> None:
-    _prepare_private_directory(
-        root,
-        code="coding_continuity_state_permissions_failed",
-    )
-
-
 def _prepare_private_state_layout(layout: CodingContinuityStateLayout) -> None:
-    # Keep the lexical path so every existing component is checked with lstat;
-    # resolve() would follow an attacker-replaced intermediate symlink first.
-    base = layout.private_state_base.expanduser().absolute()
-    root = layout.root.expanduser().absolute()
-    try:
-        relative = root.relative_to(base)
-    except ValueError:
-        raise CodingContinuityBootstrapError(
-            code="coding_continuity_state_permissions_failed",
-            retryable=False,
-        ) from None
-    _prepare_private_state_root(base)
-    current = base
-    for part in relative.parts:
-        current /= part
-        _prepare_private_state_root(current)
+    prepare_private_directory_tree(
+        layout.root,
+        private_base=layout.private_state_base,
+        outside_base_error=lambda: CodingContinuityBootstrapError(
+            code=_STATE_PERMISSIONS_FAILED, retryable=False
+        ),
+        private_error=lambda: CodingContinuityBootstrapError(
+            code=_STATE_PERMISSIONS_FAILED
+        ),
+    )
 
 
 def _prepare_private_runtime_roots(layout: CodingContinuityStateLayout) -> None:
@@ -1137,26 +808,43 @@ def _record_ready_status(
     provider_count: int,
     recovered_deletion_count: int,
 ) -> None:
-    status = CodingContinuityBootstrapStatus(
-        state="ready",
-        code="coding_continuity_ready",
-        configured_source_count=configured_source_count,
-        plugin_count=plugin_count,
-        provider_count=provider_count,
-        recovered_deletion_count=recovered_deletion_count,
+    _publish_bootstrap_status(
+        runtime,
+        diagnostics,
+        CodingContinuityBootstrapStatus(
+            state="ready",
+            code="coding_continuity_ready",
+            configured_source_count=configured_source_count,
+            plugin_count=plugin_count,
+            provider_count=provider_count,
+            recovered_deletion_count=recovered_deletion_count,
+        ),
     )
+
+
+def _publish_bootstrap_status(
+    runtime: object,
+    diagnostics: DiagnosticsService | None,
+    status: CodingContinuityBootstrapStatus,
+) -> None:
+    ready = status.state == "ready"
     with suppress(AttributeError, TypeError):
         setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
-        setattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, status)
+        if ready:
+            setattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, status)
     capture = getattr(diagnostics, "capture_failure", None)
     if callable(capture):
         with suppress(Exception):
             capture(
                 code=status.code,
-                error="Coding Continuity composition is ready.",
+                error=(
+                    "Coding Continuity composition is ready."
+                    if ready
+                    else f"Coding Continuity bootstrap failed ({status.code})."
+                ),
                 phase="startup",
                 source="bootstrap",
-                level="info",
+                **({"level": "info"} if ready else {}),
                 details=status.to_dict(),
             )
 
@@ -1186,50 +874,33 @@ def _restore_ready_status(
     )
 
 
-def _record_failed_status(
-    runtime: object,
-    diagnostics: DiagnosticsService | None,
-    *,
-    code: str,
-    configured_source_count: int,
-    retryable: bool,
-) -> None:
-    status = CodingContinuityBootstrapStatus(
-        state="failed",
-        code=code,
-        configured_source_count=configured_source_count,
-        retryable=retryable,
-    )
-    with suppress(AttributeError, TypeError):
-        setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
-    capture = getattr(diagnostics, "capture_failure", None)
-    if callable(capture):
-        with suppress(Exception):
-            capture(
-                code=code,
-                error=f"Coding Continuity bootstrap failed ({code}).",
-                phase="startup",
-                source="bootstrap",
-                details=status.to_dict(),
-            )
-
-
-def _record_bootstrap_failure(
+def _raise_bootstrap_failure(
     runtime: CodingContinuityRuntimePort,
     diagnostics_service: DiagnosticsService | None,
-    error: Exception,
+    error: BaseException,
     *,
     configured_source_count: int,
-) -> str:
+) -> NoReturn:
+    if not isinstance(error, Exception):
+        raise error
     code = _stable_error_code(error)
-    _record_failed_status(
+    _publish_bootstrap_status(
         runtime,
         diagnostics_service,
-        code=code,
-        configured_source_count=configured_source_count,
-        retryable=error.retryable if isinstance(error, CodingContinuityBootstrapError) else True,
+        CodingContinuityBootstrapStatus(
+            state="failed",
+            code=code,
+            configured_source_count=configured_source_count,
+            retryable=(
+                error.retryable
+                if isinstance(error, CodingContinuityBootstrapError)
+                else True
+            ),
+        ),
     )
-    return code
+    if isinstance(error, CodingContinuityBootstrapError):
+        raise error
+    raise CodingContinuityBootstrapError(code=code) from None
 
 
 def _stable_error_code(error: BaseException) -> str:
@@ -1244,10 +915,6 @@ def _approval_authorization() -> PluginApprovalAuthorizationV1:
         actor_id="product:coding",
         source="coding-configured-continuity-policy",
     )
-
-
-def _reject_payload_validator(_definition: object):
-    raise ValueError("Continuity Host received another component Definition")
 
 
 def _read_clock(clock: Callable[[], int]) -> int:

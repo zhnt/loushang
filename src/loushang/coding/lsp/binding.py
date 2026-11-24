@@ -18,6 +18,7 @@ from loushang.coding.lsp.model import (
 )
 from loushang.coding.lsp.ports import (
     AuthorizedProcessLauncher,
+    InspectSymbolRuntime,
     PathExists,
     WorkspaceTextReader,
 )
@@ -27,7 +28,56 @@ from loushang.coding.lsp.supervisor import LspServerSupervisor
 from loushang.coding.lsp.tools import CodingLspTools
 
 
-class CodingLspBinding:
+class _CodingLspQueries:
+    """Share the asynchronous query surface across the LSP ownership views."""
+
+    __slots__ = ()
+
+    def _query_target(self) -> InspectSymbolRuntime:
+        raise NotImplementedError
+
+    async def inspect_symbol(
+        self,
+        *,
+        path: str,
+        line: int,
+        character: int,
+        query: str = "definition",
+        include_declaration: bool = True,
+        limit: int = 50,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> CodeQueryResult:
+        return await self._query_target().inspect_symbol(
+            path=path,
+            line=line,
+            character=character,
+            query=query,
+            include_declaration=include_declaration,
+            limit=limit,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
+    async def document_outline(
+        self,
+        *,
+        path: str,
+        depth: int = 4,
+        limit: int = 200,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> DocumentOutlineResult:
+        return await self._query_target().document_outline(
+            path=path,
+            depth=depth,
+            limit=limit,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
+
+class CodingLspBinding(_CodingLspQueries):
     """Own and dispose the complete first active LSP vertical slice."""
 
     def __init__(
@@ -73,45 +123,8 @@ class CodingLspBinding:
             documents=documents,
         )
 
-    async def inspect_symbol(
-        self,
-        *,
-        path: str,
-        line: int,
-        character: int,
-        query: str = "definition",
-        include_declaration: bool = True,
-        limit: int = 50,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> CodeQueryResult:
-        return await self._tools.inspect_symbol(
-            path=path,
-            line=line,
-            character=character,
-            query=query,
-            include_declaration=include_declaration,
-            limit=limit,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
-
-    async def document_outline(
-        self,
-        *,
-        path: str,
-        depth: int = 4,
-        limit: int = 200,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> DocumentOutlineResult:
-        return await self._tools.document_outline(
-            path=path,
-            depth=depth,
-            limit=limit,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
+    def _query_target(self) -> CodingLspTools:
+        return self._tools
 
     def status(self) -> LspSessionStatus:
         return self._supervisor.status()

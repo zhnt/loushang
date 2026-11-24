@@ -28,7 +28,7 @@ class _HostedExecutionGoal:
         _model_lock: asyncio.Lock
         _guard: ExecutionGuardV1
 
-        def _require_execution_open(self) -> None: ...
+        def _require_open(self) -> None: ...
 
         def _allows_interactive_goal(self) -> bool: ...
 
@@ -44,14 +44,14 @@ class _HostedExecutionGoal:
                 and binding.supports_interactive_goal_recovery)
 
     async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1:
-        self._require_execution_open()
+        self._require_open()
         binding = self._product_binding
         if not self.supports_interactive_goal_recovery or not isinstance(binding, CodingDeferredHostedSessionV1):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return await binding.interactive_goal_recovery()
 
     def _interactive_goal_binding(self) -> CodingRealHostedSessionV1:
-        self._require_execution_open()
+        self._require_open()
         binding = self._product_binding
         if not self.supports_interactive_goal or not isinstance(binding, CodingRealHostedSessionV1):
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)

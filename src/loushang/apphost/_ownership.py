@@ -5,16 +5,53 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
+from .contracts import SessionBindingKeyV1, SessionCandidateRefV1
 from .errors import CleanupIncompleteError
 
 if TYPE_CHECKING:
     from .catalog import AppHostCatalogV1
+    from .contracts import AppHostCatalogInputV1
     from .runtime import AppHostRuntimeV1
 
 AsyncClose = Callable[[], Awaitable[None]]
 AsyncCall = Callable[..., Awaitable[Any]]
+PayloadT = TypeVar("PayloadT")
+
+
+class _CandidatePayloadView(Generic[PayloadT]):
+    __slots__ = ("_binding",)
+
+    _binding: PayloadT
+
+    @property
+    def opaque_binding(self) -> PayloadT:
+        return self._binding
+
+
+class _ClaimedCandidateView(_CandidatePayloadView[PayloadT]):
+    __slots__ = ("_reference",)
+
+    def __init__(self, reference: SessionCandidateRefV1, binding: PayloadT) -> None:
+        self._reference = reference
+        self._binding = binding
+
+    @property
+    def reference(self) -> SessionCandidateRefV1:
+        return self._reference
+
+
+class _OpenedCandidateView(_CandidatePayloadView[PayloadT]):
+    __slots__ = ("_binding_key",)
+
+    def __init__(self, binding_key: SessionBindingKeyV1, binding: PayloadT) -> None:
+        self._binding_key = binding_key
+        self._binding = binding
+
+    @property
+    def binding_key(self) -> SessionBindingKeyV1:
+        return self._binding_key
 
 
 class RetryableCloser:
@@ -230,36 +267,105 @@ class _ConstructionCloseOwner(Protocol):
     async def close(self) -> None: ...
 
 
+_ConstructedT = TypeVar("_ConstructedT")
+
+
+async def _construct_product_apphost(
+    catalog_input: Callable[[], AppHostCatalogInputV1],
+    sessions: object,
+    product_factory: _ConstructionCloseOwner,
+    bind: Callable[[AppHostRuntimeV1], _ConstructedT],
+    *,
+    cleanup_failure: RuntimeError,
+    join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
+    construction_failure: RuntimeError | None = None,
+    close_runtime_on_failure: bool = True,
+    caught: tuple[type[BaseException], ...] = (BaseException,),
+) -> _ConstructedT:
+    """Hold upstream owners until the Product has successfully bound its Host."""
+    from .catalog import AppHostCatalogV1
+    from .runtime import AppHostRuntimeV1
+
+    catalog = None
+    runtime = None
+    try:
+        catalog = await AppHostCatalogV1.admit(catalog_input())
+        runtime = AppHostRuntimeV1(catalog, sessions)
+        return bind(runtime)
+    except caught as error:
+        await _settle_failed_product_construction(
+            runtime if close_runtime_on_failure else None,
+            catalog,
+            product_factory,
+            failure=cleanup_failure,
+            join_owned=join_owned,
+        )
+        if construction_failure is not None and isinstance(error, Exception):
+            raise construction_failure from error
+        raise
+
+
 async def _settle_failed_product_construction(
     runtime: AppHostRuntimeV1 | None,
     catalog: AppHostCatalogV1 | None,
     product_factory: _ConstructionCloseOwner,
     *,
-    error_code: str,
+    failure: RuntimeError,
     join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
 ) -> None:
+    """Release the most complete Host owner, then the unpublished Product."""
+    outer_owner = runtime if runtime is not None else catalog
+    close_outer = () if outer_owner is None else (lambda: outer_owner.close(),)
+    await _settle_owned_closes(
+        *close_outer,
+        lambda: product_factory.close(),
+        failure=failure,
+        join_owned=join_owned,
+    )
+
+
+async def _settle_owned_closes(
+    *closes: AsyncClose | None,
+    failure: RuntimeError,
+    join_owned: Callable[[asyncio.Task[None]], Awaitable[None]],
+) -> None:
+    """Attempt every close in order, including when an earlier owner fails."""
 
     async def settle() -> None:
-        failures: list[BaseException] = []
-        if runtime is not None:
+        incomplete = False
+        for close in closes:
+            if close is None:
+                continue
             try:
-                await runtime.close()
-            except BaseException as error:
-                failures.append(error)
-        elif catalog is not None:
-            try:
-                await catalog.close()
-            except BaseException as error:
-                failures.append(error)
-        try:
-            await product_factory.close()
-        except BaseException as error:
-            failures.append(error)
-        if failures:
-            raise RuntimeError(error_code) from None
+                await close()
+            except BaseException:
+                incomplete = True
+        if incomplete:
+            raise failure from None
 
     task = asyncio.create_task(settle())
     await join_owned(task)
+
+
+class _CompletionReport(Protocol):
+    @property
+    def completed(self) -> bool: ...
+
+
+_ReportT = TypeVar("_ReportT", bound=_CompletionReport)
+
+
+def _report_task_needs_retry(task: asyncio.Task[_ReportT]) -> bool:
+    return task.done() and (
+        task.cancelled() or task.exception() is not None or not task.result().completed
+    )
+
+
+def _method_descriptor(value: object, name: str) -> object:
+    descriptor = inspect.getattr_static(type(value), name, None)
+    if isinstance(descriptor, (classmethod, staticmethod)):
+        return descriptor.__func__
+    return descriptor
 
 
 __all__: list[str] = []

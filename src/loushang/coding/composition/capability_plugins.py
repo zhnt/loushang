@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, cast
@@ -57,14 +57,12 @@ from loushang.harness.approval.plugin_execution import (
     PluginExecutionJournalError as PluginExecutionJournalError,
 )
 from loushang.harness.capabilities import (
-    MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
-    OwnerContributionPolicy,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
@@ -87,18 +85,14 @@ from loushang.harness.resources.plugins.authority import (
     PluginRuntimeResolution,
 )
 from loushang.harness.resources.plugins.selection import (
-    PluginContributionRef,
     PluginEffectiveConfigurationEntry,
-    PluginEffectiveConfigurationSetV1,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
-    PluginPreflightContextV1,
     PluginSelection,
-    PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
+from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
@@ -106,12 +100,10 @@ from loushang.harness.session.capability_composition_inputs import (
 from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
     _PreparationFailureCleanup,
     _PreparedCompositionCleanup,
-    _PublishedCompositionCleanup,
+    _PublishedCapabilityComposition,
 )
-from loushang.harness.session.plugin_lifecycle._publication import _OwnerLeaseSet
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
-    ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginCompositionAssembly,
     ProductPluginCompositionAssemblyRequest,
@@ -119,6 +111,7 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
     bind_selected_registration_authority,
+    build_product_plugin_selection_plan,
 )
 from loushang.harness.session.product_composition_assembly import (
     prepare_product_plugin_composition as prepare_product_plugin_composition,
@@ -138,7 +131,6 @@ _DEFAULT_APPROVAL_SOURCE = "coding-capability-plugin-product-policy"
 _DEFAULT_APPROVAL_TTL_MS = 300_000
 _DEFAULT_DEFINITION_ENTRYPOINT = "definition.py:declare"
 _PLUGIN_IDS = CODING_CAPABILITY_PLUGIN_IDS
-_FAILURE_CUSTODIAN_ATTRIBUTE = "_coding_capability_plugin_cleanup_custodian"
 _RESUME_PLUGIN_LABEL = "Coding Resume Plugin"
 _DEFINITION_OWNER = "harness.plugin-execution"
 _ACTIVATION_OWNER = "harness.plugin-activation"
@@ -330,6 +322,7 @@ class CodingCapabilityPluginCleanupCustodian(_PreparationFailureCleanup):
     """Retryable owner for a preparation that failed after acquiring evidence."""
 
     _cleanup_label = "Coding Capability"
+    _failure_attribute = "_coding_capability_plugin_cleanup_custodian"
 
     runtime: PluginRuntimeResolution = field(repr=False)
     management_leases: Mapping[str, CodingPluginSessionLease] = field(repr=False)
@@ -358,22 +351,7 @@ def coding_capability_plugin_failure_custodian(
 ) -> CodingCapabilityPluginCleanupCustodian | None:
     """Recover a retryable preparation cleanup owner from an exception chain."""
 
-    current: BaseException | None = error
-    seen: set[int] = set()
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        custodian = getattr(current, _FAILURE_CUSTODIAN_ATTRIBUTE, None)
-        if isinstance(custodian, CodingCapabilityPluginCleanupCustodian):
-            return custodian
-        current = current.__cause__ or current.__context__
-    return None
-
-
-def _attach_failure_custodian(
-    error: BaseException,
-    custodian: CodingCapabilityPluginCleanupCustodian,
-) -> None:
-    setattr(error, _FAILURE_CUSTODIAN_ATTRIBUTE, custodian)
+    return CodingCapabilityPluginCleanupCustodian.retained_on(error)
 
 
 @dataclass(frozen=True, slots=True)
@@ -552,7 +530,7 @@ def _bind_default_approval_request_to_plan(
 
 
 @dataclass(slots=True)
-class CodingCapabilityPluginCompositionAssembly(_PublishedCompositionCleanup):
+class CodingCapabilityPluginCompositionAssembly(_PublishedCapabilityComposition):
     """Approved Product closure awaiting bootstrap and Graph ownership transfer."""
 
     _cleanup_label = "Coding Capability"
@@ -607,28 +585,6 @@ class CodingCapabilityPluginCompositionAssembly(_PublishedCompositionCleanup):
             plugin_id: lease.evaluate_management_change()
             for plugin_id, lease in self.management_leases.items()
         }
-
-    def claim_runtime(self, runtime_claim_id: str) -> None:
-        for lease in self.management_leases.values():
-            lease.claim_runtime(runtime_claim_id)
-
-    def prepare_owner_generations(
-        self,
-        receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
-    ) -> None:
-        _OwnerLeaseSet(self.management_leases).prepare_owner_generations(receipts)
-
-    def publish_owner_generations(
-        self,
-        receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
-    ) -> None:
-        _OwnerLeaseSet(self.management_leases).publish_owner_generations(receipts)
-
-    def retire_owner_generations(
-        self,
-        receipts: Mapping[str, tuple[OwnerGenerationRetirementReceipt, ...]],
-    ) -> None:
-        _OwnerLeaseSet(self.management_leases).retire_owner_generations(receipts)
 
 
 @dataclass(slots=True)
@@ -818,11 +774,10 @@ def _resolve_managed_capability_plugins(
             (f"tools.{spec.capability.capability_id}", (spec.tool_contribution_id,)),
         ),
         errors=_MANAGED_ASSEMBLY_ERRORS,
-        attach_failure=lambda error, runtime, leases: _attach_failure_custodian(
-            error,
+        attach_failure=lambda error, runtime, leases: (
             CodingCapabilityPluginCleanupCustodian(
                 runtime=runtime, management_leases=leases
-            ),
+            ).retain_on(error)
         ),
     )
 
@@ -874,6 +829,7 @@ def prepare_coding_capability_plugin_composition(
     resolved_state_root = Path(state_root).expanduser().resolve()
     scope_id = f"session:{session_id.strip()}"
 
+    acquired_runtime: PluginRuntimeResolution | None = None
     try:
         resolved_state_root.mkdir(parents=True, exist_ok=True)
         runtime, selected_configurations, management_leases = (
@@ -892,24 +848,7 @@ def prepare_coding_capability_plugin_composition(
                 'No requested Coding Capability Plugin is management-enabled.',
                 code='coding_capability_plugins_management_disabled',
             )
-    except BaseException as error:
-        custodian = coding_capability_plugin_failure_custodian(error)
-        if custodian is None:
-            custodian = CodingCapabilityPluginCleanupCustodian(
-                runtime=PluginRuntimeResolution((), (), ()),
-                management_leases={},
-            )
-        custodian.adopt_cleanup_callbacks(
-            management_state_cleanup=management_state_cleanup,
-            state_cleanup=state_cleanup,
-            private_state_cleanup=private_state_cleanup,
-        )
-        if not custodian.close_after_failed_preparation(
-            error, cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: "
-        ):
-            _attach_failure_custodian(error, custodian)
-        raise
-    try:
+        acquired_runtime = runtime
         resolved_product_seed = coding_product_plan_seed or (
             coding_base_plugin_assembly.plan_seed
             if coding_base_plugin_assembly is not None
@@ -926,55 +865,100 @@ def prepare_coding_capability_plugin_composition(
             coding_product_plan_seed=resolved_product_seed,
             tool_authority=tool_authority,
         )
-        request = _bind_default_approval_request_to_plan(request, plan_seed)
-        selection = _finalize_selection(
+        preparation = _prepare_capability_plugin_plan(
+            request,
             plan_seed,
-            request=request,
-            scope_id=scope_id,
+            runtime=runtime,
+            plugin_ids=frozenset(selected_configurations),
+            tool_authority=tool_authority,
             state_root=resolved_state_root,
             clock=clock,
         )
-        selection_seed = complete_coding_package_plugin_selection_seed(
-            plan_seed,
-            selection=selection,
-        )
-        provider_authorities = _provider_owner_authorities(
-            frozenset(selected_configurations)
-        )
-        product = prepare_product_plugin_composition(
-            _assembly_request(
-                selection_seed,
-                provider_authorities=provider_authorities,
-            ),
-            evaluated_at=_read_clock(clock),
-        )
-        return CodingCapabilityPluginCompositionPreparation(
-            request=request,
-            runtime=runtime,
-            selection=selection,
-            product=product,
-            provider_owner_authorities=provider_authorities,
-            tool_owner_authority=tool_authority,
-            scope_id=scope_id,
-            state_root=resolved_state_root,
-            management_leases=management_leases,
-            management_state_cleanup=management_state_cleanup,
-            state_cleanup=state_cleanup,
-            private_state_cleanup=private_state_cleanup,
-        )
+        preparation.management_leases = management_leases
+        preparation.management_state_cleanup = management_state_cleanup
+        preparation.state_cleanup = state_cleanup
+        preparation.private_state_cleanup = private_state_cleanup
+        return preparation
     except BaseException as error:
-        custodian = CodingCapabilityPluginCleanupCustodian(
-            runtime=runtime,
-            management_leases=dict(management_leases),
+        custodian: CodingCapabilityPluginCleanupCustodian | None
+        if acquired_runtime is not None:
+            custodian = CodingCapabilityPluginCleanupCustodian(
+                runtime=acquired_runtime,
+                management_leases=dict(management_leases),
+            )
+        else:
+            custodian = coding_capability_plugin_failure_custodian(error)
+            if custodian is None:
+                custodian = CodingCapabilityPluginCleanupCustodian(
+                    runtime=PluginRuntimeResolution((), (), ()),
+                    management_leases={},
+                )
+        custodian.finish_failed_preparation(
+            error,
+            cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: ",
             management_state_cleanup=management_state_cleanup,
             state_cleanup=state_cleanup,
             private_state_cleanup=private_state_cleanup,
         )
-        if not custodian.close_after_failed_preparation(
-            error, cleanup_note_prefix="Coding Capability Plugin preparation cleanup also failed: "
-        ):
-            _attach_failure_custodian(error, custodian)
         raise
+
+
+def _prepare_capability_plugin_plan(
+    request: CodingCapabilityPluginCompositionRequest,
+    seed: ProductPluginPlanSeed,
+    *,
+    runtime: PluginRuntimeResolution,
+    plugin_ids: frozenset[str],
+    tool_authority: OwnerContributionAuthority,
+    state_root: Path,
+    clock: Callable[[], int],
+    resume_parents: CodingResumePluginParents | None = None,
+    project_store_owners: Callable[
+        [PluginSelection], tuple[OwnerContributionCandidateEnvelope, ...] | None
+    ] | None = None,
+) -> CodingCapabilityPluginCompositionPreparation:
+    request = _bind_default_approval_request_to_plan(request, seed)
+    scope_id = seed.plan.context.scope_id
+    selection = _finalize_selection(
+        seed,
+        request=request,
+        scope_id=scope_id,
+        state_root=state_root,
+        clock=clock,
+        resume_parents=resume_parents,
+    )
+    # Fenced composition validates Provider policy before Catalog owners.
+    provider_authorities = (
+        _provider_owner_authorities(plugin_ids)
+        if project_store_owners is not None
+        else None
+    )
+    selected_seed = complete_coding_package_plugin_selection_seed(
+        seed, selection=selection
+    )
+    if provider_authorities is None:
+        provider_authorities = _provider_owner_authorities(plugin_ids)
+    product = prepare_product_plugin_composition(
+        _assembly_request(
+            selected_seed,
+            provider_authorities=provider_authorities,
+            owner_candidates=(
+                project_store_owners(selection) if project_store_owners is not None else None
+            ),
+        ),
+        evaluated_at=_read_clock(clock),
+    )
+    return CodingCapabilityPluginCompositionPreparation(
+        request=request,
+        runtime=runtime,
+        selection=selection,
+        product=product,
+        provider_owner_authorities=provider_authorities,
+        tool_owner_authority=tool_authority,
+        scope_id=scope_id,
+        state_root=state_root,
+        resume_parents=resume_parents,
+    )
 
 
 def _build_tool_owners(
@@ -1132,6 +1116,24 @@ def _finalize_selection(
     )
 
 
+def _capability_configuration_entries(
+    packages: Iterable[PublishedPluginPackage],
+    configurations: Mapping[str, CodingCapabilityPluginConfig],
+) -> Iterator[PluginEffectiveConfigurationEntry]:
+    for package in packages:
+        plugin_id = package.manifest.name
+        for contribution in package.contribution_index.items:
+            yield PluginEffectiveConfigurationEntry(
+                plugin_id=plugin_id,
+                contribution_id=contribution.contribution_id,
+                configuration=(
+                    configurations[plugin_id].to_dict()
+                    if contribution.kind == "capability_provider"
+                    else {}
+                ),
+            )
+
+
 def _prepare_selection_plan_seed(
     runtime: PluginRuntimeResolution,
     *,
@@ -1143,142 +1145,48 @@ def _prepare_selection_plan_seed(
 ) -> ProductPluginPlanSeed:
     package_bindings = tuple(zip(runtime.packages, runtime.bindings, strict=True))
     base_plan = coding_product_plan_seed.plan if coding_product_plan_seed else None
-    policy_revision = (
-        base_plan.context.policy_revision
-        if base_plan is not None
-        else _PRODUCT_POLICY_REVISION
-    )
-    base_instance_refs = (
-        base_plan.context.instance_revision_refs if base_plan is not None else ()
-    )
-    base_plugin_ids = base_plan.selected_plugin_ids if base_plan is not None else ()
-    base_contributions = (
-        base_plan.selected_contributions if base_plan is not None else ()
-    )
-    base_trust = base_plan.source_trust_snapshots if base_plan is not None else ()
-    base_config_entries = (
-        base_plan.effective_configuration_set.entries if base_plan is not None else ()
-    )
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
-            product_id=CODING_PRODUCT_ID,
-            scope_id=scope_id,
-            policy_revision=policy_revision,
-            instance_revision_refs=tuple(
-                sorted(
-                    (
-                        *base_instance_refs,
-                        *tuple(
-                            (
-                                management_leases[plugin_id].instance_revision_ref
-                                if plugin_id in management_leases
-                                else PluginInstanceRevisionRef(
-                                    instance_id=f"{plugin_id}@{scope_id}",
-                                    plugin_id=plugin_id,
-                                    revision=1,
-                                )
-                            )
-                            for plugin_id in sorted(configurations)
-                        ),
-                    ),
-                    key=lambda item: (
-                        item.plugin_id,
-                        item.instance_id,
-                        item.revision,
-                    ),
-                )
-            ),
+    plugin_ids = tuple(sorted(configurations))
+    plan = build_product_plugin_selection_plan(
+        product_id=CODING_PRODUCT_ID,
+        scope_id=scope_id,
+        policy_revision=(
+            _PRODUCT_POLICY_REVISION
+            if base_plan is None
+            else base_plan.context.policy_revision
         ),
-        selected_plugin_ids=tuple(sorted((*base_plugin_ids, *configurations.keys()))),
-        selected_contributions=tuple(
-            sorted(
-                (
-                    *base_contributions,
-                    *tuple(
-                        PluginContributionRef(
-                            package.manifest.name,
-                            item.contribution_id,
-                        )
-                        for package, _binding in package_bindings
-                        for item in package.contribution_index.items
-                    ),
-                )
+        plugin_ids=plugin_ids,
+        instance_refs=tuple(
+            management_leases[plugin_id].instance_revision_ref
+            if plugin_id in management_leases
+            else PluginInstanceRevisionRef(
+                instance_id=f"{plugin_id}@{scope_id}", plugin_id=plugin_id, revision=1
+            )
+            for plugin_id in plugin_ids
+        ),
+        source_trust=(
+            PluginSourceTrustSnapshotV1(
+                plugin_id=package.manifest.name,
+                package_source_identity=binding.source_identity,
+                source_trust_class=_SOURCE_TRUST_CLASS,
+                source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
+                trusted=True,
+            )
+            for package, binding in sorted(
+                package_bindings, key=lambda pair: pair[0].manifest.name
             )
         ),
-        source_trust_snapshots=tuple(
-            sorted(
-                (
-                    *base_trust,
-                    *tuple(
-                        PluginSourceTrustSnapshotV1(
-                            plugin_id=package.manifest.name,
-                            package_source_identity=binding.source_identity,
-                            source_trust_class=_SOURCE_TRUST_CLASS,
-                            source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
-                            trusted=True,
-                        )
-                        for package, binding in package_bindings
-                    ),
-                ),
-                key=lambda item: (item.plugin_id, item.package_source_identity),
-            )
+        additions=_capability_configuration_entries(
+            (package for package, _ in package_bindings), configurations
         ),
-        effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=tuple(
-                sorted(
-                    (
-                        *base_config_entries,
-                        *tuple(
-                            PluginEffectiveConfigurationEntry(
-                                plugin_id=package.manifest.name,
-                                contribution_id=item.contribution_id,
-                                configuration=(
-                                    configurations[package.manifest.name].to_dict()
-                                    if item.kind == "capability_provider"
-                                    else {}
-                                ),
-                            )
-                            for package, _binding in package_bindings
-                            for item in package.contribution_index.items
-                        ),
-                    ),
-                    key=lambda item: (item.plugin_id, item.contribution_id),
-                )
-            )
-        ),
+        base=base_plan,
+        extend_base_selection=True,
         allowed_authority_ceiling=("filesystem", "process"),
     )
-    all_package_bindings = tuple(
-        sorted(
-            (
-                *(
-                    tuple(
-                        zip(
-                            coding_product_plan_seed.packages,
-                            coding_product_plan_seed.bindings,
-                            strict=True,
-                        )
-                    )
-                    if coding_product_plan_seed is not None
-                    else ()
-                ),
-                *package_bindings,
-            ),
-            key=lambda item: item[0].manifest.name,
-        )
-    )
-    return ProductPluginPlanSeed(
-        plan=plan,
-        packages=tuple(item[0] for item in all_package_bindings),
-        bindings=tuple(item[1] for item in all_package_bindings),
-        owner_bindings=(
-            *(
-                coding_product_plan_seed.owner_bindings
-                if coding_product_plan_seed is not None
-                else ()
-            ),
-            ProductContributionOwnerBinding(authority=tool_authority),
-        ),
+    return ProductPluginPlanSeed.from_package_bindings(
+        plan,
+        package_bindings,
+        owner_bindings=(ProductContributionOwnerBinding(authority=tool_authority),),
+        extend_seed=coding_product_plan_seed,
     )
 
 
@@ -1303,37 +1211,21 @@ def _assembly_request(
             == provider_authorities[item.capability_id].policy.allowed_provider_ids[0]
         )
 
-    return ProductPluginCompositionAssemblyRequest(
-        contribution_request=ProductCompositionAssemblyRequest(
-            selection=selection_seed.selection,
-            owner_bindings=selection_seed.owner_bindings,
-            owner_candidates=owner_candidates,
-            mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-            definitions=(
-                MODEL_INPUT_CAPABILITY_DEFINITION,
-                WORKSPACE_CAPABILITY_DEFINITION,
-                *tuple(
-                    spec.capability
-                    for spec in ordered_coding_capability_plugin_specs(
-                        set(selection_seed.selection.plan.selected_plugin_ids)
-                        & _PLUGIN_IDS
-                    )
-                    if spec.capability.capability_id in provider_authorities
-                ),
-            ),
+    return ProductPluginCompositionAssemblyRequest.for_agent_session(
+        selection_seed,
+        provider_definitions=tuple(
+            spec.capability
+            for spec in ordered_coding_capability_plugin_specs(
+                set(selection_seed.selection.plan.selected_plugin_ids) & _PLUGIN_IDS
+            )
+            if spec.capability.capability_id in provider_authorities
         ),
         provider_owner_bindings=tuple(
-            ProductCapabilityProviderOwnerBinding(
-                authority=authority,
-            )
+            ProductCapabilityProviderOwnerBinding(authority=authority)
             for _capability_id, authority in sorted(provider_authorities.items())
         ),
-        provider_roots=tuple(sorted(provider_authorities)),
-        host_capability_ids=(
-            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
-        ),
         select_capability_providers=select,
+        owner_candidates=owner_candidates,
     )
 
 
@@ -1357,23 +1249,38 @@ def _provider_owner_authorities(
 
 
 def _tool_owner_authority(plugin_ids: frozenset[str]) -> OwnerContributionAuthority:
-    return OwnerContributionAuthority(
-        OwnerContributionPolicy(
-            owner_id=_TOOL_OWNER_ID,
-            contribution_kind="tool_pack",
-            product_id=CODING_PRODUCT_ID,
-            policy_revision=_TOOL_OWNER_POLICY_REVISION,
-            revocation_epoch=0,
-            allowed_source_trust_classes=(_SOURCE_TRUST_CLASS,),
-            allowed_collection_ids=tuple(
-                sorted(
-                    spec.tool_catalog_id
-                    for spec in ordered_coding_capability_plugin_specs(plugin_ids)
-                )
-            ),
-            allowed_requirement_bindings=("direct",),
-            consumer_scope="session",
-            consumer_refresh_boundary="sealed",
+    return OwnerContributionAuthority.for_direct_session(
+        owner_id=_TOOL_OWNER_ID,
+        contribution_kind="tool_pack",
+        product_id=CODING_PRODUCT_ID,
+        policy_revision=_TOOL_OWNER_POLICY_REVISION,
+        trust_classes=(_SOURCE_TRUST_CLASS,),
+        collection_ids=tuple(
+            sorted(
+                spec.tool_catalog_id
+                for spec in ordered_coding_capability_plugin_specs(plugin_ids)
+            )
+        ),
+    )
+
+
+def _matches_default_approval_context(
+    subject: PluginExecutionApprovalSubject | ContributionActivationApprovalSubject,
+    source_trust_policy_revision: str,
+    instance_revision_refs: Mapping[str, PluginInstanceRevisionRef] | None,
+) -> bool:
+    revision = subject.instance_revision_ref
+    return (
+        subject.product_id == CODING_PRODUCT_ID
+        and subject.scope_id.startswith("session:")
+        and subject.scope_id != "session:"
+        and subject.source_trust_class == _SOURCE_TRUST_CLASS
+        and subject.source_trust_policy_revision == source_trust_policy_revision
+        and revision.plugin_id == subject.plugin_id
+        and revision.revision >= 1
+        and (
+            instance_revision_refs is None
+            or revision == instance_revision_refs.get(subject.plugin_id)
         )
     )
 
@@ -1390,21 +1297,12 @@ def _validate_default_definition_subject(
     if (
         spec is None
         or subject.plugin_id not in plugin_ids
-        or subject.product_id != CODING_PRODUCT_ID
-        or not subject.scope_id.startswith("session:")
-        or subject.scope_id == "session:"
         or subject.policy_revision != product_policy_revision
         or subject.entrypoint != _DEFAULT_DEFINITION_ENTRYPOINT
-        or subject.source_trust_class != _SOURCE_TRUST_CLASS
-        or subject.source_trust_policy_revision != source_trust_policy_revision
         or subject.requested_authorities != spec.requested_authorities
         or subject.allowed_authority_ceiling != ("filesystem", "process")
-        or subject.instance_revision_ref.plugin_id != subject.plugin_id
-        or subject.instance_revision_ref.revision < 1
-        or (
-            instance_revision_refs is not None
-            and subject.instance_revision_ref
-            != instance_revision_refs.get(subject.plugin_id)
+        or not _matches_default_approval_context(
+            subject, source_trust_policy_revision, instance_revision_refs
         )
     ):
         raise CodingCapabilityPluginCompositionError(
@@ -1422,21 +1320,13 @@ def _validate_default_activation_subject(
     instance_revision_refs: Mapping[str, PluginInstanceRevisionRef] | None,
 ) -> None:
     spec = CODING_CAPABILITY_PLUGIN_SPEC_BY_ID.get(subject.plugin_id)
-    if subject.plugin_id not in plugin_ids or spec is None:
-        raise CodingCapabilityPluginCompositionError(
-            "Coding Capability Activation Subject is outside Product policy.",
-            code="coding_capability_activation_subject_rejected",
-        )
     if (
-        subject.capability_id != spec.capability.capability_id
+        spec is None
+        or subject.plugin_id not in plugin_ids
+        or subject.capability_id != spec.capability.capability_id
         or subject.owner_id != spec.capability.owner_id
         or subject.provider_id != spec.provider_id
         or subject.contribution_id != spec.provider_contribution_id
-        or subject.product_id != CODING_PRODUCT_ID
-        or not subject.scope_id.startswith("session:")
-        or subject.scope_id == "session:"
-        or subject.source_trust_class != _SOURCE_TRUST_CLASS
-        or subject.source_trust_policy_revision != source_trust_policy_revision
         or subject.product_policy_revision != product_policy_revision
         or subject.owner_policy_revision != spec.provider_owner_policy_revision
         or subject.revocation_epoch != 0
@@ -1444,12 +1334,8 @@ def _validate_default_activation_subject(
         or subject.effective_authorities
         != tuple(sorted(spec.capability.authority_ceiling))
         or subject.execution_model != "in_process"
-        or subject.instance_revision_ref.plugin_id != subject.plugin_id
-        or subject.instance_revision_ref.revision < 1
-        or (
-            instance_revision_refs is not None
-            and subject.instance_revision_ref
-            != instance_revision_refs.get(subject.plugin_id)
+        or not _matches_default_approval_context(
+            subject, source_trust_policy_revision, instance_revision_refs
         )
     ):
         raise CodingCapabilityPluginCompositionError(

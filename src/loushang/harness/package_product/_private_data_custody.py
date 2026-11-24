@@ -2,28 +2,56 @@
 
 from __future__ import annotations
 
-import os
-import stat
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeVar
 
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
+)
 from loushang.harness.workspace.paths import assert_workspace_directory_identity
+
+from ._application_runtime import private_product_state_identity
+from ._legacy_runtime import open_read_only_fenced_product
+from .product_local_wheel_runtime import bind_read_only_product_desired_state
 
 if TYPE_CHECKING:
     from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
     from loushang.harness.plugin_management.package_gc_reservation import (
         PluginPackageGcReservationJournal,
     )
-    from loushang.harness.resources.packages.product_epoch_guard import (
-        PackageProductPosixFencedRuntimeOwner,
-    )
 
+    from ._application_runtime import FencedOrdinaryProductApplication
+    from ._legacy_runtime import _FencedRuntime
     from .product_local_wheel_runtime import (
         PosixLocalWheelProductSessionOwner,
         WindowsLocalWheelProductSessionOwner,
     )
+
+
+NativeProductT = TypeVar(
+    "NativeProductT",
+    bound="PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner",
+)
+
+
+@contextmanager
+def hold_private_data_product(
+    application: FencedOrdinaryProductApplication,
+    product_type: type[NativeProductT],
+    epoch_type: type[_FencedRuntime],
+    *,
+    error: str,
+) -> Iterator[NativeProductT]:
+    """Close the Product application after the operation or failed binding."""
+    with closing(application):
+        product = application.runtime_owner.product_owner
+        if not isinstance(product, product_type) or not isinstance(
+            application.epoch_runtime, epoch_type
+        ):
+            raise ValueError(error)
+        yield product
 
 
 @contextmanager
@@ -44,6 +72,34 @@ def private_data_mutation_fence(
         with product.gc_gate.guard(require_write=require_write):
             yield
         product.assert_root_gc_authority_current()
+
+
+class _NativePrivateDataTransaction(Protocol):
+    def _close(self) -> None: ...
+
+
+TransactionT = TypeVar("TransactionT", bound=_NativePrivateDataTransaction)
+
+
+@contextmanager
+def windows_private_data_mutation_transaction(
+    product: WindowsLocalWheelProductSessionOwner,
+    create: Callable[[int], TransactionT],
+    *,
+    active_message: str,
+) -> Iterator[TransactionT]:
+    """Keep the state descriptor and write fence until the transaction is closed."""
+    with (
+        private_data_mutation_fence(
+            product, active_message=active_message, require_write=True
+        ),
+        product.epoch_runtime.borrow_product_state_root_descriptor() as fd,
+    ):
+        transaction = create(fd)
+        try:
+            yield transaction
+        finally:
+            transaction._close()
 
 
 @contextmanager
@@ -74,15 +130,51 @@ def windows_private_data_read_descriptor(
     product.assert_private_data_read_authority_current()
 
 
-def private_read_state_identity(state_root: Path, *, message: str) -> tuple[int, int]:
-    metadata = state_root.lstat()
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or stat.S_IMODE(metadata.st_mode) & 0o077
-        or metadata.st_uid != os.geteuid()
-    ):
-        raise ValueError(message)
-    return metadata.st_dev, metadata.st_ino
+class PosixPrivateDataReadAuthority(NamedTuple):
+    epoch: PackageProductPosixFencedRuntimeOwner
+    state_root: Path
+    state_identity: tuple[int, int]
+    gc_gate: PluginPackageGcReservationJournal
+    desired_state: PluginDesiredStateLedger
+
+
+def assert_private_read_workspace(
+    workspace: Path, identity: tuple[int, int], *, label: str
+) -> None:
+    assert_workspace_directory_identity(
+        workspace, identity, changed=lambda: ValueError(f"{label} read workspace changed")
+    )
+
+
+@contextmanager
+def prepare_posix_private_data_reader(
+    workspace: Path,
+    workspace_identity: tuple[int, int],
+    *,
+    authority_root: Path,
+    control_root: Path,
+    store_id: str,
+    epochs_root_name: str,
+    label: str,
+) -> Iterator[PosixPrivateDataReadAuthority]:
+    """Open existing state and transfer the epoch after successful construction."""
+    with open_read_only_fenced_product(
+        authority_root=authority_root,
+        control_root=control_root,
+        store_id=store_id,
+        epochs_root_name=epochs_root_name,
+    ) as epoch:
+        assert_private_read_workspace(workspace, workspace_identity, label=label)
+        state_root = epoch.control_root / "product-state"
+        state_identity = private_product_state_identity(
+            state_root, unsafe_message=f"{label} read Product state is unsafe"
+        )
+        binding = bind_read_only_product_desired_state(state_root)
+        epoch.assert_current()
+        assert_private_read_workspace(workspace, workspace_identity, label=label)
+        yield PosixPrivateDataReadAuthority(
+            epoch, state_root, state_identity, binding.gc_reservations, binding.desired
+        )
 
 
 def assert_private_read_current(
@@ -94,14 +186,10 @@ def assert_private_read_current(
     *,
     label: str,
 ) -> None:
-    assert_workspace_directory_identity(
-        workspace,
-        workspace_identity,
-        changed=lambda: ValueError(f"{label} read workspace changed"),
-    )
+    assert_private_read_workspace(workspace, workspace_identity, label=label)
     epoch.assert_current()
     message = f"{label} read Product state changed"
-    if private_read_state_identity(state_root, message=message) != state_identity:
+    if private_product_state_identity(state_root, unsafe_message=message) != state_identity:
         raise ValueError(message)
 
 

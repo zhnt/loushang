@@ -16,6 +16,7 @@ from threading import Event, RLock
 from typing import TYPE_CHECKING, Literal, Protocol
 from uuid import uuid4
 
+from loushang.foundation.file_identity import same_file_status as _same_file_status
 from loushang.harness.journal import journal_file_lock
 
 from .references import SessionBlobRef, session_blob_authority_id
@@ -894,22 +895,6 @@ def _read_stable_private_file(
     if not _same_file_status(opened, after) or not _same_file_status(expected, current):
         raise SessionBlobManifestError("session blob manifest changed while reading")
     return b"".join(chunks)
-
-
-def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
-    return (
-        left.st_dev,
-        left.st_ino,
-        left.st_size,
-        left.st_mtime_ns,
-        left.st_ctime_ns,
-    ) == (
-        right.st_dev,
-        right.st_ino,
-        right.st_size,
-        right.st_mtime_ns,
-        right.st_ctime_ns,
-    )
 
 
 __all__ = [

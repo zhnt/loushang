@@ -129,10 +129,10 @@ def test_bool_version_is_malformed_not_a_future_schema():
 
 def test_async_activation_projection_yields_and_matches_sync_validation(monkeypatch):
     import asyncio
-    from types import SimpleNamespace
 
     from loushang.coding.resume import activation_projection_v2 as module
     from loushang.harness.conversation import ConversationRecord
+    from loushang.harness.runtime import _owned_tasks
 
     async def scenario():
         records = tuple(
@@ -154,9 +154,7 @@ def test_async_activation_projection_yields_and_matches_sync_validation(monkeypa
             return original(value)
 
         monkeypatch.setattr(module, "_encoded", encoded)
-        monkeypatch.setattr(
-            module, "time", SimpleNamespace(monotonic=lambda: clock[0]), raising=False
-        )
+        monkeypatch.setattr(_owned_tasks, "monotonic", lambda: clock[0])
         expected = _project(records)
         clock[0] = 0.0
         job = asyncio.create_task(

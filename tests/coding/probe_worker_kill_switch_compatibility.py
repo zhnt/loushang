@@ -195,7 +195,7 @@ def observe(platform, case, monkeypatch):
         def revoke(self, **kwargs):
             return self.mutation("revoke", kwargs)
 
-    execution_globals = owner_type._latch_kill_switch.__globals__
+    execution_globals = owner_type.latch_kill_switch.__globals__
     canonical = execution_globals["canonical_json_bytes"]
     sha = execution_globals["sha256"]
 

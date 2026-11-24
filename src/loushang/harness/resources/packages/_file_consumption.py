@@ -1,6 +1,7 @@
 """Bounded file consumption shared by observation and verified transfer."""
 
 import os
+import stat
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -70,6 +71,23 @@ def read_bounded_prefix(
         hash_content=False,
     )
     return output.getvalue()
+
+
+def read_exact_bounded_file(
+    descriptor: int, maximum: int, *, label: str, check_regular: bool
+) -> bytes:
+    """Read from a caller-owned descriptor and verify its original size."""
+    metadata = os.fstat(descriptor)
+    if (check_regular and not stat.S_ISREG(metadata.st_mode)) or not (
+        0 < metadata.st_size <= maximum
+    ):
+        raise ValueError(f"{label} source is invalid")
+    body = read_bounded_prefix(descriptor, maximum, chunk_size=64 * 1024)
+    if len(body) > maximum:
+        raise ValueError(f"{label} exceeds its bound")
+    if len(body) != metadata.st_size:
+        raise ValueError(f"{label} changed during read")
+    return body
 
 
 def consume_file(

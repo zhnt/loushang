@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from functools import partial
+from typing import TYPE_CHECKING
 
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionProfileProvider,
     constrain_execution_profile,
 )
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.environment import HostEnvironmentProbe
 from loushang.harness.tools.process_hosting import (
     ProcessExecutionScope,
@@ -32,7 +35,10 @@ from .exec_backend import SandboxScopeRequestFactory
 from .process import HostedProcessContainmentPlanner
 from .registry import SandboxBackendRegistry
 from .service import SandboxDiagnosticSink
-from .types import SandboxSettings, SandboxStatus
+from .types import SandboxDiagnostic, SandboxSettings, SandboxStatus
+
+if TYPE_CHECKING:
+    from loushang.harness.diagnostics.service import DiagnosticsService
 
 
 @dataclass(slots=True)
@@ -141,6 +147,8 @@ def bind_sandbox_execution_runtime(
     diagnostic_sink: SandboxDiagnosticSink | None = None,
     execution_profile: EffectiveExecutionProfile | None = None,
     execution_profile_provider: ExecutionProfileProvider | None = None,
+    diagnostics_service: DiagnosticsService | None = None,
+    session_id: str | None = None,
 ) -> SandboxExecutionRuntime:
     """Wrap one existing execution service without creating a bypass path."""
 
@@ -157,6 +165,10 @@ def bind_sandbox_execution_runtime(
     )
     if execution_profile_provider is not None and effective_profile is None:
         raise TypeError("live execution selection requires an EffectiveExecutionProfile ceiling")
+    if diagnostic_sink is None and diagnostics_service is not None:
+        diagnostic_sink = partial(
+            _record_sandbox_diagnostic, diagnostics_service, session_id
+        )
     local_backend = _ExecServiceBackend(base_exec_service)
     binding = bind_sandbox_execution(
         settings=settings,
@@ -186,6 +198,26 @@ def bind_sandbox_execution_runtime(
         ),
         _process_host=ProcessHost(),
         _process_containment=process_containment,
+    )
+
+
+def _record_sandbox_diagnostic(
+    service: DiagnosticsService, session_id: str | None, diagnostic: SandboxDiagnostic
+) -> None:
+    service.record_drafts(
+        (
+            DiagnosticDraft(
+                code=diagnostic.code,
+                message=diagnostic.message,
+                details={
+                    "backend_id": diagnostic.backend_id,
+                    "sandbox_state": "degraded",
+                },
+            ),
+        ),
+        phase="runtime",
+        source="exec",
+        session_id=session_id,
     )
 
 

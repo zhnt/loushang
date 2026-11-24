@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
-from hashlib import sha256
 from pathlib import Path as Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
-from loushang.harness.package_product._legacy_runtime import (
-    require_legacy_snapshot_members,
+from loushang.harness.package_product._legacy_inventory import (
+    LegacyDisabledReviewRecord,
+    legacy_review_scalar_schema,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+from loushang.harness.package_product._legacy_runtime import (
+    LEGACY_PRODUCT_STATE_DOMAINS,
+    legacy_review_fence_identity,
+    require_legacy_snapshot_members,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -22,7 +23,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 
 from .legacy_classification import CodingScopedLegacyDisableV1
 from .legacy_snapshot_member import (
-    CodingLegacyInventoryDomain,
     _snapshot_reader,
 )
 from .legacy_snapshot_member import (
@@ -32,34 +32,13 @@ from .legacy_source_evidence import (
     read_coding_legacy_source_evidence as read_coding_legacy_source_evidence,
 )
 
-_OLD_STATE_DOMAINS: tuple[CodingLegacyInventoryDomain, ...] = (
-    "binding_history",
-    "desired_state",
-    "enablement_state",
-    "instance_state",
-    "lock_history",
-    "store_bytes",
-)
-_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-
-
-_LEGACY_RECORD_VALUES = {
-    "value_001": "Coding disabled-only review record is invalid",
-    "value_002": "Coding disabled-only review entries are invalid",
-    "value_003": "Coding disabled-only review version is invalid",
-    "value_004": "Coding disabled-only review entries are duplicated",
-    "value_005": "Coding disabled-only review identity changed",
-    "value_006": "Coding disabled-only review digest is invalid",
-    "value_007": "Coding disabled-only review authority is invalid",
-}
-
 
 class CodingLegacyDisabledOnlyReviewError(ValueError):
     """The first-B snapshot cannot be treated as disabled-only input."""
 
 
 @dataclass(frozen=True, slots=True)
-class CodingLegacyDisabledOnlyReviewV1:
+class CodingLegacyDisabledOnlyReviewV1(LegacyDisabledReviewRecord):
     store_id: str
     namespace_id: str
     scope_id: str
@@ -70,95 +49,13 @@ class CodingLegacyDisabledOnlyReviewV1:
     review_version: Literal[1] = 1
     review_id: str = field(init=False)
 
-    def __post_init__(self) -> None:
-        if not self.disabled_plugins:
-            raise ValueError("Disabled-only review requires scoped disabled Plugins")
-        if self.review_version != 1:
-            raise ValueError("Unsupported disabled-only review version")
-        object.__setattr__(
-            self,
-            "review_id",
-            sha256(canonical_json_bytes(self._identity_dict())).hexdigest(),
-        )
+    _disable_type = CodingScopedLegacyDisableV1
+    _review_label = "Coding disabled-only review"
 
-    def _identity_dict(self) -> dict[str, object]:
-        return {
-            "storeId": self.store_id,
-            "namespaceId": self.namespace_id,
-            "scopeId": self.scope_id,
-            "firstFenceId": self.first_fence_id,
-            "snapshotReceiptId": self.snapshot_receipt_id,
-            "sourceProjectionDigest": self.source_projection_digest,
-            "reviewVersion": self.review_version,
-            "disabledPlugins": [
-                {"scope": item.scope, "pluginId": item.plugin_id}
-                for item in self.disabled_plugins
-            ],
-        }
 
-    def to_dict(self) -> dict[str, object]:
-        return {"reviewId": self.review_id, **self._identity_dict()}
-
-    @classmethod
-    def from_dict(cls, value: object) -> CodingLegacyDisabledOnlyReviewV1:
-        if type(value) is not dict or set(value) != {
-            "reviewId",
-            "storeId",
-            "namespaceId",
-            "scopeId",
-            "firstFenceId",
-            "snapshotReceiptId",
-            "sourceProjectionDigest",
-            "reviewVersion",
-            "disabledPlugins",
-        }:
-            raise ValueError(_LEGACY_RECORD_VALUES["value_001"])
-        disabled = value["disabledPlugins"]
-        if not isinstance(disabled, list) or any(
-            type(item) is not dict
-            or set(item) != {"scope", "pluginId"}
-            or item["scope"] not in ("global", "project")
-            or not isinstance(item["pluginId"], str)
-            or not item["pluginId"]
-            for item in disabled
-        ):
-            raise ValueError(_LEGACY_RECORD_VALUES["value_002"])
-        for name in (
-            "namespaceId",
-            "firstFenceId",
-            "snapshotReceiptId",
-            "sourceProjectionDigest",
-            "reviewId",
-        ):
-            if (
-                not isinstance(value[name], str)
-                or _SHA256.fullmatch(value[name]) is None
-            ):
-                raise ValueError(_LEGACY_RECORD_VALUES["value_006"])
-        for name in ("storeId", "scopeId"):
-            if not isinstance(value[name], str) or not value[name]:
-                raise ValueError(_LEGACY_RECORD_VALUES["value_007"])
-        if type(value["reviewVersion"]) is not int or value["reviewVersion"] != 1:
-            raise ValueError(_LEGACY_RECORD_VALUES["value_003"])
-        if len({(item["scope"], item["pluginId"]) for item in disabled}) != len(
-            disabled
-        ):
-            raise ValueError(_LEGACY_RECORD_VALUES["value_004"])
-        review = cls(
-            store_id=value["storeId"],
-            namespace_id=value["namespaceId"],
-            scope_id=value["scopeId"],
-            first_fence_id=value["firstFenceId"],
-            snapshot_receipt_id=value["snapshotReceiptId"],
-            source_projection_digest=value["sourceProjectionDigest"],
-            disabled_plugins=tuple(
-                CodingScopedLegacyDisableV1(item["scope"], item["pluginId"])
-                for item in disabled
-            ),
-        )
-        if review.review_id != value["reviewId"]:
-            raise ValueError(_LEGACY_RECORD_VALUES["value_005"])
-        return review
+CodingLegacyDisabledOnlyReviewV1._schema = legacy_review_scalar_schema(
+    CodingLegacyDisabledOnlyReviewV1, "disabled_plugins", "review_id"
+)
 
 
 def review_coding_first_b_disabled_only(
@@ -177,10 +74,10 @@ def review_coding_first_b_disabled_only(
         raise CodingLegacyDisabledOnlyReviewError(
             "Coding legacy settings paths are unavailable"
         )
-    fence = epoch_runtime.cutover_result.fence
-    switch = epoch_runtime.cutover_result.switch_receipt
-    if fence is None or switch is None:
-        raise CodingLegacyDisabledOnlyReviewError("Coding first-B fence is unavailable")
+    identity = legacy_review_fence_identity(
+        epoch_runtime,
+        missing=CodingLegacyDisabledOnlyReviewError("Coding first-B fence is unavailable"),
+    )
     source = read_coding_legacy_source_evidence(
         lifecycle,
         epoch_runtime,
@@ -196,18 +93,15 @@ def review_coding_first_b_disabled_only(
         )
     require_legacy_snapshot_members(
         _snapshot_reader(lifecycle, epoch_runtime).list_members,
-        dict.fromkeys(_OLD_STATE_DOMAINS, ()),
+        dict.fromkeys(LEGACY_PRODUCT_STATE_DOMAINS, ()),
         error=CodingLegacyDisabledOnlyReviewError(
             "Coding first-B snapshot contains old Plugin state"
         ),
     )
     epoch_runtime.assert_current()
     return CodingLegacyDisabledOnlyReviewV1(
-        store_id=fence.store_id,
-        namespace_id=switch.namespace_id,
+        **identity,
         scope_id=lifecycle.scope_id,
-        first_fence_id=fence.fence_id,
-        snapshot_receipt_id=fence.request.snapshot_receipt_id,
         source_projection_digest=source.projection_digest,
         disabled_plugins=source.classification.disabled_plugins,
     )

@@ -18,27 +18,23 @@
 
 ## Boundary
 
-`bind_coding_product_worker_canary` is the only Product composition introduced
-by C5.4. Coding validates the exact Product, receipt, persisted Product profile,
-stable Session locator, Worker request, Capability authority, and injected
-machine host/boot identities. It imports the public Harness Worker facade plus
-the two exact reviewed Worker friend seams: the C5.1 activation coordinator and
-the C5.2 native-profile binder. It does not import Hosting, construct a
-platform capture specification, inspect native handles, or accept an
-environment-derived activation flag.
+`bind_coding_product_worker_canary` is the Product composition introduced by
+C5.4. Coding validates the Product, receipt, persisted Product profile and
+stable Session locator. It checks that a supplied start gate belongs to the
+exact receipt authority and launch identity. Harness validates the Worker
+request, Capability authority, and injected machine host and boot identities.
 
-The embedding composition supplies durable Product authority/state ports,
-trusted cleanup-evidence identity, trusted launcher/profile digests, and a
-Product-neutral Hosting capability. The Coding root constructs the real C5.1
-coordinator and asks the sole C5.2 friend binder for an opaque,
-receipt/request-bound `ProductWorkerNativeProfilePort`. Harness' existing
-adapter preserves the private H6 managed-capture seam. This keeps the
-dependency direction:
+The embedding composition supplies durable Product authority and state ports,
+trusted cleanup-evidence identity, trusted launcher and profile digests, and a
+Product-neutral Hosting capability. The Harness Worker attempt lifecycle binds
+the receipt and request to the native profile, constructs the activation
+coordinator, and assembles the Hosting route. The Hosting adapter retains the
+private H6 managed-capture seam.
 
 ```text
 Coding Product policy
-  -> exact Harness Worker coordinator + native-profile friend binder
-     -> opaque ProductWorkerNativeProfilePort + Hosting capability
+  -> Harness Worker attempt lifecycle
+     -> native profile, coordinator and Hosting adapter
         -> Hosting-owned process, endpoint, and native resources
 ```
 

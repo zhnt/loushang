@@ -113,6 +113,10 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.package_product._selected_plugin_revisions import (
+    SelectionError,
+    SelectionPhase,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
@@ -144,7 +148,6 @@ from loushang.harness.session._resume_continuation import (
     _ResumeContinuationSession,
     _ResumeRuntimeCandidate,
 )
-from loushang.harness.session.bash import UserBashHookResult, UserBashRequest
 from loushang.harness.session.bootstrap_construction import (
     rollback_unpublished_construction,
 )
@@ -168,6 +171,9 @@ from loushang.harness.session.plugin_lifecycle._publication import (
     _OwnerPublicationHooks,
     _single_owner_publication,
 )
+from loushang.harness.session.product_composition_assembly import (
+    admit_prepared_product_session,
+)
 from loushang.harness.session.resource_refresh_gate import (
     ResourceCatalogRefreshGatePort,
 )
@@ -183,7 +189,7 @@ from loushang.harness.transcript.kinds import (
     MODEL_SELECTION_KIND,
     THINKING_SELECTION_KIND,
 )
-from loushang.harness.workspace.exec import ExecResult, ExecService, ExecUpdateCallback
+from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 if TYPE_CHECKING:
@@ -322,69 +328,6 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
     _lsp_access: CodingLspSessionAccess | None
     _deferred_lsp_slot: DeferredCapabilitySlot[CodingDeferredLspGeneration] | None
     _deferred_lsp_management_cleanup: Callable[[], None] | None
-
-    @property
-    def execution_available(self) -> bool:
-        return (
-            super().execution_available
-            and not self._coding_session_manager.resume_runtime_publication_pending
-        )
-
-    def _require_coding_execution_admission(self) -> None:
-        self._coding_session_manager.require_no_unsettled_resume_activation()
-        publication = getattr(self, "_resume_publication", None)
-        if publication is not None:
-            self._require_current_resume_publication(publication)
-
-    def _is_current_model_call_session(self) -> bool:
-        if not super()._is_current_model_call_session():
-            return False
-        publication = getattr(self, "_resume_publication", None)
-        if publication is not None:
-            self._require_current_resume_publication(publication)
-        return True
-
-    async def _before_bash(self, request: UserBashRequest) -> UserBashHookResult | None:
-        self._require_coding_execution_admission()
-        return await super()._before_bash(request)
-
-    async def compact(self, custom_instructions: str | None = None) -> object:
-        self._require_coding_execution_admission()
-        return await super().compact(custom_instructions)
-
-    async def _exec_command_from_extension(
-        self,
-        command: str,
-        args: Sequence[str] = (),
-        *,
-        cwd: str | Path | None = None,
-        env: Mapping[str, str] | Sequence[tuple[str, str]] | None = None,
-        timeout_seconds: float | None = None,
-        stdin: str | None = None,
-        signal: object | None = None,
-        on_update: ExecUpdateCallback | None = None,
-        preview_max_lines: int = 2000,
-        preview_max_bytes: int = 50 * 1024,
-        artifact_dir: str | None = None,
-        capture_full_output: bool = True,
-        rolling_max_bytes: int = 100 * 1024,
-    ) -> ExecResult:
-        self._require_coding_execution_admission()
-        return await super()._exec_command_from_extension(
-            command,
-            args,
-            cwd=cwd,
-            env=env,
-            timeout_seconds=timeout_seconds,
-            stdin=stdin,
-            signal=signal,
-            on_update=on_update,
-            preview_max_lines=preview_max_lines,
-            preview_max_bytes=preview_max_bytes,
-            artifact_dir=artifact_dir,
-            capture_full_output=capture_full_output,
-            rolling_max_bytes=rolling_max_bytes,
-        )
 
     @staticmethod
     def _reject_peer_worker_tool(tool: object) -> None:
@@ -603,17 +546,30 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             )
         ):
             raise ValueError("Coding base Product cannot mix Plugin session routes")
-        runtime_selection.require_prepared_selection(
+        worker = coding_product_worker_ordinary_binding
+        runtime_selection.require_prepared_worker(
+            base=coding_base_product_session_assembly,
+            worker=worker,
+            needs_worker_receipt=coding_worker_turn_tool is not None,
+            workspace_binding=workspace_capability_binding,
+        )
+        product_selection = admit_prepared_product_session(
             base=coding_base_product_session_assembly,
             capabilities=capability_plugin_assembly,
             runtime=coding_base_product_runtime_binding,
             selected_capabilities=coding_selected_capability_manifests,
-            worker=coding_product_worker_ordinary_binding,
-            needs_worker_receipt=coding_worker_turn_tool is not None,
+            selected_external=(
+                coding_external_data_product_compilation.selected_manifests
+                if coding_base_product_session_assembly is None
+                and coding_external_data_product_compilation is not None
+                else ()
+            ),
+            desired_selections=coding_product_desired_selections,
+            selected_worker=worker.selected_worker_manifest if worker is not None else None,
             workspace_binding=workspace_capability_binding,
             has_peer_materializer=package_materializer is not None,
             has_catalog_bootstrap=initial_resource_catalog_bootstrap is not None,
-            session_manager=session_manager,
+            get_session_id=lambda: session_manager.get_header().conversation_id,
             product_id=CODING_PRODUCT_ID,
             product_label="Coding",
         )
@@ -661,12 +617,10 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             capability_plugin_assembly if lsp_tool_owner is not None else None
         )
         self._coding_base_plugin_assembly = coding_base_plugin_assembly
-        self._coding_base_product_runtime_binding = coding_base_product_runtime_binding
         self._coding_product_worker_ordinary_binding = (
             coding_product_worker_ordinary_binding
         )
         self._coding_worker_turn_tool_lease: RegistrationLease | None = None
-        self._coding_product_desired_selections = coding_product_desired_selections
         self._coding_product_desired_preflight_completed = False
         self.coding_product_workspace_witness = coding_product_workspace_witness
         product_base = (
@@ -679,9 +633,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         self._coding_external_data_product_compilation = (
             coding_external_data_product_compilation
         )
-        self._coding_selected_capability_manifests = (
-            coding_selected_capability_manifests
-        )
+        self._product_session_selection = product_selection
         self._coding_composition_plan = coding_composition_plan
         self._coding_composition_record_lock = asyncio.Lock()
         self._init_resume_runtime_state()
@@ -1026,20 +978,10 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             ) in capability_plugins.evaluate_management_changes().items():
                 if capability_change.disposition != "restart_required":
                     continue
-                self._record_runtime_diagnostic(
-                    DiagnosticDraft(
-                        code="coding_capability_management_restart_required",
-                        message=(
-                            f"{plugin_id} management state changed; the active "
-                            "Session retains its pinned generation and must restart."
-                        ),
-                        details={
-                            "pluginId": plugin_id,
-                            **capability_change.diagnostic_details(),
-                        },
-                    ),
-                    source="session",
-                    level="error",
+                self._record_management_restart(
+                    plugin_id,
+                    "coding_capability_management_restart_required",
+                    {"pluginId": plugin_id, **capability_change.diagnostic_details()},
                 )
                 raise CodingCapabilityPluginCompositionError(
                     "Active Coding Session requires restart after Capability "
@@ -1050,17 +992,10 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         if base_plugin is not None:
             change = base_plugin.evaluate_management_change()
             if change is not None and change.disposition == "restart_required":
-                self._record_runtime_diagnostic(
-                    DiagnosticDraft(
-                        code="coding_base_management_restart_required",
-                        message=(
-                            "coding.base management state changed; the active "
-                            "Session retains its pinned generation and must restart."
-                        ),
-                        details=change.diagnostic_details(),
-                    ),
-                    source="session",
-                    level="error",
+                self._record_management_restart(
+                    "coding.base",
+                    "coding_base_management_restart_required",
+                    change.diagnostic_details(),
                 )
                 raise CodingBasePluginAssemblyError(
                     "Active Coding Session requires restart after coding.base change",
@@ -1068,13 +1003,29 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
                 )
         super()._prepare_resource_refresh()
 
+    def _record_management_restart(
+        self, plugin_id: str, code: str, details: dict[str, object]
+    ) -> None:
+        self._record_runtime_diagnostic(
+            DiagnosticDraft(
+                code=code,
+                message=(
+                    f"{plugin_id} management state changed; the active "
+                    "Session retains its pinned generation and must restart."
+                ),
+                details=details,
+            ),
+            source="session",
+            level="error",
+        )
+
     def _require_current_coding_runtime_selection(self) -> None:
         runtime_selection.require_current_selection(self, self._current_selection_failure)
 
     def _current_selection_failure(
         self,
-        phase: runtime_selection.SelectionPhase,
-        error: runtime_selection.SelectionError,
+        phase: SelectionPhase,
+        error: SelectionError,
         selected: PackageProductSelectedPluginManifestV1 | None,
     ) -> BaseException:
         if phase == "worker":

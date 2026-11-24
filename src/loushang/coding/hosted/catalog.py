@@ -6,19 +6,18 @@ in a parallel Session index. Candidate tokens never supply filesystem paths.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import os
 import threading
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loushang.apphost import (
     ClaimedSessionCandidateV1,
     OpenedProductCandidateV1,
-    SessionBindingKeyV1,
     SessionCandidateMode,
     SessionCandidateRefV1,
     SessionCreateIntentV1,
@@ -29,21 +28,24 @@ from loushang.apphost import (
 )
 from loushang.apphost.integrations._canonical_transcript_catalog import (
     CanonicalTranscriptScope,
+    _CanonicalClaimedCandidate,
+    _CanonicalOpenedCandidate,
     _CanonicalTranscriptCandidateMethods,
     _CanonicalTranscriptCatalogMethods,
+    _CanonicalWritableCandidateBinding,
+    canonical_create_metadata,
+    canonical_discovery_scope,
+    read_canonical_create_identity,
+    require_canonical_candidate_binding,
 )
 from loushang.appserver.protocol import (
     SessionIdentityV1,
     SessionScopeV1,
 )
-from loushang.appservice.discovery_ports import (
-    HostedSessionDiscoveryScopeV1,
-    HostedSessionDiscoverySnapshotV1,
-)
 from loushang.coding.adapters._goal_store import is_goal_journal_filename
+from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.plan import (
-    CODING_PRODUCT_ID,
-    CODING_TRANSCRIPT_RUNTIME,
+    CODING_TRANSCRIPT_RUNTIME as CODING_TRANSCRIPT_RUNTIME,
 )
 from loushang.coding.composition.provenance import composition_header_metadata
 from loushang.coding.composition.sets import resolve_coding_composition_set
@@ -63,7 +65,10 @@ from loushang.coding.resume.model_outcome import (
 from loushang.coding.session.manager import (
     CODING_SESSION_TRANSCRIPT_LIFECYCLE as _LIFECYCLE,
 )
-from loushang.coding.session.manager import SessionManager
+from loushang.coding.session.manager import (
+    SessionManager,
+    create_owned_coding_session_factory,
+)
 from loushang.coding.session.manager import (
     coding_session_header_metadata as _coding_header_metadata,
 )
@@ -78,7 +83,6 @@ from loushang.harness.conversation import ConversationHeader
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
 from loushang.harness.transcript import (
-    AgentTranscriptLifecycle,
     AgentTranscriptLifecycleSession,
     AgentTranscriptSessionFactory,
     _canonical_header,
@@ -129,11 +133,7 @@ class CodingHostedScopeV1:
 
     @property
     def discovery_scope(self) -> SessionDiscoveryScope:
-        return (
-            SessionDiscoveryScope.CURRENT_DIRECTORY
-            if self.scope is SessionScopeV1.CWD
-            else SessionDiscoveryScope.USER_GLOBAL_CANONICAL
-        )
+        return canonical_discovery_scope(self.scope)
 
     @property
     def source_id(self) -> str:
@@ -201,39 +201,34 @@ class _Record:
     compatible: bool = True
 
 
-class CodingHostedCandidateBindingV1:
+def _coding_hosted_record(
+    scope: CodingHostedScopeV1,
+    path: Path,
+    revision: str,
+    header: ConversationHeader,
+    identity: SessionIdentityV1,
+    compatibility: str,
+    operation: str,
+    *,
+    compatible: bool = True,
+) -> _Record:
+    envelope = SessionIdentityEnvelopeV1(
+        "coding", compatibility, identity.continuity_id, identity.session_id,
+        "coding.jsonl", identity.session_id,
+    )
+    projection = SessionIdentityProjectionV1(
+        SessionCandidateRefV1(scope.source_id, identity.session_id, revision),
+        scope.discovery_scope, SessionCandidateMode.CANONICAL, envelope,
+    )
+    return _Record(projection, identity, scope, path, operation, header, compatible)
+
+
+class CodingHostedCandidateBindingV1(
+    _CanonicalWritableCandidateBinding[_Record, SessionManager]
+):
     """One already-open transcript; Product Session construction takes it once."""
 
-    def __init__(self, record: _Record, manager: SessionManager, *, created: bool = False) -> None:
-        self.record = record
-        self.created = created
-        self._manager: SessionManager | None = manager
-        self._dispose: Callable[[], Awaitable[None]] | None = (
-            manager.dispose_runtime_profile
-        )
-
-    def manager_for_construction(self) -> SessionManager:
-        if self._manager is None:
-            raise CodingHostedCatalogError()
-        return self._manager
-
-    def retain_constructed_owner(self, dispose: Callable[[], Awaitable[None]]) -> None:
-        """Keep construction cleanup reachable until the completed binding transfers."""
-        self.manager_for_construction()
-        self._dispose = dispose
-
-    def take_manager(self) -> SessionManager:
-        if self._manager is None:
-            raise CodingHostedCatalogError()
-        manager, self._manager = self._manager, None
-        self._dispose = None
-        return manager
-
-    async def close(self) -> None:
-        if self._dispose is not None:
-            await self._dispose()
-            self._dispose = None
-            self._manager = None
+    _candidate_error = CodingHostedCatalogError
 
 
 @dataclass(slots=True)
@@ -263,9 +258,9 @@ class CodingHostedResumeSourceV1:
         if self._closed:
             raise CodingHostedCatalogError()
         self._require_accepting()
-        if _revision(self.record.path) != hashlib.sha256(
-            self.history.source_fingerprint.encode()
-        ).hexdigest():
+        if _revision(self.record.path) != _canonical_header.transcript_fingerprint_revision(
+            self.history.source_fingerprint
+        ):
             raise CodingHostedCatalogError()
 
     async def refresh_after_model_change(self, manager: SessionManager) -> None:
@@ -350,23 +345,8 @@ _CodingHostedCandidateBinding = (
 )
 
 
-class _Claimed:
-    def __init__(
-        self, reference: SessionCandidateRefV1, binding: _CodingHostedCandidateBinding
-    ) -> None:
-        self._reference = reference
-        self._binding = binding
-
-    @property
-    def reference(self) -> SessionCandidateRefV1:
-        return self._reference
-
-    @property
-    def opaque_binding(self) -> _CodingHostedCandidateBinding:
-        return self._binding
-
-    async def close(self) -> None:
-        await self.opaque_binding.close()
+class _Claimed(_CanonicalClaimedCandidate[_CodingHostedCandidateBinding]):
+    pass
 
 
 class _Candidate(
@@ -401,25 +381,8 @@ class _Candidate(
         self._closed = False
 
 
-class _Opened:
-    def __init__(self, binding: _CodingHostedCandidateBinding) -> None:
-        identity = binding.record.identity
-        self._binding_key = SessionBindingKeyV1(
-            identity.product_id, identity.continuity_id, identity.session_id
-        )
-        self._binding = binding
-
-    @property
-    def binding_key(self) -> SessionBindingKeyV1:
-        return self._binding_key
-
-    @property
-    def opaque_binding(self) -> _CodingHostedCandidateBinding:
-        return self._binding
-
-    async def close(self) -> None:
-        # The candidate owns an unconsumed binding; Product owns a taken one.
-        return None
+class _Opened(_CanonicalOpenedCandidate[_CodingHostedCandidateBinding]):
+    pass
 
 
 class CodingHostedCandidateValidatorV1:
@@ -428,22 +391,17 @@ class CodingHostedCandidateValidatorV1:
         candidate: ClaimedSessionCandidateV1,
         envelope: SessionIdentityEnvelopeV1,
     ) -> OpenedProductCandidateV1:
-        binding = candidate.opaque_binding
-        if type(binding) not in (
-            CodingHostedCandidateBindingV1, CodingHostedHistoryCandidateBindingV1,
-        ):
-            raise CodingHostedCatalogError()
-        binding = cast(_CodingHostedCandidateBinding, binding)
-        if binding.record.projection.reference != candidate.reference:
-            raise CodingHostedCatalogError()
-        if binding.record.projection.envelope != envelope:
-            raise CodingHostedCatalogError()
-        if binding.record.projection.envelope is None or (
-            binding.record.projection.envelope.product_compatibility_id
-            != CODING_HOSTED_COMPATIBILITY_ID
-        ):
-            raise CodingHostedCatalogError()
-        return _Opened(binding)
+        binding = require_canonical_candidate_binding(
+            candidate,
+            envelope,
+            binding_types=(
+                CodingHostedCandidateBindingV1,
+                CodingHostedHistoryCandidateBindingV1,
+            ),
+            compatibility_id=CODING_HOSTED_COMPATIBILITY_ID,
+            error=CodingHostedCatalogError,
+        )
+        return _Opened(cast(_CodingHostedCandidateBinding, binding))
 
 
 class CodingHostedSessionCatalogV1(
@@ -502,28 +460,15 @@ class CodingHostedSessionCatalogV1(
         header: ConversationHeader,
     ) -> _Record | None:
         scope = cast(CodingHostedScopeV1, scope)
-        before = revision
         raw = header.metadata.get(_METADATA_KEY)
         if raw is None:
             return None
         identity, compatibility, operation = _hosted_header_identity(
             header, scope=scope.scope, fingerprint=scope.fingerprint
         )
-        envelope = SessionIdentityEnvelopeV1(
-            "coding",
-            compatibility,
-            identity.continuity_id,
-            identity.session_id,
-            "coding.jsonl",
-            identity.session_id,
+        return _coding_hosted_record(
+            scope, path, revision, header, identity, compatibility, operation
         )
-        projection = SessionIdentityProjectionV1(
-            SessionCandidateRefV1(scope.source_id, identity.session_id, before),
-            scope.discovery_scope,
-            SessionCandidateMode.CANONICAL,
-            envelope,
-        )
-        return _Record(projection, identity, scope, path, operation, header)
 
     def _new_header_metadata(
         self,
@@ -531,17 +476,10 @@ class CodingHostedSessionCatalogV1(
         scope: CanonicalTranscriptScope,
         session_id: str,
     ) -> dict[str, JSONValue]:
-        metadata: dict[str, JSONValue] = {
-            "version": 1,
-            "compatibilityId": CODING_HOSTED_COMPATIBILITY_ID,
-            "continuityId": intent.request.requested_continuity_id,
-            "sessionId": session_id,
-            "scope": scope.scope.value,
-            "scopeFingerprint": scope.fingerprint,
-            "operationId": intent.request.operation_id,
-        }
         return {
-            _METADATA_KEY: metadata,
+            _METADATA_KEY: canonical_create_metadata(
+                intent, scope, session_id, compatibility_id=CODING_HOSTED_COMPATIBILITY_ID
+            ),
             **composition_header_metadata(
                 resolve_coding_composition_set("coding-standard")
             ),
@@ -558,30 +496,18 @@ class CodingHostedSessionCatalogV1(
         if len({item.scope for item in scopes}) != len(scopes):
             raise ValueError("duplicate hosted scope")
         self._validate_scope_roots(scopes)
-        self.scopes = scopes
-        self._legacy_transcript_factory = _HOSTED_FACTORY
-        self._legacy_transcript_type = _HostedTranscript
-        self._owned_transcript_type = _OwnedHostedTranscript
-        self._records: dict[SessionCandidateRefV1, _Record] = {}
-        self._lock = asyncio.Lock()
-        self._owned_factory = (
-            AgentTranscriptSessionFactory(
-                lifecycle=AgentTranscriptLifecycle(
-                    bind_runtime=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle,
-                    bind_runtime_owned=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle_owned,
-                ),
-                resolve_binding_input=_resolve_coding_binding_input,
-                header_metadata=_coding_header_metadata,
-                validate_restored_header=_validate_coding_restored_header,
+        self._initialize_catalog(
+            scopes,
+            legacy_factory=_HOSTED_FACTORY,
+            legacy_type=_HostedTranscript,
+            owned_type=_OwnedHostedTranscript,
+            make_owned_factory=partial(
+                create_owned_coding_session_factory,
                 session_file_factory=_session_path,
-                owned_product_id="coding",
                 store_state_root=store_state_root,
                 store_root_observed=store_root_observed,
-            ) if owned_transcripts else None
+            ) if owned_transcripts else None,
         )
-        self._pending_sessions: dict[int, AgentTranscriptLifecycleSession[RuntimeProfileBinding]] = {}
-        self._closing = False
-        self._loop: asyncio.AbstractEventLoop | None = None
 
     def _validate_scope_roots(self, scopes: tuple[CodingHostedScopeV1, ...]) -> None:
         if len({item.session_dir for item in scopes}) != len(scopes):
@@ -593,56 +519,18 @@ class CodingHostedSessionCatalogV1(
             envelope.product_compatibility_id == CODING_HOSTED_COMPATIBILITY_ID
         )
 
-    def _record_available(self, record: _Record) -> bool:
-        return self._record_compatible(record)
-
     def _validate_open_record(self, record: _Record) -> None:
         # Legacy v1 compatibility remains the Product validator's decision.
         # Managed catalogs additionally fence workspace/runtime before IO.
         return None
-
-    def _display_identity(self, record: _Record) -> SessionIdentityV1:
-        return record.identity
-
-    def _record_visible(self, record: _Record) -> bool:
-        return True
-
-    def _new_root_creation(self) -> bool:
-        return False
 
     def _validate_records(self, records: list[_Record]) -> None:
         identities = [item.identity.session_id for item in records]
         if len(set(identities)) != len(identities):
             raise CodingHostedCatalogError()
 
-    @property
-    def pending_sessions(self) -> tuple[AgentTranscriptLifecycleSession[RuntimeProfileBinding], ...]:
-        return tuple(self._pending_sessions.values())
-
-    def fence(self) -> None:
-        return super().fence()
-
-    async def close(self) -> None:
-        return await super().close()
-
     async def delete_session_history(self, identity: SessionIdentityV1) -> None:
-        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
-
-        async with self._lock:
-            self._accepting()
-            for scope in self.scopes:
-                if scope.scope is identity.scope and scope.fingerprint == identity.scope_fingerprint:
-                    break
-            else:
-                raise CodingHostedCatalogError()
-            path = _hosted_session_path(scope.session_dir, identity.session_id)
-            record = await settled_io(self._read_record, scope, path)
-            if record is None or record.identity != identity or not self._record_compatible(record):
-                raise CodingHostedCatalogError()
-            await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
-            self._records = {
-                key: value for key, value in self._records.items() if value.identity != identity
-            }
+        await self._delete_canonical_history(identity, _hosted_session_path)
 
     def _workspace_transcripts(self) -> tuple[Path, ...]:
         paths: list[Path] = []
@@ -673,38 +561,15 @@ class CodingHostedSessionCatalogV1(
         # any original factory cleanup before removing the registration.
         await self.close()
 
-    async def discover_sessions(
-        self,
-        scope: HostedSessionDiscoveryScopeV1,
-        *,
-        stop: Callable[[], bool],
-    ) -> HostedSessionDiscoverySnapshotV1:
-        return await super().discover_sessions(scope, stop=stop)
-
-    async def list_identities(
-        self,
-        scopes: tuple[SessionDiscoveryScope, ...],
-        *,
-        limit: int,
-    ) -> tuple[SessionIdentityProjectionV1, ...]:
-        return await super().list_identities(scopes, limit=limit)
-
-    async def open_candidate(self, reference: SessionCandidateRefV1) -> _Candidate:
-        return await super().open_candidate(reference)
-
     async def preview_history_header(
         self, reference: SessionCandidateRefV1,
     ) -> CodingResumeHeaderPreview:
         """Inspect a discovered Header without claiming its writable candidate."""
 
         self._accepting()
-        async with self._lock:
-            self._accepting()
-            record = self._records.get(reference)
-            if record is None or _revision(record.path) != reference.revision:
-                raise CodingHostedCatalogError()
+        async with self._current_discovered_record(reference) as record:
             preview = inspect_coding_resume_header(record.header)
-            if _revision(record.path) != reference.revision:
+            if self._source_revision(record.path) != reference.revision:
                 raise CodingHostedCatalogError()
             return preview
 
@@ -714,25 +579,19 @@ class CodingHostedSessionCatalogV1(
     ) -> CodingResumeHistoryPreview:
         """Read bounded history from a discovered candidate without claiming it."""
 
-        self._accepting()
-        async with self._lock:
-            self._accepting()
-            record = self._records.get(reference)
-            if record is None or _revision(record.path) != reference.revision:
-                raise CodingHostedCatalogError()
-        preview = await settled_io(
-            read_coding_resume_snapshot, record.path, max_bytes=max_bytes,
-            selected_leaf_id=selected_leaf_id,
+        return await self._read_discovered_history(
+            reference,
+            partial(
+                read_coding_resume_snapshot,
+                max_bytes=max_bytes,
+                selected_leaf_id=selected_leaf_id,
+            ),
+            lambda history, revision, header: (
+                _canonical_header.transcript_fingerprint_revision(history.source_fingerprint)
+                == revision
+                and history.header_preview.header == header
+            ),
         )
-        self._accepting()
-        if (
-            _revision(record.path) != reference.revision
-            or hashlib.sha256(preview.source_fingerprint.encode()).hexdigest()
-            != reference.revision
-            or preview.header_preview.header != record.header
-        ):
-            raise CodingHostedCatalogError()
-        return preview
 
     async def open_history_binding(
         self, reference: SessionCandidateRefV1, *, max_bytes: int,
@@ -750,11 +609,7 @@ class CodingHostedSessionCatalogV1(
         preview = await self.preview_history_snapshot(
             reference, max_bytes=max_bytes, selected_leaf_id=selected_leaf_id,
         )
-        async with self._lock:
-            self._accepting()
-            record = self._records.get(reference)
-            if record is None or _revision(record.path) != reference.revision:
-                raise CodingHostedCatalogError()
+        async with self._current_discovered_record(reference) as record:
             identity = record.identity
         return CodingHostedHistoryBindingV1(identity, preview)
 
@@ -781,49 +636,21 @@ class CodingHostedSessionCatalogV1(
     ) -> _Candidate:
         """Use the existing AppHost claim and factory chain for detached history."""
 
+        def project(record: _Record, binding: CodingHostedSessionBindingV1) -> _Candidate:
+            return _Candidate(record, CodingHostedHistoryCandidateBindingV1(
+                record,
+                binding,
+                self._accepting,
+                manager_type=(
+                    _OwnedHostedTranscript if self._owned_factory is not None else _HostedTranscript
+                ),
+                writer_factory=self._owned_factory or _HOSTED_FACTORY,
+            ))
+
         binding = await self.open_history_binding(
             reference, max_bytes=max_bytes, selected_leaf_id=selected_leaf_id,
         )
-        try:
-            async with self._lock:
-                self._accepting()
-                record = self._records.get(reference)
-                if record is None or _revision(record.path) != reference.revision:
-                    raise CodingHostedCatalogError()
-                return _Candidate(record, CodingHostedHistoryCandidateBindingV1(
-                    record,
-                    binding,
-                    self._accepting,
-                    manager_type=(
-                        _OwnedHostedTranscript
-                        if self._owned_factory is not None
-                        else _HostedTranscript
-                    ),
-                    writer_factory=self._owned_factory or _HOSTED_FACTORY,
-                ))
-        except BaseException:
-            await binding.close()
-            raise
-
-    def _scope_for(self, request: SessionCreateRequestV1) -> CodingHostedScopeV1:
-        if request.product_id != "coding" or request.requested_continuity_id is None:
-            raise CodingHostedCatalogError()
-        for scope in self.scopes:
-            if (
-                scope.discovery_scope is request.requested_scope
-                and scope.fingerprint == request.creator_scope_id
-            ):
-                return cast(CodingHostedScopeV1, scope)
-        raise CodingHostedCatalogError()
-
-    async def find_created_candidate(
-        self, request: SessionCreateRequestV1
-    ) -> _Candidate | None:
-        return await super().find_created_candidate(request)
-
-    async def create_candidate(self, intent: SessionCreateIntentV1) -> _Candidate:
-        return await super().create_candidate(intent)
-
+        return await self._open_discovered_history_candidate(reference, binding, project)
 
 class CodingHostedResumeCatalogV1:
     """Route only AppHost resume opens through the detached history owner.
@@ -927,47 +754,15 @@ def _hosted_header_identity(
     header: ConversationHeader, *, scope: SessionScopeV1, fingerprint: str,
 ) -> tuple[SessionIdentityV1, str, str]:
     """Validate the original v1 identity independently of a selection view."""
-    raw = header.metadata.get(_METADATA_KEY)
-    if not isinstance(raw, Mapping) or set(raw) != {
-        "version",
-        "compatibilityId",
-        "continuityId",
-        "sessionId",
-        "scope",
-        "scopeFingerprint",
-        "operationId",
-    }:
-        raise CodingHostedCatalogError()
-    if type(raw["version"]) is not int or raw["version"] != 1:
-        raise CodingHostedCatalogError()
-    if any(type(value) is not str for key, value in raw.items() if key != "version"):
-        raise CodingHostedCatalogError()
-    if (
-        raw["sessionId"] != header.conversation_id
-        or raw["scope"] != scope.value
-        or raw["scopeFingerprint"] != fingerprint
-    ):
-        raise CodingHostedCatalogError()
-    create_request = SessionCreateRequestV1(
-        "coding",
-        fingerprint,
-        cast(str, raw["operationId"]),
-        requested_continuity_id=cast(str, raw["continuityId"]),
-        requested_scope=(SessionDiscoveryScope.CURRENT_DIRECTORY if scope is SessionScopeV1.CWD
-                         else SessionDiscoveryScope.USER_GLOBAL_CANONICAL),
+    return read_canonical_create_identity(
+        header,
+        scope=scope,
+        fingerprint=fingerprint,
+        product_id=CODING_PRODUCT_ID,
+        metadata_key=_METADATA_KEY,
+        create_identity=_create_identity,
+        error=CodingHostedCatalogError,
     )
-    if _create_identity(create_request) != header.conversation_id:
-        raise CodingHostedCatalogError()
-    identity = SessionIdentityV1(
-        "coding",
-        cast(str, raw["continuityId"]),
-        header.conversation_id,
-        scope,
-        fingerprint,
-    )
-    return identity, cast(str, raw["compatibilityId"]), cast(str, raw["operationId"])
-
-
 
 
 __all__ = [

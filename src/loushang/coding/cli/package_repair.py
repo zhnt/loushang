@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
-import re
 import sys
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
@@ -18,8 +16,10 @@ from loushang.coding.package.product_repair import (
 from loushang.coding.package.product_runtime import (
     open_coding_fenced_product_application_owner,
 )
-
-_SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
+from loushang.harness.cli.package_lifecycle import (
+    package_operator_error_code,
+    write_package_operator_result,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -55,12 +55,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             owner_factory=open_coding_fenced_product_application_owner,
         )
     except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
-        reason = getattr(error, "code", None)
-        if not isinstance(reason, str) or _SAFE_ERROR_CODE.fullmatch(reason) is None:
-            reason = "package_repair_unavailable"
+        reason = package_operator_error_code(error, fallback="package_repair_unavailable")
         sys.stderr.write(f"Coding Package repair refused: {reason}\n")
         return 1
-    sys.stdout.write(json.dumps(result.to_dict(), sort_keys=True) + "\n")
+    write_package_operator_result(result.to_dict())
     return (
         0
         if args.action in CODING_PACKAGE_REPAIR_INSPECTIONS_V1 or result.committed

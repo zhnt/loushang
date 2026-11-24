@@ -23,6 +23,7 @@ from loushang.coding.composition.base_plugin import (
     prepare_coding_base_product_plan as prepare_coding_base_product_plan,
 )
 from loushang.coding.composition.sets import CodingCompositionSetPlan
+from loushang.coding.package.legacy_data_trust import EXTERNAL_DATA_RESOURCE_OWNERS
 from loushang.coding.package.legacy_data_trust import (
     EXTERNAL_DATA_TRUST_CLASSES as EXTERNAL_DATA_TRUST_CLASSES,
 )
@@ -33,7 +34,6 @@ from loushang.coding.package.legacy_data_trust import (
     permits_external_data_owner as permits_external_data_owner,
 )
 from loushang.harness.capabilities import (
-    MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.capabilities.consumer_requirements import (
@@ -51,16 +51,13 @@ from loushang.harness.capabilities.contribution_admission import (
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
 )
-from loushang.harness.capabilities.provider_selection import (
-    ProductCapabilityProviderResolver,
-    ProductCapabilityProviderSelectionPlanV1,
-)
 from loushang.harness.environment import HostEnvironment
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resource_catalog.product_snapshot_source import (
     ProductSelectedResourceInput,
     capture_selected_resource_bodies,
     project_selected_resource_inputs,
+    validate_product_resource_compilation,
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
@@ -86,17 +83,17 @@ from loushang.harness.resources.plugins.selection import (
 )
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
-    validate_session_capability_composition_closure,
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding as ProductContributionOwnerBinding,
 )
 from loushang.harness.session.product_composition_assembly import (
-    _assemble_product_contribution_candidates as _assemble_product_contribution_candidates,
-)
-from loushang.harness.session.product_composition_assembly import (
-    extend_product_data_selection_plan,
+    ProductDataBaseSelection,
+    ProductDataResourcePolicy,
+    assemble_agent_data_composition,
+    bind_agent_host_session_inputs,
     prepare_product_selected_contribution_candidate,
+    project_selected_product_data_candidates,
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
 
@@ -104,11 +101,6 @@ if TYPE_CHECKING:
     from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
-
-
-_EXTERNAL_RESOURCE_OWNERS = frozenset(
-    {"resources.skill", "resources.prompt", "resources.theme"}
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,72 +140,17 @@ class CodingBaseProductCompilation:
     ] = field(default=(), repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        context = self.product_composition.authority_context
-        if (
-            self.plan.context.product_id != context.product_id
-            or self.plan.context.scope_id != context.scope_id
-            or self.plan.context.policy_revision != context.product_policy_revision
-            or tuple(item.authority.snapshot() for item in self.owner_bindings)
-            != context.owner_snapshots
-        ):
-            raise ValueError("Product Coding base changed owner authority facts")
-        expected = {
-            item.fingerprint: item.contribution_id
-            for item in self.product_composition.resource_admissions
-        }
-        actual = {
-            item.admission_fingerprint: item.contribution_id
-            for item in self.resource_bodies
-        }
-        if actual != expected or len(actual) != len(self.resource_bodies):
-            raise ValueError("Product Resource bodies changed owner admissions")
-        capability_ids = tuple(
-            item.verified_manifest().name
-            for item in (
-                *self.selected_capability_manifests,
-                *self.selected_external_data_manifests,
-            )
+        validate_product_resource_compilation(
+            self.plan,
+            self.product_composition,
+            (binding.authority for binding in self.owner_bindings),
+            base_plugin_id=CODING_BASE_PLUGIN_ID,
+            selected_base=self.selected_manifest,
+            selected_capabilities=self.selected_capability_manifests,
+            selected_resources=self.selected_external_data_manifests,
+            bodies=self.resource_bodies,
+            changed_authority="Product Coding base changed owner authority facts",
         )
-        if tuple(sorted(capability_ids)) != tuple(
-            plugin_id
-            for plugin_id in self.plan.selected_plugin_ids
-            if plugin_id != "coding.base"
-        ):
-            raise ValueError("Product manifests changed the selected plan")
-        instance_refs = {
-            item.plugin_id: item for item in self.plan.context.instance_revision_refs
-        }
-        trust = {item.plugin_id: item for item in self.plan.source_trust_snapshots}
-        if any(
-            selected.snapshot.instance_revision_ref
-            != instance_refs.get(selected.manifest.name)
-            or selected.source_trust_snapshot != trust.get(selected.manifest.name)
-            for selected in (
-                *self.selected_capability_manifests,
-                *self.selected_external_data_manifests,
-            )
-        ):
-            raise ValueError("Product manifests changed B selection facts")
-        selected_by_id = {
-            item.manifest.name: item
-            for item in (
-                self.selected_manifest,
-                *self.selected_external_data_manifests,
-            )
-        }
-        for admission in self.product_composition.resource_admissions:
-            captured = next(
-                item
-                for item in self.resource_bodies
-                if item.admission_fingerprint == admission.fingerprint
-            )
-            input_record = ProductSelectedResourceInput(
-                admission=admission,
-                selected_manifest=selected_by_id[admission.plugin_id],
-                relative_path=captured.logical_path,
-            )
-            if input_record.body != captured.body:
-                raise ValueError("Product Resource body changed selected Store bytes")
 
     def read_resource_body(
         self, admission_fingerprint: str, *, max_bytes: int
@@ -238,7 +175,7 @@ class CodingBaseProductCompilation:
         return project_selected_resource_inputs(
             self.product_composition.resource_admissions,
             (self.selected_manifest, *self.selected_external_data_manifests),
-            {item.admission_fingerprint: item.logical_path for item in self.resource_bodies},
+            self.resource_bodies,
         )
 
     def build_owners(
@@ -269,39 +206,11 @@ class CodingBaseProductCompilation:
         workspace = workspace_binding.provider
         if workspace.capability_id != WORKSPACE_CAPABILITY_DEFINITION.capability_id:
             raise ValueError("Coding base Product host Provider is not workspace")
-        context = self.product_composition.authority_context
-        resolved = ProductCapabilityProviderResolver().resolve(
-            ProductCapabilityProviderSelectionPlanV1(
-                product_id=context.product_id,
-                roots=(),
-                choices=(),
-                policy_revision=context.product_policy_revision,
-            ),
-            definitions=(
-                MODEL_INPUT_CAPABILITY_DEFINITION,
-                WORKSPACE_CAPABILITY_DEFINITION,
-            ),
-            admissions=(),
-            owner_snapshots=(),
-            evaluated_at=context.evaluated_at,
-            prebound_providers=(workspace,),
-        )
-        validate_session_capability_composition_closure(
-            self.product_composition,
-            resolved,
-            host_capability_ids=(
-                MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-                WORKSPACE_CAPABILITY_DEFINITION.capability_id,
-            ),
-            host_providers=(workspace,),
-        )
         return CodingBaseProductSessionAssembly(
             compilation=self,
             workspace_binding=workspace_binding,
-            session_inputs=SessionCapabilityCompositionInputs(
-                product_composition=self.product_composition,
-                resolved_providers=resolved,
-                component_requests=(),
+            session_inputs=bind_agent_host_session_inputs(
+                self.product_composition, workspace
             ),
         )
 
@@ -340,15 +249,13 @@ def compile_coding_base_product_selection(
         include_command_contribution=include_command_contribution,
     )
     selected_refs = set(plan.selected_contributions)
-    pairs = selected.verified_data_only_declarations()
-    candidates = tuple(
-        _candidate(selected, plan, reservation, declaration)
-        for reservation, declaration in pairs
-        if PluginContributionRef(
-            CODING_BASE_PLUGIN_ID,
-            reservation.contribution_id,
-        )
-        in selected_refs
+    candidates = project_selected_product_data_candidates(
+        plan,
+        (
+            (selected, reservation, declaration)
+            for reservation, declaration in selected.verified_data_only_declarations()
+        ),
+        prepare=_candidate,
     )
     if {
         PluginContributionRef(item.plugin_id, item.contribution_id)
@@ -366,17 +273,8 @@ def compile_coding_base_product_selection(
         include_theme="resources.theme" in owners,
         include_command="commands.session" in owners,
     )
-    product_composition = _assemble_product_contribution_candidates(
-        plan=plan,
-        candidates=candidates,
-        owner_bindings=owner_bindings,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
-        ),
-        select_optional_requirements=lambda _preview: (),
-        evaluated_at=evaluated_at,
+    product_composition = assemble_agent_data_composition(
+        plan, candidates, owner_bindings, evaluated_at=evaluated_at
     )
     return CodingBaseProductCompilation(
         plan=plan,
@@ -400,87 +298,20 @@ def extend_coding_base_product_data_resources(
 
     if not external:
         return base
-    if base.plan.selected_plugin_ids != (
-        CODING_BASE_PLUGIN_ID,
-    ):
+    if base.plan.selected_plugin_ids != (CODING_BASE_PLUGIN_ID,):
         raise ValueError("External data extension requires the base-only plan")
     if tuple(sorted(item.manifest.name for item in external)) != tuple(
         item.manifest.name for item in external
     ):
         raise ValueError("External data selections must be sorted and unique")
-    external_owners: set[str] = set()
-    for selected in external:
-        trust = selected.source_trust_snapshot
-        pairs = selected.verified_data_only_declarations()
-        if trust is None or _external_selection_rejected(trust, pairs):
-            raise ValueError("External Product data Resource selection changed")
-        external_owners.add(pairs[0][0].owner)
-    plan = extend_product_data_selection_plan(
-        base.plan,
+    plan, composition, owners = _EXTERNAL_DATA_RESOURCES.compile(
         external,
-    )
-    candidates = tuple(
-        _candidate(selected, plan, reservation, declaration)
-        for selected in (base.selected_manifest, *external)
-        for reservation, declaration in selected.verified_data_only_declarations()
-        if PluginContributionRef(
-            selected.manifest.name, reservation.contribution_id
-        )
-        in plan.selected_contributions
-    )
-    bindings = list(base.owner_bindings)
-    missing_owners = external_owners - {item.owner_key[0] for item in bindings}
-    if missing_owners:
-        bindings.extend(
-            _owner_bindings(
-                include_tools=False,
-                include_prompt="resources.prompt" in missing_owners,
-                include_skill="resources.skill" in missing_owners,
-                include_theme="resources.theme" in missing_owners,
-                include_command=False,
-            )
-        )
-    owners = tuple(
-        sorted(
-            (
-                ProductContributionOwnerBinding(
-                    authority=OwnerContributionAuthority(
-                        replace(
-                            binding.authority.policy,
-                            allowed_source_trust_classes=(
-                                (
-                                    "host-equivalent-local",
-                                    *EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
-                                )
-                                if any(
-                                    item.plugin_id
-                                    == CODING_BASE_PLUGIN_ID
-                                    and item.owner_id == binding.owner_key[0]
-                                    for item in candidates
-                                )
-                                else (*EXTERNAL_DATA_TRUST_CLASSES_ORDERED,)
-                            ),
-                        )
-                    ),
-                    admission_ttl_seconds=binding.admission_ttl_seconds,
-                )
-                if binding.owner_key[0] in external_owners
-                else binding
-                for binding in bindings
-            ),
-            key=lambda binding: binding.owner_key,
-        )
-    )
-    composition = _assemble_product_contribution_candidates(
-        plan=plan,
-        candidates=candidates,
-        owner_bindings=owners,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(
-            MODEL_INPUT_CAPABILITY_DEFINITION,
-            WORKSPACE_CAPABILITY_DEFINITION,
+        lambda: ProductDataBaseSelection(
+            plan=base.plan,
+            manifest=base.selected_manifest,
+            owner_bindings=base.owner_bindings,
+            trust_classes=("host-equivalent-local",),
         ),
-        select_optional_requirements=lambda _preview: (),
         evaluated_at=evaluated_at,
     )
     return replace(
@@ -492,6 +323,18 @@ def extend_coding_base_product_data_resources(
             base.selected_manifest, composition, external_selected=external
         ),
         selected_external_data_manifests=external,
+    )
+
+
+def _make_external_resource_owners(
+    missing: set[str],
+) -> tuple[ProductContributionOwnerBinding, ...]:
+    return _owner_bindings(
+        include_tools=False,
+        include_prompt="resources.prompt" in missing,
+        include_skill="resources.skill" in missing,
+        include_theme="resources.theme" in missing,
+        include_command=False,
     )
 
 
@@ -514,25 +357,6 @@ def _resource_bodies(
             ((selected,) if selected is not None else ()) + external_selected,
             reject=_resource_capture_error,
         )
-    )
-
-
-def _external_selection_rejected(
-    trust: PluginSourceTrustSnapshotV1,
-    declarations: tuple[
-        tuple[PluginContributionReservation, PluginDeclaration], ...
-    ],
-) -> bool:
-    """Apply the same admission constraints after each path classifies trust."""
-    return (
-        not trust.trusted
-        or trust.source_trust_class not in EXTERNAL_DATA_TRUST_CLASSES
-        or len(declarations) != 1
-        or not permits_external_data_owner(
-            trust.source_trust_class, declarations[0][0].owner
-        )
-        or declarations[0][0].kind != "resource_item"
-        or declarations[0][0].owner not in _EXTERNAL_RESOURCE_OWNERS
     )
 
 
@@ -570,6 +394,16 @@ def _candidate(
             message, code=code
         ),
     )
+
+
+_EXTERNAL_DATA_RESOURCES = ProductDataResourcePolicy(
+    trust_classes=EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
+    resource_owners=EXTERNAL_DATA_RESOURCE_OWNERS,
+    permits_owner=permits_external_data_owner,
+    prepare_candidate=_candidate,
+    make_resource_owners=_make_external_resource_owners,
+)
+_bind_coding_external_resource_owners = _EXTERNAL_DATA_RESOURCES.bind_owners
 
 
 __all__ = [

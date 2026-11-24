@@ -5,15 +5,13 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.contribution_admission import (
-    OwnerContributionAuthority,
     OwnerContributionKind,
-    OwnerContributionPolicy,
 )
 from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -37,6 +35,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelection,
 )
 from loushang.harness.session.product_composition_assembly import (
+    CatalogContributionOwnerPolicy,
     ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
@@ -46,6 +45,13 @@ from loushang.harness.session.product_composition_assembly import (
     _prepare_catalog_plugin_plan_seed,
     assemble_product_composition,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from loushang.harness.resource_catalog.bootstrap_projection import (
+        ResourceCatalogBootstrapResult,
+    )
 
 _CATALOG_PRODUCT_ID = "coding"
 _CATALOG_PRODUCT_LABEL = "Coding"
@@ -57,6 +63,11 @@ _PACKAGE_CATALOG_DEFINITIONS = (
 _CODING_RESOURCE_CATALOG_POLICY_REVISION = "coding-resource-catalog-v3"
 _CODING_PACKAGE_TRUST_CLASS = "coding-configured-published"
 _CODING_PACKAGE_TRUST_POLICY_REVISION = "coding-resource-package-trust-v1"
+_CATALOG_OWNER_POLICY = CatalogContributionOwnerPolicy(
+    product_id=_CATALOG_PRODUCT_ID,
+    configured_trust_class=_CODING_PACKAGE_TRUST_CLASS,
+    policy_revision=lambda owner_id, kind: f"{owner_id}-{kind}-coding-ingress-v1",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,64 +220,52 @@ def build_coding_initial_resource_catalog_adapter(
     source_policy = canonical_coding_resource_catalog_source_policy(
         source_policy
     )
-    if product_scope_id is not None and (
-        not isinstance(product_scope_id, str) or not product_scope_id.strip()
-    ):
-        raise ValueError(f"{product_label} Resource Catalog Product scope is invalid")
-    resolved_clock = clock or (lambda: int(time.time()))
-    if not callable(resolved_clock):
-        raise TypeError(f"{product_label} Resource Catalog clock is invalid")
-    resolved_admission_now = (
-        resolved_clock() if package_admission_now is None else package_admission_now
-    )
-    if product_composition is not None and not isinstance(
-        product_composition,
-        ProductCompositionCompilation,
-    ):
-        raise TypeError(
-            f"{product_label} Resource Catalog Product composition is invalid"
-        )
-    if product_selection is not None and not isinstance(
-        product_selection,
-        PluginSelection,
-    ):
-        raise TypeError(
-            f"{product_label} Resource Catalog Product selection is invalid"
-        )
-    if product_composition is not None and product_selection is not None:
-        raise ValueError(
-            f"{product_label} Resource Catalog cannot receive both a composition and selection"
-        )
-    if product_snapshot_resources is not None and product_selection is not None:
-        raise ValueError(
-            f"{product_label} Resource Catalog cannot mix Product snapshot and legacy selection"
-        )
-    if product_snapshot_resources is not None and product_composition is None:
-        raise ValueError(
-            f"{product_label} Resource Catalog Product snapshot requires a composition"
-        )
-    if product_selection is not None and not source_policy.include_package_resources:
-        raise ValueError(
-            f"{product_label} Resource Catalog source policy excludes Product package selection"
-        )
-    if product_composition is None and source_policy.include_package_resources:
-        product_composition = _compile_package_composition(
-            receipt, product_scope_id, resolved_admission_now, product_selection
-        )
     return bind_product_catalog_receipt(
         receipt,
         product_id=_CATALOG_PRODUCT_ID,
         product_label=product_label,
+        product_scope_id=product_scope_id,
         default_policy_revision=source_policy.product_policy_revision,
         product_composition=product_composition,
         product_snapshot_resources=product_snapshot_resources,
-        resolved_admission_now=resolved_admission_now,
-        clock=resolved_clock,
+        product_selection=product_selection,
+        package_admission_now=package_admission_now,
+        clock=clock,
         include_native_resources=source_policy.include_native_resources,
         include_package_resources=source_policy.include_package_resources,
         include_embedded_resources=source_policy.include_embedded_resources,
         disabled_skills=disabled_skills,
         reject=CodingResourceCatalogAdmissionError,
+        compile_package=_compile_package_composition,
+    )
+
+
+def prepare_coding_catalog_projection(
+    receipt: ResourceCatalogInputReceipt,
+    *,
+    cwd: Path,
+    session_id: str,
+    admission_now: int | None,
+    product_id: str = _CATALOG_PRODUCT_ID,
+    disabled_skills: Sequence[str] = (),
+    product_composition: ProductCompositionCompilation | None = None,
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None = None,
+    clock: Callable[[], int] | None = None,
+    source_policy: CodingResourceCatalogSourcePolicy = CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+) -> tuple[InitialResourceCatalogProductAdapter, ResourceCatalogBootstrapResult]:
+    """Bind one loader receipt to the Catalog projection used by the caller."""
+    adapter = build_coding_initial_resource_catalog_adapter(
+        receipt,
+        product_scope_id=session_id,
+        disabled_skills=disabled_skills,
+        product_composition=product_composition,
+        product_snapshot_resources=product_snapshot_resources,
+        package_admission_now=int(time.time()) if admission_now is None else admission_now,
+        clock=clock,
+        source_policy=source_policy,
+    )
+    return adapter, adapter.prepare_bootstrap_projection_with_receipt(
+        product_id=product_id, session_id=session_id, cwd=cwd
     )
 
 
@@ -331,7 +330,7 @@ def finalize_coding_package_plugin_plan_seed(
     return _finalize_catalog_plugin_plan_seed(
         seed,
         resolve=resolve,
-        resolve_owner=_resolve_coding_contribution_owner,
+        owner_policy=_CATALOG_OWNER_POLICY,
         reject=CodingResourceCatalogAdmissionError,
         product_label=_CATALOG_PRODUCT_LABEL,
     )
@@ -344,51 +343,9 @@ def complete_coding_package_plugin_selection_seed(
     return _complete_catalog_plugin_selection_seed(
         seed,
         selection=selection,
-        resolve_owner=_resolve_coding_contribution_owner,
+        owner_policy=_CATALOG_OWNER_POLICY,
         reject=CodingResourceCatalogAdmissionError,
         product_label=_CATALOG_PRODUCT_LABEL,
-    )
-
-
-def _resolve_coding_contribution_owner(
-    *,
-    owner_id: str,
-    contribution_kind: OwnerContributionKind,
-    trust_classes: set[str],
-    collection_ids: set[str],
-    supplied_binding: ProductContributionOwnerBinding | None,
-) -> ProductContributionOwnerBinding:
-    if supplied_binding is not None:
-        if not _owner_binding_covers(
-            supplied_binding,
-            owner_id=owner_id,
-            contribution_kind=contribution_kind,
-            trust_classes=trust_classes,
-            collection_ids=collection_ids,
-        ):
-            raise CodingResourceCatalogAdmissionError(
-                ("product_owner_binding_boundary_mismatch",)
-            )
-        return supplied_binding
-    if contribution_kind != "resource_item" or trust_classes != {
-        _CODING_PACKAGE_TRUST_CLASS
-    }:
-        raise CodingResourceCatalogAdmissionError(("product_owner_binding_missing",))
-    return ProductContributionOwnerBinding(
-        authority=OwnerContributionAuthority(
-            OwnerContributionPolicy(
-                owner_id=owner_id,
-                contribution_kind=contribution_kind,
-                product_id=_CATALOG_PRODUCT_ID,
-                policy_revision=f"{owner_id}-{contribution_kind}-coding-ingress-v1",
-                revocation_epoch=0,
-                allowed_source_trust_classes=tuple(sorted(trust_classes)),
-                allowed_collection_ids=tuple(sorted(collection_ids)),
-                allowed_requirement_bindings=("direct",),
-                consumer_scope="session",
-                consumer_refresh_boundary="sealed",
-            )
-        )
     )
 
 
@@ -400,16 +357,12 @@ def _owner_binding_covers(
     trust_classes: set[str],
     collection_ids: set[str],
 ) -> bool:
-    policy = binding.authority.policy
-    return (
-        policy.owner_id == owner_id
-        and policy.contribution_kind == contribution_kind
-        and policy.product_id == _CATALOG_PRODUCT_ID
-        and set(policy.allowed_source_trust_classes) == trust_classes
-        and set(policy.allowed_collection_ids) == collection_ids
-        and policy.allowed_requirement_bindings == ("direct",)
-        and policy.consumer_scope == "session"
-        and policy.consumer_refresh_boundary == "sealed"
+    return binding.authority.policy.covers_direct_session(
+        owner_id=owner_id,
+        contribution_kind=contribution_kind,
+        product_id=_CATALOG_PRODUCT_ID,
+        trust_classes=trust_classes,
+        collection_ids=collection_ids,
     )
 
 

@@ -1,4 +1,4 @@
-"""Shared side-effect-free routing for ordinary embedded CLI conversations."""
+"""Route explicit commands and ordinary screens before application startup."""
 
 from __future__ import annotations
 
@@ -7,7 +7,13 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, TextIO
 
-from loushang.coding.cli.args import CliArgs, parse_args, removed_legacy_resource_option
+from loushang.coding.cli.args import (
+    CliArgs,
+    package_mutation_option_requested,
+    parse_args,
+    plugin_management_option_requested,
+    removed_legacy_resource_option,
+)
 from loushang.harness.cli.launch import (
     AgentCliLaunchOverlay,
     CliLaunchPlan,
@@ -16,6 +22,26 @@ from loushang.harness.cli.launch import (
     resolve_effective_tui,
 )
 from loushang.harness.host.product_host import stream_is_tty
+
+
+async def run_early_apphost_command(
+    argv: tuple[str, ...], *, stdout: TextIO, stderr: TextIO
+) -> int | None:
+    """Dispatch an explicit AppHost command when no earlier option takes precedence."""
+    from loushang.coding.cli.apphost import (
+        extract_apphost_argv,
+        run_coding_apphost_command,
+    )
+
+    apphost_argv = extract_apphost_argv(argv)
+    if (
+        apphost_argv is None
+        or removed_legacy_resource_option(argv) is not None
+        or package_mutation_option_requested(argv)
+        or plugin_management_option_requested(argv)
+    ):
+        return None
+    return await run_coding_apphost_command(apphost_argv, stdout=stdout, stderr=stderr)
 
 
 def _cli_launch_plan(args: CliArgs) -> CliLaunchPlan:

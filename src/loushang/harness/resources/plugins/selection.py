@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 import threading
 import weakref
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -324,6 +324,44 @@ class PluginSelectionPlanV2:
     effective_configuration_set: PluginEffectiveConfigurationSetV1
     allowed_authority_ceiling: tuple[str, ...]
     plan_version: int = PLUGIN_SELECTION_PLAN_VERSION
+
+    @classmethod
+    def from_selected_entries(
+        cls,
+        context: PluginPreflightContextV1,
+        *,
+        selected_plugin_ids: tuple[str, ...],
+        source_trust_snapshots: tuple[PluginSourceTrustSnapshotV1, ...],
+        additions: Iterable[PluginEffectiveConfigurationEntry],
+        allowed_authority_ceiling: tuple[str, ...],
+        base: PluginSelectionPlanV2 | None = None,
+        selected_contributions: tuple[PluginContributionRef, ...] | None = None,
+    ) -> PluginSelectionPlanV2:
+        """Build a plan from exact configuration, optionally with an explicit subset."""
+
+        entries = tuple(additions)
+        if selected_contributions is None:
+            base_refs = () if base is None else base.selected_contributions
+            base_entries = () if base is None else base.effective_configuration_set.entries
+            selected_contributions = tuple(
+                sorted((*base_refs, *(item.ref for item in entries)))
+            )
+            entries = tuple(
+                sorted(
+                    (*base_entries, *entries),
+                    key=lambda item: (item.plugin_id, item.contribution_id),
+                )
+            )
+        elif base is not None:
+            raise ValueError("Explicit Plugin selection requires the full configuration")
+        return cls(
+            context=context,
+            selected_plugin_ids=selected_plugin_ids,
+            selected_contributions=selected_contributions,
+            source_trust_snapshots=source_trust_snapshots,
+            effective_configuration_set=PluginEffectiveConfigurationSetV1(entries=entries),
+            allowed_authority_ceiling=allowed_authority_ceiling,
+        )
 
     def __post_init__(self) -> None:
         _require_exact_version(
@@ -2607,6 +2645,59 @@ class PluginSelectionResolver:
                 return
             self._begin_close_locked(active, state="closing_expire")
             self._finish_close_if_quiescent_locked(active)
+
+
+def build_product_plugin_selection_plan(
+    *,
+    product_id: str,
+    scope_id: str,
+    policy_revision: str,
+    plugin_ids: tuple[str, ...],
+    instance_refs: tuple[PluginInstanceRevisionRef, ...],
+    source_trust: Iterable[PluginSourceTrustSnapshotV1],
+    additions: Iterable[PluginEffectiveConfigurationEntry],
+    allowed_authority_ceiling: tuple[str, ...],
+    base: PluginSelectionPlanV2 | None = None,
+    extend_base_selection: bool = False,
+    selected_contributions: tuple[PluginContributionRef, ...] | None = None,
+) -> PluginSelectionPlanV2:
+    """Combine contribution entries with an exact Plugin selection.
+
+    By default the Plugin evidence describes the entire selection. If it covers
+    only additional Plugins, extend the base evidence as well as its entries.
+    """
+    extend_base = base if extend_base_selection else None
+    if extend_base is not None:
+        instance_refs = tuple(
+            sorted(
+                (*extend_base.context.instance_revision_refs, *instance_refs),
+                key=lambda item: (item.plugin_id, item.instance_id, item.revision),
+            )
+        )
+        plugin_ids = tuple(sorted((*extend_base.selected_plugin_ids, *plugin_ids)))
+    context = PluginPreflightContextV1(
+        product_id=product_id,
+        scope_id=scope_id,
+        policy_revision=policy_revision,
+        instance_revision_refs=instance_refs,
+    )
+    trust = tuple(source_trust)
+    if extend_base is not None:
+        trust = tuple(
+            sorted(
+                (*extend_base.source_trust_snapshots, *trust),
+                key=lambda item: item.plugin_id,
+            )
+        )
+    return PluginSelectionPlanV2.from_selected_entries(
+        context=context,
+        selected_plugin_ids=plugin_ids,
+        source_trust_snapshots=trust,
+        additions=additions,
+        base=base,
+        allowed_authority_ceiling=allowed_authority_ceiling,
+        selected_contributions=selected_contributions,
+    )
 
 
 def _build_execution_approval_subject(

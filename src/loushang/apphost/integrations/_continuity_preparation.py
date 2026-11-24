@@ -148,7 +148,7 @@ class _ProductContinuityAttempt(_ContinuityAttemptLifecycle, Generic[ForegroundT
                     self._runtime,
                     self._catalog,
                     self._product_factory,
-                    error_code=self._construction_cleanup_error,
+                    failure=RuntimeError(self._construction_cleanup_error),
                     join_owned=_join_failure_first,
                 )
             except BaseException:

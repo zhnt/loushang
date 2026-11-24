@@ -8,7 +8,6 @@ from typing import ClassVar, Protocol
 from loushang.coding.arch._provider_api import (
     CODING_ARCH_TOOL_RUNTIME_REQUIREMENT,
     CodingArchToolRuntimeCapabilityConsumer,
-    CodingArchToolRuntimePort,
 )
 from loushang.coding.arch.tool import (
     INSPECT_IMPORT_GRAPH_TOOL_NAME,
@@ -17,11 +16,10 @@ from loushang.coding.arch.tool import (
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
 )
+from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.session.capability_composition_inputs import (
-    SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
-    SessionCapabilityOwnerGenerationBinding,
 )
 from loushang.harness.session.tool_owner_binding import (
     DeferredToolRegistrationSlot,
@@ -61,6 +59,7 @@ class CodingArchToolOwner(_ReservedToolPackOwner):
     _tool_names = _TOOL_NAMES
     _requirement = CODING_ARCH_TOOL_RUNTIME_REQUIREMENT
     _label = "Coding Arch Tool"
+    _generation_family = staticmethod(lambda: CodingArchToolOwner)
     _disposal_error = staticmethod(
         lambda: CodingArchToolOwnerError(
             "Coding Arch Tool generation disposal remains incomplete.",
@@ -74,35 +73,11 @@ class CodingArchToolOwner(_ReservedToolPackOwner):
     scope_id: str
     _bound: bool = field(default=False, init=False, repr=False)
 
-    def bind(
-        self,
-        registration: CodingArchToolRegistrationPort,
-    ) -> SessionCapabilityOwnerGenerationBinding:
-        """Bind the exact live registration port once without staging early."""
-
-        return self._bind_reserved_pack(
-            registration,
-            definitions_from_captures=lambda captures: _tool_definitions(
-                self._runtime_from_captures(captures)
-            ),
-            generation_family=lambda: CodingArchToolOwner,
-        )
-
-    def _runtime_from_captures(
-        self,
-        captures: tuple[SessionCapabilityConsumerCapture, ...],
-    ) -> CodingArchToolRuntimePort:
-        capture = self._checked_runtime_capture(captures)
-        return CodingArchToolRuntimeCapabilityConsumer(capture.facets).runtime
-
-
-def _tool_definitions(
-    runtime: CodingArchToolRuntimePort,
-) -> tuple[ToolDefinition, ...]:
-    definitions = (create_inspect_import_graph_tool_definition(runtime=runtime),)
-    if tuple(item.name for item in definitions) != _TOOL_NAMES:
-        raise RuntimeError("Coding Arch Tool factories changed admitted identities")
-    return definitions
+    def _tool_definitions(
+        self, facets: CapabilityFacetSet
+    ) -> tuple[ToolDefinition, ...]:
+        runtime = CodingArchToolRuntimeCapabilityConsumer(facets).runtime
+        return (create_inspect_import_graph_tool_definition(runtime=runtime),)
 
 
 __all__ = [

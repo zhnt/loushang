@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from datetime import datetime
 from hashlib import sha256
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Generic, Literal, NamedTuple, Protocol, TypeVar, cast
 
 from loushang.ai.types import ImagePart, UserMessage
-from loushang.foundation.json import JSONValue, dump_json_value
+from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 from loushang.harness.conversation.jsonl_codec import ConversationJsonlRecordCodec
 from loushang.harness.transcript.codecs import (
     STANDARD_PAYLOAD_VERSION,
@@ -18,11 +18,12 @@ from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import (
     AgentTranscriptPayload,
     AgentTranscriptRecord,
+    ExtensionData,
 )
 from loushang.harness.transcript.writer import AgentTranscriptRecordFactory
 
 if TYPE_CHECKING:
-    from loushang.harness.transcript.session import AgentTranscriptSession
+    from loushang.harness.transcript._resume_continuation import _ResumeIntentRead
 
 
 def make_resume_record(
@@ -39,6 +40,45 @@ def make_resume_record(
         clock=lambda: created_at, id_factory=lambda: record_id
     )
     return factory.create(kind, payload, parent_id=parent_id, metadata=metadata)
+
+
+class _ResumeMessageBinding(Protocol):
+    @property
+    def record_id(self) -> str: ...
+
+    def to_message_metadata(self) -> dict[str, JSONValue]: ...
+
+
+def make_resume_user_record(
+    message: UserMessage,
+    binding: _ResumeMessageBinding,
+    *,
+    parent_id: str | None,
+    created_at: datetime,
+    resource_metadata: Mapping[str, JSONValue] | None,
+    evidence_name: str,
+    metadata_conflict: str,
+    reserved_prefix: str | None = None,
+) -> AgentTranscriptRecord:
+    """Build an ordinary UserMessage record with detached resource evidence."""
+    evidence = require_json_mapping(
+        {} if resource_metadata is None else dict(resource_metadata), name=evidence_name
+    )
+    if reserved_prefix is not None and any(
+        key.startswith(reserved_prefix) for key in evidence
+    ):
+        raise ValueError(metadata_conflict)
+    binding_metadata = binding.to_message_metadata()
+    if reserved_prefix is None and evidence.keys() & binding_metadata.keys():
+        raise ValueError(metadata_conflict)
+    return make_resume_record(
+        AGENT_MESSAGE_KIND,
+        message,
+        record_id=binding.record_id,
+        parent_id=parent_id,
+        created_at=created_at,
+        metadata={**evidence, **binding_metadata},
+    )
 
 
 def freeze_user_message(message: UserMessage) -> UserMessage:
@@ -111,24 +151,127 @@ class SelectedAncestry:
         return self._digest.hexdigest()
 
 
-def restore_verified_branch(
-    transcript: AgentTranscriptSession,
+class _HistoricalBinding(Protocol):
+    @property
+    def session_id(self) -> str: ...
+    @property
+    def input_id(self) -> str: ...
+
+
+_IntentT = TypeVar("_IntentT", bound="_ResumeIntentRead")
+_BindingT = TypeVar("_BindingT", bound=_HistoricalBinding)
+_ResultT = TypeVar("_ResultT")
+
+
+def decode_attempt_record_fields(
+    record: AgentTranscriptRecord,
+    document: Mapping[str, object],
     *,
-    records: tuple[AgentTranscriptRecord, ...],
-    selected_leaf_id: str | None,
-    selected_records: tuple[AgentTranscriptRecord, ...],
-    stale: Callable[[], Exception],
-) -> None:
-    """Select the verified leaf on an already acquired Writer."""
-    if tuple(transcript.get_entries()) != records:
-        raise stale()
-    if selected_leaf_id is not None:
-        transcript.branch(selected_leaf_id)
+    effect_classes: tuple[object, ...],
+    construct: Callable[..., _IntentT],
+    identity_error: str,
+) -> _IntentT:
+    """Decode the shared intent fields after the Product checks its wire version."""
+    attempt = construct(
+        attempt_id=cast(str, document["attemptId"]),
+        request_id=cast(str, document["requestId"]),
+        session_id=cast(str, document["sessionId"]),
+        original_leaf_id=cast(str | None, document["originalLeafId"]),
+        ancestry_digest=cast(str, document["ancestryDigest"]),
+        plan_fingerprint=cast(str, document["planFingerprint"]),
+        epoch_fingerprint=cast(str, document["epochFingerprint"]),
+        subject_digest=cast(str, document["subjectDigest"]),
+        effect_classes=cast(tuple[str, ...], effect_classes),
+    )
     if (
-        transcript.leaf_id != selected_leaf_id
-        or tuple(transcript.get_active_entries()) != selected_records
+        record.record_id != attempt.attempt_id
+        or record.parent_id != attempt.original_leaf_id
     ):
-        raise stale()
+        raise ValueError(identity_error)
+    return attempt
+
+
+class _ActivationHistory(NamedTuple, Generic[_IntentT, _BindingT]):
+    status: Literal["none", "pending", "unknown_version"]
+    attempt: _IntentT | None
+    ancestry_digest: str
+    binding: _BindingT | None
+    binding_record_id: str | None
+
+
+def scan_activation_history(
+    records: Iterable[AgentTranscriptRecord],
+    *,
+    current_session_id: str,
+    ancestry: SelectedAncestry,
+    encode: Callable[[object], bytes],
+    attempt_prefix: str,
+    attempt_readers: Mapping[str, Callable[[AgentTranscriptRecord], _IntentT]],
+    read_binding: Callable[
+        [AgentTranscriptRecord, Mapping[str, _IntentT]],
+        _BindingT | Literal["unknown_version"] | None,
+    ],
+    path_error: str,
+    ancestry_error: str,
+    duplicate_error: str,
+    track_other_sessions: bool = True,
+    input_id: str | None = None,
+) -> Generator[AgentTranscriptRecord | None, None, _ActivationHistory[_IntentT, _BindingT]]:
+    """Observe the complete selected path through the Product's historical codecs."""
+    pending: dict[str, _IntentT] = {}
+    unknown = False
+    selected_binding: _BindingT | None = None
+    selected_record_id: str | None = None
+    for record in records:
+        ancestry.require_next(record, error=path_error)
+        payload = record.payload
+        if isinstance(payload, ExtensionData) and payload.extension_type.startswith(attempt_prefix):
+            reader = attempt_readers.get(payload.extension_type)
+            if reader is None:
+                unknown = True
+            else:
+                attempt = reader(record)
+                if attempt.ancestry_digest != ancestry.hexdigest():
+                    raise ValueError(ancestry_error)
+                if track_other_sessions or attempt.session_id == current_session_id:
+                    if attempt.session_id in pending:
+                        raise ValueError(duplicate_error)
+                    pending[attempt.session_id] = attempt
+        binding = read_binding(record, pending)
+        match = None
+        if isinstance(binding, str):
+            unknown = True
+        elif binding is not None:
+            pending.pop(binding.session_id, None)
+            if binding.session_id == current_session_id and not unknown:
+                selected_binding = binding
+                selected_record_id = record.record_id
+                if binding.input_id == input_id:
+                    match = record
+        ancestry.advance(record, encode)
+        yield match
+    current = pending.get(current_session_id)
+    if unknown:
+        return _ActivationHistory(
+            "unknown_version", None, ancestry.hexdigest(), None, selected_record_id
+        )
+    return _ActivationHistory(
+        "pending" if current is not None else "none",
+        current, ancestry.hexdigest(), selected_binding, selected_record_id,
+    )
+
+
+def finish_history_scan(
+    steps: Generator[AgentTranscriptRecord | None, None, _ResultT],
+    matches: list[AgentTranscriptRecord] | None = None,
+) -> _ResultT:
+    while True:
+        try:
+            match = next(steps)
+        except StopIteration as complete:
+            return complete.value
+        if matches is not None and match is not None:
+            matches.append(match)
 
 
 def select_input_record(

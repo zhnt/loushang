@@ -17,7 +17,6 @@ from loushang.coding.package.product_runtime import (
 from loushang.coding.resume._cleanup import (
     CodingResumeContinuationCleanupFailure as CodingResumeContinuationCleanupFailure,
 )
-from loushang.coding.resume._cleanup import discard_candidate
 from loushang.coding.resume._cleanup import (
     retain_resume_cleanup_failure as retain_resume_cleanup_failure,
 )
@@ -42,6 +41,7 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.runtime.session_operations import SessionOperationResult
 from loushang.harness.session import AgentProductSessionRuntime
+from loushang.harness.session._resume_continuation import require_resume_owner_check
 from loushang.harness.session.lifecycle import (
     PreparedSessionLifecycleOperation,
 )
@@ -50,7 +50,9 @@ from loushang.harness.session.lifecycle import (
 )
 from loushang.harness.session.multiagent import compose_multiagent_before_release
 from loushang.harness.session.transcript_lifecycle import ResolvedDiscoveredSessionFile
-from loushang.harness.transcript import AgentTranscriptFileError
+from loushang.harness.transcript.session_catalog import (
+    read_transcript_history_or_recent,
+)
 
 from .resume_planning import ResumePlanningSlot
 
@@ -408,11 +410,9 @@ class AgentSessionRuntime(
 
         def current_view() -> None:
             if view is not None and view.require_current_view is not None:
-                result = cast(Callable[[], object], view.require_current_view)()
-                if result is not None:
-                    if inspect.iscoroutine(result):
-                        result.close()
-                    raise TypeError('Coding Resume view check must return None')
+                require_resume_owner_check(
+                    view.require_current_view, invalid_return="Coding Resume view check must return None"
+                )
 
         current_view()  # A cancelled/closed display cannot begin Writer preparation.
         factory = self._owned_transcript_factory
@@ -426,34 +426,14 @@ class AgentSessionRuntime(
             require_current_admission
         ):
             raise TypeError('Coding Resume requires synchronous current owner checks')
-        previous = self.current_session
-        continuation: CodingResumePreparedContinuation | None = None
-        operation: (
-            PreparedSessionLifecycleOperation[AgentSession, str] | None
-        ) = None
 
-        def admit(observed: CodingActivationAttemptV1) -> None:
-            if self._resume_history_closed:
-                raise RuntimeError('coding_resume_root_closed')
-            if operation is None or not operation.consumed:
-                current_view()
-            expected = (
-                continuation.session
-                if operation is not None and operation.consumed and continuation is not None
-                else previous
-            )
-            if self.current_session is not expected:
-                raise RuntimeError('coding_resume_active_session_changed')
+        def admit_current(observed: CodingActivationAttemptV1) -> None:
             if self._embedded_resume_approval_owner is not None:
                 self.require_current_embedded_resume_subject(observed)
-            result = cast(
-                "Callable[[CodingActivationAttemptV1], object]",
-                require_current_admission,
-            )(observed)
-            if result is not None:
-                if inspect.iscoroutine(result):
-                    result.close()
-                raise TypeError('Coding Resume owner check must return None')
+            require_resume_owner_check(
+                lambda: require_current_admission(observed),
+                invalid_return="Coding Resume owner check must return None",
+            )
             # Borrow the original selected native epoch, including before the
             # first Writer acquisition. This read cannot select/create an owner.
             # The caller's effect settlement remains an independent gate.
@@ -465,10 +445,9 @@ class AgentSessionRuntime(
                     'input.epoch_changed'
                 )
 
-        async def build(current: AgentSession | None) -> AgentSession:
-            nonlocal continuation
-            if current is not previous:
-                raise RuntimeError('coding_resume_active_session_changed')
+        async def prepare(
+            admit: Callable[[CodingActivationAttemptV1], None],
+        ) -> tuple[AgentSession, CodingResumePreparedContinuation]:
             continuation = await prepare_coding_resume_continuation(
                 manager_type=_bind_owned_session_manager(factory),
                 session_file=session_file,
@@ -492,40 +471,17 @@ class AgentSessionRuntime(
                 worker_candidates=worker_candidates,
                 worker_candidate_plugin_id=worker_candidate_plugin_id,
             )
-            # Native model transport checks the original Root's actual slot.
-            try:
-                continuation.session.set_extension_runtime_host(self)
-            except BaseException as error:
-                await discard_candidate(continuation.session, error)
-                raise
-            return continuation.session
+            return continuation.session, continuation
 
-        def bind_operation(
-            prepared: PreparedSessionLifecycleOperation[
-                AgentSession, str
-            ],
-        ) -> None:
-            nonlocal operation
-            operation = prepared
-            assert continuation is not None
-
-        return await self.lifecycle.prepare_retained_candidate(
-            lambda: SessionLifecycleTransition(
-                reason="resume",
-                target_session_ref=str(session_file),
-                metadata={
-                    "activate_extensions": False,
-                    "emit_before_transition": False,
-                    "schedule_index": False,
-                },
-            ),
-            build,
-            cleanup_error_type=CodingResumeContinuationCleanupFailure,
-            bind_operation=bind_operation,
-            result_factory=lambda prepared: CodingRuntimePreparedResume(
-                self,
-                prepared,
-                cast("CodingResumePreparedContinuation", continuation),
+        return await self._prepare_retained_resume(
+            session_file,
+            transition_type=SessionLifecycleTransition,
+            current_view=current_view,
+            admit_current=admit_current,
+            prepare=prepare,
+            cleanup_error=CodingResumeContinuationCleanupFailure,
+            deliver=lambda operation, continuation: CodingRuntimePreparedResume(
+                self, operation, continuation
             ),
         )
 
@@ -736,12 +692,10 @@ class AgentSessionRuntime(
         Writer. Other decode and identity failures remain errors.
         """
 
-        try:
-            return await self.preview_resume_history(session_id)
-        except AgentTranscriptFileError as error:
-            if error.code != "session_file_too_large":
-                raise
-        return await self.preview_resume_recent_page(session_id)
+        return await read_transcript_history_or_recent(
+            lambda: self.preview_resume_history(session_id),
+            lambda: self.preview_resume_recent_page(session_id),
+        )
 
     async def preview_resume_recent_page(
         self, session_id: str | Path, *, segment_bytes: int = 64 * 1024,

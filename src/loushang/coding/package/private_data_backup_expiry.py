@@ -33,6 +33,7 @@ from .private_data_backup import _digest as _digest
 from .private_data_backup import _private_io as _private_io
 from .private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
+    require_expiry_acceptance,
 )
 from .private_data_backup_expiry_records import (
     _tombstone_name as _tombstone_name,
@@ -46,6 +47,9 @@ from .private_data_deletion_preview import (
 )
 from .private_data_restore import (
     CodingArchPrivateDataRestoreOwner as CodingArchPrivateDataRestoreOwner,
+)
+from .private_data_restore import (
+    _archive_restore,
 )
 from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal as CodingArchPrivateDataRestoreConfirmationJournal,
@@ -126,18 +130,10 @@ class CodingArchPrivateDataBackupExpiryOwner:
         """Delete one reviewed archive through durable, offline checkpoints."""
 
         from loushang.coding.package.private_data_backup_expiry_journal import (
-            CodingArchPrivateDataBackupExpiryConfirmationV1,
             CodingArchPrivateDataBackupExpiryJournal,
         )
 
-        if (
-            not isinstance(plan, CodingArchPrivateDataBackupExpiryPlanV1)
-            or not isinstance(
-                confirmation, CodingArchPrivateDataBackupExpiryConfirmationV1
-            )
-            or confirmation.plan_fingerprint != plan.fingerprint
-        ):
-            raise ValueError("Coding Arch backup expiry acceptance is invalid")
+        require_expiry_acceptance(plan, confirmation, label="Coding Arch")
         with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
             journal = CodingArchPrivateDataBackupExpiryJournal(self.product.state_root)
             return cast(
@@ -219,45 +215,16 @@ def _preview_expiry(
     completed_restore: Callable[[], tuple[CodingArchPrivateDataRestoreEventV1, str]],
     desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
 ) -> CodingArchPrivateDataBackupExpiryPlanV1:
-    completion, target_id = completed_restore()
-    confirmation = CodingArchPrivateDataRestoreConfirmationJournal(
-        state_root
-    ).require_current(
+    return _archive_restore(layout).preview_expiry(
+        key,
+        backup_id,
         confirmation_id,
-        key,
-        backup_id,
-        completion,
-        target_id,
-        message="Coding Arch backup expiry confirmation is stale",
-    )
-    desired = desired_snapshot()
-    if desired.installation(key).selection.desired_state != "absent":
-        raise ValueError("Coding Arch backup expiry requires removal")
-    receipt, source, identity, archive_snapshot = inspect_private_expiry_archive(
-        layout.private_data_base,
-        _backup_parent(layout, key),
-        backup_id,
-        key,
-        io=_private_io,
-        codec=_archive_codec,
-        recapture=lambda: _capture_target_snapshot(
-            _backup_parent(layout, key) / backup_id,
-            private_base=layout.private_data_base,
+        completed_restore=completed_restore,
+        desired_snapshot=desired_snapshot,
+        confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
+            state_root
         ),
-        installation_error="Coding Arch backup expiry Installation changed",
-        changed_error="Coding Arch backup expiry archive changed",
-    )
-    return CodingArchPrivateDataBackupExpiryPlanV1(
-        installation_key=key,
-        backup_id=backup_id,
-        backup_receipt_id=receipt.receipt_id,
-        source_target_id=source.target_id,
-        confirmation_id=confirmation.confirmation_id,
-        restore_completion_digest=completion.record_digest,
-        restored_target_id=target_id,
-        desired_inventory_revision=desired.inventory_revision,
-        archive_root_identity=identity,
-        archive_target_id=archive_snapshot.target_id,
+        create_plan=CodingArchPrivateDataBackupExpiryPlanV1,
     )
 
 

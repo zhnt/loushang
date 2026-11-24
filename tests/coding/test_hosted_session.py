@@ -220,6 +220,38 @@ def test_tool_only_rounds_stay_in_history_without_empty_hosted_messages(tmp_path
     asyncio.run(scenario())
 
 
+def test_historical_snapshot_distinguishes_a_clipped_row_from_omitted_rows(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        binding = await _binding(tmp_path)
+        try:
+            await binding.control.prepare_model_call_runtime()
+            manager = binding.control.session_manager
+            path = manager.session_file
+            assert path is not None
+            long_prompt = UserMessage(role="user", content="x" * 17_000, timestamp=1.0)
+            await manager.append_message(long_prompt)
+
+            def snapshot():
+                history = read_coding_resume_snapshot(path, max_bytes=1024 * 1024)
+                return CodingHostedHistoryBindingV1(binding.identity, history).project_snapshot()
+
+            clipped = snapshot()
+            assert not clipped.truncated
+            assert len(clipped.records) == 2
+            assert len(clipped.records[0].text) == 16_384
+            assert clipped.records[0].text.endswith(" … [truncated]")
+
+            await manager.append_message(replace(long_prompt, timestamp=2.0))
+            omitted = snapshot()
+            assert omitted.truncated
+            assert omitted.records[0].text.startswith("Earlier messages omitted")
+            assert omitted.records[1:] == clipped.records
+        finally:
+            await binding.close()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("first_title", ["工作区连接诊断", "标题" * 40])
 def test_gui_title_runs_in_background_and_retries_from_original_prompt(tmp_path, first_title):
     expected = "工作区连接诊断"
@@ -537,10 +569,10 @@ def test_hosted_resume_lookup_uses_the_existing_canonical_binding(tmp_path: Path
 def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_property,
 ) -> None:
-    import loushang.coding.composition.bootstrap as bootstrap_module
     import loushang.coding.composition.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as hosted_module
     import loushang.coding.package.product_runtime as product_runtime_module
+    import loushang.harness.package_product._plugin_bootstrap as plugin_bootstrap_module
     from loushang.harness.capabilities.component_runtime import (
         CapabilityOwnerComponentBinder,
     )
@@ -591,18 +623,18 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     )
     monkeypatch.setattr(
         product_runtime_module,
-        "_initialize_fresh_coding_product_for_session",
+        "_bootstrap_coding_product_for_session",
         timed_sync(
-            "fresh-product-cutover",
-            product_runtime_module._initialize_fresh_coding_product_for_session,
+            "product-bootstrap",
+            product_runtime_module._bootstrap_coding_product_for_session,
         ),
     )
     monkeypatch.setattr(
-        product_runtime_module,
-        "_bootstrap_coding_builtin_plugin",
+        plugin_bootstrap_module,
+        "bootstrap_product_plugin",
         timed_sync(
             "builtin-plugin-bootstrap",
-            product_runtime_module._bootstrap_coding_builtin_plugin,
+            plugin_bootstrap_module.bootstrap_product_plugin,
         ),
     )
     monkeypatch.setattr(
@@ -611,11 +643,11 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
         timed_sync("agent-session-construction", hosted_module.create_agent_session),
     )
     monkeypatch.setattr(
-        bootstrap_module,
-        "_prepare_coding_catalog_projection",
+        package_catalog_module,
+        "prepare_coding_catalog_projection",
         timed_sync(
             "product-catalog-projection",
-            bootstrap_module._prepare_coding_catalog_projection,
+            package_catalog_module.prepare_coding_catalog_projection,
         ),
     )
     monkeypatch.setattr(
@@ -1008,6 +1040,7 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
     import loushang.coding.composition.package_catalog as package_catalog_module
     import loushang.coding.hosted.session as module
     import loushang.coding.package.product_runtime as product_runtime_module
+    import loushang.harness.package_product._plugin_bootstrap as plugin_bootstrap_module
 
     began = time.perf_counter()
     cpu_began = time.process_time()
@@ -1042,18 +1075,18 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
     )
     monkeypatch.setattr(
         product_runtime_module,
-        "_initialize_fresh_coding_product_for_session",
+        "_bootstrap_coding_product_for_session",
         timed_sync(
-            "fresh-product-cutover",
-            product_runtime_module._initialize_fresh_coding_product_for_session,
+            "product-bootstrap",
+            product_runtime_module._bootstrap_coding_product_for_session,
         ),
     )
     monkeypatch.setattr(
-        product_runtime_module,
-        "_bootstrap_coding_builtin_plugin",
+        plugin_bootstrap_module,
+        "bootstrap_product_plugin",
         timed_sync(
             "builtin-plugin-bootstrap",
-            product_runtime_module._bootstrap_coding_builtin_plugin,
+            plugin_bootstrap_module.bootstrap_product_plugin,
         ),
     )
     monkeypatch.setattr(

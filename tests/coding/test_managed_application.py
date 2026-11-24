@@ -57,6 +57,7 @@ def attempt(root, *, stream_fn=scripted_stream):
 
 
 def test_noncontinuity_managed_request_rejects_before_admission_or_catalog_cleanup(tmp_path, monkeypatch):
+    from loushang.apphost.catalog import AppHostCatalogV1
     from loushang.coding.hosted import application as module
 
     async def scenario():
@@ -72,7 +73,7 @@ def test_noncontinuity_managed_request_rejects_before_admission_or_catalog_clean
 
         with monkeypatch.context() as selected:
             selected.setattr(module, "CodingForegroundProductFactoryV1", forbidden)
-            selected.setattr(module.AppHostCatalogV1, "admit", forbidden)
+            selected.setattr(AppHostCatalogV1, "admit", forbidden)
             selected.setattr(type(request.sessions), "fence", forbidden)
             selected.setattr(type(request.sessions), "close", forbidden)
             with pytest.raises(ValueError, match="continuity"):

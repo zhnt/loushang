@@ -14,12 +14,14 @@ H0_PUBLIC_MODULES = {
 H1_PRIVATE_MODULES = {
     HOSTING_ROOT / "_process_backend.py",
     HOSTING_ROOT / "_process_host.py",
+    HOSTING_ROOT / "process_probe.py",
 }
 H2_PRIVATE_MODULES = {
     HOSTING_ROOT / "_platform.py",
     HOSTING_ROOT / "_posix_process.py",
     HOSTING_ROOT / "_win32_process.py",
     HOSTING_ROOT / "_windows_process.py",
+    HOSTING_ROOT / "filesystem.py",
 }
 H3_PRIVATE_MODULES = {
     HOSTING_ROOT / "_endpoint_backend.py",
@@ -88,11 +90,12 @@ def test_hosting_package_dependencies_are_bounded_and_product_neutral() -> None:
         modules = modules | {windows_service}
     assert {path for path in HOSTING_ROOT.rglob("*.py")} == modules
 
-    shared_task_consumers = {
-        "_child_session_host.py", "_endpoint_host.py", "_launch_preparation.py", "_process_host.py",
-    }
+    shared_task_consumers = dict.fromkeys(
+        ("_child_session_host.py", "_endpoint_host.py", "_launch_preparation.py", "_process_host.py"),
+        {"_join_cancellation_first", "_task_failed_or_cancelled"},
+    )
+    shared_task_consumers["process_probe.py"] = {"_try_settle_owned_closes"}
     task_module = "loushang.foundation._owned_tasks"
-    task_symbols = {"_join_cancellation_first", "_task_failed_or_cancelled"}
     for path in modules:
         if path.name in shared_task_consumers:
             nodes = ast.walk(ast.parse(path.read_text(encoding="utf-8")))
@@ -101,7 +104,7 @@ def test_hosting_package_dependencies_are_bounded_and_product_neutral() -> None:
                 for node in nodes
                 if isinstance(node, ast.ImportFrom) and node.module == task_module
                 for alias in node.names
-            } == task_symbols
+            } == shared_task_consumers[path.name]
         for imported in _imports(path):
             if path.name in shared_task_consumers and imported == task_module:
                 continue

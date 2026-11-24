@@ -12,17 +12,22 @@ import errno
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, TypeVar, cast
 
+from loushang.apphost._ownership import _ClaimedCandidateView, _OpenedCandidateView
 from loushang.apphost.contracts import (
+    ClaimedSessionCandidateV1,
+    SessionBindingKeyV1,
     SessionCandidateRefV1,
     SessionCreateIntentV1,
     SessionCreateRequestV1,
     SessionDiscoveryScope,
     SessionIdentityCatalogPortV1,
+    SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
 from loushang.apphost.workspace_registry import WorkspaceRegistrationError
@@ -33,6 +38,7 @@ from loushang.appserver.protocol import (
     SessionCompatibilityV1,
     SessionDiscoveryCandidateV1,
     SessionIdentityV1,
+    SessionOpenSpecV1,
     SessionScopeV1,
 )
 from loushang.appservice.discovery_ports import (
@@ -90,6 +96,18 @@ class CanonicalTranscriptScope(Protocol):
     def source_id(self) -> str: ...
 
 
+def session_identity_matches_open(
+    request: SessionOpenSpecV1, identity: SessionIdentityV1
+) -> bool:
+    return (
+        identity.product_id == request.product_id
+        and identity.continuity_id == request.continuity_id
+        and identity.scope is request.scope
+        and identity.scope_fingerprint == request.scope_fingerprint
+        and (request.session_id is None or identity.session_id == request.session_id)
+    )
+
+
 class CanonicalTranscriptRecord(Protocol):
     @property
     def projection(self) -> SessionIdentityProjectionV1: ...
@@ -105,6 +123,93 @@ class CanonicalTranscriptRecord(Protocol):
     def header(self) -> ConversationHeader: ...
 
 
+def canonical_discovery_scope(scope: SessionScopeV1) -> SessionDiscoveryScope:
+    return (
+        SessionDiscoveryScope.CURRENT_DIRECTORY
+        if scope is SessionScopeV1.CWD
+        else SessionDiscoveryScope.USER_GLOBAL_CANONICAL
+    )
+
+
+def canonical_create_metadata(
+    intent: SessionCreateIntentV1,
+    scope: CanonicalTranscriptScope,
+    session_id: str,
+    *,
+    compatibility_id: str,
+) -> dict[str, JSONValue]:
+    return {
+        "version": 1,
+        "compatibilityId": compatibility_id,
+        "continuityId": intent.request.requested_continuity_id,
+        "sessionId": session_id,
+        "scope": scope.scope.value,
+        "scopeFingerprint": scope.fingerprint,
+        "operationId": intent.request.operation_id,
+    }
+
+
+def read_canonical_create_identity(
+    header: ConversationHeader,
+    *,
+    scope: SessionScopeV1,
+    fingerprint: str,
+    product_id: str,
+    metadata_key: str,
+    create_identity: Callable[[SessionCreateRequestV1], str],
+    error: type[RuntimeError],
+) -> tuple[SessionIdentityV1, str, str]:
+    """Authenticate versioned create metadata against its original catalog scope."""
+    raw = header.metadata.get(metadata_key)
+    if not isinstance(raw, Mapping) or set(raw) != {
+        "version",
+        "compatibilityId",
+        "continuityId",
+        "sessionId",
+        "scope",
+        "scopeFingerprint",
+        "operationId",
+    }:
+        raise error()
+    if type(raw["version"]) is not int or raw["version"] != 1:
+        raise error()
+    if any(type(value) is not str for key, value in raw.items() if key != "version"):
+        raise error()
+    if (
+        raw["sessionId"] != header.conversation_id
+        or raw["scope"] != scope.value
+        or raw["scopeFingerprint"] != fingerprint
+    ):
+        raise error()
+    operation_id = cast(str, raw["operationId"])
+    continuity_id = cast(str, raw["continuityId"])
+    request = SessionCreateRequestV1(
+        product_id,
+        fingerprint,
+        operation_id,
+        requested_continuity_id=continuity_id,
+        requested_scope=canonical_discovery_scope(scope),
+    )
+    if create_identity(request) != header.conversation_id:
+        raise error()
+    identity = SessionIdentityV1(
+        product_id, continuity_id, header.conversation_id, scope, fingerprint
+    )
+    return identity, cast(str, raw["compatibilityId"]), operation_id
+
+
+@asynccontextmanager
+async def close_unpublished_candidate(
+    close: Callable[[], Awaitable[None]],
+) -> AsyncIterator[None]:
+    """On failed construction, settle the candidate that still holds custody."""
+    try:
+        yield
+    except BaseException:
+        await close()
+        raise
+
+
 class _AsyncBinding(Protocol):
     async def close(self) -> None: ...
 
@@ -115,6 +220,98 @@ BindingInputT = TypeVar("BindingInputT")
 ProductBindingT = TypeVar("ProductBindingT")
 BindingT = TypeVar("BindingT", bound=_AsyncBinding)
 ClaimedT = TypeVar("ClaimedT")
+HistoryT = TypeVar("HistoryT")
+ManagerT = TypeVar("ManagerT", bound=ProductTranscriptSession)
+
+
+class _CanonicalWritableCandidateBinding(Generic[RecordT, ManagerT]):
+    """Retain the original Writer or its completed Session until it transfers."""
+
+    _candidate_error: ClassVar[type[RuntimeError]]
+
+    def __init__(
+        self, record: RecordT, manager: ManagerT, *, created: bool = False
+    ) -> None:
+        self.record = record
+        self.created = created
+        self._manager: ManagerT | None = manager
+        self._dispose: Callable[[], Awaitable[None]] | None = (
+            manager.dispose_runtime_profile
+        )
+
+    def manager_for_construction(self) -> ManagerT:
+        if self._manager is None:
+            raise self._candidate_error()
+        return self._manager
+
+    def retain_constructed_owner(self, dispose: Callable[[], Awaitable[None]]) -> None:
+        self.manager_for_construction()
+        self._dispose = dispose
+
+    def take_manager(self) -> ManagerT:
+        if self._manager is None:
+            raise self._candidate_error()
+        manager, self._manager = self._manager, None
+        self._dispose = None
+        return manager
+
+    async def close(self) -> None:
+        if self._dispose is not None:
+            await self._dispose()
+            self._dispose = None
+            self._manager = None
+
+
+class _CanonicalClaimedCandidate(_ClaimedCandidateView[BindingT]):
+    async def close(self) -> None:
+        await self.opaque_binding.close()
+
+
+class _CanonicalRecordBinding(Protocol):
+    @property
+    def record(self) -> CanonicalTranscriptRecord: ...
+
+
+RecordBindingT = TypeVar("RecordBindingT", bound=_CanonicalRecordBinding)
+
+
+class _CanonicalOpenedCandidate(_OpenedCandidateView[RecordBindingT]):
+    """A Product construction borrow whose claimed candidate still owns cleanup."""
+
+    def __init__(self, binding: RecordBindingT) -> None:
+        identity = binding.record.identity
+        super().__init__(
+            SessionBindingKeyV1(
+                identity.product_id, identity.continuity_id, identity.session_id
+            ),
+            binding,
+        )
+
+    async def close(self) -> None:
+        return None
+
+
+def require_canonical_candidate_binding(
+    candidate: ClaimedSessionCandidateV1,
+    envelope: SessionIdentityEnvelopeV1,
+    *,
+    binding_types: tuple[type[RecordBindingT], ...],
+    compatibility_id: str,
+    error: type[RuntimeError],
+) -> RecordBindingT:
+    binding = candidate.opaque_binding
+    if type(binding) not in binding_types:
+        raise error()
+    selected = cast(RecordBindingT, binding)
+    projection = selected.record.projection
+    if (
+        projection.reference != candidate.reference
+        or projection.envelope != envelope
+        or projection.envelope is None
+        or projection.envelope.product_compatibility_id != compatibility_id
+    ):
+        raise error()
+    return selected
 
 
 class _CanonicalTranscriptCatalogMethods(
@@ -138,11 +335,36 @@ class _CanonicalTranscriptCatalogMethods(
     _closing: bool
     _loop: asyncio.AbstractEventLoop | None
 
+    def _initialize_catalog(
+        self,
+        scopes: tuple[CanonicalTranscriptScope, ...],
+        *,
+        legacy_factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT],
+        legacy_type: type[ProductTranscriptSession[BindingInputT, ProductBindingT]],
+        owned_type: type[ProductTranscriptSession[BindingInputT, ProductBindingT]],
+        make_owned_factory: (
+            Callable[[], AgentTranscriptSessionFactory[BindingInputT, ProductBindingT]]
+            | None
+        ),
+    ) -> None:
+        self.scopes = scopes
+        self._legacy_transcript_factory = legacy_factory
+        self._legacy_transcript_type = legacy_type
+        self._owned_transcript_type = owned_type
+        self._records = {}
+        self._lock = asyncio.Lock()
+        self._owned_factory = (
+            make_owned_factory() if make_owned_factory is not None else None
+        )
+        self._pending_sessions = {}
+        self._closing = False
+        self._loop = None
+
     @property
     def pending_sessions(
         self,
     ) -> tuple[AgentTranscriptLifecycleSession[ProductBindingT], ...]:
-        raise NotImplementedError
+        return tuple(self._pending_sessions.values())
 
     def _product_id(self) -> str:
         raise NotImplementedError
@@ -180,28 +402,39 @@ class _CanonicalTranscriptCatalogMethods(
         raise NotImplementedError
 
     def _scope_for(self, request: SessionCreateRequestV1) -> CanonicalTranscriptScope:
-        raise NotImplementedError
+        if (
+            request.product_id != self._product_id()
+            or request.requested_continuity_id is None
+        ):
+            raise self._catalog_error_class()()
+        for scope in self.scopes:
+            if (
+                scope.discovery_scope is request.requested_scope
+                and scope.fingerprint == request.creator_scope_id
+            ):
+                return scope
+        raise self._catalog_error_class()()
 
     def _validate_open_record(self, record: RecordT) -> None:
         raise NotImplementedError
 
     def _display_identity(self, record: RecordT) -> SessionIdentityV1:
-        raise NotImplementedError
+        return record.identity
 
     def _record_visible(self, record: RecordT) -> bool:
-        raise NotImplementedError
+        return True
 
     def _record_compatible(self, record: RecordT) -> bool:
         raise NotImplementedError
 
     def _record_available(self, record: RecordT) -> bool:
-        raise NotImplementedError
+        return self._record_compatible(record)
 
     def _validate_records(self, records: list[RecordT]) -> None:
         raise NotImplementedError
 
     def _new_root_creation(self) -> bool:
-        raise NotImplementedError
+        return False
 
     def _project_catalog_record(
         self,
@@ -233,6 +466,81 @@ class _CanonicalTranscriptCatalogMethods(
         )
         return self._project_catalog_record(scope, path, revision, header)
 
+    @asynccontextmanager
+    async def _current_discovered_record(
+        self, reference: SessionCandidateRefV1,
+    ) -> AsyncIterator[RecordT]:
+        async with self._lock:
+            self._accepting()
+            record = self._records.get(reference)
+            if record is None or self._source_revision(record.path) != reference.revision:
+                raise self._catalog_error()
+            yield record
+
+    async def _read_discovered_history(
+        self,
+        reference: SessionCandidateRefV1,
+        read: Callable[[Path], HistoryT],
+        matches_source: Callable[[HistoryT, str, ConversationHeader], bool],
+    ) -> HistoryT:
+        """Observe the exact discovered history without acquiring a Writer."""
+        self._accepting()
+        async with self._current_discovered_record(reference) as record:
+            path = record.path
+        history = await settled_io(read, path)
+        self._accepting()
+        if (
+            self._source_revision(record.path) != reference.revision
+            or not matches_source(history, reference.revision, record.header)
+        ):
+            raise self._catalog_error()
+        return history
+
+    async def _open_discovered_history_candidate(
+        self,
+        reference: SessionCandidateRefV1,
+        binding: BindingT,
+        project: Callable[[RecordT, BindingT], CandidateT],
+    ) -> CandidateT:
+        async with close_unpublished_candidate(lambda: binding.close()):
+            async with self._current_discovered_record(reference) as record:
+                return project(record, binding)
+
+    def _admitted_scope(self, scope: SessionScopeV1, fingerprint: str) -> CanonicalTranscriptScope | None:
+        return next(
+            (item for item in self.scopes if item.scope is scope and item.fingerprint == fingerprint),
+            None,
+        )
+
+    async def _delete_canonical_history(
+        self, identity: SessionIdentityV1, session_path: Callable[[Path, str], Path],
+    ) -> None:
+        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
+
+        async with self._lock:
+            self._accepting()
+            scope = self._admitted_scope(identity.scope, identity.scope_fingerprint)
+            if scope is None:
+                raise self._catalog_error()
+            path = session_path(scope.session_dir, identity.session_id)
+            record = await settled_io(self._read_record, scope, path)
+            if record is None or record.identity != identity or not self._record_compatible(record):
+                raise self._catalog_error()
+            await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
+            self._records = {
+                key: value for key, value in self._records.items() if value.identity != identity
+            }
+
+    @staticmethod
+    def _record_lifecycle_context(record: RecordT) -> AgentTranscriptLifecycleContext:
+        return AgentTranscriptLifecycleContext(
+            session_dir=record.scope.session_dir,
+            cwd=str(record.scope.cwd),
+            persist=True,
+            header=record.header,
+            session_file=record.path,
+        )
+
     async def _open_legacy_record(self, record: RecordT) -> CandidateT:
         revision = self._source_revision
         error = self._catalog_error
@@ -241,24 +549,15 @@ class _CanonicalTranscriptCatalogMethods(
         candidate = self._candidate_from_manager
         if revision(record.path) != record.projection.reference.revision:
             raise error()
-        context = AgentTranscriptLifecycleContext(
-            session_dir=record.scope.session_dir,
-            cwd=str(record.scope.cwd),
-            persist=True,
-            header=record.header,
-            session_file=record.path,
-        )
+        context = self._record_lifecycle_context(record)
         manager = manager_type(lifecycle_session=await factory.restore_context(context))
-        try:
+        async with close_unpublished_candidate(lambda: manager.dispose_runtime_profile()):
             if (
                 manager.header != record.header
                 or revision(record.path) != record.projection.reference.revision
             ):
                 raise error()
             return candidate(record, manager)
-        except BaseException:
-            await manager.dispose_runtime_profile()
-            raise
 
     def _on_loop(self) -> None:
         loop = asyncio.get_running_loop()
@@ -351,13 +650,7 @@ class _CanonicalTranscriptCatalogMethods(
             return await self._open_legacy_record(record)
         if self._source_revision(record.path) != record.projection.reference.revision:
             raise self._catalog_error_class()()
-        context = AgentTranscriptLifecycleContext(
-            session_dir=record.scope.session_dir,
-            cwd=str(record.scope.cwd),
-            persist=True,
-            header=record.header,
-            session_file=record.path,
-        )
+        context = self._record_lifecycle_context(record)
         session = await self._owned_factory.restore_context(context)
         return await self._candidate_from_owned(session, record.scope, expected=record)
 
@@ -370,15 +663,7 @@ class _CanonicalTranscriptCatalogMethods(
             or scope.product_id != self._product_id()
         ):
             raise ValueError("unadmitted discovery scope")
-        selected = next(
-            (
-                item
-                for item in self.scopes
-                if item.scope is scope.scope
-                and item.fingerprint == scope.scope_fingerprint
-            ),
-            None,
-        )
+        selected = self._admitted_scope(scope.scope, scope.scope_fingerprint)
         if selected is None:
             raise ValueError("unadmitted discovery scope")
         cancelled = threading.Event()
@@ -621,15 +906,12 @@ class _CanonicalTranscriptCatalogMethods(
                 if recovered is None:
                     raise self._catalog_error_class()() from None
                 return recovered
-            try:
+            async with close_unpublished_candidate(lambda: manager.dispose_runtime_profile()):
                 assert manager.session_file is not None
                 record = self._read_record(scope, manager.session_file)
                 if record is None:
                     raise self._catalog_error_class()()
                 return self._candidate_from_manager(record, manager, created=True)
-            except BaseException:
-                await manager.dispose_runtime_profile()
-                raise
 
 
 class _ManagedCanonicalTranscriptCatalogMethods(
@@ -640,6 +922,17 @@ class _ManagedCanonicalTranscriptCatalogMethods(
 ):
     _root_initialization: bool
     _root_observed: threading.Event
+
+    def _initialize_managed_store(
+        self, store_state_root: Path | None, *, initialize_session_root: bool
+    ) -> None:
+        if type(initialize_session_root) is not bool:
+            raise TypeError("invalid Session root initialization grant")
+        if store_state_root is not None and initialize_session_root:
+            raise ValueError("store admission cannot be combined with a root creation grant")
+        # A caller must have established first-initialization authority.
+        self._root_initialization = initialize_session_root
+        self._initialize_store_observations(store_state_root)
 
     def _header_read_context(self) -> tuple[bool, threading.Event | None]:
         return True, self._root_observed

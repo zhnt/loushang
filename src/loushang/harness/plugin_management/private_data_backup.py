@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, TypeVar
+from typing import Generic, Literal, Protocol, Self, TypeVar
 
+from loushang.foundation.json import _unique_json_object_hook
 from loushang.harness.resources.packages._file_consumption import closing_descriptor
 from loushang.harness.resources.packages._private_tree_posix import (
     PrivatePosixTreeIO,
@@ -24,8 +27,16 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
     _entry_exists,
     _rename_directory_noreplace,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 
-from ._private_data_expiry import ExpiryHistoryEvent, ExpiryPlan
+from ._private_data_expiry import (
+    ExpiryHistoryEvent,
+    ExpiryPlan,
+    plan_verified_backup_expiry,
+)
+from .ledger import PluginDesiredStateSnapshotV1
 from .private_data_deletion import (
     PluginPrivateDataDeletionEventV1,
     PluginPrivateDataDeletionReceiptV1,
@@ -33,6 +44,7 @@ from .private_data_deletion import (
     latest_deleted_target_receipt,
 )
 from .private_data_restore_journal import (
+    PrivateDataRestoreConfirmationJournal,
     PrivateDataRestoreEvent,
     PrivateDataRestoreJournal,
 )
@@ -48,6 +60,9 @@ class PrivateBackupReceipt(Protocol):
 
     @property
     def source_target_id(self) -> str: ...
+
+    @property
+    def receipt_id(self) -> str: ...
 
 
 S = TypeVar("S", bound=PrivateBackupSource)
@@ -70,6 +85,78 @@ class PrivateArchiveCodec(Protocol[S, R]):
     def encode(self, key: PluginInstallationKeyV1, source: S, receipt: R) -> bytes: ...
 
     def decode(self, raw: bytes) -> tuple[R, S]: ...
+
+
+class _ManifestSource(PrivateDataDeletionTarget, Protocol):
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
+    def to_dict(self) -> dict[str, object]: ...
+
+
+class _ManifestReceipt(PrivateBackupReceipt, Protocol):
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
+    def to_dict(self) -> dict[str, object]: ...
+
+
+_ManifestSourceT = TypeVar("_ManifestSourceT", bound=_ManifestSource)
+_ManifestReceiptT = TypeVar("_ManifestReceiptT", bound=_ManifestReceipt)
+
+
+@dataclass(frozen=True, slots=True)
+class PrivateArchiveManifestCodec(Generic[_ManifestSourceT, _ManifestReceiptT]):
+    """Share manifest identity checks while retaining each platform's read rules."""
+
+    source_type: type[_ManifestSourceT]
+    receipt_type: type[_ManifestReceiptT]
+    backup_id_for: Callable[[PluginInstallationKeyV1, _ManifestSourceT], str]
+    label: str
+    windows: bool
+
+    max_manifest_bytes = 4 * 1024 * 1024
+    files_name = "files"
+    manifest_name = "manifest.json"
+    stage_suffix = ".staging"
+
+    def encode(
+        self,
+        key: PluginInstallationKeyV1,
+        source: _ManifestSourceT,
+        receipt: _ManifestReceiptT,
+    ) -> bytes:
+        if not self.windows and receipt.installation_key != key:
+            raise ValueError(f"{self.label} backup Installation changed")
+        return canonical_json_bytes(
+            {"receipt": receipt.to_dict(), "source": source.to_dict()}
+        ) + b"\n"
+
+    def decode(self, raw: bytes) -> tuple[_ManifestReceiptT, _ManifestSourceT]:
+        duplicate_error = (
+            "has duplicate fields" if self.windows else "has a duplicate JSON key"
+        )
+        try:
+            document = json.loads(
+                (bytes(raw) if self.windows else raw).decode("utf-8"),
+                object_pairs_hook=_unique_json_object_hook(
+                    lambda: f"{self.label} backup manifest {duplicate_error}"
+                ),
+            )
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            if not self.windows:
+                raise
+            raise ValueError(f"{self.label} backup manifest is invalid") from exc
+        if type(document) is not dict or set(document) != {"receipt", "source"}:
+            raise ValueError(f"{self.label} backup manifest fields are invalid")
+        source = self.source_type.from_dict(document["source"])
+        receipt = self.receipt_type.from_dict(document["receipt"])
+        if (
+            receipt.source_target_id != source.target_id
+            or receipt.backup_id != self.backup_id_for(receipt.installation_key, source)
+            or (self.windows and bytes(raw) != canonical_json_bytes(document) + b"\n")
+        ):
+            changed = "identity" if self.windows else "target"
+            raise ValueError(f"{self.label} backup manifest {changed} changed")
+        return receipt, source
 
 
 class PrivateTreePreparePort(Protocol):
@@ -182,9 +269,8 @@ def require_deleted_archive_receipt(
     return deletion
 
 
-def read_deleted_restore_source(
-    private_base: Path,
-    parent: Path,
+def _read_deleted_archive(
+    parent_fd: int,
     name: str,
     key: PluginInstallationKeyV1,
     *,
@@ -195,22 +281,17 @@ def read_deleted_restore_source(
     ],
     installation_error: str,
     deletion_error: str,
-) -> tuple[S, PluginPrivateDataDeletionReceiptV1]:
-    """Bind and verify retained bytes before releasing their parent descriptor."""
-    with closing_descriptor(io.open_path(private_base, parent)) as parent_fd:
-        receipt, source = read_private_archive(parent_fd, name, io=io, codec=codec)
-        deletion = require_deleted_archive_receipt(
-            receipt,
-            name,
-            key,
-            deletion_events=deletion_events,
-            installation_error=installation_error,
-            deletion_error=deletion_error,
-        )
-        verify_private_archive(
-            parent_fd, name, key, source, receipt, io=io, codec=codec
-        )
-    return source, deletion
+) -> tuple[R, S, PluginPrivateDataDeletionReceiptV1]:
+    receipt, source = read_private_archive(parent_fd, name, io=io, codec=codec)
+    deletion = require_deleted_archive_receipt(
+        receipt,
+        name,
+        key,
+        deletion_events=deletion_events,
+        installation_error=installation_error,
+        deletion_error=deletion_error,
+    )
+    return receipt, source, deletion
 
 
 def verify_posix_restored_target(
@@ -224,30 +305,6 @@ def verify_posix_restored_target(
         verify_private_tree(
             target_fd, source.members, label=io.label, max_read_bytes=io.max_read_bytes
         )
-
-
-def preview_posix_restore_target(
-    private_base: Path,
-    target: Path,
-    source: PrivateBackupSource,
-    *,
-    io: PrivatePosixTreeIO,
-    target_present: bool,
-    stage_name: str,
-    stage_prefix: str,
-    stage_suffix: str,
-) -> Literal["absent", "same_bytes"]:
-    if target_present:
-        verify_posix_restored_target(private_base, target, source, io=io)
-    io.require_no_foreign_restore_stage(
-        private_base,
-        target,
-        stage_name=stage_name,
-        stage_prefix=stage_prefix,
-        stage_suffix=stage_suffix,
-        target_present=target_present,
-    )
-    return "same_bytes" if target_present else "absent"
 
 
 def inspect_private_expiry_archive(
@@ -581,88 +638,266 @@ def enumerate_private_archives(
 
 _RestoreEventT = TypeVar("_RestoreEventT", bound=PrivateDataRestoreEvent)
 _RestoreResultT = TypeVar("_RestoreResultT")
+_RestoreSourceT = TypeVar("_RestoreSourceT", bound=PrivateDataDeletionTarget)
 
 
-def restore_private_archive(
-    parent_fd: int,
-    name: str,
-    key: PluginInstallationKeyV1,
-    source: S,
-    receipt: R,
-    deletion_receipt: PluginPrivateDataDeletionReceiptV1,
-    *,
-    target: Path,
-    private_base: Path,
-    io: PrivatePosixTreeIO,
-    codec: PrivateArchiveCodec[S, R],
-    expected_target_state: Literal["absent", "same_bytes"] | None,
-    stage_prefix: str,
-    stage_suffix: str,
-    prepare: PrivateTreePreparePort,
-    verify_files: Callable[[int, S], None],
-    write_file_factory: Callable[[], Callable[[int, str, bytes], None]],
-    journal_factory: Callable[[], PrivateDataRestoreJournal[_RestoreEventT]],
-    identity_for: Callable[[PluginInstallationKeyV1, str, str], str],
-    result_factory: Callable[[str, str, str], _RestoreResultT],
-) -> _RestoreResultT:
-    """Restore one admitted source; caller retains Product and parent custody."""
-    archive_identity = metadata_identity(
-        os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-    )
-    verify_private_archive(parent_fd, name, key, source, receipt, io=io, codec=codec)
-    with closing_descriptor(io.open_directory(parent_fd, name)) as archive_fd:
-        if metadata_identity(os.fstat(archive_fd)) != archive_identity:
-            raise ValueError(f"{io.label} restore archive changed")
+_ExpiryPlanT = TypeVar("_ExpiryPlanT", bound=ExpiryPlan)
+
+
+@dataclass(frozen=True, slots=True)
+class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
+    """Verify and restore a Product-admitted archive under its offline fence."""
+
+    private_base: Path
+    io: PrivatePosixTreeIO
+    codec: PrivateArchiveCodec[_RestoreSourceT, R]
+    backup_parent: Callable[[PluginInstallationKeyV1], Path]
+    capture_target: Callable[[Path], _RestoreSourceT]
+    stage_prefix: str
+    stage_suffix: str
+
+    def _source(
+        self,
+        name: str,
+        key: PluginInstallationKeyV1,
+        deletion_events: Callable[
+            [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
+        ],
+        *,
+        installation_error: str,
+        deletion_error: str,
+    ) -> tuple[_RestoreSourceT, PluginPrivateDataDeletionReceiptV1]:
+        parent = self.backup_parent(key)
         with closing_descriptor(
-            io.open_directory(archive_fd, codec.files_name)
-        ) as files_fd:
-            verify_files(files_fd, source)
-            prepare(target.parent, private_base=private_base, label="data")
-            existing_target = io.preflight_restore_target(
-                private_base,
-                target,
-                source.members,
-                stage_name=stage_prefix + name + stage_suffix,
-                stage_prefix=stage_prefix,
-                stage_suffix=stage_suffix,
+            self.io.open_path(self.private_base, parent)
+        ) as parent_fd:
+            receipt, source, deletion = _read_deleted_archive(
+                parent_fd,
+                name,
+                key,
+                io=self.io,
+                codec=self.codec,
+                deletion_events=deletion_events,
+                installation_error=installation_error,
+                deletion_error=deletion_error,
             )
-            if expected_target_state == "same_bytes" and not existing_target:
-                raise ValueError(f"{io.label} restore target changed")
-            journal = journal_factory()
-            restore_id = identity_for(key, name, deletion_receipt.receipt_id)
-            if existing_target and not any(
-                event.restore_id == restore_id for event in journal.events()
-            ):
-                raise ValueError(f"{io.label} existing data lacks restore start")
-            started = journal.begin(
-                key=key,
-                backup_id=name,
-                deletion_receipt_id=deletion_receipt.receipt_id,
+            verify_private_archive(
+                parent_fd, name, key, source, receipt, io=self.io, codec=self.codec
             )
-            if started.phase == "completed":
-                with closing_descriptor(
-                    io.open_path(private_base, target)
-                ) as target_fd:
-                    verify_files(target_fd, source)
-                disposition = "already_present"
-            else:
-                prepare(target.parent, private_base=private_base, label="data")
-                disposition = io.restore_verified_tree(
-                    private_base,
-                    target,
-                    source.members,
-                    files_fd,
-                    stage_name=stage_prefix + name + stage_suffix,
-                    stage_prefix=stage_prefix,
-                    stage_suffix=stage_suffix,
-                    write_file=write_file_factory(),
-                )
-            verify_files(files_fd, source)
-        if metadata_identity(os.fstat(archive_fd)) != metadata_identity(
-            os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-        ):
-            raise ValueError(f"{io.label} restore archive changed")
-        completed = (
-            started if started.phase == "completed" else journal.complete(started)
+        return source, deletion
+
+    def preview(
+        self,
+        target: Path,
+        name: str,
+        key: PluginInstallationKeyV1,
+        *,
+        deletion_events: Callable[
+            [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
+        ],
+    ) -> tuple[str, str, Literal["absent", "same_bytes"]]:
+        label = self.io.label
+        source, receipt = self._source(
+            name,
+            key,
+            deletion_events,
+            installation_error=f"{label} restore Installation changed",
+            deletion_error=f"{label} restore lacks completed deletion",
         )
-        return result_factory(name, disposition, completed.restore_id)
+        target_present = self.capture_target(target).root_identity is not None
+        if target_present:
+            verify_posix_restored_target(self.private_base, target, source, io=self.io)
+        self.io.require_no_foreign_restore_stage(
+            self.private_base,
+            target,
+            stage_name=self.stage_prefix + name + self.stage_suffix,
+            stage_prefix=self.stage_prefix,
+            stage_suffix=self.stage_suffix,
+            target_present=target_present,
+        )
+        return (
+            source.target_id,
+            receipt.receipt_id,
+            "same_bytes" if target_present else "absent",
+        )
+
+    def preview_expiry(
+        self,
+        key: PluginInstallationKeyV1,
+        backup_id: str,
+        confirmation_id: str,
+        *,
+        completed_restore: Callable[[], tuple[PrivateDataRestoreEvent, str]],
+        desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
+        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
+        create_plan: Callable[..., _ExpiryPlanT],
+    ) -> _ExpiryPlanT:
+        """Read the completed recovery, its confirmation, and the exact archive."""
+        label = self.io.label
+        completion, target_id = completed_restore()
+        confirmation = confirmation_journal().require_current(
+            confirmation_id,
+            key,
+            backup_id,
+            completion,
+            target_id,
+            message=f"{label} backup expiry confirmation is stale",
+        )
+        desired = desired_snapshot()
+        if desired.installation(key).selection.desired_state != "absent":
+            raise ValueError(f"{label} backup expiry requires removal")
+        receipt, source, _identity, archive = inspect_private_expiry_archive(
+            self.private_base,
+            self.backup_parent(key),
+            backup_id,
+            key,
+            io=self.io,
+            codec=self.codec,
+            recapture=lambda: self.capture_target(self.backup_parent(key) / backup_id),
+            installation_error=f"{label} backup expiry Installation changed",
+            changed_error=f"{label} backup expiry archive changed",
+        )
+        return plan_verified_backup_expiry(
+            create_plan,
+            source,
+            confirmation,
+            completion,
+            archive,
+            key=key,
+            backup_id=backup_id,
+            backup_receipt_id=receipt.receipt_id,
+            restored_target_id=target_id,
+            desired_inventory_revision=desired.inventory_revision,
+        )
+
+    def completed(
+        self,
+        name: str,
+        key: PluginInstallationKeyV1,
+        *,
+        deletion_events: Callable[
+            [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
+        ],
+        find_completion: Callable[[str], _RestoreEventT],
+        resolve_target: Callable[[], Path],
+    ) -> tuple[_RestoreEventT, str]:
+        label = self.io.label
+        source, receipt = self._source(
+            name,
+            key,
+            deletion_events,
+            installation_error=f"{label} restore backup Installation changed",
+            deletion_error=f"{label} restore confirmation lacks deletion",
+        )
+        completion = find_completion(receipt.receipt_id)
+        target = resolve_target()
+        verify_posix_restored_target(self.private_base, target, source, io=self.io)
+        current = self.capture_target(target)
+        if current.root_identity is None:
+            raise ValueError(f"{label} restored target is absent")
+        return completion, current.target_id
+
+    def restore(
+        self,
+        target: Path,
+        name: str,
+        key: PluginInstallationKeyV1,
+        *,
+        deletion_events: Callable[
+            [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
+        ],
+        expected_archive: tuple[str, str] | None,
+        expected_target_state: Literal["absent", "same_bytes"] | None,
+        prepare: PrivateTreePreparePort,
+        verify_files: Callable[[int, _RestoreSourceT], None],
+        write_file_factory: Callable[[], Callable[[int, str, bytes], None]],
+        journal_factory: Callable[[], PrivateDataRestoreJournal[_RestoreEventT]],
+        identity_for: Callable[[PluginInstallationKeyV1, str, str], str],
+        result_factory: Callable[[str, str, str], _RestoreResultT],
+    ) -> _RestoreResultT:
+        """Verify and restore the exact archive under the caller's offline fence."""
+        parent = self.backup_parent(key)
+        private_base, io, codec = self.private_base, self.io, self.codec
+        stage_prefix, stage_suffix = self.stage_prefix, self.stage_suffix
+        stage_name = stage_prefix + name + stage_suffix
+        with closing_descriptor(io.open_path(private_base, parent)) as parent_fd:
+            receipt, source, deletion_receipt = _read_deleted_archive(
+                parent_fd,
+                name,
+                key,
+                io=io,
+                codec=codec,
+                deletion_events=deletion_events,
+                installation_error=f"{io.label} restore Installation changed",
+                deletion_error=f"{io.label} restore lacks completed deletion",
+            )
+            if expected_archive is not None and expected_archive != (
+                source.target_id,
+                deletion_receipt.receipt_id,
+            ):
+                raise ValueError(f"{io.label} restore plan evidence changed")
+            archive_identity = metadata_identity(
+                os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            )
+            verify_private_archive(
+                parent_fd, name, key, source, receipt, io=io, codec=codec
+            )
+            with closing_descriptor(io.open_directory(parent_fd, name)) as archive_fd:
+                if metadata_identity(os.fstat(archive_fd)) != archive_identity:
+                    raise ValueError(f"{io.label} restore archive changed")
+                with closing_descriptor(
+                    io.open_directory(archive_fd, codec.files_name)
+                ) as files_fd:
+                    verify_files(files_fd, source)
+                    prepare(target.parent, private_base=private_base, label="data")
+                    existing_target = io.preflight_restore_target(
+                        private_base,
+                        target,
+                        source.members,
+                        stage_name=stage_name,
+                        stage_prefix=stage_prefix,
+                        stage_suffix=stage_suffix,
+                    )
+                    if expected_target_state == "same_bytes" and not existing_target:
+                        raise ValueError(f"{io.label} restore target changed")
+                    journal = journal_factory()
+                    restore_id = identity_for(key, name, deletion_receipt.receipt_id)
+                    if existing_target:
+                        journal.require_started(
+                            restore_id,
+                            error=f"{io.label} existing data lacks restore start",
+                        )
+                    started = journal.begin(
+                        key=key,
+                        backup_id=name,
+                        deletion_receipt_id=deletion_receipt.receipt_id,
+                    )
+                    if started.phase == "completed":
+                        with closing_descriptor(
+                            io.open_path(private_base, target)
+                        ) as target_fd:
+                            verify_files(target_fd, source)
+                        disposition = "already_present"
+                    else:
+                        prepare(target.parent, private_base=private_base, label="data")
+                        disposition = io.restore_verified_tree(
+                            private_base,
+                            target,
+                            source.members,
+                            files_fd,
+                            stage_name=stage_name,
+                            stage_prefix=stage_prefix,
+                            stage_suffix=stage_suffix,
+                            write_file=write_file_factory(),
+                        )
+                    verify_files(files_fd, source)
+                if metadata_identity(os.fstat(archive_fd)) != metadata_identity(
+                    os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+                ):
+                    raise ValueError(f"{io.label} restore archive changed")
+                completed = (
+                    started
+                    if started.phase == "completed"
+                    else journal.complete(started)
+                )
+                return result_factory(name, disposition, completed.restore_id)

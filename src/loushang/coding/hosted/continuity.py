@@ -23,11 +23,11 @@ from loushang.appservice import (
     ApplicationContinuityStoreV1,
 )
 from loushang.coding.hosted.application import (
-    CodingAppHostHostedSessionResolverV1,
     CodingForegroundHostedApplicationRequestV1,
     CodingForegroundProductFactoryV1,
-    _coding_hosted_application_request,
-    _coding_hosted_registrations,
+    _coding_hosted_catalog_input,
+    _coding_hosted_request_for_runtime,
+    _load_coding_hosted_sessions,
 )
 
 _STABLE_ID = re.compile(r"[a-z0-9](?:[a-z0-9._-]{0,127})\Z")
@@ -113,10 +113,7 @@ class CodingHostedContinuityAttemptV1(
         self,
     ) -> CodingForegroundHostedApplicationRequestV1:
         request = self._request.foreground
-        from loushang.coding.hosted.workspace_catalog import CodingWorkspaceCatalog
-
-        if type(request.sessions) is CodingWorkspaceCatalog:
-            await request.sessions.load()
+        await _load_coding_hosted_sessions(request)
         return request
 
     def _foreground_sessions(
@@ -127,32 +124,16 @@ class CodingHostedContinuityAttemptV1(
     def _catalog_input(
         self, request: CodingForegroundHostedApplicationRequestV1
     ) -> AppHostCatalogInputV1:
-        product, profile = _coding_hosted_registrations(request, self._product_factory)
-        return AppHostCatalogInputV1(
-            generation_id=request.generation_id,
-            products=(product,),
-            profiles=(profile,),
-        )
+        return _coding_hosted_catalog_input(request, self._product_factory)
 
     def _application_request(
         self, request: CodingForegroundHostedApplicationRequestV1
     ) -> HostedApplicationRequestV1:
-        resolver = CodingAppHostHostedSessionResolverV1(
-            runtime=cast("AppHostRuntimeV1", self._runtime),
-            sessions=request.sessions,
-            profile_id=request.profile_id,
-            operation_id_factory=request.operation_id_factory,
-            admitted_scopes=request.admitted_scopes,
-            execution=request.execution is not None,
-            managed_selection=request.managed_selection,
-        )
-        application = _coding_hosted_application_request(
+        return _coding_hosted_request_for_runtime(
             request,
             product_factory=self._product_factory,
-            runtime=cast("AppHostRuntimeV1", self._runtime),
-            resolver=resolver,
+            runtime=cast(AppHostRuntimeV1, self._runtime),
         )
-        return application
 
 
 def create_coding_hosted_continuity_attempt(

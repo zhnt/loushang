@@ -5,6 +5,7 @@ from __future__ import annotations
 import time as time
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from types import TracebackType
 
@@ -39,9 +40,7 @@ from loushang.coding.resources.catalog import (
 from loushang.coding.resources.catalog import (
     CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY as CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
 )
-from loushang.coding.resources.catalog import (
-    build_coding_initial_resource_catalog_adapter as build_coding_initial_resource_catalog_adapter,
-)
+from loushang.coding.resources.catalog import prepare_coding_catalog_projection
 from loushang.coding.resources.runtime import (
     CodingResourceLoader as CodingResourceLoader,
 )
@@ -50,6 +49,15 @@ from loushang.harness.capabilities.consumer_requirements import (
 )
 from loushang.harness.environment.probe import (
     LocalHostEnvironmentProbe as LocalHostEnvironmentProbe,
+)
+from loushang.harness.package_product._application_runtime import (
+    fenced_source_catalog_roots,
+)
+from loushang.harness.package_product._legacy_runtime import (
+    open_read_only_fenced_product,
+)
+from loushang.harness.package_product._selected_plugin_revisions import (
+    capture_selected_manifests,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductHostInputs as PosixLocalWheelProductHostInputs,
@@ -65,7 +73,7 @@ from loushang.harness.package_product.product_worker_candidate import (
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentCompositionPreviewV1,
     PluginCurrentResourceAdmissionV1,
-    project_current_selection_evidence,
+    observe_current_product_composition,
 )
 from loushang.harness.plugin_management.current_preview import (
     project_current_product_resource_facts as project_current_product_resource_facts,
@@ -73,7 +81,6 @@ from loushang.harness.plugin_management.current_preview import (
 from loushang.harness.plugin_management.current_preview import (
     project_current_product_resource_selections as project_current_product_resource_selections,
 )
-from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
@@ -99,21 +106,7 @@ from .builtin_wheel import (
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
-from .external_data_wheel import (
-    CodingExternalDataWheelCatalog as CodingExternalDataWheelCatalog,
-)
-from .external_dependency_wheel import (
-    CodingExternalDependencyWheelCatalog as CodingExternalDependencyWheelCatalog,
-)
-from .external_worker_wheel import (
-    CodingExternalWorkerWheelCatalog as CodingExternalWorkerWheelCatalog,
-)
-from .legacy_binding_catalog import (
-    CodingLegacyLocalBindingCatalog as CodingLegacyLocalBindingCatalog,
-)
-from .legacy_local_acceptance import (
-    reopen_coding_legacy_installed_local_acceptance as reopen_coding_legacy_installed_local_acceptance,
-)
+from .product_runtime import _compose_coding_product_source_policy
 from .product_worker_opt_in import CodingWorkerOptInDecisionV1, CodingWorkerOptInJournal
 
 CodingDataResourceAdmissionPreviewV1 = PluginCurrentResourceAdmissionV1
@@ -206,20 +199,40 @@ class CodingFencedProductReadOnlyPreviewOwner:
             raise ValueError("Coding Product preview disabled Skills are invalid")
         desired = self.selected_manifests.root_reader.desired_state
         before, _ = desired.capture_read_only()
-        base_key = PluginInstallationKeyV1(
-            product_id=self.policy.product_id,
-            installation_scope="workspace",
-            scope_id=self.policy.project_scope_id,
-            plugin_id="coding.base",
+        base_key = PluginInstallationKeyV1.workspace(
+            self.policy.product_id, self.policy.project_scope_id, "coding.base"
         )
         base_state = before.installation(base_key).selection.desired_state
         base_disabled = base_state == "installed_disabled"
         external_ids = self.selected_manifests.selected_external_data_plugin_ids()
         evaluated_at = int(time.time())
+        capture_manifests = partial(
+            capture_selected_manifests,
+            self.selected_manifests.capture_selected_manifest_for_plugin,
+            max_files=_RESOURCE_PREVIEW_MAX_FILES,
+            max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
+        )
         compiled: (
             CodingBaseProductCompilation | CodingExternalDataProductCompilation | None
         ) = None
         compiled_plugin_ids: tuple[str, ...] = ()
+        preview = partial(
+            observe_current_product_composition,
+            self.policy,
+            desired,
+            before,
+            epoch=self.epoch_runtime,
+            requested_plugin_ids=tuple(
+                item.plugin_id for item in composition_set.plugin_requests
+            ),
+            executable_trust_classes=frozenset(
+                {"host-equivalent-local", "legacy-local-reacquired"}
+            ),
+            excluded_plugin_id="coding.base",
+            observe_clock=time.time_ns,
+            composition_set_id=composition_set.set_id,
+            disabled_skills_known=disabled_skills is not None,
+        )
         try:
             if base_state == "absent":
                 raise CodingBasePluginAssemblyError(
@@ -230,24 +243,13 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 if external_ids:
                     compiled_plugin_ids = external_ids
                     compiled = compile_coding_external_data_product_selection(
-                        tuple(
-                            self.selected_manifests.capture_selected_manifest_for_plugin(
-                                plugin_id,
-                                max_files=_RESOURCE_PREVIEW_MAX_FILES,
-                                max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
-                            )
-                            for plugin_id in external_ids
-                        ),
+                        capture_manifests(external_ids),
                         composition_set=composition_set,
                         session_id="plugin-preview-current",
                         evaluated_at=evaluated_at,
                     )
             else:
-                base = self.selected_manifests.capture_selected_manifest_for_plugin(
-                    "coding.base",
-                    max_files=_RESOURCE_PREVIEW_MAX_FILES,
-                    max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
-                )
+                (base,) = capture_manifests(("coding.base",))
                 base_compiled = compile_coding_base_product_selection(
                     base,
                     composition_set,
@@ -263,14 +265,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
                     )
                     base_compiled = extend_coding_base_product_data_resources(
                         base_compiled,
-                        tuple(
-                            self.selected_manifests.capture_selected_manifest_for_plugin(
-                                plugin_id,
-                                max_files=_RESOURCE_PREVIEW_MAX_FILES,
-                                max_total_bytes=_RESOURCE_PREVIEW_MAX_BYTES,
-                            )
-                            for plugin_id in external_ids
-                        ),
+                        capture_manifests(external_ids),
                         evaluated_at=evaluated_at,
                     )
                     compiled_plugin_ids = base_compiled.plan.selected_plugin_ids
@@ -279,56 +274,24 @@ class CodingFencedProductReadOnlyPreviewOwner:
             CodingBasePluginAssemblyError,
             ProductCompositionError,
         ) as exc:
-            after, _ = desired.capture_read_only()
-            self.epoch_runtime.assert_current()
-            executable, gaps = _selection_evidence(
-                self.policy,
-                before,
-                tuple(item.plugin_id for item in composition_set.plugin_requests),
-            )
-            if disabled_skills is not None:
-                gaps.discard("disabled_skill_settings")
-            gaps.add("resource_catalog_not_reached")
-            if before.inventory_revision != after.inventory_revision:
-                gaps.add("stale_snapshot")
-            return CodingCurrentDataResourcePreviewV1(
-                product_id=self.policy.product_id,
-                scope_id=self.policy.project_scope_id,
-                composition_set_id=composition_set.set_id,
-                observed_at_unix_ns=time.time_ns(),
-                desired_inventory_revision=before.inventory_revision,
-                product_policy_revision=self.policy.policy_revision,
-                product_authority_revision=self.policy.authority_revision,
-                compiled_plugin_ids=compiled_plugin_ids,
-                admitted_resources=(),
-                catalog_resources=(),
-                catalog_diagnostic_codes=(),
-                requires_authorized_preflight=tuple(sorted(executable)),
-                evidence_gaps=tuple(sorted(gaps)),
-                disposition="blocked",
-                blocking_owner="product_composition",
-                blocking_code=exc.code,
-                blocking_admission_fingerprints=(
-                    exc.admission_fingerprints
-                    if isinstance(exc, ProductCompositionError)
-                    else ()
-                ),
-            )
+            return preview(compiled_plugin_ids=compiled_plugin_ids, blocker=exc)
         loader = CodingResourceLoader(workspace_root=workspace)
         receipt = loader.prepare_catalog_input_receipt(workspace)
         product_inputs = (
             compiled.product_resource_inputs() if compiled is not None else ()
         )
-        adapter = build_coding_initial_resource_catalog_adapter(
+        _, catalog_result = prepare_coding_catalog_projection(
             receipt,
-            product_scope_id="plugin-preview-current",
+            product_id=self.policy.product_id,
+            session_id="plugin-preview-current",
+            cwd=workspace,
             product_composition=(
                 compiled.product_composition if compiled is not None else None
             ),
             product_snapshot_resources=(
                 product_inputs if compiled is not None else None
             ),
-            package_admission_now=evaluated_at,
+            admission_now=evaluated_at,
             disabled_skills=disabled_skills or (),
             source_policy=(
                 CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
@@ -336,62 +299,11 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
             ),
         )
-        catalog_result = adapter.prepare_bootstrap_projection_with_receipt(
-            product_id=self.policy.product_id,
-            session_id="plugin-preview-current",
-            cwd=workspace,
-        )
-        bundle = catalog_result.bundle
-        catalog = catalog_result.catalog
-        selections = project_current_product_resource_selections(
-            catalog, product_inputs
-        )
-        after, _ = desired.capture_read_only()
-        self.epoch_runtime.assert_current()
-        executable, gaps = _selection_evidence(
-            self.policy,
-            before,
-            tuple(item.plugin_id for item in composition_set.plugin_requests),
-        )
-        if disabled_skills is not None:
-            gaps.discard("disabled_skill_settings")
-        if before.inventory_revision != after.inventory_revision:
-            gaps.add("stale_snapshot")
-        admissions, catalog_resources = project_current_product_resource_facts(
-            (
-                compiled.product_composition.resource_admissions
-                if compiled is not None
-                else ()
-            ),
-            bundle,
-        )
-        return CodingCurrentDataResourcePreviewV1(
-            product_id=self.policy.product_id,
-            scope_id=self.policy.project_scope_id,
-            composition_set_id=composition_set.set_id,
-            observed_at_unix_ns=time.time_ns(),
-            desired_inventory_revision=before.inventory_revision,
-            product_policy_revision=self.policy.policy_revision,
-            product_authority_revision=self.policy.authority_revision,
+        return preview(
             compiled_plugin_ids=compiled_plugin_ids,
-            admitted_resources=admissions,
-            catalog_resources=catalog_resources,
-            catalog_diagnostic_codes=tuple(
-                sorted({item.code for item in bundle.diagnostics})
-            ),
-            catalog_generation=catalog.catalog_generation,
-            catalog_snapshot_fingerprint=catalog.snapshot_fingerprint,
-            selected_resources=tuple(
-                sorted(
-                    selections,
-                    key=lambda item: (
-                        item.installation_key.plugin_id,
-                        item.contribution_id,
-                    ),
-                )
-            ),
-            requires_authorized_preflight=tuple(sorted(executable)),
-            evidence_gaps=tuple(sorted(gaps)),
+            catalog_projection=(catalog_result.bundle, catalog_result.catalog),
+            product_inputs=product_inputs,
+            compiled=compiled,
         )
 
     @classmethod
@@ -407,77 +319,26 @@ class CodingFencedProductReadOnlyPreviewOwner:
         if not isinstance(layout, CodingPluginLifecycleStateLayout):
             raise TypeError("Coding Plugin lifecycle layout is required")
         epoch = resolve_coding_package_epoch_layout(layout)
-        runtime = PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs(), read_only=True
-        )
-        try:
+        with open_read_only_fenced_product(**epoch.fenced_runtime_open_kwargs()) as runtime:
             if workspace_guard is not None:
                 workspace_guard()
-            switch = runtime.cutover_result.switch_receipt
-            if switch is None:
-                raise ValueError("Coding Package Product root is not fenced")
-            state_root = runtime.control_root / "product-state"
-            source_root = runtime.control_root / "product-sources"
-            runtime.require_existing_product_state_root()
-            base = inspect_posix_coding_base_product_wheel(source_root)
-            capabilities = inspect_posix_coding_capability_product_wheels(source_root)
-            host = PosixLocalWheelProductHostInputs.current_host(
-                max_transport_bytes=2 * 1024 * 1024
-            )
-            policy = coding_builtin_product_local_wheel_policy(
-                base,
-                capabilities,
-                project_scope_id=layout.scope_id,
-                resolution_environment_fingerprint=host.environment.fingerprint,
-                policy_revision="coding-product-package-policy:1",
-                quota_profile_revision="coding-product-package-quota:1",
-                authority_id="coding-product-local-source",
-            )
-            policy = CodingLegacyLocalBindingCatalog(
-                state_root / "legacy-local-bindings.jsonl",
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
+            roots = fenced_source_catalog_roots(
+                runtime,
                 scope_id=layout.scope_id,
-                policy_revision=policy.policy_revision,
-                acceptance_reader=lambda plugin_id: (
-                    reopen_coding_legacy_installed_local_acceptance(
-                        layout,
-                        runtime,
-                        plugin_id=plugin_id,
-                        policy_revision=policy.policy_revision,
-                    )
-                ),
-            ).read_extend_policy(policy)
-            policy = CodingExternalDataWheelCatalog(
-                state_root / "external-data-wheel-bindings.jsonl",
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=layout.scope_id,
+                no_namespace="Coding Package Product root is not fenced",
                 read_only=True,
-            ).extend_policy(policy)
-            policy = CodingExternalDependencyWheelCatalog(
-                state_root / "external-dependency-wheel-bindings.jsonl",
-                source_root=source_root,
-                store_id=epoch.store_id,
-                namespace_id=switch.namespace_id,
-                scope_id=layout.scope_id,
+            )
+            policy, _ = _compose_coding_product_source_policy(
+                layout,
+                runtime,
+                roots,
+                include_worker_candidates=worker_candidates,
                 read_only=True,
-            ).extend_policy(policy)
-            if worker_candidates:
-                policy = CodingExternalWorkerWheelCatalog(
-                    state_root / "external-worker-wheel-bindings.jsonl",
-                    source_root=source_root,
-                    store_id=epoch.store_id,
-                    namespace_id=switch.namespace_id,
-                    scope_id=layout.scope_id,
-                    read_only=True,
-                ).extend_policy(policy)
+            )
             selected_manifests, gc_gate = bind_read_only_local_wheel_manifests(
                 runtime,
                 policy=policy,
-                plugin_store_root=epoch.epoch_root(switch.namespace_id),
+                plugin_store_root=epoch.epoch_root(roots.identity["namespace_id"]),
                 root_store_identity=f"coding-product-root-store:{epoch.store_id}",
             )
             runtime.assert_current()
@@ -490,9 +351,6 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 gc_gate=gc_gate,
                 worker_candidates=worker_candidates,
             )
-        except BaseException:
-            runtime.close()
-            raise
 
     def close(self) -> None:
         self.epoch_runtime.close()
@@ -509,22 +367,6 @@ class CodingFencedProductReadOnlyPreviewOwner:
     ) -> None:
         del exc_type, exc_value, traceback
         self.close()
-
-
-def _selection_evidence(
-    policy: PackageProductLocalWheelPolicy,
-    desired_snapshot: PluginDesiredStateSnapshotV1,
-    requested_plugin_ids: tuple[str, ...],
-) -> tuple[set[str], set[str]]:
-    return project_current_selection_evidence(
-        policy,
-        desired_snapshot,
-        requested_plugin_ids,
-        executable_trust_classes=frozenset(
-            {"host-equivalent-local", "legacy-local-reacquired"}
-        ),
-        excluded_plugin_id="coding.base",
-    )
 
 
 __all__ = [

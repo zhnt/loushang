@@ -111,6 +111,7 @@ from ._windows_worker_history import (
     ObserveWindowsWorkerBackup,
     ReadWindowsOfflineRecovery,
 )
+from ._worker_history_access import windows_product_worker_quiescence
 from ._worker_product_authority import (
     ClosedProductWorkerCrashRecoveryAuthority,
     _WindowsWorkerProductReceiptAuthority,
@@ -122,6 +123,8 @@ from ._worker_windows_attempt import (
     _RuntimeReview,
     capture_windows_product_worker_cleanup,
     inspect_windows_product_worker_recovery_inventory,
+    is_attempt_id,
+    is_windows_product,
     require_windows_worker_retirement_root,
     review_windows_product_worker_offline,
     settle_windows_product_worker_native_cleanup,
@@ -585,12 +588,9 @@ def read_windows_product_worker_offline_recovery(
     active_error: type[RuntimeError],
     active_code: str,
 ) -> _RecoveryFacts:
-    registry = product.epoch_runtime.registry
-    with registry.exclusive_runtime_quiescence(
-        store_id=registry.store_id
-    ) as quiescence:
-        if quiescence.active_runtime_lease_ids:
-            raise active_error(active_code)
+    with windows_product_worker_quiescence(
+        product, active_error=active_error, active_message=active_code
+    ) as (registry, quiescence):
         with product.gc_gate.read_snapshot_guard() as gc_snapshot:
             return read_under_guard(
                 product,
@@ -724,6 +724,29 @@ class _CaptureReservedReview(Protocol[_IntentContra, _ReservedReviewCo]):
     ) -> _ReservedReviewCo: ...
 
 
+_StageReviewT = TypeVar("_StageReviewT")
+
+
+def review_windows_product_worker_stage_offline(
+    product: WindowsLocalWheelProductSessionOwner,
+    *,
+    product_id: str,
+    attempt_id: str,
+    role: str,
+    error_type: type[Exception],
+    error_prefix: str,
+    review: Callable[[PackageWindowsRuntimeQuiescenceV1], _StageReviewT],
+) -> _StageReviewT:
+    """Admit one exact stage review through the existing read-only Product gate."""
+    if not is_windows_product(product, product_id, os.name) or not is_attempt_id(attempt_id):
+        raise OSError(f"Windows Worker {role} review requires a Product owner")
+    return review_windows_product_worker_offline(
+        product,
+        active_error=lambda: error_type(error_prefix + "_runtime_active"),
+        review=review,
+    )
+
+
 def review_windows_product_worker_complete_stage_under_guard(
     product: WindowsLocalWheelProductSessionOwner,
     *,
@@ -779,6 +802,7 @@ def review_windows_product_worker_complete_stage_under_guard(
 def review_windows_product_worker_partial_stage(
     product: WindowsLocalWheelProductSessionOwner,
     *,
+    product_id: str,
     attempt_id: str,
     record_type: type[_PartialReviewT],
     inspect_inventory: ReadWindowsRecoveryInventory[WindowsRecoveryAttemptV1],
@@ -808,11 +832,13 @@ def review_windows_product_worker_partial_stage(
         product.assert_root_gc_authority_current()
         return review
 
-    return review_windows_product_worker_offline(
+    return review_windows_product_worker_stage_offline(
         product,
-        active_error=lambda: record_type._record_error(
-            error_prefix + "_runtime_active"
-        ),
+        product_id=product_id,
+        attempt_id=attempt_id,
+        role="partial-stage",
+        error_type=record_type._record_error,
+        error_prefix=error_prefix,
         review=capture,
     )
 

@@ -7,10 +7,10 @@ import stat
 import sys
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol, TypedDict, TypeVar, Unpack
 
 from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
 from loushang.harness.resources.packages._private_directory import (
@@ -18,6 +18,9 @@ from loushang.harness.resources.packages._private_directory import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
     PackageLegacyStateEvidenceV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackagePosixEpochCutoverError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
     PackagePosixEpochSnapshotEvidenceStore,
@@ -55,6 +58,76 @@ _FencedRuntime = (
 _SnapshotStore = (
     PackagePosixEpochSnapshotEvidenceStore | PackageWindowsEpochSnapshotEvidenceStore
 )
+
+
+class FencedRuntimeOpenKwargs(TypedDict):
+    authority_root: Path
+    control_root: Path
+    store_id: str
+    epochs_root_name: str
+
+
+class LegacyReviewFenceIdentity(TypedDict):
+    store_id: str
+    namespace_id: str
+    first_fence_id: str
+    snapshot_receipt_id: str
+
+
+def legacy_review_fence_identity(
+    runtime: _FencedRuntime, *, missing: ValueError,
+) -> LegacyReviewFenceIdentity:
+    """Project the native first-cutover receipts used by review records."""
+    result = runtime.cutover_result
+    fence, switch = result.fence, result.switch_receipt
+    if fence is None or switch is None:
+        raise missing
+    return LegacyReviewFenceIdentity(
+        store_id=fence.store_id,
+        namespace_id=switch.namespace_id,
+        first_fence_id=fence.fence_id,
+        snapshot_receipt_id=fence.request.snapshot_receipt_id,
+    )
+
+
+def open_native_fenced_product_epoch(
+    *,
+    windows: bool | None = None,
+    posix_read_only: bool = False,
+    **roots: Unpack[FencedRuntimeOpenKwargs],
+) -> _FencedRuntime:
+    """Open the selected native owner, with read-only reopen on POSIX when required."""
+    if windows is None:
+        windows = os.name == "nt"
+    if windows:
+        return PackageProductWindowsFencedRuntimeOwner.open(**roots)
+    return PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=posix_read_only)
+
+
+@contextmanager
+def open_read_only_fenced_product(
+    **roots: Unpack[FencedRuntimeOpenKwargs],
+) -> Iterator[PackageProductPosixFencedRuntimeOwner]:
+    """Transfer a POSIX read authority only after assembly succeeds."""
+    runtime = PackageProductPosixFencedRuntimeOwner.open(**roots, read_only=True)
+    try:
+        yield runtime
+    except BaseException:
+        runtime.close()
+        raise
+
+
+def inspect_fresh_product_epoch(
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    windows: bool,
+    verify_snapshot: Callable[[_FencedRuntime], bool],
+) -> bool:
+    """Check original snapshot evidence within one native epoch lifetime."""
+    with closing(
+        open_native_fenced_product_epoch(windows=windows, posix_read_only=True, **roots)
+    ) as runtime:
+        return verify_snapshot(runtime)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +184,13 @@ class _LegacyFirstSnapshot:
         self.runtime.assert_current()
         return raw
 
+    def assert_snapshot_current(self, snapshot_receipt_id: str) -> None:
+        """Verify the original receipt and entire bundle without reopening a member."""
+        _, evidence = self._open()
+        if evidence.snapshot.receipt_id != snapshot_receipt_id:
+            raise self.error_type(f"{self.label} snapshot is unavailable")
+        self.runtime.assert_current()
+
     def list_members(self, *, domain: str) -> tuple[str, ...]:
         snapshots, evidence = self._open()
         members = snapshots.list_domain_members(
@@ -143,6 +223,16 @@ class _LegacyFirstSnapshot:
         )
 
 
+LEGACY_PRODUCT_STATE_DOMAINS = (
+    "binding_history",
+    "desired_state",
+    "enablement_state",
+    "instance_state",
+    "lock_history",
+    "store_bytes",
+)
+
+
 def read_fresh_product_source_snapshot(
     reader: _LegacyFirstSnapshot,
     *,
@@ -155,14 +245,7 @@ def read_fresh_product_source_snapshot(
     fence = reader.runtime.cutover_result.fence
     if fence is None or fence.request.namespace_id != namespace_id:
         return None
-    for domain in (
-        "binding_history",
-        "desired_state",
-        "enablement_state",
-        "instance_state",
-        "lock_history",
-        "store_bytes",
-    ):
+    for domain in LEGACY_PRODUCT_STATE_DOMAINS:
         if reader.list_members(domain=domain):
             return None
     if reader.list_members(domain="source_configuration") != (source_member,):
@@ -188,26 +271,87 @@ def require_legacy_snapshot_members(
         raise error
 
 
+@contextmanager
+def guard_legacy_snapshot_admission(
+    message: str, *, code: str, extra_errors: tuple[type[Exception], ...] = ()
+) -> Iterator[None]:
+    """Report inadmissible evidence while preserving native cutover failures."""
+    wrapped_errors = (OSError, ValueError, TypeError) + extra_errors
+    try:
+        yield
+    except PackagePosixEpochCutoverError:
+        raise
+    except wrapped_errors as exc:
+        raise PackagePosixEpochCutoverError(message, code=code) from exc
+
+
+def legacy_product_projection_parent(lifecycle_root: Path) -> Path:
+    """Keep the deployed native location of the private cutover projections."""
+    if os.name == "nt":
+        return lifecycle_root.parent / f"{lifecycle_root.name}.pre-b-projections"
+    return lifecycle_root.parent
+
+
 def prepare_legacy_product_cutover_roots(
-    roots: Iterable[tuple[Path, Path]], *, label: str
+    lifecycle: _LegacyStateRoots,
+    *,
+    control_root: Path,
+    snapshot_root: Path,
+    epochs_root: Path,
+    label: str,
 ) -> None:
-    """Prepare declared roots in order through the native private owner."""
+    """Prepare the state roots before either Package data root."""
     windows = os.name == "nt"
-    for root, private_base in roots:
+    state_roots: tuple[Path, ...] = (lifecycle.root, control_root, snapshot_root)
+    if windows:
+        state_roots += (legacy_product_projection_parent(lifecycle.root),)
+    for root in state_roots:
         prepare_legacy_product_cutover_root(
-            root, private_base=private_base, windows=windows, label=label
+            root, private_base=lifecycle.private_state_base, windows=windows, label=label
         )
+    for root in (lifecycle.package_root, epochs_root):
+        prepare_legacy_product_cutover_root(
+            root, private_base=lifecycle.private_data_base, windows=windows, label=label
+        )
+
+
+def legacy_product_fence_exists(control_root: Path) -> bool:
+    """Observe the journal name only; the native owner validates its contents."""
+    try:
+        (control_root / "epoch.jsonl").lstat()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def bind_legacy_pre_b_snapshot_owner(
     snapshot_root: Path,
     *,
     store_id: str,
-    domain_roots: Mapping[str, Path],
-    domain_members: Mapping[str, tuple[str, ...] | None],
+    observed_roots: Iterable[tuple[Path, Mapping[str, tuple[str, ...]]]],
+    fence_root: Path,
+    source_configuration_root: Path,
+    legacy_pointer_root: Path,
     legacy_root_pointer_name: str,
     shared_members: tuple[PackageProductPreBSnapshotSharedMemberV1, ...],
 ) -> PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner:
+    """Bind observed store and lifecycle members to the native cutover inputs."""
+    domain_roots: dict[str, Path] = {}
+    domain_members: dict[str, tuple[str, ...] | None] = {}
+    for root, members in observed_roots:
+        if domain_roots.keys() & members.keys():
+            raise ValueError("Legacy Product snapshot domains overlap")
+        domain_roots.update(dict.fromkeys(members, root))
+        domain_members.update(members)
+    inert_roots = {
+        "fence_record": fence_root,
+        "source_configuration": source_configuration_root,
+        "legacy_root_pointer": legacy_pointer_root,
+    }
+    if domain_roots.keys() & inert_roots.keys():
+        raise ValueError("Legacy Product snapshot domains overlap")
+    domain_roots.update(inert_roots)
+    domain_members.update(dict.fromkeys(inert_roots))
     owner_type = (
         PackageProductWindowsPreBSnapshotOwner
         if os.name == "nt"
@@ -225,24 +369,23 @@ def bind_legacy_pre_b_snapshot_owner(
 
 def reopen_legacy_product_cutover(
     *,
-    authority_root: Path,
-    control_root: Path,
-    store_id: str,
-    epochs_root_name: str,
     read_only: bool,
+    expected_namespace: str | None = None,
+    label: str = "Package Product",
+    **roots: Unpack[FencedRuntimeOpenKwargs],
 ) -> PackagePosixEpochCutoverResultV1:
     reopen = (
         reopen_windows_product_cutover
         if os.name == "nt"
         else reopen_posix_product_cutover
     )
-    return reopen(
-        authority_root=authority_root,
-        control_root=control_root,
-        store_id=store_id,
-        epochs_root_name=epochs_root_name,
-        read_only=read_only,
-    )
+    result = reopen(**roots, read_only=read_only)
+    switch = result.switch_receipt
+    if expected_namespace is not None and (
+        switch is None or switch.namespace_id != expected_namespace
+    ):
+        raise RuntimeError(f"{label} fence belongs to another cutover")
+    return result
 
 
 class _LegacyStateRoots(Protocol):
@@ -320,6 +463,33 @@ def prepare_private_state_layout(
     )
     with journal_file_lock(layout.coordination_lock, "exclusive"):
         pass
+
+
+@contextmanager
+def legacy_plugin_management_startup(
+    layout: _LegacyStateRoots,
+    *,
+    policy: _LegacyStartupPolicy,
+    hold_startup: Callable[[], bool],
+    release_startup: Callable[[], None],
+    read_only: bool,
+    lifecycle: bool,
+) -> Iterator[bool]:
+    """Release only the process startup lease acquired by a failed assembly."""
+
+    owns_startup = (
+        not read_only
+        and (lifecycle or sys.platform.startswith("linux") or os.name == "nt")
+        and hold_startup()
+    )
+    try:
+        if not read_only and not owns_startup:
+            prepare_private_state_layout(layout, policy=policy)
+        yield owns_startup
+    except BaseException:
+        if owns_startup:
+            release_startup()
+        raise
 
 
 def _hold_process_startup_lease(

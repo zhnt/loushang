@@ -19,8 +19,8 @@ from loushang.ai.types import ImagePart
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
-    _HostedAgentExecutionWork,
     _HostedApprovalPresentation,
+    _HostedResumeInputExecutionWork,
 )
 from loushang.appserver.execution.model import InteractiveGoalRecoveryV1
 from loushang.appserver.protocol import (
@@ -30,11 +30,7 @@ from loushang.appserver.protocol import (
     SessionSnapshotRequestV1,
 )
 from loushang.appservice.client_scope import ScopedAppServicePortV1
-from loushang.appservice.execution_contract import (
-    ExecutionOutcomeV1,
-    ExecutionStatusV1,
-)
-from loushang.appservice.execution_guard import ExecutionControlV1, ExecutionWorkV1
+from loushang.appservice.execution_guard import ExecutionWorkV1
 from loushang.coding.composition.bootstrap import BootstrapServices
 from loushang.coding.composition.sets import resolve_coding_composition_set
 from loushang.coding.hosted.catalog import (
@@ -57,10 +53,7 @@ from loushang.coding.hosted.service_adapter import (
     CodingHostedSnapshotProjectionV1,
 )
 from loushang.coding.hosted.session import (
-    _MAX_INTERACTIONS,
-    _TEXT_LIMIT,
     CodingRealHostedSessionV1,
-    _observe_close,
     _resolve_hosted_saved_model,
 )
 from loushang.coding.hosted_workspace import CodingHostedWorkspace
@@ -68,9 +61,13 @@ from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
 )
 from loushang.coding.resume.activation_plan import SessionActivationPlanV1
+from loushang.coding.resume.activation_projection_v2 import (
+    project_coding_activation_attempt_path_v2,
+)
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     CodingResumeInputLookupResultV1,
+    coding_resume_input_record_digest,
 )
 from loushang.coding.resume.permission_confirmation import NativeResumePolicy
 from loushang.coding.runtime.resume_planning import ResumePlanningSlot
@@ -86,6 +83,7 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
+from loushang.harness.runtime._owned_tasks import _get_close_task
 from loushang.harness.session import SessionControlPort
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
@@ -93,10 +91,13 @@ from loushang.harness.session.model_selection import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+from loushang.harness.transcript._resume_continuation import (
+    lookup_detached_resume_input,
+)
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 
-class _DeferredHostedControlV1(_DeferredSessionControl):
+class _DeferredHostedControlV1(_DeferredSessionControl[CodingRealHostedSessionV1]):
     """Stable control identity that later relays the activated Session."""
 
     def __init__(self, binding: CodingDeferredHostedSessionV1) -> None:
@@ -146,9 +147,6 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     """One AppHost binding from detached history through first activation."""
 
     _approval_action = "Resume approval"
-    _approval_limit = staticmethod(lambda: _MAX_INTERACTIONS)
-    _approval_text_limit = staticmethod(lambda: _TEXT_LIMIT)
-    _approval_id = staticmethod(lambda: token_hex(16))
     _approval_publish_rollback = False
 
     def _approval_dispatcher(self) -> Callable[[RuntimeEvent[object]], Awaitable[None]]:
@@ -183,7 +181,6 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             self.identity.session_id, self._source.record.scope.session_dir,
             self._resource_records, self._hosted_workspace,
         )
-        self._active: CodingRealHostedSessionV1 | None = None
         if resource_tools:
             access = self.create_resource_access()
             self._tools = [*(tools or ()), *hosted_resource_tools(lambda: access, host_paths=self._workspace_tools)]
@@ -208,12 +205,16 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         return cast(SessionControlPort, self._control)
 
     @property
+    def _active(self) -> CodingRealHostedSessionV1 | None:
+        return self._control.resume_binding
+
+    @property
     def execution_available(self) -> bool:
-        return self._close_task is None
+        return self._close_task is None and not self._control.resume_handoff_failed
 
     @property
     def supports_interactive_goal_recovery(self) -> bool:
-        return self._active is None and self._close_task is None
+        return self._active is None and self.execution_available
 
     async def interactive_goal_recovery(self) -> InteractiveGoalRecoveryV1:
         source = self._source
@@ -256,7 +257,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
 
     async def _update_model_settings(self, value: ModelSelection | str) -> None:
         async with self._activation_lock:
-            if self._close_task is not None:
+            if not self.execution_available:
                 raise CodingHostedCatalogError()
             if self._active is not None:
                 if isinstance(value, str):
@@ -447,17 +448,11 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         active = self._active
         if active is not None:
             return active.project_event(event)
-        if payload is not None and payload.get("hosted_presentation") is True:
-            kind = payload.get("type")
-            if kind in {"tool_approval_requested", "tool_approval_resolved"}:
-                return CodingHostedEventProjectionV1(
-                    SessionEventKindV1.INTERACTION_REQUESTED
-                    if kind == "tool_approval_requested"
-                    else SessionEventKindV1.INTERACTION_DISMISSED,
-                    cast(str | None, payload.get("text")),
-                    cast(str, payload["interaction_id"]),
-                )
-        return None
+        return (
+            None if payload is None else self._project_approval_event(
+                payload, CodingHostedEventProjectionV1,
+            )
+        )
 
     async def lookup_resume_input(
         self, query: CodingResumeInputLookupQueryV1,
@@ -465,26 +460,19 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         active = self._active
         if active is not None:
             return await active.lookup_resume_input(query)
-        from loushang.coding.resume.activation_projection_v2 import (
-            observe_latest_bound_input,
-        )
-        from loushang.coding.resume.input_lookup import (
-            coding_resume_input_record_digest,
-        )
-
         try:
-            selected = observe_latest_bound_input(
+            observation = lookup_detached_resume_input(
                 self._source.history.selected_records,
                 current_session_id=self.identity.session_id,
-                input_id=query.input_id, expected_digest=query.record_digest,
+                input_id=query.input_id,
+                expected_digest=query.record_digest,
                 digest=coding_resume_input_record_digest,
+                project=project_coding_activation_attempt_path_v2,
             )
         except ValueError:
             return CodingResumeInputLookupResultV1(query.input_id, None, "unknown")
-        if isinstance(selected, str):
-            return CodingResumeInputLookupResultV1(query.input_id, None, selected)
-        if selected is not None:
-            return CodingResumeInputLookupResultV1(query.input_id, selected.record_id, "committed")
+        if observation is not None:
+            return CodingResumeInputLookupResultV1(query.input_id, *observation)
         retained = self._latest_input_query
         if retained is not None and retained.input_id == query.input_id:
             return CodingResumeInputLookupResultV1(
@@ -520,27 +508,19 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
     ) -> _ActivatedHostedResumeV1:
 
         from loushang.coding.composition.capability_plugins import (
-            prepare_coding_resume_plugin_effect_owners,
             require_coding_resume_plugin_effect_settlement,
-        )
-        from loushang.coding.composition.product_capability_plugins import (
-            coding_session_plugin_state_relative_path,
         )
         from loushang.coding.resume.activation_attempt import CodingActivationAttemptV1
         from loushang.coding.resume.continuation import (
             prepare_coding_resume_continuation,
         )
         from loushang.coding.resume.first_input import (
-            bind_first_input_settlement,
-            build_first_input_attempt,
+            prepare_first_input_effects,
             require_first_input_attempt,
-        )
-        from loushang.coding.resume.plugin_effects import (
-            resume_capability_plugins_required as _resume_capability_plugins_required,
         )
 
         async with self._activation_lock:
-            if self._close_task is not None:
+            if not self.execution_available:
                 raise CodingHostedCatalogError()
             if self._active is not None:
                 raise CodingHostedCatalogError()
@@ -574,24 +554,12 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 historical_origin=self._hosted_workspace.legacy_plugin_origin if self._hosted_workspace is not None else None,
             )
             require_subject()
-            plugins_enabled = _resume_capability_plugins_required(
-                plan_set_id=plan.composition_comparison.candidate_set_id,
-                settings_manager=self._services.settings_manager,
-                no_tools=None if self._workspace_tools else "all",
+            effects = prepare_first_input_effects(
+                plan,
+                no_tools=None if self._workspace_tools else "builtin" if self._resource_tools else "all",
                 history=self._source.history,
-            )
-            relative_plugin_state = coding_session_plugin_state_relative_path(
-                plan.session_id
-            )
-            plugin_state_root = (
-                self._source.record.scope.session_dir / relative_plugin_state
-            )
-            plugin_owners = (
-                prepare_coding_resume_plugin_effect_owners(
-                    session_id=plan.session_id, state_root=plugin_state_root
-                )
-                if plugins_enabled
-                else ()
+                session_dir=self._source.record.scope.session_dir,
+                settings_manager=self._services.settings_manager,
             )
             stable = hashlib.sha256(
                 (
@@ -602,13 +570,13 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                     + submission_id
                 ).encode()
             ).hexdigest()
-            attempt = build_first_input_attempt(
-                plan,
+            attempt, settle = effects.bind(
                 attempt_id=f"resume-attempt:{token_hex(16)}",
                 request_id=f"resume-input:{stable}",
                 epoch_fingerprint=epoch_fingerprint,
                 subject_digest=subject_digest,
-                effect_owners=tuple(sorted(plugin_owners, key=lambda owner: owner.identity)),
+                clock=lambda: time.time_ns() // 1_000_000,
+                verify_plugin_effects=require_coding_resume_plugin_effect_settlement,
             )
 
             def admit(observed: CodingActivationAttemptV1) -> None:
@@ -616,14 +584,6 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 require_subject()
                 if self._close_task is not None:
                     raise CodingHostedCatalogError()
-
-            settle = bind_first_input_settlement(
-                plan,
-                plugin_owners=plugin_owners,
-                plugin_state_root=plugin_state_root,
-                clock=lambda: time.time_ns() // 1_000_000,
-                verify_plugin_effects=require_coding_resume_plugin_effect_settlement,
-            )
 
             effective_policy = PolicyEvaluatorChain(
                 (self._workspace_policy, policy_engine), strategy="most_restrictive",
@@ -655,31 +615,25 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 product_owner_selection=self._product_owner_selection,
                 resume_writer_factory=self._source.writer_factory,
             )
-            try:
-                await self._source.close()
-            except BaseException:
-                await continuation.session.dispose()
-                raise
-            try:
+            def bind() -> CodingRealHostedSessionV1:
                 real = CodingRealHostedSessionV1(
                     continuation.session, self.identity, self._approval, workspace=self._workspace,
                     resource_access=self._resource_access,
                 )
                 if self._user_choice_enabled:
                     real.enable_user_choice()
-                self._control.activate(real.control)
-                self._active = real
-                # The input was durably committed while the real adapter did
-                # not yet exist. Publish its UI projection after the in-place
-                # handoff; this event performs no transcript write or replay.
-                await self._control.emit(cast(RuntimeEvent[object], {
+                return real
+
+            await self._control.complete_resume_handoff(
+                continuation.session,
+                close_history=self._source.close,
+                bind=bind,
+                committed_input_event=cast(RuntimeEvent[object], {
                     "type": "hosted_resume_committed_input",
                     "hosted_resume_committed_input": True,
                     "text": text,
-                }))
-            except BaseException:
-                await continuation.session.dispose()
-                raise
+                }),
+            )
             return _ActivatedHostedResumeV1(
                 continuation.session,
                 continuation.attempt_id,
@@ -690,16 +644,15 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         self._latest_input_query = query
 
     async def close(self) -> None:
-        task = self._close_task
-        if task is None or (task.done() and not task.cancelled() and task.exception()):
-            task = asyncio.create_task(self._close_once())
-            task.add_done_callback(_observe_close)
-            self._close_task = task
-        await asyncio.shield(task)
+        self._close_task = _get_close_task(
+            self._close_task, self._close_once, retry_cancelled=False
+        )
+        await asyncio.shield(self._close_task)
 
     async def _close_once(self) -> None:
         async with self._activation_lock:
             self._control.close()
+            await self._control.settle_resume_handoff()
             active = self._active
             if active is not None:
                 await active.close()
@@ -718,7 +671,7 @@ class _ActivatedHostedResumeV1:
     input_record_id: str
 
 
-class _HostedResumeExecutionWorkV1(_HostedAgentExecutionWork):
+class _HostedResumeExecutionWorkV1(_HostedResumeInputExecutionWork):
     def __init__(
         self,
         binding: CodingDeferredHostedSessionV1,
@@ -731,54 +684,21 @@ class _HostedResumeExecutionWorkV1(_HostedAgentExecutionWork):
         images: list[ImagePart] | None = None,
         input_metadata: Mapping[str, JSONValue] | None = None,
     ) -> None:
-        self._binding = binding
-        self._text = text
-        self._images = images
-        self._input_metadata = input_metadata
-        self._cancel_requested = cancel_requested
-        self._scope = scope
-        self._control = control
-        self._subject_digest = subject_digest
-        self._submission_id = submission_id
-        self._session: AgentSession | None = None
-        self._interrupted = False
-        self._agent_outcome: ExecutionOutcomeV1 | None = None
-        self._unsubscribe: Callable[[], None] | None = None
-        self._unbind_turn: Callable[[], None] | None = None
-
-    async def run(self, control: ExecutionControlV1) -> ExecutionOutcomeV1:
-        if self._cancel_requested():
-            return ExecutionOutcomeV1(ExecutionStatusV1.INTERRUPTED)
-        try:
-            activated = await self._binding.activate(
-                self._text,
-                scope=self._scope,
-                subject_control=self._control,
-                subject_digest=self._subject_digest,
-                submission_id=self._submission_id,
-                images=self._images,
-                input_metadata=self._input_metadata,
+        async def activate() -> _ActivatedHostedResumeV1:
+            return await binding.activate(
+                text,
+                scope=scope,
+                subject_control=control,
+                subject_digest=subject_digest,
+                submission_id=submission_id,
+                images=images,
+                input_metadata=input_metadata,
             )
-            session = activated.session
-            self._session = session
-            return await self._execute_published_input(
-                control, session, activated.attempt_id, activated.input_record_id
-            )
-        except asyncio.CancelledError:
-            self._interrupted = True
-            if self._session is not None:
-                self._session.abort()
-            raise
-        finally:
-            self._clear_turn()
 
-    async def settle(self) -> None:
-        await self._settle_published_input(self._session)
-        if (
-            not self._cancel_requested() and self._agent_outcome is not None
-            and self._agent_outcome.status is ExecutionStatusV1.SUCCEEDED
-        ):
-            self._binding.start_title_if_unnamed()
+        super().__init__(
+            cancel_requested, activate=activate,
+            on_success=lambda: binding.start_title_if_unnamed(),
+        )
 
 
 __all__ = ["CodingDeferredHostedSessionV1"]

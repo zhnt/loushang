@@ -1,12 +1,25 @@
-"""Cross-check captured legacy lock and Desired-state facts."""
+"""Authenticate legacy inventory facts and shared review values."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Set
+import re
+from collections.abc import Callable, Mapping, Sequence, Set
+from dataclasses import dataclass, fields
 from functools import partial
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Generic, Literal, NamedTuple, Protocol, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    NamedTuple,
+    Protocol,
+    Self,
+    TypeVar,
+)
 
 from loushang.harness.package_product._legacy_binding_evidence import (
     LEGACY_BINDING_CAPTURE_MAX_BYTES,
@@ -36,8 +49,15 @@ from loushang.harness.plugin_management.records import PluginPackageRevisionRefV
 from loushang.harness.plugin_management.retirement import (
     inspect_removed_installation_epoch,
 )
+from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
+    RecordSchema,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_legacy_source_wheel import (
     _LegacyWheelValues,
@@ -55,6 +75,9 @@ _InstalledState = Literal["installed_disabled", "installed_enabled"]
 _BINDING_LOCK = "package-lock.json"
 _PACKAGE_LOCK_MARKER = "package-lock.json.lock"
 _DESIRED_JOURNAL = "desired-state.jsonl"
+
+LEGACY_REVIEW_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+LEGACY_REVIEW_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 
 
 class _BindingHead(Protocol):
@@ -101,6 +124,373 @@ class LegacyInventoryEvidence(NamedTuple):
     snapshot_receipt_id: str
     inventory: LegacyInventoryFacts[LegacyLocalBindingEvidence]
     desired_journal_digest: str | None
+    binding_heads: tuple[LegacyLocalBindingEvidence, ...]
+    desired_transitions: tuple[PluginDesiredStateJournalTransition, ...]
+
+
+class _LegacyScopedDisable(Protocol):
+    def __init__(self, scope: Literal["global", "project"], plugin_id: str) -> None: ...
+
+    @property
+    def scope(self) -> str: ...
+
+    @property
+    def plugin_id(self) -> str: ...
+
+
+class _LegacyBuiltinIntent(Protocol):
+    def __init__(
+        self,
+        plugin_id: str,
+        desired_state: _InstalledState,
+    ) -> None: ...
+
+    @property
+    def plugin_id(self) -> str: ...
+
+    @property
+    def desired_state(self) -> str: ...
+
+
+def legacy_review_scalar_schema(record_type: type, *excluded: str) -> RecordSchema:
+    names = (member.name for member in fields(record_type) if member.name not in excluded)
+    return RecordSchema(lambda value: value, tuple(RecordField(name) for name in names))
+
+
+def legacy_record_digest(document: dict[str, object]) -> str:
+    return sha256(canonical_json_bytes(document)).hexdigest()
+
+
+class LegacyReviewWireSelections(NamedTuple):
+    disabled: list[dict[str, Any]]
+    intent: list[dict[str, Any]]
+    removed: list[str]
+
+    @classmethod
+    def read(
+        cls,
+        document: dict[str, Any],
+        *,
+        required: bool,
+        disabled_error: ValueError,
+        intent_error: ValueError,
+        removed_error: ValueError,
+    ) -> LegacyReviewWireSelections:
+        """Read required builtin lists or local lists omitted when empty."""
+
+        def plugin_id_is_text(value: object) -> bool:
+            return type(value) is str if required else isinstance(value, str)
+
+        def desired_state_is_valid(value: object) -> bool:
+            if required:
+                return value in ("installed_disabled", "installed_enabled")
+            return type(value) is str
+
+        disabled = read_legacy_disabled_plugins(
+            _review_wire_list(document, "disabledPlugins", required, disabled_error),
+            plugin_id_is_text=plugin_id_is_text,
+            error=disabled_error,
+        )
+        intent = _review_wire_list(document, "builtinIntent", required, intent_error)
+        if any(
+            type(item) is not dict
+            or set(item) != {"pluginId", "desiredState"}
+            or type(item["pluginId"]) is not str
+            or not desired_state_is_valid(item["desiredState"])
+            for item in intent
+        ):
+            raise intent_error
+        removed = _review_wire_list(document, "removedBuiltinIds", required, removed_error)
+        if any(type(item) is not str for item in removed):
+            raise removed_error
+        return cls(disabled, intent, removed)
+
+    def decode(
+        self,
+        disable_type: type[_LegacyScopedDisable],
+        intent_type: type[_LegacyBuiltinIntent],
+    ) -> dict[str, object]:
+        return {
+            "disabled_plugins": tuple(
+                disable_type(item["scope"], item["pluginId"]) for item in self.disabled
+            ),
+            "builtin_intent": tuple(
+                intent_type(item["pluginId"], item["desiredState"]) for item in self.intent
+            ),
+            "removed_builtin_ids": tuple(self.removed),
+        }
+
+
+def _review_wire_list(
+    document: dict[str, Any], key: str, required: bool, error: ValueError
+) -> list[Any]:
+    value = document[key] if required else document.get(key, [])
+    if not isinstance(value, list) or (not required and key in document and not value):
+        raise error
+    return value
+
+
+def read_legacy_disabled_plugins(
+    value: object, *, plugin_id_is_text: Callable[[object], bool], error: ValueError,
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or any(
+        type(item) is not dict
+        or set(item) != {"scope", "pluginId"}
+        or item["scope"] not in ("global", "project")
+        or not plugin_id_is_text(item["pluginId"])
+        for item in value
+    ):
+        raise error
+    return value
+
+
+def legacy_disabled_plugins_wire(
+    disables: Sequence[_LegacyScopedDisable],
+) -> list[dict[str, str]]:
+    return [{"scope": item.scope, "pluginId": item.plugin_id} for item in disables]
+
+
+def legacy_review_selection_wire(
+    disables: Sequence[_LegacyScopedDisable],
+    builtin_intent: Sequence[_LegacyBuiltinIntent],
+    removed_builtin_ids: Sequence[str],
+    *,
+    include_empty: bool,
+) -> dict[str, object]:
+    document: dict[str, object] = {}
+    if include_empty or disables:
+        document["disabledPlugins"] = legacy_disabled_plugins_wire(disables)
+    if include_empty or builtin_intent:
+        document["builtinIntent"] = [
+            {"pluginId": item.plugin_id, "desiredState": item.desired_state}
+            for item in builtin_intent
+        ]
+    if include_empty or removed_builtin_ids:
+        document["removedBuiltinIds"] = list(removed_builtin_ids)
+    return document
+
+
+def valid_legacy_disable_selections(
+    disables: Sequence[_LegacyScopedDisable],
+    disable_type: type[_LegacyScopedDisable],
+    *,
+    supported_id: Callable[[str], object] = LEGACY_REVIEW_ID.fullmatch,
+) -> bool:
+    return not any(
+        not isinstance(item, disable_type)
+        or item.scope not in ("global", "project")
+        or not supported_id(item.plugin_id)
+        for item in disables
+    ) and len({(item.scope, item.plugin_id) for item in disables}) == len(disables)
+
+
+def valid_legacy_builtin_intent(
+    intent: Sequence[_LegacyBuiltinIntent],
+    builtin_ids: frozenset[str],
+    *,
+    intent_type: type[_LegacyBuiltinIntent],
+) -> bool:
+    return not any(
+        not isinstance(item, intent_type)
+        or item.plugin_id not in builtin_ids
+        or item.desired_state not in ("installed_disabled", "installed_enabled")
+        for item in intent
+    ) and tuple(item.plugin_id for item in intent) == tuple(
+        sorted({item.plugin_id for item in intent})
+    )
+
+
+class _LegacyFencedReviewRecord:
+    """Share the identity seal for the nominal first-fence review records."""
+
+    __slots__ = ()
+    _schema: ClassVar[RecordSchema]
+    _disable_type: ClassVar[type[_LegacyScopedDisable]]
+
+    if TYPE_CHECKING:
+        store_id: str
+        namespace_id: str
+        scope_id: str
+        first_fence_id: str
+        snapshot_receipt_id: str
+        disabled_plugins: tuple[_LegacyScopedDisable, ...]
+        review_id: str
+
+    def _seal_review(self, identity: dict[str, object]) -> None:
+        object.__setattr__(self, "review_id", legacy_record_digest(identity))
+
+    def _selection_identity(
+        self,
+        builtin_intent: Sequence[_LegacyBuiltinIntent],
+        removed_builtin_ids: Sequence[str],
+        *,
+        include_empty: bool = True,
+    ) -> dict[str, object]:
+        identity = self._schema.encode(self)
+        identity.update(
+            legacy_review_selection_wire(
+                self.disabled_plugins, builtin_intent, removed_builtin_ids,
+                include_empty=include_empty,
+            )
+        )
+        return identity
+
+    def _identity(self) -> dict[str, object]:
+        raise NotImplementedError
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity(), "reviewId": self.review_id}
+
+
+class LegacyDisabledReviewRecord(_LegacyFencedReviewRecord):
+    """Decode the historical settings-only review and verify its exact identity."""
+
+    __slots__ = ()
+    _review_label: ClassVar[str]
+
+    if TYPE_CHECKING:
+        review_version: int
+
+    def __post_init__(self) -> None:
+        if not self.disabled_plugins:
+            raise ValueError("Disabled-only review requires scoped disabled Plugins")
+        if self.review_version != 1:
+            raise ValueError("Unsupported disabled-only review version")
+        self._seal_review(self._identity_dict())
+
+    def _identity_dict(self) -> dict[str, object]:
+        return {
+            **self._schema.encode(self),
+            "disabledPlugins": legacy_disabled_plugins_wire(self.disabled_plugins),
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {"reviewId": self.review_id, **self._identity_dict()}
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        label = cls._review_label
+        if type(value) is not dict or set(value) != cls._schema.keys | {
+            "reviewId", "disabledPlugins",
+        }:
+            raise ValueError(f"{label} record is invalid")
+        disabled = read_legacy_disabled_plugins(
+            value["disabledPlugins"],
+            plugin_id_is_text=lambda item: isinstance(item, str) and bool(item),
+            error=ValueError(f"{label} entries are invalid"),
+        )
+        for name in (
+            "namespaceId", "firstFenceId", "snapshotReceiptId",
+            "sourceProjectionDigest", "reviewId",
+        ):
+            if not isinstance(value[name], str) or LEGACY_REVIEW_DIGEST.fullmatch(value[name]) is None:
+                raise ValueError(f"{label} digest is invalid")
+        for name in ("storeId", "scopeId"):
+            if not isinstance(value[name], str) or not value[name]:
+                raise ValueError(f"{label} authority is invalid")
+        if type(value["reviewVersion"]) is not int or value["reviewVersion"] != 1:
+            raise ValueError(f"{label} version is invalid")
+        if len({(item["scope"], item["pluginId"]) for item in disabled}) != len(disabled):
+            raise ValueError(f"{label} entries are duplicated")
+        scalar_fields: dict[str, object] = cls._schema.decode(dict, value)
+        del scalar_fields["review_version"]
+        create: Callable[..., Self] = cls
+        review = create(
+            **scalar_fields,
+            disabled_plugins=tuple(
+                cls._disable_type(item["scope"], item["pluginId"]) for item in disabled
+            ),
+        )
+        if review.review_id != value["reviewId"]:
+            raise ValueError(f"{label} identity changed")
+        return review
+
+
+class LegacyBuiltinReviewRecord(_LegacyFencedReviewRecord):
+    """Validate and encode historical builtin intent with Product-supplied IDs."""
+
+    __slots__ = ()
+    _error_type: ClassVar[type[ValueError]]
+    _builtin_ids: ClassVar[frozenset[str]]
+    _removable_builtin_ids: ClassVar[frozenset[str]]
+    _builtin_intent_type: ClassVar[type[_LegacyBuiltinIntent]]
+
+    if TYPE_CHECKING:
+        desired_journal_digest: str
+        source_projection_digest: str
+        builtin_intent: tuple[_LegacyBuiltinIntent, ...]
+        removed_builtin_ids: tuple[str, ...]
+        review_version: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.store_id) is not str
+            or not self.store_id
+            or type(self.scope_id) is not str
+            or not self.scope_id.startswith("workspace:")
+            or type(self.review_version) is not int
+            or self.review_version != 1
+            or type(self.disabled_plugins) is not tuple
+            or type(self.builtin_intent) is not tuple
+            or type(self.removed_builtin_ids) is not tuple
+            or any(
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(char not in "0123456789abcdef" for char in value)
+                for value in (
+                    self.namespace_id,
+                    self.first_fence_id,
+                    self.snapshot_receipt_id,
+                    self.source_projection_digest,
+                    self.desired_journal_digest,
+                )
+            )
+            or not valid_legacy_disable_selections(
+                self.disabled_plugins, self._disable_type,
+                supported_id=self._builtin_ids.__contains__,
+            )
+            or not valid_legacy_builtin_intent(
+                self.builtin_intent, self._builtin_ids, intent_type=self._builtin_intent_type
+            )
+            or self.removed_builtin_ids != tuple(sorted(set(self.removed_builtin_ids)))
+            or any(item not in self._removable_builtin_ids for item in self.removed_builtin_ids)
+            or set(self.removed_builtin_ids).intersection(
+                item.plugin_id for item in self.builtin_intent
+            )
+            or not (self.builtin_intent or self.removed_builtin_ids)
+        ):
+            raise self._error_type("Builtin-only review is invalid")
+        self._seal_review(self._identity())
+
+    def _identity(self) -> dict[str, object]:
+        identity = self._selection_identity(self.builtin_intent, self.removed_builtin_ids)
+        identity["reviewVersion"] = self.review_version
+        return identity
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        expected = cls._schema.keys | {
+            "reviewId", "reviewVersion", "removedBuiltinIds",
+            "builtinIntent", "disabledPlugins",
+        }
+        if type(value) is not dict or set(value) != expected:
+            raise cls._error_type("Builtin-only review record is invalid")
+        error = cls._error_type("Builtin-only review entries are invalid")
+        selections = LegacyReviewWireSelections.read(
+            value, required=True, disabled_error=error, intent_error=error, removed_error=error,
+        )
+        create: Callable[..., Self] = cls
+        try:
+            review = create(
+                **cls._schema.decode(dict, value),
+                **selections.decode(cls._disable_type, cls._builtin_intent_type),
+                review_version=value["reviewVersion"],
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            raise cls._error_type("Builtin-only review record is invalid") from exc
+        if review.review_id != value["reviewId"]:
+            raise cls._error_type("Builtin-only review identity changed")
+        return review
 
 
 def classify_legacy_builtin_snapshot(
@@ -124,207 +514,231 @@ def classify_legacy_builtin_snapshot(
     )
 
 
-def read_legacy_builtin_admission(
-    owner: PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner,
-    snapshot: PackageEpochCutoverSnapshotReceiptV1,
-    *,
-    expected: Mapping[str, tuple[str, ...]],
-    desired_path: Path,
-    management_paths: LegacyManagementCapturePaths,
-    product_id: str,
-    scope_id: str,
-    builtin_ids: Set[str],
-    review_error: type[ValueError],
-    inventory_error: type[ValueError],
-    desired_error: type[ValueError],
-    operation_error: type[ValueError],
-    label: str,
-) -> tuple[LegacyInventoryFacts[LegacyLocalBindingEvidence], str]:
-    """Check exact builtin Desired and management evidence before the first fence."""
-    receipt_id = snapshot.receipt_id
-    evidence = owner.snapshot(receipt_id)
-    shape_error = review_error(f"{label} old snapshot is not builtin-only")
-    if evidence is None or evidence.snapshot != snapshot:
-        raise shape_error
-    has_operations = classify_legacy_builtin_snapshot(
-        partial(owner.list_domain_members, receipt_id),
-        expected,
-        shape_error=shape_error,
-        operation_error=operation_error,
-        label=label,
-    )
-    read = partial(owner.read_regular_member, receipt_id)
-    raw = read(domain="desired_state", member_name=_DESIRED_JOURNAL)
-    if raw is None:
-        raise review_error(f"{label} old Desired State is missing")
-    desired, digest, transitions = decode_legacy_desired_evidence(
-        raw,
-        path=desired_path,
-        product_id=product_id,
-        scope_id=scope_id,
-        maximum_bytes=LEGACY_DESIRED_CAPTURE_MAX_BYTES,
-        error_type=desired_error,
-        label=f"{label} legacy",
-    )
-    if has_operations:
-        require_empty_lock_markers(
-            read,
-            SERVICE_LOCK_MARKERS,
-            error_type=review_error,
-            message=f"{label} old management lock changed",
-        )
-        read_settled_management_history(
-            read,
-            paths=management_paths,
-            instance_members=(),
-            desired_snapshot=desired,
-            desired_transitions=transitions,
-            error_type=review_error,
-            missing_messages=(
-                f"{label} old management operations are missing",
-                f"{label} old retirement journals are missing",
-                f"{label} old Instance runtime evidence is missing",
-            ),
-            operation_error=operation_error,
-            operation_label=f"{label} old",
-            instance_error=review_error,
-        )
-    if not isinstance(scope_id, str) or not scope_id.startswith("workspace:"):
-        raise ValueError(f"{label} legacy workspace scope is invalid")
-    return classify_legacy_installations(
-        (),
-        desired,
-        product_id=product_id,
-        scope_id=scope_id,
-        builtin_ids=builtin_ids,
-        error_type=inventory_error,
-        label=f"{label} legacy",
-    ), digest
+@dataclass(frozen=True, slots=True)
+class LegacyInventoryReader:
+    """Read and classify the Product's authenticated legacy Installation inventory."""
 
+    desired_path: Path
+    management_paths: LegacyManagementCapturePaths
+    product_id: str
+    scope_id: str
+    builtin_ids: Set[str]
+    inventory_error: type[ValueError]
+    lock_error: type[ValueError]
+    desired_error: type[ValueError]
+    operation_error: type[ValueError]
+    instance_error: type[ValueError]
+    label: str
 
-def read_legacy_installation_inventory(
-    reader: _LegacyFirstSnapshot,
-    *,
-    desired_path: Path,
-    management_paths: LegacyManagementCapturePaths,
-    product_id: str,
-    scope_id: str,
-    builtin_ids: Set[str],
-    inventory_error: type[ValueError],
-    lock_error: type[ValueError],
-    desired_error: type[ValueError],
-    operation_error: type[ValueError],
-    instance_error: type[ValueError],
-    label: str,
-) -> LegacyInventoryEvidence:
-    """Join first-fence facts using only immutable snapshot read authority."""
-    binding_members = reader.list_members(domain="binding_history")
-    if binding_members not in ((), (_BINDING_LOCK,)):
-        raise inventory_error(f"{label} legacy binding members are ambiguous")
-    if not binding_members and any(
-        reader.list_members(domain=domain)
-        for domain in ("store_bytes", "enablement_state")
-    ):
-        raise inventory_error(
-            f"{label} legacy state without a binding lock is unsupported"
-        )
-    bindings: tuple[LegacyLocalBindingEvidence, ...] = ()
-    if binding_members:
-        lock_raw = reader.read_member(
-            domain="binding_history",
-            member_name=_BINDING_LOCK,
-            maximum_bytes=LEGACY_BINDING_CAPTURE_MAX_BYTES,
-        )
-        if lock_raw is None:
-            raise lock_error(f"{label} legacy Package binding lock is missing")
-        bindings = decode_legacy_local_binding_heads(
-            lock_raw,
-            maximum_bytes=LEGACY_BINDING_CAPTURE_MAX_BYTES,
-            error_type=lock_error,
-            label=f"{label} legacy",
-        )
-
-    desired_members = reader.list_members(domain="desired_state")
-    instance_members = reader.list_members(domain="instance_state")
-    lock_members = reader.list_members(domain="lock_history")
-    desired_snapshot = None
-    desired_digest = None
-    if binding_members or desired_members or instance_members or lock_members:
-        has_binding = bool(binding_members)
-        has_operations = classify_management_members(
-            desired_members=desired_members,
-            instance_members=instance_members,
-            lock_members=lock_members,
+    def classify_members(
+        self,
+        desired: tuple[str, ...],
+        instance: tuple[str, ...],
+        locks: tuple[str, ...],
+        *,
+        has_binding: bool,
+    ) -> bool:
+        return classify_management_members(
+            desired_members=desired,
+            instance_members=instance,
+            lock_members=locks,
             has_binding=has_binding,
             allow_retirement=has_binding,
             allow_retired_runtime=has_binding,
-            error_type=operation_error,
-            label=f"{label} old",
+            error_type=self.operation_error,
+            label=f"{self.label} old",
         )
-        desired_raw = reader.read_member(
-            domain="desired_state",
-            member_name=_DESIRED_JOURNAL,
+
+    def decode_binding_heads(
+        self, raw: bytes
+    ) -> tuple[LegacyLocalBindingEvidence, ...]:
+        return decode_legacy_local_binding_heads(
+            raw,
+            maximum_bytes=LEGACY_BINDING_CAPTURE_MAX_BYTES,
+            error_type=self.lock_error,
+            label=f"{self.label} legacy",
+        )
+
+    def decode_desired(
+        self, raw: bytes
+    ) -> tuple[
+        PluginDesiredStateSnapshotV1,
+        str,
+        tuple[PluginDesiredStateJournalTransition, ...],
+    ]:
+        return decode_legacy_desired_evidence(
+            raw,
+            path=self.desired_path,
+            product_id=self.product_id,
+            scope_id=self.scope_id,
             maximum_bytes=LEGACY_DESIRED_CAPTURE_MAX_BYTES,
+            error_type=self.desired_error,
+            label=f"{self.label} legacy",
         )
-        if desired_raw is None:
-            raise inventory_error(f"{label} old Desired state is missing")
-        desired_snapshot, desired_digest, transitions = decode_legacy_desired_evidence(
-            desired_raw,
-            path=desired_path,
-            product_id=product_id,
-            scope_id=scope_id,
-            maximum_bytes=LEGACY_DESIRED_CAPTURE_MAX_BYTES,
-            error_type=desired_error,
-            label=f"{label} legacy",
+
+    def classify(
+        self,
+        bindings: tuple[LegacyLocalBindingEvidence, ...],
+        desired: PluginDesiredStateSnapshotV1 | None,
+    ) -> LegacyInventoryFacts[LegacyLocalBindingEvidence]:
+        if not isinstance(self.scope_id, str) or not self.scope_id.startswith(
+            "workspace:"
+        ):
+            raise ValueError(f"{self.label} legacy workspace scope is invalid")
+        return classify_legacy_installations(
+            bindings,
+            desired,
+            product_id=self.product_id,
+            scope_id=self.scope_id,
+            builtin_ids=self.builtin_ids,
+            error_type=self.inventory_error,
+            label=f"{self.label} legacy",
         )
-        if _PACKAGE_LOCK_MARKER in lock_members:
-            require_empty_lock_markers(
-                reader.read_member,
-                (("lock_history", _PACKAGE_LOCK_MARKER),),
-                error_type=inventory_error,
-                message=f"{label} old Package lock changed",
-            )
+
+    def read_builtin_admission(
+        self,
+        owner: PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner,
+        snapshot: PackageEpochCutoverSnapshotReceiptV1,
+        *,
+        expected: Mapping[str, tuple[str, ...]],
+        review_error: type[ValueError],
+    ) -> tuple[LegacyInventoryFacts[LegacyLocalBindingEvidence], str]:
+        """Check exact builtin Desired and management evidence before the first fence."""
+        receipt_id = snapshot.receipt_id
+        evidence = owner.snapshot(receipt_id)
+        shape_error = review_error(f"{self.label} old snapshot is not builtin-only")
+        if evidence is None or evidence.snapshot != snapshot:
+            raise shape_error
+        has_operations = classify_legacy_builtin_snapshot(
+            partial(owner.list_domain_members, receipt_id),
+            expected,
+            shape_error=shape_error,
+            operation_error=self.operation_error,
+            label=self.label,
+        )
+        read = partial(owner.read_regular_member, receipt_id)
+        raw = read(domain="desired_state", member_name=_DESIRED_JOURNAL)
+        if raw is None:
+            raise review_error(f"{self.label} old Desired State is missing")
+        desired, digest, transitions = self.decode_desired(raw)
         if has_operations:
-            require_service_lock_markers(
-                reader.read_member,
-                instance_members,
-                error_type=inventory_error,
-                message=f"{label} old management lock changed",
+            require_empty_lock_markers(
+                read,
+                SERVICE_LOCK_MARKERS,
+                error_type=review_error,
+                message=f"{self.label} old management lock changed",
             )
             read_settled_management_history(
-                reader.read_member,
-                paths=management_paths,
-                instance_members=instance_members,
-                desired_snapshot=desired_snapshot,
+                read,
+                paths=self.management_paths,
+                instance_members=(),
+                desired_snapshot=desired,
                 desired_transitions=transitions,
-                error_type=inventory_error,
+                error_type=review_error,
                 missing_messages=(
-                    f"{label} old management operation journal is missing",
-                    f"{label} old retirement journals are missing",
-                    f"{label} old Instance runtime evidence is missing",
+                    f"{self.label} old management operations are missing",
+                    f"{self.label} old retirement journals are missing",
+                    f"{self.label} old Instance runtime evidence is missing",
                 ),
-                operation_error=operation_error,
-                operation_label=f"{label} old",
-                instance_error=instance_error,
+                operation_error=self.operation_error,
+                operation_label=f"{self.label} old",
+                instance_error=review_error,
             )
-    if not isinstance(scope_id, str) or not scope_id.startswith("workspace:"):
-        raise ValueError(f"{label} legacy workspace scope is invalid")
-    inventory = classify_legacy_installations(
-        bindings,
-        desired_snapshot,
-        product_id=product_id,
-        scope_id=scope_id,
-        builtin_ids=builtin_ids,
-        error_type=inventory_error,
-        label=f"{label} legacy",
-    )
-    reader.runtime.assert_current()
-    fence = reader.runtime.cutover_result.fence
-    if fence is None:
-        raise inventory_error(f"{label} legacy first fence is missing")
-    return LegacyInventoryEvidence(
-        fence.fence_id, fence.request.snapshot_receipt_id, inventory, desired_digest
-    )
+        return self.classify((), desired), digest
+
+    def read(self, reader: _LegacyFirstSnapshot) -> LegacyInventoryEvidence:
+        """Join first-fence facts using only immutable snapshot read authority."""
+        binding_members = reader.list_members(domain="binding_history")
+        if binding_members not in ((), (_BINDING_LOCK,)):
+            raise self.inventory_error(
+                f"{self.label} legacy binding members are ambiguous"
+            )
+        if not binding_members and any(
+            reader.list_members(domain=domain)
+            for domain in ("store_bytes", "enablement_state")
+        ):
+            raise self.inventory_error(
+                f"{self.label} legacy state without a binding lock is unsupported"
+            )
+        bindings: tuple[LegacyLocalBindingEvidence, ...] = ()
+        if binding_members:
+            lock_raw = reader.read_member(
+                domain="binding_history",
+                member_name=_BINDING_LOCK,
+                maximum_bytes=LEGACY_BINDING_CAPTURE_MAX_BYTES,
+            )
+            if lock_raw is None:
+                raise self.lock_error(
+                    f"{self.label} legacy Package binding lock is missing"
+                )
+            bindings = self.decode_binding_heads(lock_raw)
+
+        desired_members = reader.list_members(domain="desired_state")
+        instance_members = reader.list_members(domain="instance_state")
+        lock_members = reader.list_members(domain="lock_history")
+        desired_snapshot = None
+        desired_digest = None
+        transitions: tuple[PluginDesiredStateJournalTransition, ...] = ()
+        if binding_members or desired_members or instance_members or lock_members:
+            has_operations = self.classify_members(
+                desired_members,
+                instance_members,
+                lock_members,
+                has_binding=bool(binding_members),
+            )
+            desired_raw = reader.read_member(
+                domain="desired_state",
+                member_name=_DESIRED_JOURNAL,
+                maximum_bytes=LEGACY_DESIRED_CAPTURE_MAX_BYTES,
+            )
+            if desired_raw is None:
+                raise self.inventory_error(f"{self.label} old Desired state is missing")
+            desired_snapshot, desired_digest, transitions = self.decode_desired(
+                desired_raw
+            )
+            if _PACKAGE_LOCK_MARKER in lock_members:
+                require_empty_lock_markers(
+                    reader.read_member,
+                    (("lock_history", _PACKAGE_LOCK_MARKER),),
+                    error_type=self.inventory_error,
+                    message=f"{self.label} old Package lock changed",
+                )
+            if has_operations:
+                require_service_lock_markers(
+                    reader.read_member,
+                    instance_members,
+                    error_type=self.inventory_error,
+                    message=f"{self.label} old management lock changed",
+                )
+                read_settled_management_history(
+                    reader.read_member,
+                    paths=self.management_paths,
+                    instance_members=instance_members,
+                    desired_snapshot=desired_snapshot,
+                    desired_transitions=transitions,
+                    error_type=self.inventory_error,
+                    missing_messages=(
+                        f"{self.label} old management operation journal is missing",
+                        f"{self.label} old retirement journals are missing",
+                        f"{self.label} old Instance runtime evidence is missing",
+                    ),
+                    operation_error=self.operation_error,
+                    operation_label=f"{self.label} old",
+                    instance_error=self.instance_error,
+                )
+        inventory = self.classify(bindings, desired_snapshot)
+        reader.runtime.assert_current()
+        fence = reader.runtime.cutover_result.fence
+        if fence is None:
+            raise self.inventory_error(f"{self.label} legacy first fence is missing")
+        return LegacyInventoryEvidence(
+            fence.fence_id,
+            fence.request.snapshot_receipt_id,
+            inventory,
+            desired_digest,
+            bindings,
+            transitions,
+        )
 
 
 def _matches_binding(
