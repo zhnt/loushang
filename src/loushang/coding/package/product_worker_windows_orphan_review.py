@@ -6,16 +6,14 @@ repair, native cleanup, payload retirement, or another Worker launch.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import cast
 
 from loushang.harness.package_product._windows_worker_recovery import (
+    read_windows_product_worker_orphan_runtime,
     repair_windows_product_worker_clean_exit_orphan,
 )
 from loushang.harness.package_product._worker_windows_attempt import (
     capture_windows_product_worker_orphan_runtime,
-    is_windows_product,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -53,11 +51,11 @@ def review_coding_windows_product_worker_orphan_runtime(
     product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWindowsWorkerOrphanRuntimeReviewV1:
     """Join strict persisted facts without creating or settling Worker state."""
-    from .product_worker_windows_crash_recovery import _recovery_program
-
-    return cast(
-        "CodingWindowsWorkerOrphanRuntimeReviewV1",
-        _recovery_program().review_orphan(product, attempt_id=attempt_id),
+    return read_windows_product_worker_orphan_runtime(
+        product,
+        product_id="coding",
+        attempt_id=attempt_id,
+        review_runtime=_review_under_gc_guard,
     )
 
 
@@ -68,18 +66,11 @@ def repair_coding_windows_product_worker_clean_exit_orphan_runtime(
 ) -> PackageEpochRuntimeLeaseV1:
     """Repair only a fully settled Worker whose Product runtime died later."""
 
-    if (
-        not is_windows_product(product, "coding", os.name)
-        or type(expected_review) is not CodingWindowsWorkerOrphanRuntimeReviewV1
-    ):
-        raise ValueError(
-            "Windows Worker clean-exit repair requires exact Product proof"
-        )
-    if not expected_review.clean_exit_repair_candidate:
-        raise ValueError("Windows Worker clean-exit repair is unproven")
     return repair_windows_product_worker_clean_exit_orphan(
         product,
+        product_id="coding",
         expected_review=expected_review,
+        review_type=CodingWindowsWorkerOrphanRuntimeReviewV1,
         review_runtime=_review_under_gc_guard,
     )
 
