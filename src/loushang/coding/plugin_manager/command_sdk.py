@@ -35,6 +35,7 @@ from loushang.harness.plugin_management.desired_command import (
     submit_plugin_desired_command,
 )
 from loushang.harness.workspace.paths import (
+    WorkspaceOperationGuard,
     assert_workspace_directory_identity,
     capture_workspace_directory_identity,
     is_workspace_directory_identity,
@@ -130,13 +131,11 @@ class CodingPluginManagementCommandClientV1:
         return None if result is None else result.to_dict()
 
     def _ports(self) -> PluginManagementApplicationPorts:
-        self._assert_workspace_identity()
-        _require_fenced_product(self.layout)
-        ports = build_coding_fenced_product_management_cli_ports(
-            self.layout, workspace_guard=self._assert_workspace_identity
-        )
-        self._assert_workspace_identity()
-        return ports
+        with WorkspaceOperationGuard(self._assert_workspace_identity):
+            _require_fenced_product(self.layout)
+            return build_coding_fenced_product_management_cli_ports(
+                self.layout, workspace_guard=self._assert_workspace_identity
+            )
 
     def _assert_workspace_identity(self) -> None:
         assert_workspace_directory_identity(

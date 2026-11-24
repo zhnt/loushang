@@ -33,6 +33,10 @@ from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationV1,
     observe_partial_handoff_desired_commit,
 )
+from loushang.harness.workspace.paths import (
+    WorkspaceOperationGuard,
+    require_workspace_directory,
+)
 
 
 class CodingPluginOperationExplanationError(RuntimeError):
@@ -49,43 +53,40 @@ class CodingPluginOperationExplanationQuery:
     def explain_plugin_operation(
         self, request: PluginOperationExplanationRequestV1
     ) -> PluginOperationExplanationV1:
-        if self.workspace_guard is not None:
-            self.workspace_guard()
-        if not isinstance(request, PluginOperationExplanationRequestV1):
-            raise TypeError('Plugin operation explanation requires a typed request')
-        if (
-            request.product_id != CODING_PRODUCT_ID
-            or request.scope_id != self.layout.scope_id
-        ):
-            raise CodingPluginOperationExplanationError(
-                code='plugin_explanation_scope_mismatch'
+        with WorkspaceOperationGuard(self.workspace_guard):
+            if not isinstance(request, PluginOperationExplanationRequestV1):
+                raise TypeError('Plugin operation explanation requires a typed request')
+            if (
+                request.product_id != CODING_PRODUCT_ID
+                or request.scope_id != self.layout.scope_id
+            ):
+                raise CodingPluginOperationExplanationError(
+                    code='plugin_explanation_scope_mismatch'
+                )
+            if os.name != "posix":
+                raise CodingPluginOperationExplanationError(
+                    code='plugin_explanation_platform_unsupported'
+                )
+            if not coding_fenced_product_exists(self.layout):
+                raise CodingPluginOperationExplanationError(
+                    code='plugin_explanation_product_not_fenced'
+                )
+            explanation = explain_coding_fenced_plugin_operation(
+                self.layout,
+                request.operation_id,
+                correlation_id=request.correlation_id,
+                workspace_guard=self.workspace_guard,
             )
-        if os.name != "posix":
-            raise CodingPluginOperationExplanationError(
-                code='plugin_explanation_platform_unsupported'
+            explanation = observe_partial_handoff_desired_commit(
+                explanation,
+                operation_id=request.operation_id,
+                read_handoff=lambda operation_id: read_coding_fenced_package_handoff(
+                    self.layout, operation_id
+                ),
+                read_commit=lambda handoff: read_coding_fenced_handoff_desired_commit(
+                    self.layout, handoff
+                ),
             )
-        if not coding_fenced_product_exists(self.layout):
-            raise CodingPluginOperationExplanationError(
-                code='plugin_explanation_product_not_fenced'
-            )
-        explanation = explain_coding_fenced_plugin_operation(
-            self.layout,
-            request.operation_id,
-            correlation_id=request.correlation_id,
-            workspace_guard=self.workspace_guard,
-        )
-        explanation = observe_partial_handoff_desired_commit(
-            explanation,
-            operation_id=request.operation_id,
-            read_handoff=lambda operation_id: read_coding_fenced_package_handoff(
-                self.layout, operation_id
-            ),
-            read_commit=lambda handoff: read_coding_fenced_handoff_desired_commit(
-                self.layout, handoff
-            ),
-        )
-        if self.workspace_guard is not None:
-            self.workspace_guard()
         guidance = project_coding_plugin_operation_guidance(explanation.to_dict())
         repair = guidance["repairCommand"]
         assert repair is None or isinstance(repair, str)
@@ -97,18 +98,14 @@ def bind_coding_plugin_operation_explanation_query(
     *,
     workspace_guard: Callable[[], None] | None = None,
 ) -> CodingPluginOperationExplanationQuery:
-    if workspace_guard is not None:
-        workspace_guard()
-    workspace = Path(cwd).expanduser().resolve(strict=True)
-    if not workspace.is_dir():
-        raise ValueError("Plugin operation explanation workspace is unavailable")
-    query = CodingPluginOperationExplanationQuery(
-        layout=resolve_coding_plugin_lifecycle_state_layout(workspace),
-        workspace_guard=workspace_guard,
-    )
-    if workspace_guard is not None:
-        workspace_guard()
-    return query
+    with WorkspaceOperationGuard(workspace_guard):
+        workspace = require_workspace_directory(
+            cwd, unavailable="Plugin operation explanation workspace is unavailable"
+        )
+        return CodingPluginOperationExplanationQuery(
+            layout=resolve_coding_plugin_lifecycle_state_layout(workspace),
+            workspace_guard=workspace_guard,
+        )
 
 
 __all__ = [
