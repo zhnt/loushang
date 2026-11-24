@@ -70,6 +70,14 @@ The common parent owns this closure because it changes a sibling dependency and
 release policy. AppHost remains a black box to Product composition, and each
 child retains its existing internal authority.
 
+The [AppHost ownership module](../../../../src/loushang/apphost/_ownership.py)
+implements admission fencing, settlement-task reuse, upgrade from close to
+rollback, and the ordered shutdown of AppHost and the Product factory. The
+[Coding composition](../../../../src/loushang/coding/hosted/composition.py)
+still supplies the durable rollback control, nominal inputs and reports, and
+stable error codes. The exact rollback latch is validated before it is
+retained, and the factory is closed after AppHost reports complete shutdown.
+
 ## Frozen Production Composition Boundary
 
 G9.1 adds exactly one Product-owned composition module at
