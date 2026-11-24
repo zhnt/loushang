@@ -14,14 +14,18 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.apphost.managed.contracts import ManagedContractError
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.apphost.managed.output_capture import ManagedOutputCaptureFactory
-from loushang.apphost.managed.paths import resolve_managed_paths
+from loushang.apphost.managed.paths import (
+    _overlaps,
+    _session_storage_roots,
+    require_separate_managed_session_storage,
+    resolve_managed_paths,
+)
 from loushang.appserver.local_record import LocalConnectionRecordV1, LocalRecordScopeV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.coding.hosted.continuity import CodingHostedContinuityAttemptV1
 from loushang.coding.hosted.local import CodingLocalCommandV1, _LocalLaunchFacts
 from loushang.coding.hosted.managed.bootstrap import (
     CodingManagedApplicationLaunchV1,
-    _managed_control_roots,
     create_coding_managed_attempt,
 )
 from loushang.coding.hosted.session import CodingHostedProductRuntimeFactoryForSession
@@ -51,14 +55,13 @@ class CodingManagedLocalLaunchV1:
                 or not root.parent.is_dir() or self.application.host_root.is_relative_to(root)):
             raise ValueError("invalid managed connection root")
         for durable in (
-            self.application.application_root, self.application.session_root,
-            self.application.session_root.parent / "session-assets",
-            self.application.session_root.parent / ".session-blob-writers",
+            self.application.application_root,
+            *_session_storage_roots(self.application.session_root),
         ):
-            if root.is_relative_to(durable) or durable.is_relative_to(root):
+            if _overlaps(root, durable):
                 raise ValueError("managed connection and Session authority must be separate")
         state = self.application.store_state_root
-        if state is not None and (root.is_relative_to(state) or state.is_relative_to(root)):
+        if state is not None and _overlaps(root, state):
             raise ValueError("managed connection and store admission state must be separate")
         LocalConnectionRecordV1(
             endpoint=self.endpoint, application_id=self.application.application_id,
@@ -162,12 +165,9 @@ def create_coding_managed_local_launch(
     )
     state = application.store_state_root
     runtime = Path(invocation.runtime_root)
-    if state is not None and (state.is_relative_to(runtime) or runtime.is_relative_to(state)):
+    if state is not None and _overlaps(state, runtime):
         raise ManagedContractError()
-    for data in (session_root, session_root.parent / "session-assets", session_root.parent / ".session-blob-writers"):
-        for managed in _managed_control_roots(invocation):
-            if data.is_relative_to(managed) or managed.is_relative_to(data):
-                raise ManagedContractError()
+    require_separate_managed_session_storage(invocation, session_root)
     home = Path(invocation.namespace.platform_home)
     tunnel = read_app_tunnel(home) if invocation.service.host_root == str(home) else None
     return CodingManagedLocalLaunchV1(
