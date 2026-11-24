@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
+    CapabilityDefinition,
     CapabilityRequirement,
     _capability_contract_range_to_dict,
     _capability_requirement_to_dict,
@@ -34,6 +35,31 @@ class CapabilityBundleProvider:
     required_authorities: frozenset[str] = frozenset()
     source_id: str = "builtin"
     selection_rule: str = "explicit"
+
+    @classmethod
+    def for_definition(
+        cls,
+        definition: CapabilityDefinition,
+        *,
+        provider_id: str,
+        implementation_version: int,
+        requirements: tuple[CapabilityRequirement, ...] = (),
+        required_authorities: frozenset[str] = frozenset(),
+        source_id: str = "builtin",
+        selection_rule: str = "explicit",
+    ) -> CapabilityBundleProvider:
+        """Declare a Provider for exactly one published Capability contract."""
+        return cls(
+            capability_id=definition.capability_id,
+            provider_id=provider_id,
+            implementation_version=implementation_version,
+            compatible_contract=CapabilityContractRange.exact(definition.contract_version),
+            facets=definition.facets,
+            requirements=requirements,
+            required_authorities=required_authorities,
+            source_id=source_id,
+            selection_rule=selection_rule,
+        )
 
     def __post_init__(self) -> None:
         capability_id = _require_nonempty(

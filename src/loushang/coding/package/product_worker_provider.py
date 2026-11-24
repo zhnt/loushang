@@ -11,7 +11,6 @@ from typing import Literal
 
 from loushang.coding.composition.base_product import CodingBaseProductCompilation
 from loushang.harness.capabilities.contracts import (
-    CapabilityContractRange,
     CapabilityDefinition,
 )
 from loushang.harness.capabilities.provider_admission import (
@@ -105,14 +104,10 @@ def coding_worker_query_capability_provider(plugin_id: str) -> CapabilityBundleP
 
     if not isinstance(plugin_id, str) or not plugin_id:
         raise ValueError("Coding Worker query Provider Plugin ID is invalid")
-    return CapabilityBundleProvider(
-        capability_id=CODING_WORKER_QUERY_DEFINITION.capability_id,
+    return CapabilityBundleProvider.for_definition(
+        CODING_WORKER_QUERY_DEFINITION,
         provider_id=CODING_WORKER_QUERY_PROVIDER_ID,
         implementation_version=1,
-        compatible_contract=CapabilityContractRange.exact(
-            CODING_WORKER_QUERY_DEFINITION.contract_version
-        ),
-        facets=CODING_WORKER_QUERY_DEFINITION.facets,
         source_id=f"plugin:{plugin_id}",
         selection_rule="product-selected-canary",
     )
