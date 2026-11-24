@@ -513,7 +513,11 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "integrations/_foreground_process.py",
         "integrations/_foreground_stdio.py",
         "integrations/_managed_mux_command.py",
+        "integrations/_resource_client_reference.py",
+        "integrations/_resource_host_reference.py",
+        "integrations/_session_commands.py",
         "integrations/_session_projection.py",
+        "integrations/resource_access.py",
     } == {
         "__init__.py",
         "_ownership.py",
@@ -694,6 +698,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     }
     execution_work = "loushang.apphost.integrations.session_control"
     session_projection = "loushang.apphost.integrations._session_projection"
+    resource_access = "loushang.apphost.integrations.resource_access"
     optional_execution_consumers = {
         path for path in reverse_apphost_consumers
         if path in {
@@ -709,6 +714,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                 {
                     execution_work + "._DeferredSessionControl",
                     execution_work + "._HostedApprovalPresentation",
+                    resource_access,
+                    resource_access + ".HostedResourceAccess",
                     session_projection,
                     session_projection + "._HostedApprovalPresentation",
                     session_projection + "._project_hosted_approval",
@@ -741,6 +748,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path('src/loushang/coding/hosted/goal_application.py'),
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
+        Path('src/loushang/coding/hosted/_session_commands.py'),
+        Path('src/loushang/coding/hosted/resources.py'),
+        Path('src/loushang/coding/hosted/resource_tools.py'),
         Path('src/loushang/coding/hosted/session.py'),
         # Stage 1A: validate the original managed lease binding key.
         Path('src/loushang/coding/hosted/execution.py'),

@@ -870,9 +870,27 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
             "loushang.harness.worker.history._native_approval._NativeReviewMethods",
         }
     }
+    resume_journal = "loushang.harness.worker.activation_state_journal"
+    resume_consumer = HARNESS_ROOT / "session/_resume_continuation.py"
+    optional_resume_journal = {
+        path
+        for path in worker_consumers
+        if path == resume_consumer
+        and {
+            imported
+            for imported in resolved_imports(path)
+            if imported.startswith("loushang.harness.worker")
+        }
+        <= {
+            resume_journal,
+            resume_journal + ".WorkerActivationStateJournal",
+            resume_journal + ".WorkerActivationStateJournalError",
+        }
+    }
     assert (
         worker_consumers
         - optional_backend_release
+        - optional_resume_journal
         - {HARNESS_ROOT / "package_product/_worker_product_authority.py"}
     ) == {
         SANDBOX_RUNTIME,

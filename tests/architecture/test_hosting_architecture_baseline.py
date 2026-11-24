@@ -704,7 +704,11 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "integrations/_foreground_process.py",
         "integrations/_foreground_stdio.py",
         "integrations/_managed_mux_command.py",
+        "integrations/_resource_client_reference.py",
+        "integrations/_resource_host_reference.py",
+        "integrations/_session_commands.py",
         "integrations/_session_projection.py",
+        "integrations/resource_access.py",
     } == {
         "__init__.py",
         "_ownership.py",
