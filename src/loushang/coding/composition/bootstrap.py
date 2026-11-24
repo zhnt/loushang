@@ -166,7 +166,6 @@ from loushang.harness.bootstrap import (
 )
 from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
-    stage_resource_composition_candidate,
 )
 from loushang.harness.capabilities.deferred_slot import (
     DeferredCapabilityDeclaration,
@@ -243,6 +242,9 @@ from loushang.harness.session._resume_continuation import require_resume_owner_c
 from loushang.harness.session.bootstrap_construction import (
     bind_deferred_plugin,
     require_catalog_receipt,
+)
+from loushang.harness.session.extension_profiles import (
+    prepare_session_resource_candidate,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
@@ -2075,9 +2077,7 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
 ](
     default_system_prompt=DEFAULT_CODING_SYSTEM_PROMPT,
     product_id=CODING_PRODUCT_ID,
-    bind_capabilities=lambda: stage_resource_composition_candidate(
-        CODING_CAPABILITY_PROFILE
-    ),
+    bind_capabilities=partial(prepare_session_resource_candidate, CODING_CAPABILITY_PROFILE),
     create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),
     source_identity_check=_source_identity_startup_check,
     list_tool_definitions=lambda runner: runner.list_tool_definitions(),

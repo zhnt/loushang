@@ -96,7 +96,6 @@ from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
     CapabilityBundleProviderBinding,
     StagedResourceCompositionCandidate,
-    stage_resource_composition_candidate,
 )
 from loushang.harness.capabilities.deferred_slot import DeferredCapabilitySlot
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
@@ -154,6 +153,9 @@ from loushang.harness.session.composition_evidence import (
 )
 from loushang.harness.session.cwd_audit import CwdBoundServicesAudit
 from loushang.harness.session.event_types import AgentSessionEvent
+from loushang.harness.session.extension_profiles import (
+    prepare_session_resource_candidate,
+)
 from loushang.harness.session.footer import FooterDataProvider
 from loushang.harness.session.legacy_side_question import (
     LegacySideQuestionBinding,
@@ -630,11 +632,6 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
-        resolved_capability_runtime = capability_runtime
-        locally_created_capability_runtime: (
-            StagedResourceCompositionCandidate | None
-        ) = None
-        locally_created_side_question_binding: LegacySideQuestionBinding | None = None
         registrations = prepare_owner_bindings(
             has_catalog_bootstrap=initial_resource_catalog_bootstrap is not None,
             base_assembly=coding_base_plugin_assembly,
@@ -650,53 +647,48 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         )
         resolution = None
         if extension_runner is not None and (
-            resolved_capability_runtime is None or side_question_binding is None
+            capability_runtime is None or side_question_binding is None
         ):
             resolution = resolve_coding_capability_profile(
                 extension_runner.active_extensions
             )
-        if resolved_capability_runtime is None:
-            if resolution is not None:
-                resolved_capability_runtime = resolution.bind()
-            else:
-                resolved_capability_runtime = stage_resource_composition_candidate(
-                    CODING_CAPABILITY_PROFILE
-                )
-            locally_created_capability_runtime = resolved_capability_runtime
-        elif resolution is not None:
-            resolved_capability_runtime.select_final_profile(resolution.profile)
-        host_environment = (
-            product_base.host_environment
-            if product_base is not None
-            else coding_base_plugin_assembly.host_environment
-            if coding_base_plugin_assembly is not None
-            else LocalHostEnvironmentProbe().detect()
+        resolved_capability_runtime = prepare_session_resource_candidate(
+            CODING_CAPABILITY_PROFILE, candidate=capability_runtime, resolution=resolution
         )
-        selected_base_tool_names = (
-            set(product_base.tool_names)
-            if product_base is not None
-            else set(coding_base_plugin_assembly.tool_names)
-            if coding_base_plugin_assembly is not None
-            else None
-        )
-        coding_default_profile = DefaultToolProfileSnapshot(
-            profile_id="coding.tools.default",
-            profile_revision=0,
-            static_default_names=default_tool_names(
-                coding_default_active_tool_names(host_environment), selected_base_tool_names
-            ),
-            automatic_selection_policy_fingerprint="coding.tools.legacy-auto.v1",
-            automatic_selection_enabled=(
-                active_tool_names is None
-                if default_activate_new_tools is None
-                else default_activate_new_tools
-            ),
-            automatic_selection_excluded_names=coding_platform_tool_names(
-                CODING_BUILTIN_TOOL_NAMES,
-                host_environment,
-            ),
-        )
+        locally_created_side_question_binding: LegacySideQuestionBinding | None = None
         try:
+            host_environment = (
+                product_base.host_environment
+                if product_base is not None
+                else coding_base_plugin_assembly.host_environment
+                if coding_base_plugin_assembly is not None
+                else LocalHostEnvironmentProbe().detect()
+            )
+            selected_base_tool_names = (
+                set(product_base.tool_names)
+                if product_base is not None
+                else set(coding_base_plugin_assembly.tool_names)
+                if coding_base_plugin_assembly is not None
+                else None
+            )
+            coding_default_profile = DefaultToolProfileSnapshot(
+                profile_id="coding.tools.default",
+                profile_revision=0,
+                static_default_names=default_tool_names(
+                    coding_default_active_tool_names(host_environment),
+                    selected_base_tool_names,
+                ),
+                automatic_selection_policy_fingerprint="coding.tools.legacy-auto.v1",
+                automatic_selection_enabled=(
+                    active_tool_names is None
+                    if default_activate_new_tools is None
+                    else default_activate_new_tools
+                ),
+                automatic_selection_excluded_names=coding_platform_tool_names(
+                    CODING_BUILTIN_TOOL_NAMES,
+                    host_environment,
+                ),
+            )
             if side_question_binding is None:
                 side_question_binding = (
                     resolution.bind_side_question()
@@ -848,7 +840,9 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
                     else None
                 ),
                 owned_side_question=locally_created_side_question_binding,
-                owned_runtime=locally_created_capability_runtime,
+                owned_runtime=(
+                    resolved_capability_runtime if capability_runtime is None else None
+                ),
                 product_label="Coding",
             )
             raise

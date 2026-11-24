@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
+from operator import methodcaller
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
@@ -98,6 +99,7 @@ from loushang.harness.session.bootstrap_utils import (
 )
 from loushang.harness.session.extension_profiles import (
     SessionExtensionProfileResolution,
+    prepare_session_resource_candidate,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.model_resolution import (
@@ -707,7 +709,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             if self.resolve_session_capability_profile is not None:
                 resolved = self.resolve_session_capability_profile(extension_runtime)
                 if isinstance(resolved, SessionExtensionProfileResolution):
-                    bootstrap_capability_runtime.select_final_profile(resolved.profile)
+                    prepare_session_resource_candidate(
+                        candidate=bootstrap_capability_runtime, resolution=resolved
+                    )
                     prepare_side_question = resolved.bind_side_question
                 else:
                     bootstrap_capability_runtime.select_final_profile(resolved)
@@ -858,38 +862,18 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
 
                 if issubclass(type(constructed_session), AgentProductSession):
                     raise
-            if package_runtime is not None:
-                run_cleanup_steps(
-                    error,
-                    (
-                        (
-                            "Package Product runtime cleanup",
-                            lambda: cast(
-                                PackageProductRuntimeBindingV1, package_runtime
-                            ).dispose_runtime(),
-                        ),
-                    ),
-                )
-            for side_question_binding in reversed(session_side_question_bindings):
+            def cleanup_steps() -> Iterator[CleanupStep]:
+                if package_runtime is not None:
+                    yield (
+                        "Package Product runtime cleanup",
+                        partial(methodcaller("dispose_runtime"), package_runtime),
+                    )
+                dispose = methodcaller("dispose")
+                for binding in reversed(session_side_question_bindings):
+                    yield "final Session side-question cleanup", partial(dispose, binding)
+                yield "bootstrap capability cleanup", partial(dispose, bootstrap_capability_runtime)
 
-                def dispose_side_question(
-                    binding: LegacySideQuestionBinding = side_question_binding,
-                ) -> None:
-                    binding.dispose()
-
-                run_cleanup_steps(
-                    error,
-                    (("final Session side-question cleanup", dispose_side_question),),
-                )
-            run_cleanup_steps(
-                error,
-                (
-                    (
-                        "bootstrap capability cleanup",
-                        lambda: bootstrap_capability_runtime.dispose(),
-                    ),
-                ),
-            )
+            run_cleanup_steps(error, cleanup_steps())
             raise
 
         return result
