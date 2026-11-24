@@ -129,6 +129,7 @@ if TYPE_CHECKING:
     )
     from loushang.harness.config.agent import CapabilityMountMode
     from loushang.harness.package_product._selected_plugin_revisions import (
+        ProductBaseSelectionEvidence,
         ProductSessionSelection,
     )
     from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -169,22 +170,9 @@ _AGENT_HOST_CAPABILITY_IDS = tuple(
 )
 
 
-class _PreparedBaseCompilation(Protocol):
-    @property
-    def plan(self) -> PluginSelectionPlanV2: ...
-    @property
-    def product_composition(self) -> ProductCompositionCompilation: ...
-    @property
-    def selected_manifest(self) -> PackageProductSelectedPluginManifestV1: ...
-    @property
-    def selected_capability_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
-    @property
-    def selected_external_data_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
-
-
 class _PreparedBaseSession(Protocol):
     @property
-    def compilation(self) -> _PreparedBaseCompilation: ...
+    def compilation(self) -> ProductBaseSelectionEvidence: ...
     @property
     def workspace_binding(self) -> CapabilityBundleProviderBinding: ...
     @property

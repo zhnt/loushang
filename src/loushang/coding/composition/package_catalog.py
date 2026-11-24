@@ -46,12 +46,6 @@ from loushang.coding.resources.catalog import (
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
-from loushang.harness.package_product._selected_plugin_revisions import (
-    ProductCatalogSelection,
-    capture_catalog_base_selection,
-    capture_selected_manifests,
-    observe_requested_plugins,
-)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
 )
@@ -169,129 +163,78 @@ class InitialCatalogHandoff(
         ],
         resume_parents: CodingResumePluginParents | None,
     ) -> ResourceBundle:
-        clock = self.clock
-        disabled_base = capture_catalog_base_selection(
-            runtime, CODING_BASE_PLUGIN_ID, CodingResourceCatalogAdmissionError
-        )
-        capture_manifests = partial(
-            capture_selected_manifests,
-            runtime.capture_selected_plugin_manifest_for,
-            max_files=max_files,
-            max_total_bytes=max_total_bytes,
-        )
-        external = None
-        base = None
-        receipt = None
-        evaluated_at = None
-        if disabled_base is not None:
-            external_ids = runtime.selected_external_data_plugin_ids()
-            if external_ids:
-                external = compile_coding_external_data_product_selection(
-                    capture_manifests(external_ids),
-                    composition_set=composition_set,
-                    session_id=self.session_id,
-                    evaluated_at=clock(),
-                )
-        else:
-            (selected,) = capture_manifests((CODING_BASE_PLUGIN_ID,))
-            evaluated_at = clock()
-            base = compile_base(selected, evaluated_at)
-            receipt = self.require_catalog_input(loader, cwd)
+        def compile_data(
+            base: CodingBaseProductCompilation | None,
+            selected: tuple[PackageProductSelectedPluginManifestV1, ...],
+            evaluated_at: int,
+        ) -> tuple[CodingBaseProductCompilation | None, CodingExternalDataProductCompilation | None]:
+            if base is not None:
+                return extend_coding_base_product_data_resources(
+                    base, selected, evaluated_at=evaluated_at
+                ), None
+            return None, compile_coding_external_data_product_selection(
+                selected,
+                composition_set=composition_set,
+                session_id=self.session_id,
+                evaluated_at=evaluated_at,
+            )
 
-        enabled, selections = observe_requested_plugins(
-            runtime, requested_capabilities, CodingResourceCatalogAdmissionError
-        )
         builtin = None
-        if enabled:
+
+        def prepare_capabilities(
+            base: CodingBaseProductCompilation | None, enabled: list[str]
+        ) -> tuple[CodingBaseProductCompilation | None, CodingCapabilityPluginCompositionPreparation]:
+            nonlocal builtin
             state_root, configurations = prepare_capability_inputs(enabled)
             if base is None:
                 try:
-                    self.preparation = (
-                        prepare_coding_product_capability_plugin_composition(
-                            runtime,
-                            session_id=self.session_id,
-                            configurations=configurations,
-                            state_root=state_root,
-                            clock=clock,
-                            resume_parents=resume_parents,
-                        )
+                    return None, prepare_coding_product_capability_plugin_composition(
+                        runtime,
+                        session_id=self.session_id,
+                        configurations=configurations,
+                        state_root=state_root,
+                        clock=self.clock,
+                        resume_parents=resume_parents,
                     )
                 except BaseException:
                     self.cleanup_roots_sequentially()
                     raise
-            else:
-                try:
-                    builtin = prepare_coding_builtin_product_composition(
-                        runtime,
-                        base_compilation=base,
-                        session_id=self.session_id,
-                        configurations=configurations,
-                        external_data_plugin_ids=runtime.selected_external_data_plugin_ids(),
-                        state_root=state_root,
-                        clock=clock,
-                        resume_parents=resume_parents,
-                    )
-                except BaseException as error:
-                    self.cleanup_roots_with_notes(
-                        error,
-                        state_label="Coding Product Capability state cleanup",
-                        private_label="Coding Product Arch private-state cleanup",
-                    )
-                    raise
-                self.preparation = builtin.capability_preparation
-            self.attach_cleanup(self.preparation)
-            if builtin is not None:
-                base = builtin.base_compilation
-        elif resume_parents is not None:
-            raise CodingResourceCatalogAdmissionError(
-                ("resume_plugin_participation_changed",)
-            )
-        elif base is not None:
-            assert evaluated_at is not None
-            external_ids = runtime.selected_external_data_plugin_ids()
-            if external_ids:
-                base = extend_coding_base_product_data_resources(
-                    base,
-                    capture_manifests(external_ids),
-                    evaluated_at=evaluated_at,
+            try:
+                builtin = prepare_coding_builtin_product_composition(
+                    runtime,
+                    base_compilation=base,
+                    session_id=self.session_id,
+                    configurations=configurations,
+                    external_data_plugin_ids=runtime.selected_external_data_plugin_ids(),
+                    state_root=state_root,
+                    clock=self.clock,
+                    resume_parents=resume_parents,
                 )
-        if receipt is None:
-            receipt = self.require_catalog_input(loader, cwd)
-        disabled_composition = (
-            self._disabled_composition(external) if base is None else None
-        )
-        bundle = self.prepare_initial_catalog(
-            self._build_catalog_adapter(
-                receipt,
-                composition=base.product_composition if base is not None else disabled_composition,
-                snapshot=base if base is not None else external,
-                empty_snapshot=disabled_composition is not None,
-                evaluated_at=evaluated_at if base is not None else None,
-                clock=clock,
-                source_policy=(
-                    self.source_policy
-                    if base is not None
-                    else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
-                    if disabled_composition is not None
-                    else CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
-                ),
-            ),
-            cwd=cwd,
-        )
-        self.catalog_selection = ProductCatalogSelection(
-            runtime=runtime,
-            capability_selections=selections,
-            disabled_base=disabled_base,
-            base=base.selected_manifest if base is not None else None,
-            capabilities=base.selected_capability_manifests if base is not None else (),
-            external=(
-                base.selected_external_data_manifests
-                if base is not None
-                else external.selected_manifests if external is not None else ()
+            except BaseException as error:
+                self.cleanup_roots_with_notes(
+                    error,
+                    state_label="Coding Product Capability state cleanup",
+                    private_label="Coding Product Arch private-state cleanup",
+                )
+                raise
+            return builtin.base_compilation, builtin.capability_preparation
+
+        bundle, self.base, self.external = self.prepare_fenced_catalog(
+            runtime, loader, cwd=cwd,
+            base_plugin_id=CODING_BASE_PLUGIN_ID,
+            capability_requests=requested_capabilities,
+            require_capabilities=resume_parents is not None,
+            max_files=max_files,
+            max_total_bytes=max_total_bytes,
+            clock=self.clock,
+            compile_base=compile_base,
+            compile_data=compile_data,
+            prepare_capabilities=prepare_capabilities,
+            build_adapter=partial(
+                self._build_fenced_catalog_adapter,
+                enabled_data_policy=CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
             ),
         )
-        self.base = base
-        self.external = external
         self.builtin_preparation = builtin
         return bundle
 
@@ -309,25 +252,42 @@ class InitialCatalogHandoff(
             if base is not None
             else int(time.time())
         )
-        composition: ProductCompositionCompilation | None
-        if compiled is not None:
-            composition = compiled.product_composition
-        elif disabled_base:
-            composition = self._disabled_composition(self.external)
-        else:
-            composition = self._refresh_legacy_composition(receipt, evaluated_at)
+        if compiled is not None or disabled_base:
+            return self._build_fenced_catalog_adapter(
+                receipt, compiled, self.external, evaluated_at
+            )
         return self._build_catalog_adapter(
             receipt,
-            composition=composition,
-            snapshot=compiled if compiled is not None else self.external,
-            empty_snapshot=disabled_base and composition is not None,
+            composition=self._refresh_legacy_composition(receipt, evaluated_at),
             evaluated_at=evaluated_at,
-            clock=clock if base is not None or compiled is not None or disabled_base else None,
-            source_policy=(
-                CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
-                if disabled_base and composition is None
-                else self.source_policy
-            ),
+            clock=clock if base is not None else None,
+        )
+
+    def _build_fenced_catalog_adapter(
+        self,
+        receipt: ResourceCatalogInputReceipt,
+        base: CodingBaseProductCompilation | None,
+        external: CodingExternalDataProductCompilation | None,
+        evaluated_at: int | None,
+        *,
+        enabled_data_policy: CodingResourceCatalogSourcePolicy | None = None,
+    ) -> InitialResourceCatalogProductAdapter:
+        disabled_composition = self._disabled_composition(external) if base is None else None
+        policy = self.source_policy
+        if base is None:
+            policy = (
+                (enabled_data_policy or self.source_policy)
+                if disabled_composition is not None
+                else CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY
+            )
+        return self._build_catalog_adapter(
+            receipt,
+            composition=base.product_composition if base is not None else disabled_composition,
+            snapshot=base if base is not None else external,
+            empty_snapshot=disabled_composition is not None,
+            evaluated_at=evaluated_at,
+            clock=self.clock,
+            source_policy=policy,
         )
 
     def _build_catalog_adapter(

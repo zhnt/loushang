@@ -968,14 +968,6 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             args,
         )
 
-    async def emit_product_tool_audit_event(
-        self,
-        event: Mapping[str, object],
-    ) -> None:
-        """Route a Product-owned runtime action through the session event stream."""
-
-        await self._dispatch_event(dict(event))
-
     def _prepare_resource_refresh(self) -> None:
         capability_plugins = self._coding_capability_plugin_assembly
         if capability_plugins is not None:

@@ -31,7 +31,14 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.package_product._selected_plugin_revisions import (
     ProductAdmissionFailure,
+    ProductBaseSelectionEvidence,
     ProductCatalogSelection,
+    capture_catalog_base_selection,
+    capture_selected_manifests,
+    observe_requested_plugins,
+)
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PackageProductSelectedPluginManifestV1,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
@@ -1171,6 +1178,15 @@ class PreparationRootCustody(Generic[_PreparationT]):
 
 
 _StartupSessionT = TypeVar("_StartupSessionT", bound="AgentProductSession")
+_CatalogBaseT = TypeVar("_CatalogBaseT", bound=ProductBaseSelectionEvidence)
+
+
+class _CatalogDataCompilation(Protocol):
+    @property
+    def selected_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+
+
+_CatalogDataT = TypeVar("_CatalogDataT", bound=_CatalogDataCompilation)
 
 
 @dataclass(slots=True, kw_only=True)
@@ -1190,6 +1206,82 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
     _constructed_session: AgentProductSession | None = field(
         default=None, init=False, repr=False
     )
+
+    def prepare_fenced_catalog(
+        self,
+        runtime: PackageProductRuntimeBindingV1,
+        loader: ResourceLoader,
+        *,
+        cwd: Path,
+        base_plugin_id: str,
+        capability_requests: tuple[tuple[str, bool], ...],
+        require_capabilities: bool,
+        max_files: int,
+        max_total_bytes: int,
+        clock: Callable[[], int],
+        compile_base: Callable[[PackageProductSelectedPluginManifestV1, int], _CatalogBaseT],
+        compile_data: Callable[
+            [_CatalogBaseT | None, tuple[PackageProductSelectedPluginManifestV1, ...], int],
+            tuple[_CatalogBaseT | None, _CatalogDataT | None],
+        ],
+        prepare_capabilities: Callable[
+            [_CatalogBaseT | None, list[str]], tuple[_CatalogBaseT | None, _PreparationT]
+        ],
+        build_adapter: Callable[
+            [ResourceCatalogInputReceipt, _CatalogBaseT | None, _CatalogDataT | None, int | None],
+            InitialResourceCatalogProductAdapter,
+        ],
+    ) -> tuple[ResourceBundle, _CatalogBaseT | None, _CatalogDataT | None]:
+        """Prepare and retain one fenced selection for Session handoff and refresh."""
+        disabled_base = capture_catalog_base_selection(runtime, base_plugin_id, self.admission_failure)
+        capture_manifests = partial(
+            capture_selected_manifests, runtime.capture_selected_plugin_manifest_for,
+            max_files=max_files, max_total_bytes=max_total_bytes,
+        )
+        base = external = receipt = evaluated_at = None
+        if disabled_base is not None:
+            external_ids = runtime.selected_external_data_plugin_ids()
+            if external_ids:
+                base, external = compile_data(None, capture_manifests(external_ids), clock())
+        else:
+            (selected,) = capture_manifests((base_plugin_id,))
+            evaluated_at = clock()
+            base = compile_base(selected, evaluated_at)
+            receipt = self.require_catalog_input(loader, cwd)
+
+        enabled, selections = observe_requested_plugins(
+            runtime, capability_requests, self.admission_failure
+        )
+        if enabled:
+            base, self.preparation = prepare_capabilities(base, enabled)
+            self.attach_cleanup(self.preparation)
+        elif require_capabilities:
+            raise self.admission_failure(("resume_plugin_participation_changed",))
+        elif base is not None:
+            assert evaluated_at is not None
+            external_ids = runtime.selected_external_data_plugin_ids()
+            if external_ids:
+                base, external = compile_data(base, capture_manifests(external_ids), evaluated_at)
+
+        if receipt is None:
+            receipt = self.require_catalog_input(loader, cwd)
+        bundle = self.prepare_initial_catalog(
+            build_adapter(receipt, base, external, evaluated_at if base is not None else None),
+            cwd=cwd,
+        )
+        self.catalog_selection = ProductCatalogSelection(
+            runtime=runtime,
+            capability_selections=selections,
+            disabled_base=disabled_base,
+            base=base.selected_manifest if base is not None else None,
+            capabilities=base.selected_capability_manifests if base is not None else (),
+            external=(
+                base.selected_external_data_manifests
+                if base is not None
+                else external.selected_manifests if external is not None else ()
+            ),
+        )
+        return bundle, base, external
 
     def prepare_initial_catalog(
         self,
@@ -1241,6 +1333,7 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         if adapter is None:
             raise RuntimeError("Initial Resource Catalog projection adapter is unavailable")
         self.catalog_adapter = None
+        self.catalog_selection.require_current(product_label=self.product_label)
         return adapter
 
     def construct_catalog_session(
