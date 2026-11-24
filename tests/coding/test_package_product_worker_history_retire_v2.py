@@ -20,6 +20,9 @@ from loushang.coding.package.product_worker_history_read_v2 import (
     CodingWorkerV2ReadError,
     read_coding_worker_v2_retained_history,
 )
+from loushang.coding.package.product_worker_history_retention import (
+    _history_proof_bindings,
+)
 from loushang.coding.package.product_worker_history_retire_v2 import (
     CodingWorkerV2RetirementError,
     retire_coding_product_worker_v2_history,
@@ -34,10 +37,10 @@ from loushang.coding.package.product_worker_history_stream_snapshot import (
     capture_coding_worker_history_streams_under_gc_guard,
 )
 from loushang.coding.package.product_worker_history_v2_names import DELETION_LEDGER_NAME
-from loushang.coding.package.product_worker_posix_gc_history import (
-    _require_committed_v2_history,
-)
 from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.package_product._linux_worker_history import (
+    require_committed_v2_history,
+)
 from tests.coding.test_package_product_worker_history_commit_v2 import (
     _locks,
     _product,
@@ -80,7 +83,9 @@ def test_v2_retirement_deletes_only_owner_named_sealed_bytes(
     assert after == before
     root_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        _require_committed_v2_history(state_root=tmp_path, root_fd=root_fd)
+        require_committed_v2_history(
+            _history_proof_bindings(), state_root=tmp_path, root_fd=root_fd
+        )
     finally:
         os.close(root_fd)
     assert capture_coding_worker_history_streams_under_gc_guard(product) == (

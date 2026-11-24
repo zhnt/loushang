@@ -85,6 +85,7 @@ from loushang.hosting.service_group import linux_current_boot_id
 
 from ._linux_worker_history import (
     HistoryProofBindings,
+    known_worker_state_name,
     require_settled_history,
     review_gated_offline,
     review_history,
@@ -647,7 +648,7 @@ def review_registered_orphan(
                         name
                         for name in state_names
                         if name.casefold().startswith(("worker-", ".worker-"))
-                        and (not bindings.history.known_state_name(name))
+                        and not known_worker_state_name(name)
                     )
                 )
             )
@@ -854,7 +855,7 @@ def repair_registered_payload(
                 if any(
                     (
                         name.casefold().startswith(("worker-", ".worker-"))
-                        and (not bindings.history.known_state_name(name))
+                        and not known_worker_state_name(name)
                         for name in os.listdir(root_fd)
                     )
                 ):

@@ -56,6 +56,13 @@ from loushang.coding.package.product_worker_supervisor_journal import (
     CodingProductWorkerSupervisorJournal,
 )
 from loushang.harness.journal import _rooted_io
+from loushang.harness.package_product._linux_worker_history import (
+    prepare_history_cutover_under_guard,
+    require_committed_v2_history,
+)
+from loushang.harness.package_product._linux_worker_recovery import (
+    read_gated_review_under_guard,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -924,7 +931,10 @@ def observe(name, base, patch):
                 CodingWorkerV2DeletionLedger,
             )
             from loushang.coding.package.product_worker_history_preflight_v2 import (
-                _prepare_coding_product_worker_history_cutover_under_guard,
+                CodingWorkerCutoverPreflightError,
+            )
+            from loushang.coding.package.product_worker_history_prepared_v2 import (
+                CodingWorkerPreparedProductCutoverV2,
             )
             from loushang.coding.package.product_worker_history_segments import (
                 CodingWorkerSegmentManifestV1,
@@ -988,8 +998,11 @@ def observe(name, base, patch):
                 product, attempt_id=ATTEMPT
             )
             with gate.guard(require_write=True):
-                prepared = _prepare_coding_product_worker_history_cutover_under_guard(
+                prepared = prepare_history_cutover_under_guard(
+                    code._history_proof_bindings(),
                     product,
+                    prepared_type=CodingWorkerPreparedProductCutoverV2,
+                    error_type=CodingWorkerCutoverPreflightError,
                     first_retained_generations=(1, 1, 1, 1, 0),
                     active_runtime_lease_ids=(),
                     gc_snapshot=gate.snapshot(),
@@ -1128,7 +1141,9 @@ def observe(name, base, patch):
                         product
                     ).require_settled(observed_names=names)
             elif program == "gated":
-                result = gated_code._review_offline(product, attempt_id=ATTEMPT)
+                result = read_gated_review_under_guard(
+                    gated_code._history_bindings, product, attempt_id=ATTEMPT
+                )
                 value = {
                     "review": normalize(result),
                     "settlement_candidate": result.settlement_candidate,
@@ -1139,8 +1154,8 @@ def observe(name, base, patch):
                 fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
                 try:
                     value = normalize(
-                        gc_code._require_committed_v2_history(
-                            state_root=root, root_fd=fd
+                        require_committed_v2_history(
+                            code._history_proof_bindings(), state_root=root, root_fd=fd
                         )
                     )
                 finally:

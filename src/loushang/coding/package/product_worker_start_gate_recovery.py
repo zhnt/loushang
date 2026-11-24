@@ -12,7 +12,6 @@ from typing import Literal, cast
 
 from loushang.harness.package_product._linux_worker_history import HistoryProofBindings
 from loushang.harness.package_product._linux_worker_recovery import (
-    read_gated_review_under_guard,
     repair_gated_orphan_runtime,
     review_gated_orphan_runtime,
     review_gated_recovery,
@@ -160,17 +159,6 @@ def settle_coding_product_worker_gated_attempt(
         error_type=CodingWorkerGatedRecoveryError,
         error_prefix="coding_worker",
         failure_code=_ABANDONED_FAILURE_CODE,
-    )
-
-
-def _review_offline(
-    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
-) -> CodingWorkerGatedRecoveryReviewV1:
-    return cast(
-        CodingWorkerGatedRecoveryReviewV1,
-        read_gated_review_under_guard(
-            _history_bindings, product, attempt_id=attempt_id
-        ),
     )
 
 
