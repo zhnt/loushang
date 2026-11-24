@@ -57,6 +57,21 @@ Use `uv run python ...` instead of bare `python ...`, and `uv pip ...` instead o
 ## Coding Style & Naming Conventions
 Target Python 3.11+ and use 4-space indentation. Follow existing naming patterns: modules and files in `snake_case`, classes in `PascalCase`, functions and variables in `snake_case`, constants in `UPPER_SNAKE_CASE`. Keep examples readable and user-facing: prefer the public `loushang.ai` API over internal provider wiring unless a file is explicitly labeled advanced.
 
+## Cross-platform APIs
+
+- Use portable APIs in shared code. Do not use platform-specific APIs such as
+  `os.getuid()`, `os.geteuid()` or `os.killpg()` on a path reachable from an
+  unsupported platform.
+- When a platform-specific API is necessary, branch on the supported platform
+  and check API availability where it varies. Guard the import or attribute
+  lookup as well as the call, including indirect calls through constructors
+  and startup checks. Use the platform's native alternative when supported,
+  or return an explicit unsupported-platform result. Preserve security and
+  ownership checks on each supported platform.
+- When changing such a path, verify that an unsupported platform can import
+  and reach the guarded entry point without accessing the unavailable API.
+  A regression test can simulate the platform and the missing API.
+
 ## Testing Guidelines
 Tests use `pytest` with `--import-mode=importlib` and `src` on `PYTHONPATH`. Name files `test_*.py` and keep test scope narrow and behavior-focused. Add or update tests when changing provider behavior, model resolution, auth handling, or public examples. Run targeted tests first, then broader suites if the change crosses subsystem boundaries.
 

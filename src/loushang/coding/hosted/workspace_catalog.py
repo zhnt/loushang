@@ -47,7 +47,6 @@ from loushang.coding.workspace.inspection import (
     inspect_workspace,
 )
 from loushang.harness.journal._owned_io import settled_io
-from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
 
 
 class CodingWorkspaceCatalog(
@@ -88,12 +87,9 @@ class CodingWorkspaceCatalog(
                 )
             )
         previous = self._root / leaf
-        witness = TranscriptStoreAdmission(
-            previous, state_root=self._state
-        ).witness_root
         # A surviving witness identifies the original store even if its data
         # directory is missing. New stores use the workspaces family.
-        if workspace_id is None and (os.path.lexists(previous) or os.path.lexists(witness)):
+        if workspace_id is None and self._retained_transcript_root(previous):
             root = previous
         return CodingManagedSessionCatalogV1(
             session_root=root,
@@ -105,6 +101,12 @@ class CodingWorkspaceCatalog(
         root = self._root / "workspaces" / workspace_id
         roots = (root / "cwd", root / "user_home") if sys.platform in {"win32", "darwin"} else (root,)
         return any(self._retained_transcript_root(path) for path in roots)
+
+    def _retained_transcript_root(self, root: Path) -> bool:
+        if sys.platform in {"win32", "darwin"}:
+            # Native hosted writers have per-scope roots and no managed-store witness.
+            return os.path.lexists(root)
+        return super()._retained_transcript_root(root)
 
     def _workspace_mux_name(self, workspace: Workspace) -> str:
         if workspace.default:
