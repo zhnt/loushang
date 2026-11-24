@@ -28,6 +28,14 @@ from loushang.coding.plugin_manager.ui import (
     format_coding_plugin_support_status as _format_coding_plugin_support_status,
 )
 from loushang.foundation.observability import get_log
+from loushang.harness.cli.plugin_explanation import (
+    render_plugin_operation_explanation as _format_coding_plugin_operation_explanation,
+)
+from loushang.harness.cli.plugin_listing import render_plugin_management_list
+from loushang.harness.cli.plugin_management import valid_plugin_terminal_identifier
+from loushang.harness.cli.plugin_preview import (
+    render_plugin_preview as _format_coding_plugin_preview,
+)
 from loushang.harness.commands import CommandEffectKind
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.host.types import HostActionResult
@@ -183,11 +191,7 @@ def build_coding_ui_controller(
                         )
                 if len(words) == 3 and words[1] == "explain":
                     operation_id = words[2]
-                    if (
-                        not 0 < len(operation_id) <= 256
-                        or not operation_id.isascii()
-                        or not operation_id.isprintable()
-                    ):
+                    if not valid_plugin_terminal_identifier(operation_id):
                         return HostActionResult(error_message=_PLUGIN_USAGE)
                     def explain_workspace(
                         workspace: Path, operation_id: str, /
@@ -375,258 +379,8 @@ def _coding_result_from_command_execution(
     return HostActionResult(status_message=f"Command /{invocation_name} completed.")
 
 
-def _format_coding_plugin_preview(preview: dict[str, object]) -> str:
-    """Render the Product's sanitized partial read without claiming live use."""
-
-    if preview.get("snapshotStatus") != "partial_evidence":
-        raise ValueError("Plugin preview status is unsupported")
-
-    def strings(key: str) -> list[str]:
-        value = preview.get(key)
-        if not isinstance(value, list) or any(
-            not isinstance(item, str) or not item.isprintable() for item in value
-        ):
-            raise ValueError("Plugin preview field is invalid")
-        return value
-
-    plugins = strings("compiledPluginIds")
-    diagnostics = strings("catalogDiagnosticCodes")
-    gaps = strings("evidenceGaps")
-    raw_resources = preview.get("catalogResources")
-    if not isinstance(raw_resources, list):
-        raise ValueError("Plugin preview Catalog resources are invalid")
-    resources: list[str] = []
-    for item in raw_resources:
-        if not isinstance(item, dict):
-            raise ValueError("Plugin preview Catalog resource is invalid")
-        kind, name = item.get("resourceKind"), item.get("name")
-        if not all(
-            isinstance(value, str) and value.isprintable() and value
-            for value in (kind, name)
-        ):
-            raise ValueError("Plugin preview Catalog resource is invalid")
-        resources.append(f"{kind}:{name}")
-    disposition = preview.get("disposition")
-    if disposition not in {"projected", "blocked"}:
-        raise ValueError("Plugin preview disposition is invalid")
-    parts = ["Plugin preview (partial)", "compiled: " + (", ".join(plugins) or "none")]
-    if resources:
-        parts.append("Catalog: " + ", ".join(resources))
-    if disposition == "blocked":
-        owner, code = preview.get("blockingOwner"), preview.get("blockingCode")
-        if not all(isinstance(value, str) and value.isprintable() for value in (owner, code)):
-            raise ValueError("Plugin preview blocker is invalid")
-        parts.append(f"blocked: {owner}/{code}")
-    if diagnostics:
-        parts.append("diagnostics: " + ", ".join(diagnostics))
-    if gaps:
-        parts.append("evidence gaps: " + ", ".join(gaps))
-    return " | ".join(parts)
-
-
-def _format_coding_plugin_operation_explanation(
-    document: dict[str, object], *, operation_id: str
-) -> str:
-    """Render only path-free owner codes from the partial A2/A1 read model."""
-
-    if (
-        document.get("operationId") != operation_id
-        or document.get("explanationVersion") != 1
-        or document.get("snapshotStatus") != "partial_evidence"
-    ):
-        raise ValueError("Plugin operation explanation changed request identity")
-    package = document.get("package")
-    if not isinstance(package, dict) or package.get("operationId") != operation_id:
-        raise ValueError("Plugin Package explanation changed request identity")
-    package_status = package.get("status")
-    management_status = document.get("managementStatus")
-    handoff = document.get("handoffEvidence")
-    join = document.get("joinStatus")
-    if (
-        package_status not in {"observed", "unknown"}
-        or management_status not in {"observed", "unknown"}
-        or handoff not in {
-            "not_queried", "absent", "incomplete", "settled", "identity_conflict"
-        }
-        or join not in {
-            "same_identity", "package_only", "management_only", "unknown",
-            "identity_conflict"
-        }
-    ):
-        raise ValueError("Plugin operation owner status is invalid")
-    gaps = document.get("evidenceGaps")
-    if not isinstance(gaps, list) or any(
-        not _safe_plugin_explanation_code(item) for item in gaps
-    ):
-        raise ValueError("Plugin operation evidence gaps are invalid")
-    phase = package.get("phase")
-    disposition = package.get("disposition")
-    failure = package.get("failureCode")
-    owner_action = package.get("operatorAction")
-    management_disposition = document.get("managementDisposition")
-    management_actor = document.get("managementActorId")
-    repair_command = document.get("repairCommand")
-    for value in (phase, disposition, failure, owner_action, management_disposition):
-        if value is not None and not _safe_plugin_explanation_code(value):
-            raise ValueError("Plugin operation owner code is invalid")
-    if management_actor is not None and (
-        not isinstance(management_actor, str)
-        or not management_actor
-        or not management_actor.isprintable()
-    ):
-        raise ValueError("Plugin operation actor is invalid")
-    if repair_command is not None and (
-        not isinstance(repair_command, str)
-        or not repair_command
-        or not repair_command.isprintable()
-    ):
-        raise ValueError("Plugin operation repair command is invalid")
-    if package_status == "observed" and (phase is None or disposition is None):
-        raise ValueError("Observed Package operation lacks status")
-    package_text = (
-        "unknown" if package_status == "unknown" else f"{phase} / {disposition}"
-    )
-    management_text = (
-        "unknown"
-        if management_status == "unknown"
-        else f"observed / {management_disposition or 'pending'}"
-    )
-    parts = [
-        f"Plugin operation {operation_id} (partial evidence)",
-        f"Package: {package_text}",
-        f"Management: {management_text}",
-        f"Handoff: {handoff}; join: {join}",
-    ]
-    if management_actor is not None:
-        parts.append(f"Management actor: {management_actor}")
-    if repair_command is not None:
-        parts.append(f"Repair: {repair_command}")
-    if failure is not None:
-        suffix = f"; owner action: {owner_action}" if owner_action is not None else ""
-        parts.append(f"Package failure: {failure}{suffix}")
-    parts.append("Evidence gaps: " + (", ".join(gaps) if gaps else "none"))
-    return "\n".join(parts)
-
-
-def _safe_plugin_explanation_code(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and 0 < len(value) <= 96
-        and value.isascii()
-        and all(character.islower() or character.isdigit() or character == "_" for character in value)
-    )
-
-
 def _format_coding_plugin_management_list(document: dict[str, object]) -> str:
-    """Summarize the management owner's Desired State and unknown evidence."""
-
-    if document.get("projectionVersion") != 1:
-        raise ValueError("Plugin management projection is unsupported")
-    revisions = document.get("ownerRevisions")
-    revision = revisions.get("desiredState") if isinstance(revisions, dict) else None
-    if type(revision) is not int or revision < 0:
-        raise ValueError("Plugin management Desired State revision is invalid")
-    installations = document.get("installations")
-    if not isinstance(installations, list):
-        raise ValueError("Plugin management Installations are invalid")
-    entries: list[str] = []
-    for item in installations:
-        if not isinstance(item, dict):
-            raise ValueError("Plugin management Installation is invalid")
-        key = item.get("installationKey")
-        plugin_id = key.get("pluginId") if isinstance(key, dict) else None
-        desired = item.get("desiredState")
-        convergence = item.get("convergence")
-        unknown = item.get("unknownDimensions")
-        operations = item.get("operations")
-        if (
-            not all(
-                isinstance(value, str) and value and value.isprintable()
-                for value in (plugin_id, desired, convergence)
-            )
-            or not isinstance(unknown, list)
-            or any(
-                not isinstance(value, str) or not value.isprintable()
-                for value in unknown
-            )
-            or not isinstance(operations, list)
-        ):
-            raise ValueError("Plugin management Installation is invalid")
-        pending: list[str] = []
-        for operation in operations:
-            if not isinstance(operation, dict):
-                raise ValueError("Plugin management operation is invalid")
-            if operation.get("status") in {"accepted", "running"}:
-                operation_id = operation.get("operationId")
-                actor_id = operation.get("actorId")
-                if (
-                    not isinstance(operation_id, str)
-                    or not operation_id.isprintable()
-                    or not isinstance(actor_id, str)
-                    or not actor_id.isprintable()
-                ):
-                    raise ValueError("Plugin management operation is invalid")
-                hint = coding_desired_repair_command(actor_id, operation_id)
-                detail = f"actor={actor_id}"
-                if hint is not None:
-                    detail += f"; repair={hint}"
-                pending.append(f"{operation_id} ({detail})")
-        suffix = f" ({convergence}"
-        if unknown:
-            suffix += "; unknown: " + ", ".join(unknown)
-        backup = item.get("backupRetention")
-        if backup is not None:
-            if (
-                not isinstance(backup, dict)
-                or set(backup)
-                != {"installationKey", "status", "expiryReceiptId"}
-                or backup["installationKey"] != key
-            ):
-                raise ValueError("Plugin management backup retention is invalid")
-            backup_status = backup["status"]
-            expiry_receipt_id = backup["expiryReceiptId"]
-            if backup_status not in {
-                "retained",
-                "expiry_pending",
-                "expired",
-                "unknown",
-            } or (
-                (backup_status == "expired")
-                != (isinstance(expiry_receipt_id, str) and bool(expiry_receipt_id))
-            ):
-                raise ValueError("Plugin management backup retention is invalid")
-            suffix += f"; backup: {backup_status}"
-        if pending:
-            suffix += "; pending: " + ", ".join(pending)
-        retirement = item.get("retirementStates", [])
-        debt = item.get("cleanupDebtIds", [])
-        if any(
-            not isinstance(values, list)
-            or any(not isinstance(value, str) or not value.isprintable() for value in values)
-            for values in (retirement, debt)
-        ):
-            raise ValueError("Plugin management cleanup evidence is invalid")
-        if retirement:
-            suffix += "; retirement: " + ", ".join(retirement)
-        if debt:
-            suffix += "; cleanup debt: " + ", ".join(debt)
-        entries.append(f"{plugin_id}: {desired}{suffix})")
-    skew = document.get("skew")
-    if not isinstance(skew, list):
-        raise ValueError("Plugin management skew is invalid")
-    skew_codes: list[str] = []
-    for item in skew:
-        code = item.get("code") if isinstance(item, dict) else None
-        if not isinstance(code, str) or not code or not code.isprintable():
-            raise ValueError("Plugin management skew is invalid")
-        skew_codes.append(code)
-    parts = [
-        f"Plugin management (Desired State revision {revision})",
-        " | ".join(entries) or "none",
-    ]
-    if skew_codes:
-        parts.append("skew: " + ", ".join(skew_codes))
-    return " | ".join(parts)
+    return render_plugin_management_list(document, repair_command=coding_desired_repair_command)
 
 
 def build_screen_coding_action_host(
