@@ -81,6 +81,9 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
     _LaunchIntentFacts,
     _RecoveryFacts,
     launch_matches_intent,
+    native_attempt_history_matches,
+    native_attempt_identity_matches,
+    native_attempts_for,
 )
 from loushang.harness.worker.history._windows_sources import (
     WINDOWS_WORKER_BASE_STAGE_NAMES,
@@ -1077,44 +1080,6 @@ def repair_windows_product_worker_clean_exit_orphan(
     return expected_lease
 
 
-def _native_attempts_for(
-    attempts: tuple[WindowsWorkerProvisioningAttemptV1, ...], attempt_id: str
-) -> tuple[WindowsWorkerProvisioningAttemptV1, ...]:
-    return tuple(item for item in attempts if item.attempt_id == attempt_id)
-
-
-def _native_attempt_history_matches(
-    provisioned: WindowsWorkerProvisioningAttemptV1,
-    attempt: WindowsRecoveryAttemptV1,
-    *,
-    phase: str | None,
-    revision: int | None,
-) -> bool:
-    return (
-        provisioned.phase == phase
-        and provisioned.state_revision == revision
-        and provisioned.phase_history == attempt.native_phase_history
-        and provisioned.witness_present_history == attempt.native_witness_present_history
-    )
-
-
-def _native_attempt_identity_matches(
-    identity: Mapping[str, object],
-    attempt: WindowsRecoveryAttemptV1,
-    receipt: _ReceiptRecordMethods,
-    *,
-    request_fingerprint: str | None,
-) -> bool:
-    policy = receipt.receipt.policy
-    return (
-        identity["workerRequestFingerprint"] == request_fingerprint
-        and identity["receiptFingerprint"] == receipt.receipt.fingerprint
-        and identity["jobObjectName"] == attempt.native_job_name
-        and identity["nativeProfileId"] == policy.native_profile_id
-        and identity["nativeProfileCatalogRevision"] == policy.native_profile_catalog_revision
-    )
-
-
 def review_windows_product_worker_crash_stage_under_guard(
     product: WindowsLocalWheelProductSessionOwner,
     *,
@@ -1144,16 +1109,16 @@ def review_windows_product_worker_crash_stage_under_guard(
     intent = read_intent(product, attempt_id)
     if intent is None or not launch_matches_intent(attempt, intent):
         raise ValueError("Windows Worker crash stage launch intent changed")
-    native = _native_attempts_for(inspect_native(product), attempt_id)
+    native = native_attempts_for(inspect_native(product), attempt_id)
     if len(native) != 1:
         raise ValueError("Windows Worker crash stage native history is unverified")
     [provisioned] = native
     identity = provisioned.identity
     if (
-        not _native_attempt_history_matches(
+        not native_attempt_history_matches(
             provisioned, attempt, phase="settled", revision=attempt.native_revision
         )
-        or not _native_attempt_identity_matches(
+        or not native_attempt_identity_matches(
             identity, attempt, receipt, request_fingerprint=intent.request_fingerprint
         )
     ):
@@ -1276,16 +1241,16 @@ class WindowsProductWorkerCrashRecovery:
         assert attempt is not None and receipt is not None
         assert attempt.native_revision is not None
         assert attempt.payload_directory_identity is not None
-        native = _native_attempts_for(self.inspect_native(product), attempt_id)
+        native = native_attempts_for(self.inspect_native(product), attempt_id)
         if len(native) != 1:
             raise ValueError("Windows Worker native settlement identity is unverified")
         [provisioned] = native
         identity = provisioned.identity
         if (
-            not _native_attempt_history_matches(
+            not native_attempt_history_matches(
                 provisioned, attempt, phase="settled", revision=attempt.native_revision
             )
-            or not _native_attempt_identity_matches(
+            or not native_attempt_identity_matches(
                 identity,
                 attempt,
                 receipt,
@@ -1413,7 +1378,7 @@ class WindowsProductWorkerCrashRecovery:
             assert attempt is not None and receipt is not None
             assert attempt.native_revision is not None
             assert attempt.payload_directory_identity is not None
-            native = _native_attempts_for(self.inspect_native(product), attempt_id)
+            native = native_attempts_for(self.inspect_native(product), attempt_id)
             if len(native) != 1:
                 raise self.cleanup_error(
                     self.cleanup_error_prefix + "_native_identity_unverified"
@@ -1421,13 +1386,13 @@ class WindowsProductWorkerCrashRecovery:
             [provisioned] = native
             identity = provisioned.identity
             if (
-                not _native_attempt_history_matches(
+                not native_attempt_history_matches(
                     provisioned,
                     attempt,
                     phase=attempt.native_phase,
                     revision=attempt.native_revision,
                 )
-                or not _native_attempt_identity_matches(
+                or not native_attempt_identity_matches(
                     identity,
                     attempt,
                     receipt,
@@ -1460,7 +1425,7 @@ class WindowsProductWorkerCrashRecovery:
             )
             if current != attempt:
                 raise self.cleanup_error(self.cleanup_error_prefix + "_history_changed")
-            current_native = _native_attempts_for(self.inspect_native(product), attempt_id)
+            current_native = native_attempts_for(self.inspect_native(product), attempt_id)
             if current_native != native:
                 raise self.cleanup_error(self.cleanup_error_prefix + "_history_changed")
             product.assert_root_gc_authority_current()
@@ -1616,13 +1581,13 @@ class WindowsProductWorkerCrashRecovery:
                     and attempt.supervisor_process_settled is not True
                 ):
                     raise ValueError("Windows Worker crash Supervisor is unsettled")
-                native = _native_attempts_for(self.inspect_native(product), attempt_id)
+                native = native_attempts_for(self.inspect_native(product), attempt_id)
                 if len(native) != 1:
                     raise ValueError("Windows Worker native cleanup history changed")
                 [provisioned] = native
                 identity = provisioned.identity
                 if (
-                    not _native_attempt_history_matches(
+                    not native_attempt_history_matches(
                         provisioned,
                         attempt,
                         phase=attempt.native_phase,
@@ -1632,7 +1597,7 @@ class WindowsProductWorkerCrashRecovery:
                     != expected_review.native_spec_fingerprint
                     or attempt.payload_directory_identity
                     != expected_review.payload_directory_identity
-                    or not _native_attempt_identity_matches(
+                    or not native_attempt_identity_matches(
                         identity,
                         attempt,
                         current.receipt_record,
