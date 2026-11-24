@@ -462,13 +462,13 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
         Path('src/loushang/coding/composition/bootstrap.py'): {
             "loushang.coding.composition.runtime_admission.resolve_coding_capability_profile",
             "loushang.coding.composition.plan.CODING_CAPABILITY_PROFILE",
-            "loushang.harness.capabilities.stage_resource_composition_candidate",
+            "loushang.harness.session.extension_profiles.prepare_session_resource_candidate",
         },
         Path("src/loushang/coding/session/agent_session.py"): {
             "loushang.coding.composition.runtime_admission.resolve_coding_capability_profile",
             "loushang.coding.composition.plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.StagedResourceCompositionCandidate",
-            "loushang.harness.capabilities.stage_resource_composition_candidate",
+            "loushang.harness.session.extension_profiles.prepare_session_resource_candidate",
         },
         Path('src/loushang/coding/session/manager.py'): {
             "loushang.coding.composition.plan.CODING_CAPABILITY_PROFILE",

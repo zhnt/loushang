@@ -69,8 +69,6 @@ from loushang.harness.package_product.product_worker_candidate import (
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentCompositionPreviewV1,
     PluginCurrentResourceAdmissionV1,
-    _InstalledResourceCompilation,
-    preview_fenced_product_resources,
 )
 from loushang.harness.plugin_management.current_preview import (
     project_current_product_resource_facts as project_current_product_resource_facts,
@@ -86,6 +84,8 @@ from loushang.harness.plugin_management.records import (
 )
 from loushang.harness.resource_catalog.bootstrap_projection import (
     ResourceCatalogBootstrapResult,
+    _InstalledResourceCompilation,
+    preview_fenced_product_resources,
 )
 from loushang.harness.resource_catalog.product_snapshot_source import (
     ProductSelectedResourceInput,
