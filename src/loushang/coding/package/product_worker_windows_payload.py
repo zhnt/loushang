@@ -20,10 +20,7 @@ from loushang.harness.worker.contracts import (
     WorkerRuntimeBindingV1,
 )
 from loushang.harness.worker.journal import WorkerSupervisorJournalError
-from loushang.harness.worker.payload._selected_payload import (
-    PendingPayloadMethods,
-    worker_identity_from_receipt,
-)
+from loushang.harness.worker.payload._selected_payload import PendingPayloadMethods
 from loushang.harness.worker.payload._windows_stage_io import (
     require_payload_root,
 )
@@ -84,9 +81,6 @@ class CodingWindowsProductWorkerPendingLaunchV1(PendingPayloadMethods):
     identity: WorkerLaunchIdentityV1
     _pending_exact_identity = True
     _pending_invalid_message = "Windows Worker pending launch identity is invalid"
-
-
-_windows_worker_identity = worker_identity_from_receipt
 
 
 def _verify_stage_marker(

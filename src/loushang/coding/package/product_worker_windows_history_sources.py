@@ -152,9 +152,6 @@ review_coding_windows_worker_settled_history_sources = (
     _HISTORY_SOURCES.review_settled_sources
 )
 read_coding_windows_worker_history_semantics = _HISTORY_SOURCES.read_semantics
-_capture_coding_windows_worker_history_sources = (
-    _HISTORY_SOURCES.capture_sources_with_settlement
-)
 _capture_coding_windows_worker_history_sources_under_gc_guard = (
     _HISTORY_SOURCES.capture_sources_under_guard
 )
