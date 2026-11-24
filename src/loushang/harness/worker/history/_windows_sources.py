@@ -181,7 +181,14 @@ WINDOWS_WORKER_RETIREMENT_NAME_PREFIXES = tuple(
     stem + "-" for stem in WINDOWS_WORKER_RETIREMENT_STEMS
 )
 
-_INTENT = re.compile(r"worker-launch-intent-[0-9a-f]{32}\.json\Z")
+WINDOWS_WORKER_LAUNCH_INTENT_PREFIX = "worker-launch-intent-"
+WINDOWS_WORKER_LAUNCH_INTENT_NAME = re.compile(
+    WINDOWS_WORKER_LAUNCH_INTENT_PREFIX + r"([0-9a-f]{32})\.json\Z"
+)
+
+
+def windows_worker_launch_intent_name(attempt_id: str) -> str:
+    return f"{WINDOWS_WORKER_LAUNCH_INTENT_PREFIX}{attempt_id}.json"
 
 _NATIVE = re.compile(r"worker-native-provisioning-[0-9a-f]{32}\.jsonl(?:\.lock)?\Z")
 
@@ -228,7 +235,12 @@ WINDOWS_WORKER_NON_SOURCE_NAMES = (
 def windows_worker_history_names() -> WindowsHistoryNames:
     return WindowsHistoryNames(
         _WINDOWS_HISTORY_EXACT,
-        (_INTENT, _NATIVE, _C5_HEAD, WINDOWS_WORKER_RETIREMENT_NAME),
+        (
+            WINDOWS_WORKER_LAUNCH_INTENT_NAME,
+            _NATIVE,
+            _C5_HEAD,
+            WINDOWS_WORKER_RETIREMENT_NAME,
+        ),
     )
 
 
