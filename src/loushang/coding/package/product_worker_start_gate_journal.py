@@ -21,6 +21,9 @@ from loushang.harness.journal import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    has_worker_candidate_binding,
+)
 from loushang.harness.worker.gated_start import WorkerNativeProcessIdentityV1
 from loushang.harness.worker.history._start_gate import (
     _DIGEST as _DIGEST,
@@ -114,35 +117,9 @@ class CodingWorkerStartGateJournal(StartGateHistory[CodingWorkerStartGateRecordV
     def _max_history_records(self) -> int:
         return _MAX_EVENTS
 
-    def append(
-        self,
-        *,
-        phase: Literal["intent", "bound"],
-        attempt_id: str,
-        worker_identity_fingerprint: str,
-        receipt_fingerprint: str,
-        policy_fingerprint: str,
-        scope_id: str,
-        native_closure_digest: str,
-        identity: WorkerNativeProcessIdentityV1 | None = None,
-    ) -> CodingWorkerStartGateRecordV1:
-        if not any(
-            (
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in self._product.policy.bindings
-            )
-        ):
+    def _require_append_admission(self) -> None:
+        if not has_worker_candidate_binding(self._product.policy):
             raise ValueError("Coding Worker candidate Product owner is required")
-        return self._append_with_activation_history(
-            phase=phase,
-            attempt_id=attempt_id,
-            worker_identity_fingerprint=worker_identity_fingerprint,
-            receipt_fingerprint=receipt_fingerprint,
-            policy_fingerprint=policy_fingerprint,
-            scope_id=scope_id,
-            native_closure_digest=native_closure_digest,
-            identity=identity,
-        )
 
     def _activation_journal(self) -> CodingProductWorkerActivationStateJournal:
         return CodingProductWorkerActivationStateJournal(
