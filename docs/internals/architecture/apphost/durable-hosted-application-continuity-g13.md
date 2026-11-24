@@ -464,3 +464,24 @@ library composition. It does not authorize AppServer transport, a local
 listener, Hosting service control, an OS-detached process, an installed daemon
 or attach command, default-path migration, active-execution crash continuation,
 multi-client takeover, or Current deletion.
+
+## 逻辑工作区与 Transcript 归属
+
+以 `67ff66339` 为本批基线，使用本地架构方法 `0f9bd3f` 复核。AppHost 的现有
+Canonical Catalog 同时持有按路径和按逻辑工作区索引的子 Catalog。注册加载、默认
+路径查询、工作区变更、历史删除及关闭继续通过原 Workspace Registry 和 Transcript
+组件执行。按路径和按 ID 的检查使用同一个工作区结果投影。
+
+AppService 继续串行化客户端工作区请求，并在带历史删除前结算已挂接的 Session。
+AppHost 只从已登记的 scope 枚举历史，在原 Transcript 维护权限内执行清理，再关闭
+子 Catalog 并退出登记。Coding 继续选择实际 Transcript 构造器、平台存储布局、执行
+路径、模型与 Mux 命名。原存储路径、协议字段及历史 ID 保持兼容。
+
+生产 Python 为 Coding −218 行、其他生产代码 +232 行，Harness 和 Hosting 不变，
+系统合计 +14 行。路由直接复用协议字段表，沿用既有 AppService 依赖边界和协议预算。
+
+组合回归中 147 项通过。3 项从工作区连续性启动路径触发的私有祖先目录拒绝，在干净
+基线上逐项复现。另行启动的本地 Registry 与 Transcript 烟测在基线和候选上均通过，
+覆盖创建、改绑、预览、重开、历史保留与精确删除，并验证另一工作区的历史仍可访问。
+最终候选的 4 项依赖边界、协议预算和实际 Catalog 入口复验通过。Ruff、mypy、生成依赖
+事实和文档检查通过。
