@@ -168,6 +168,12 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
                 {
                     execution_work + "._DeferredSessionControl",
                     execution_work + "._HostedApprovalPresentation",
+                    "loushang.apphost.integrations.resource_access",
+                    "loushang.apphost.integrations.resource_access.HostedResourceAccess",
+                    "loushang.apphost.integrations.resource_tools",
+                    "loushang.apphost.integrations.resource_tools.SESSION_FILES",
+                    "loushang.apphost.integrations.resource_tools.HostReferencePolicy",
+                    "loushang.apphost.integrations.resource_tools.hosted_resource_tools",
                 }
                 if path == Path('src/loushang/coding/hosted/resume.py')
                 else set()

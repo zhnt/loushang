@@ -194,6 +194,16 @@ class WorkspaceOperationAdmission:
         return candidate
 
 
+@dataclass(frozen=True, slots=True)
+class ScopedWorkspaceOperations(WorkspaceOperationAdmission):
+    """Bind admitted workspace operations to a live execution profile."""
+
+    root: Path
+    operations: ToolOperations
+    execution_profile: EffectiveExecutionProfile
+    execution_profile_provider: ExecutionProfileProvider | None = None
+
+
 @dataclass(frozen=True)
 class LocalToolOperations:
     def exists(self, path: Path) -> bool:

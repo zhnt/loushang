@@ -17,6 +17,11 @@ from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.types import ImagePart
 from loushang.apphost.integrations.resource_access import HostedResourceAccess
+from loushang.apphost.integrations.resource_tools import (
+    SESSION_FILES,
+    HostReferencePolicy,
+    hosted_resource_tools,
+)
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
     _HostedApprovalPresentation,
@@ -42,11 +47,6 @@ from loushang.coding.hosted.goal_recovery import (
     unavailable_recovery,
 )
 from loushang.coding.hosted.models import load_workspace_models
-from loushang.coding.hosted.resource_tools import (
-    SESSION_FILES,
-    HostReferencePolicy,
-    hosted_resource_tools,
-)
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSnapshotProjectionV1,

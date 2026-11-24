@@ -382,6 +382,12 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
             {
                 "loushang.apphost.integrations.session_control._DeferredSessionControl",
                 "loushang.apphost.integrations.session_control._HostedApprovalPresentation",
+                "loushang.apphost.integrations.resource_access",
+                "loushang.apphost.integrations.resource_access.HostedResourceAccess",
+                "loushang.apphost.integrations.resource_tools",
+                "loushang.apphost.integrations.resource_tools.SESSION_FILES",
+                "loushang.apphost.integrations.resource_tools.HostReferencePolicy",
+                "loushang.apphost.integrations.resource_tools.hosted_resource_tools",
             }
             if path == Path('src/loushang/coding/hosted/resume.py') else set()
         )
