@@ -61,6 +61,20 @@ class LegacyDataSnapshotAdmission:
     source_member: str
     inventory_reader: LegacyInventoryReader
     maximum_bindings: int
+    maximum_sources: int
+
+    def require_adoptable_sources(
+        self, evidence: LegacyDataAdmissionEvidence, plugin_id: str, *, message: str
+    ) -> tuple[str, ...]:
+        active = evidence.inventory.active_local
+        removable_ids = self.inventory_reader.builtin_ids | evidence.removed_local_ids
+        if (
+            not 0 < len(active) <= self.maximum_sources
+            or plugin_id not in {binding.plugin_id for binding, _, _ in active}
+            or any(plugin not in removable_ids for plugin in evidence.inventory.removed_plugin_ids)
+        ):
+            raise ValueError(message)
+        return tuple(binding.source_identity for binding, _, _ in active)
 
     def before_fence(
         self,

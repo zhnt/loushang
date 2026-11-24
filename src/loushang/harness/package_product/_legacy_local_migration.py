@@ -740,11 +740,9 @@ class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
         return state_root / f"legacy-local-acceptance-{name_digest}.jsonl"
 
 
-class _ConfiguredSource(Protocol):
-    @property
-    def scope(self) -> Literal["global", "project"]: ...
-    @property
-    def path(self) -> str: ...
+class _ConfiguredSource(NamedTuple):
+    scope: Literal["global", "project"]
+    path: str
 
 
 class _AcceptedReview(Protocol):
@@ -1041,13 +1039,34 @@ class _FrozenSources:
 
 def project_frozen_legacy_sources(
     acceptance: _AcceptedSource,
-    projection: dict[str, object],
+    projection_bytes: bytes,
     *,
     projection_digest: str,
-    by_plugin: Mapping[str, _ConfiguredSource | None],
+    read_inventory: Callable[[], LegacyInventoryEvidence],
+    index_configured_sources: Callable[
+        [object, tuple[str, ...]], Mapping[str, _LegacySourceScope]
+    ],
     error_type: type[Exception],
 ) -> _FrozenSources:
-    """Join the accepted source, original ordering and locked settings digests."""
+    """Join authenticated settings and installations for the accepted Source."""
+    projection = json.loads(projection_bytes)
+    installations = read_inventory().inventory.active_local
+    configured_sources = (
+        index_configured_sources(
+            projection, tuple(binding.source_identity for binding, _, _ in installations)
+        )
+        if installations
+        else {}
+    )
+    by_plugin: dict[str, _ConfiguredSource | None] = {}
+    for binding, _, _ in installations:
+        path = binding.source_identity.removeprefix("local:")
+        configured_scope = configured_sources.get(path)
+        by_plugin[binding.plugin_id] = (
+            _ConfiguredSource(configured_scope, path)
+            if configured_scope is not None else None
+        )
+
     review = acceptance.review
     if review.plugin_id not in by_plugin:
         raise error_type("Accepted Plugin differs from first-fence Installation")

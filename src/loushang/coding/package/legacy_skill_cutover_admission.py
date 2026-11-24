@@ -8,7 +8,6 @@ from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_data_admission import (
-    LegacyDataAdmissionEvidence,
     LegacyDataSnapshotAdmission,
     verify_legacy_data_wheels,
 )
@@ -28,7 +27,10 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from .legacy_configured_source import _index_configured_sources
+from .legacy_configured_source import (
+    _LEGACY_EVIDENCE_MAX_SOURCES,
+    _index_configured_sources,
+)
 from .legacy_desired_evidence import (
     parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
 )
@@ -36,7 +38,6 @@ from .legacy_desired_evidence import (
     read_coding_legacy_desired_evidence as read_coding_legacy_desired_evidence,
 )
 from .legacy_installation_inventory import (
-    _BUILTINS,
     _MAX_REMOVAL_BINDINGS,
     _legacy_inventory_reader,
 )
@@ -90,11 +91,6 @@ from .legacy_snapshot_member import (
 from .pre_b_snapshot import CodingPreBSnapshotPreparation
 from .source_snapshot import _PROJECTION_NAME
 
-# Each member is reacquired and rebuilt while the first-fence lock is held.
-_MAX_LOCAL_DATA_PLUGINS = 16
-_REMOVABLE_BUILTIN_PLUGIN_IDS = _BUILTINS
-
-
 _RESOURCE_REFUSAL_CODES = {
     "skill": "coding_legacy_skill_snapshot_refused",
     "prompt": "coding_legacy_prompt_snapshot_refused",
@@ -137,13 +133,15 @@ def admit_coding_single_legacy_skill_snapshot(
         code=_RESOURCE_REFUSAL_CODES[resource_kind],
         extra_errors=(KeyError, zipfile.BadZipFile),
     ):
-        evidence = _data_snapshot_admission(lifecycle).before_fence(
+        admission = _data_snapshot_admission(lifecycle)
+        evidence = admission.before_fence(
             prepared.owner,
             snapshot,
             has_legacy_state=prepared.legacy_classification.kind == "legacy_state",
         )
-        identities = _adoptable_source_identities(
-            evidence, plugin_id, "Legacy data Installation set is unsupported"
+        identities = admission.require_adoptable_sources(
+            evidence, plugin_id,
+            message="Legacy data Installation set is unsupported",
         )
         if not identities[0].startswith("local:/"):
             raise ValueError("Legacy Skill Source is not local")
@@ -166,9 +164,11 @@ def require_coding_fenced_single_legacy_skill_snapshot(
     """Check frozen old inputs without depending on the original live Source."""
 
     reader = _snapshot_reader(lifecycle, epoch_runtime)
-    evidence = _data_snapshot_admission(lifecycle).after_fence(reader)
-    identities = _adoptable_source_identities(
-        evidence, plugin_id, "Coding first-B Installation set is unsupported"
+    admission = _data_snapshot_admission(lifecycle)
+    evidence = admission.after_fence(reader)
+    identities = admission.require_adoptable_sources(
+        evidence, plugin_id,
+        message="Coding first-B Installation set is unsupported",
     )
     _index_configured_sources(evidence.source_projection, identities)
     epoch_runtime.assert_current()
@@ -220,24 +220,8 @@ def _data_snapshot_admission(
         source_member=_PROJECTION_NAME,
         inventory_reader=_legacy_inventory_reader(lifecycle),
         maximum_bindings=_MAX_REMOVAL_BINDINGS,
+        maximum_sources=_LEGACY_EVIDENCE_MAX_SOURCES,
     )
-
-
-def _adoptable_source_identities(
-    evidence: LegacyDataAdmissionEvidence, plugin_id: str, message: str
-) -> tuple[str, ...]:
-    inventory = evidence.inventory
-    if (
-        not 0 < len(inventory.active_local) <= _MAX_LOCAL_DATA_PLUGINS
-        or plugin_id
-        not in {binding.plugin_id for binding, _, _ in inventory.active_local}
-        or any(
-            item not in _REMOVABLE_BUILTIN_PLUGIN_IDS | evidence.removed_local_ids
-            for item in inventory.removed_plugin_ids
-        )
-    ):
-        raise ValueError(message)
-    return tuple(binding.source_identity for binding, _, _ in inventory.active_local)
 
 
 def inspect_coding_legacy_local_data_wheel(
