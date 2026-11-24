@@ -1149,3 +1149,16 @@ legacy 与 fenced 启动、首次 Catalog 投影、临时根移交、Session 构
 
 58 项现有启动、Catalog、托管入口与失败清理回归通过。另有 2 项会话持久化、
 恢复和取消冒烟通过。Ruff、mypy、依赖图和文档检查通过。
+
+## Fenced Catalog 首次发布与刷新
+
+以 `c9f4899af` 为基线，技术复核采用本地 archmethod `0f9bd3f`。既有 Harness
+`SessionStartupCustody` 按顺序读取已安装 base 和 Capability 的选择，捕获精确清单，
+暂存 Catalog，并在 Session 取走适配器时复核同一份 Package 证据。Legacy 路线继续
+沿用兼容输入顺序。Coding 的首次投影和刷新共用 fenced Catalog 适配器，保留各自选择
+来源政策的规则。Session 工作区工具审计直接沿用 Harness 已有的事件投递。
+
+Coding 提供插件配置、资源准入与编译选择，维持 Capability 准备失败的清理顺序和
+错误附注。生产 Python 为 Coding −49 行、Harness +110 行，Hosting 与其他生产
+Python 持平，系统净增 61 行。新增行主要用于共享装配入口的类型签名和精确清单绑定。
+Linux 上 34 项启动、刷新、回滚及恢复回归和 19 项架构检查通过。Windows 原生路线仍待验证。

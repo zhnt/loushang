@@ -1262,7 +1262,6 @@ def _create_agent_session(
         catalog_selection = initial_catalog.catalog_selection
         product_base_compilation = initial_catalog.base
         product_base_runtime = catalog_selection.runtime
-        catalog_selection.require_current(product_label="Coding")
 
         prepare_resource_catalog_refresh = partial(
             initial_catalog.prepare_catalog_refresh,
