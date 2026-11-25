@@ -185,10 +185,21 @@ def build_deb(work, stage, package, version, arch):
 
 
 def build_rpm(work, stage, version, arch):
+    # Pillow loads these exact auditwheel libraries from its private RPATH.
+    # Their symbol requirements must not become Fedora system dependencies.
+    pillow_libs = stage / "opt/loushang/runtime/lib/python3.11/site-packages/pillow.libs"
+    names = sorted(path.name for path in pillow_libs.glob("*.so.*") if path.is_file())
+    filters = []
+    if names:
+        literal = str.maketrans({".": "[.]", "+": "[+]"})
+        sonames = "|".join(name.translate(literal) for name in names)
+        pattern = f"^({sonames})[(]"
+        filters = ["--define", f"__requires_exclude {pattern}",
+                   "--define", f"__provides_exclude {pattern}"]
     run("rpmbuild", "-bb", "--target", arch, "--define", f"_topdir {work}",
         "--define", f"product_version {version}", "--define", f"payload {stage}",
         "--define", f"guard {INTERNAL / 'check_linux_stopped.sh'}",
-        str(INTERNAL / "loushang.spec"))
+        *filters, str(INTERNAL / "loushang.spec"))
     (source,) = (work / "RPMS").rglob("*.rpm")
     target = work / source.name
     source.rename(target)

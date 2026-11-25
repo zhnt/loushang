@@ -251,6 +251,12 @@ def verify(args: argparse.Namespace) -> None:
                         "assert Path(loushang.coding.__file__).resolve().is_relative_to(Path(sys.prefix).resolve());"
                         "print(m.version('loushang'))"
                     ), version, cwd=cwd, env=env)
+                    if rpm:
+                        run(python, "-I", "-c", (
+                            "from io import BytesIO; from PIL import Image;"
+                            "im = Image.new('RGB', (2, 2));"
+                            "[im.save(BytesIO(), fmt) for fmt in ('JPEG', 'PNG', 'TIFF')]"
+                        ), cwd=cwd, env=env)
                     run(tui, "--help" if linux else "--version", cwd=cwd, env=env)
                     if not linux:
                         run(entries / "loushang-host", "--help", cwd=cwd, env=env)
