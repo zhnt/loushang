@@ -1858,6 +1858,8 @@ class ReadWindowsOrphanRuntime(Protocol):
     ) -> _WindowsOrphanRuntimeReviewMethods: ...
 
 
+WindowsCrashRecoveryCommand = Callable[..., _RetainedAttemptFields]
+
 class _ClosedWindowsCrashRecoveryAuthority(
     ClosedProductWorkerCrashRecoveryAuthority[WindowsLocalWheelProductSessionOwner]
 ):

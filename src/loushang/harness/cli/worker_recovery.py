@@ -4,17 +4,28 @@ from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from collections.abc import Callable
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from loushang.harness.package_product._linux_worker_recovery import (
-    PosixWorkerGatedRecovery,
-    RecoveryBindings,
-    recover_registered_no_effect,
-    settle_crash_c5,
-)
-from loushang.harness.package_product.product_local_wheel_runtime import (
-    PosixLocalWheelProductSessionOwner,
-)
+if TYPE_CHECKING:
+    from loushang.harness.package_product._linux_worker_recovery import (
+        PosixWorkerGatedRecovery,
+        RecoveryBindings,
+    )
+    from loushang.harness.package_product._windows_worker_recovery import (
+        ReadWindowsOrphanRuntime,
+        WindowsCrashRecoveryCommand,
+        WindowsProductWorkerHistoryJournals,
+    )
+    from loushang.harness.package_product._windows_worker_retirement import (
+        WindowsProductWorkerCompleteStageRetirement,
+        _IntentT,
+        _ReceiptT,
+        _ReviewT,
+    )
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PosixLocalWheelProductSessionOwner,
+        WindowsLocalWheelProductSessionOwner,
+    )
 
 
 def add_posix_worker_recovery_commands(
@@ -23,7 +34,7 @@ def add_posix_worker_recovery_commands(
     actions.add_parser(
         "list-gated-attempts", help="list retained Product Worker start-gate attempts"
     )
-    for name, help_text, evidence_args in (
+    commands = (
         ("review-orphan-runtime", "review one crashed Product Worker runtime", ()),
         (
             "repair-orphan-runtime",
@@ -67,7 +78,32 @@ def add_posix_worker_recovery_commands(
             "remove one exactly reviewed nonempty Worker stage",
             ("review-id",),
         ),
-    ):
+    )
+    _add_attempt_commands(actions, commands)
+
+
+def add_windows_worker_recovery_commands(
+    actions: _SubParsersAction[ArgumentParser],
+) -> None:
+    commands = (
+        ("inspect", "inspect one retained Worker attempt", ()),
+        ("recover-crash", "resume exact Product crash cleanup and C5 settlement", ()),
+        ("review-normal", "review one settled normal Worker stage offline", ()),
+        (
+            "retire-normal",
+            "retire one exactly reviewed normal Worker stage",
+            ("review-id",),
+        ),
+    )
+    _add_attempt_commands(actions, commands)
+    actions.add_parser("list-attempts", help="list retained Worker recovery attempts")
+
+
+def _add_attempt_commands(
+    actions: _SubParsersAction[ArgumentParser],
+    commands: tuple[tuple[str, str, tuple[str, ...]], ...],
+) -> None:
+    for name, help_text, evidence_args in commands:
         command = actions.add_parser(name, help=help_text)
         command.add_argument("--attempt-id", required=True)
         for evidence in evidence_args:
@@ -173,6 +209,10 @@ def execute_posix_worker_recovery_action(
             }
         }
     if args.action == "settle-crashed-c5":
+        from loushang.harness.package_product._linux_worker_recovery import (
+            settle_crash_c5,
+        )
+
         c5_settled = settle_crash_c5(
             recovery_bindings(), product, attempt_id=args.attempt_id
         )
@@ -184,6 +224,10 @@ def execute_posix_worker_recovery_action(
             }
         }
     if args.action == "recover-registered-no-effect":
+        from loushang.harness.package_product._linux_worker_recovery import (
+            recover_registered_no_effect,
+        )
+
         registered_settled = recover_registered_no_effect(
             recovery_bindings(), product, attempt_id=args.attempt_id
         )
@@ -210,6 +254,87 @@ def execute_posix_worker_recovery_action(
             "emptyPayloadDebtReview": {
                 "attemptId": empty_plan.attempt_id,
                 "planId": empty_plan.fingerprint,
+            }
+        }
+    return None
+
+
+def execute_windows_worker_recovery_action(
+    product: WindowsLocalWheelProductSessionOwner,
+    args: Namespace,
+    *,
+    histories: WindowsProductWorkerHistoryJournals,
+    review_orphan: ReadWindowsOrphanRuntime,
+    recover_crash: WindowsCrashRecoveryCommand,
+    retirement: WindowsProductWorkerCompleteStageRetirement[
+        _ReviewT, _ReceiptT, _IntentT
+    ],
+    review_normal: Callable[..., _ReviewT],
+    retry_error: type[RuntimeError],
+    retry_code: str,
+) -> dict[str, object] | None:
+    """Use the existing offline owners without granting writes from a preview."""
+    action = args.action
+    if action == "list-attempts":
+        return {
+            "attempts": [
+                {
+                    "attemptId": item.attempt_id,
+                    "nativePhase": item.native_phase,
+                    "supervisorPhase": item.supervisor_phase,
+                    "debts": list(item.observed_debts),
+                }
+                for item in histories.inspect_inventory(product)
+            ]
+        }
+    if action == "inspect":
+        review = review_orphan(product, attempt_id=args.attempt_id)
+        attempt = review.attempt
+        if attempt is None:
+            raise ValueError("Windows Worker attempt is absent")
+        c5 = tuple(
+            record
+            for record in histories.activation(product).retained_attempts_read_only()
+            if record.attempt_id == args.attempt_id
+        )
+        return {
+            "attemptId": args.attempt_id,
+            "supervisorPhase": attempt.supervisor_phase,
+            "nativePhase": attempt.native_phase,
+            "nativeJobAbsent": review.native_job_absent,
+            "orphanLeaseCount": len(review.orphan_leases),
+            "payloadRetained": attempt.payload_directory_identity is not None,
+            "c5Phase": c5[0].phase if len(c5) == 1 else None,
+        }
+    if action == "recover-crash":
+        settled = recover_crash(product, attempt_id=args.attempt_id)
+        return {
+            "attemptId": settled.attempt_id,
+            "c5Phase": settled.phase,
+            "c5Revision": settled.last_seen_revision,
+        }
+    if action == "review-normal":
+        stage = review_normal(product, attempt_id=args.attempt_id)
+        return {
+            "normalStageReview": {
+                "attemptId": stage.attempt_id,
+                "reviewId": stage.fingerprint,
+            }
+        }
+    if action == "retire-normal":
+        receipt = retirement.retire_with_review_id(
+            product,
+            args.attempt_id,
+            review_current=lambda: review_normal(product, attempt_id=args.attempt_id),
+            review_id=args.review_id,
+            retry_error=retry_error,
+            retry_code=retry_code,
+        )
+        return {
+            "normalStageRetirement": {
+                "attemptId": receipt.attempt_id,
+                "reviewId": receipt.review_fingerprint,
+                "stageIdentity": list(receipt.stage_identity),
             }
         }
     return None
