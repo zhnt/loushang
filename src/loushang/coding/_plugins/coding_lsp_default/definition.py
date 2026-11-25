@@ -13,8 +13,8 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityProviderContext,
 )
 from loushang.plugin import (
+    CapabilityProviderSpec,
     PluginDefinitionBuilder,
-    capability_provider,
     plugin_definition,
 )
 
@@ -40,20 +40,10 @@ def declare(plugin: PluginDefinitionBuilder) -> None:
     CodingLspPluginConfigV1.from_mapping(
         plugin.effective_configuration(contribution_id=CONTRIBUTION_ID)
     )
-    provider = coding_lsp_capability_provider()
     plugin.add(
-        capability_provider(
+        CapabilityProviderSpec._from_provider(
+            coding_lsp_capability_provider(),
             contribution_id=CONTRIBUTION_ID,
-            capability=provider.capability_id,
-            provider_id=provider.provider_id,
-            implementation_version=provider.implementation_version,
-            contract=(
-                provider.compatible_contract.minimum,
-                provider.compatible_contract.maximum,
-            ),
-            facets=provider.facets,
-            requirements=provider.requirements,
-            authorities=tuple(sorted(provider.required_authorities)),
             factory="definition.py:create_provider",
             disposer="definition.py:dispose_provider",
         ),

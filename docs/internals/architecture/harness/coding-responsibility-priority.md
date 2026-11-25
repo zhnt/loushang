@@ -1,5 +1,15 @@
 # Coding剩余职责实施优先级
 
+## 能力 Provider 与工作区授权去重
+
+Arch 与 LSP 共用 Harness 对 Provider 配置字段、Facet 接口和运行时所有权的校验及释放。两个内置插件分别从各自的 Provider 定义生成声明。工作区路径由 Harness Workspace 核验。LSP 共用查询与提纲的服务选择、协议能力检查和文档打开。Coding 保留分析语义、协议请求与结果、Provider 错误及产品配置类型。
+
+文件工具和进程共用 Harness 的实时授权选择。Git 根目录解析集中到现有 Workspace Git 实现，沿用普通文件工具和链接工作树进程各自的范围。Coding 执行授权类型保留原字段及 slots。
+
+以 `de9a7a7d8` 为基线，Coding 减少 207 行，Harness 增加 119 行，Hosting 变化 0 行，其他生产 Python 增加 25 行，增量位于插件声明实现。系统生产 Python 减少 63 行。测试代码变化 0 行。
+
+Linux 上通过 399 项不同的既有用例。最终授权候选复验链接工作树、只读约束、恢复首条输入、真实 LSP 启动和 Arch、LSP 共用的 Session Graph。两项跨能力用例在两组回归中均通过。
+
 ## 受管服务的启动、接管与退出
 
 AppHost 管理已安装受管子进程的参数与端点接管、就绪发布、中断重放和退出清理。Hosting 管理系统通知、原生进程证明、systemd 与 launchd 的查询及控制。普通 Mux、受管 Mux、Hosted 服务与 Canary 接入各自的现有 owner。Coding 提供产品标识、入口、状态路径、环境白名单和错误映射。

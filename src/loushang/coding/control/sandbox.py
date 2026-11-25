@@ -7,7 +7,6 @@ from pathlib import Path
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionProfileProvider,
-    constrain_execution_profile,
 )
 from loushang.harness.authorization.execution_profile import WorkspaceExecutionSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -21,7 +20,7 @@ from loushang.harness.sandbox import (
 )
 from loushang.harness.sandbox.authorization import WorkspaceSandboxScopePolicy
 from loushang.harness.workspace.exec import ExecService
-from loushang.harness.workspace.git import find_git_paths
+from loushang.harness.workspace.git import git_workspace_access_roots
 from loushang.hosting.filesystem import host_filesystem_roots
 
 
@@ -34,37 +33,6 @@ class CodingExecutionAuthority(WorkspaceExecutionSelection):
     ceiling: EffectiveExecutionProfile
     permission_snapshot: Callable[[], PermissionProfileSnapshot]
     current_workspace_roots: Callable[[], tuple[Path, ...]] | None = None
-
-    def __call__(self) -> EffectiveExecutionProfile:
-        return self._select(self.workspace_profile)
-
-    def for_workspace_operation(self) -> EffectiveExecutionProfile:
-        if self.current_workspace_roots is not None:
-            return self._select(self.workspace_profile)
-        # Git processes need linked-worktree metadata outside the workspace.
-        # Ordinary Standard/Cautious file tools retain their original boundary.
-        workspace_only = constrain_execution_profile(
-            self.workspace_profile,
-            EffectiveExecutionProfile(
-                readable_roots=(self.workspace_root,),
-                writable_roots=(self.workspace_root,),
-            ),
-        )
-        return self._select(workspace_only)
-
-    def _select(self, workspace_profile: EffectiveExecutionProfile) -> EffectiveExecutionProfile:
-        profile = self.permission_snapshot().effective_profile
-        selected = (
-            self.ceiling
-            if profile.workspace_access == "managed_ceiling"
-            else workspace_profile
-        )
-        if self.current_workspace_roots is not None:
-            roots = self.current_workspace_roots()
-            selected = constrain_execution_profile(
-                selected, EffectiveExecutionProfile(readable_roots=roots, writable_roots=roots),
-            )
-        return constrain_execution_profile(self.ceiling, selected)
 
 
 def coding_host_execution_profile(
@@ -87,26 +55,6 @@ def coding_host_execution_profile(
     )
 
 
-def _coding_workspace_roots(
-    workspace_root: Path,
-    writable: bool,
-) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
-    """Include only the repository metadata needed by ordinary Git commands."""
-
-    readable = [workspace_root]
-    writable_roots = [workspace_root] if writable else []
-    git_paths = find_git_paths(workspace_root)
-    if git_paths is None:
-        return tuple(readable), tuple(writable_roots)
-
-    _append_uncovered_root(readable, git_paths.repo_dir)
-    for metadata_root in (git_paths.common_git_dir, git_paths.head_path.parent):
-        _append_uncovered_root(readable, metadata_root)
-        if writable:
-            _append_uncovered_root(writable_roots, metadata_root)
-    return tuple(readable), tuple(writable_roots)
-
-
 def coding_workspace_execution_profile(
     workspace_root: str | Path,
     *,
@@ -117,30 +65,12 @@ def coding_workspace_execution_profile(
     root = Path(workspace_root).expanduser().resolve(strict=False)
     if not root.is_dir():
         raise NotADirectoryError(20, "Not a directory", str(root))
-    readable_roots, writable_roots = _coding_workspace_roots(
-        root,
-        writable=writable,
-    )
+    readable_roots, writable_roots = git_workspace_access_roots(root, writable=writable)
     return EffectiveExecutionProfile(
         readable_roots=readable_roots,
         writable_roots=writable_roots,
         network="allowed",
     )
-
-
-def _append_uncovered_root(roots: list[Path], candidate: Path) -> None:
-    candidate = candidate.resolve(strict=False)
-    if any(
-        candidate == existing or candidate.is_relative_to(existing)
-        for existing in roots
-    ):
-        return
-    roots[:] = [
-        existing
-        for existing in roots
-        if not existing.is_relative_to(candidate)
-    ]
-    roots.append(candidate)
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +84,7 @@ class CodingSandboxScopePolicy(WorkspaceSandboxScopePolicy):
     execution_profile: EffectiveExecutionProfile | None = None
     execution_profile_provider: ExecutionProfileProvider | None = None
 
-    _workspace_roots = staticmethod(_coding_workspace_roots)
+    _workspace_roots = staticmethod(git_workspace_access_roots)
     _product_label = "Coding"
 
 

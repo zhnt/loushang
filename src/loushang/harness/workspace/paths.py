@@ -65,6 +65,23 @@ def canonicalize_workspace_path(path: str | Path) -> Path:
     return canonical.resolve()
 
 
+def resolve_path_inside_workspace(
+    path: str | Path,
+    workspace: Path,
+    *,
+    error_type: type[Exception],
+    message: str,
+) -> Path:
+    """Resolve an input path and require its target inside the canonical workspace."""
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = workspace / candidate
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(workspace):
+        raise error_type(message)
+    return resolved
+
+
 def normalize_unicode_spaces(path: str) -> str:
     return _UNICODE_SPACES_RE.sub(" ", path)
 
