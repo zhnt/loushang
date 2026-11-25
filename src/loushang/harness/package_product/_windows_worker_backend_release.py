@@ -11,10 +11,13 @@ import zipfile
 from collections.abc import Callable
 from hashlib import sha256
 from importlib.metadata import version
-from typing import Any, ClassVar, Literal, Protocol, Self, TypeVar, cast
+from typing import Any, ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationJournal,
 )
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
@@ -348,3 +351,28 @@ class _WindowsBackendInstalledMethods:
         ):
             raise cls._failure("Windows Worker backend Product approval is not current")
         return decision.generation
+
+
+_ClosureT = TypeVar("_ClosureT", bound=ProductWorkerNativeClosureFacts)
+
+
+class _InstalledWindowsWorkerBackendReader(Generic[_ClosureT]):
+    """Reopen the approved backend through its original fenced Product."""
+
+    _require_product: Callable[[WindowsLocalWheelProductSessionOwner], None]
+    _read_native_closure: Callable[[WindowsLocalWheelProductSessionOwner], _ClosureT]
+
+    def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
+        self._require_product(product)
+        self._product = product
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReservationJournal:
+        return self._product.gc_gate
+
+    @property
+    def product_owner(self) -> WindowsLocalWheelProductSessionOwner:
+        return self._product
+
+    def _current_closure(self) -> _ClosureT:
+        return self._read_native_closure(self._product)

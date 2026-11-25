@@ -23,6 +23,9 @@ from tempfile import TemporaryDirectory
 from typing import Any, ClassVar, Generic, Literal, Protocol, TypeVar, cast
 
 from loushang.harness.journal._io_loops import write_all
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     _rename_directory_noreplace,
 )
@@ -677,6 +680,27 @@ class _LinuxWorkerNativeReleaseCustody(Generic[A, V, C, M, R]):
                     native_profile_catalog_revision=f"{closure.native_profile_catalog_revision}:g{decision.generation}",
                 ),
             )
+
+
+class _InstalledLinuxWorkerReleaseReader(Generic[M]):
+    """Reopen the same Product release and retain its GC authority across reads."""
+
+    _read_launch_material: Callable[[Path, PosixLocalWheelProductSessionOwner], M]
+
+    def __init__(self, *, product_owner: PosixLocalWheelProductSessionOwner) -> None:
+        self._product_owner = product_owner
+        self._root = product_owner.state_root / _PRODUCT_NATIVE_RELEASE_ROOT
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReservationJournal:
+        return self._product_owner.gc_gate
+
+    @property
+    def product_owner(self) -> PosixLocalWheelProductSessionOwner:
+        return self._product_owner
+
+    def _current_launch_material(self) -> M:
+        return self._read_launch_material(self._root, self._product_owner)
 
 
 _ApprovalDecisionT = TypeVar("_ApprovalDecisionT", bound=_NativeDecisionMethods)
