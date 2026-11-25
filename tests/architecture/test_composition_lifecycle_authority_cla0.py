@@ -652,7 +652,7 @@ def test_cla5_workspace_has_one_product_binding_and_no_direct_session_consumer()
     assert _construction_sites("workspace_capability_provider_binding") == Counter(
         {
             (
-                Path("src/loushang/harness/capabilities/workspace_provider.py"),
+                Path("src/loushang/harness/session/bootstrap_construction.py"),
                 "bind_workspace_execution",
             ): 1
         }

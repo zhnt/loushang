@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
@@ -17,6 +17,11 @@ from loushang.ai.model import (
     validate_reasoning_request,
 )
 from loushang.ai.model.selection import ModelSelection
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    constrain_execution_profile,
+)
+from loushang.harness.authorization.execution_profile import WorkspaceExecutionSelection
 from loushang.harness.bootstrap import (
     StandardExtensionRuntime,
     register_resource_extension_tools,
@@ -31,6 +36,10 @@ from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.capabilities.tools import (
     ToolSelection,
     normalize_allowed_tool_names,
+)
+from loushang.harness.capabilities.workspace_provider import (
+    workspace_capability_provider_binding,
+    workspace_profile_binding_fingerprint,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
@@ -111,8 +120,15 @@ from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
 
 if TYPE_CHECKING:
+    from loushang.harness.approval import InteractiveApprovalResolver
+    from loushang.harness.authorization import ExecutionProfileProvider
+    from loushang.harness.capabilities.provider_binding import (
+        CapabilityBundleProviderBinding,
+    )
+    from loushang.harness.policy import PolicyEvaluator
     from loushang.harness.resource_catalog.product_inputs import (
         InitialResourceCatalogProductAdapter,
     )
@@ -120,6 +136,11 @@ if TYPE_CHECKING:
         InitialSessionResourceCatalogBootstrap,
     )
     from loushang.harness.session.agent_product import AgentProductSession
+    from loushang.harness.tools.process_hosting import (
+        ProcessAuditSink,
+        ProcessLauncherBinder,
+    )
+    from loushang.harness.workspace.operations import ToolOperations
 
 
 class _RootOwnedResourceHandles(Protocol):
@@ -960,6 +981,68 @@ def require_catalog_receipt(
     if not isinstance(receipt, ResourceCatalogInputReceipt):
         raise admission_failure(("catalog_receipt_unavailable",))
     return receipt
+
+
+_RuntimeT = TypeVar("_RuntimeT", bound="ProcessLauncherBinder")
+
+
+def bind_workspace_execution(
+    *,
+    ceiling: EffectiveExecutionProfile,
+    requested_profiles: Iterable[object],
+    authority_factory: Callable[[EffectiveExecutionProfile], WorkspaceExecutionSelection],
+    bind_runtime: Callable[[WorkspaceExecutionSelection], _RuntimeT],
+    operations_factory: Callable[
+        [Path, ToolOperations, EffectiveExecutionProfile, ExecutionProfileProvider],
+        ToolOperations,
+    ],
+    policy_evaluator: PolicyEvaluator | None,
+    approval_resolver: InteractiveApprovalResolver | None,
+    audit_sink: ProcessAuditSink,
+    provider_id: str,
+    source_id: str,
+    fingerprint_namespace: str,
+    product_label: str,
+) -> tuple[_RuntimeT, CapabilityBundleProviderBinding]:
+    """Use the same admitted execution ceiling for Sandbox, processes and files."""
+    from loushang.harness.tools.process_hosting import ProcessExecutionScope
+
+    for profile in requested_profiles:
+        if profile is None:
+            continue
+        if not isinstance(profile, EffectiveExecutionProfile):
+            raise TypeError(
+                f"{product_label} workspace execution ceiling must be an EffectiveExecutionProfile"
+            )
+        ceiling = constrain_execution_profile(ceiling, profile)
+    authority = authority_factory(ceiling)
+    runtime = bind_runtime(authority)
+    if (
+        not isinstance(authority, WorkspaceExecutionSelection)
+        or ceiling is not authority.ceiling
+    ):
+        raise TypeError("authorized workspace requires its matching execution authority")
+    process_launcher = runtime.bind_process_launcher(
+        ProcessExecutionScope(
+            policy_evaluator=policy_evaluator,
+            approval_resolver=approval_resolver,
+            audit_sink=audit_sink,
+            execution_profile_ceiling=ceiling,
+            execution_profile_provider=authority,
+        )
+    )
+    root = authority.workspace_root
+    fingerprint = workspace_profile_binding_fingerprint(ceiling, namespace=fingerprint_namespace)
+    return runtime, workspace_capability_provider_binding(
+        operations=operations_factory(
+            root, LOCAL_TOOL_OPERATIONS, ceiling, authority.for_workspace_operation
+        ),
+        process_launcher=process_launcher,
+        scope_instance_id=f"workspace:{root}",
+        binding_input_fingerprint=fingerprint,
+        provider_id=provider_id,
+        source_id=source_id,
+    )
 
 
 class _ManagedStartupLayout(Protocol):

@@ -15,7 +15,7 @@ from loushang.coding.control.sandbox import (
 )
 from loushang.coding.workspace.operations import CodingWorkspaceOperations
 from loushang.harness.authorization import EffectiveExecutionProfile
-from loushang.harness.capabilities.workspace_provider import bind_workspace_execution
+from loushang.harness.session.bootstrap_construction import bind_workspace_execution
 from loushang.harness.workspace.exec import ExecService
 
 if TYPE_CHECKING:
