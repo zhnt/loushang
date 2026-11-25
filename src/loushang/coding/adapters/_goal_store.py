@@ -10,6 +10,7 @@ from loushang.harnesswork.goal import GoalHeader
 from loushang.harnesswork.integrations.goal_store import JsonlGoalRecordStore
 
 _GOAL_JOURNAL_NAME = re.compile(r"[0-9a-f]{64}\.goal(?:\.work)?\.jsonl")
+_GOAL_STORE_OWNER_ID = "coding-goal"
 
 
 def is_goal_journal_filename(name: str) -> bool:
@@ -30,6 +31,6 @@ class GoalJournal(JsonlGoalRecordStore):
         super().__init__(
             goal_journal_path(session_dir, header.session_id),
             header,
-            owner_id="coding-goal",
+            owner_id=_GOAL_STORE_OWNER_ID,
             read_only=read_only,
         )
