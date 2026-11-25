@@ -89,7 +89,7 @@ class CodingWorkspaceCatalog(
         previous = self._root / leaf
         # A surviving witness identifies the original store even if its data
         # directory is missing. New stores use the workspaces family.
-        if workspace_id is None and self._retained_store(previous):
+        if workspace_id is None and self._retained_transcript_root(previous):
             root = previous
         return CodingManagedSessionCatalogV1(
             session_root=root,
