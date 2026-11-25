@@ -13,11 +13,16 @@ from contextlib import closing
 from dataclasses import dataclass
 from functools import partial
 from importlib.metadata import PackageNotFoundError
+from operator import attrgetter
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TextIO, TypeVar
 from uuid import uuid4
 
 from loushang.foundation.json import _unique_json_object_hook
+from loushang.harness.plugin_management.private_data_deletion import (
+    PluginPrivateDataDeletionConfirmationV1,
+    PluginPrivateDataDeletionPlanV1,
+)
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleAction,
     PackageProductLifecycleRecordV1,
@@ -38,6 +43,7 @@ if TYPE_CHECKING:
     from loushang.harness.plugin_management.desired_command import (
         PluginDesiredCommandAuthorityV1,
     )
+    from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 _OPERATOR_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
 _RecordT = TypeVar("_RecordT")
@@ -137,6 +143,67 @@ def run_private_data_expiry(
             raise ValueError(refused)
         return {"expiryConfirmation": confirm().to_dict()}
     return {"expiryReceipt": expire(Path(args.confirmation_file)).to_dict()}
+
+
+def run_private_data_deletion(
+    args: Namespace,
+    records: PackageOperatorRecordInput,
+    *,
+    preview: Callable[[], PluginPrivateDataDeletionPlanV1],
+    record: Callable[
+        [PluginPrivateDataDeletionPlanV1, PluginPrivateDataDeletionConfirmationV1], object
+    ],
+    delete: Callable[
+        [PluginPrivateDataDeletionPlanV1, PluginPrivateDataDeletionConfirmationV1],
+        _PrivateDataRecord,
+    ],
+    confirmation_prefix: str,
+    label: str,
+    preview_first: bool,
+    installation_key: PluginInstallationKeyV1 | None = None,
+) -> dict[str, object]:
+    """Confirm the exact preview or execute with a separate durable confirmation."""
+    plan = records.read(
+        Path(args.plan_file), "plan", PluginPrivateDataDeletionPlanV1.from_dict,
+        label=f"{label} preview", fingerprint=attrgetter("fingerprint"),
+    )
+    if installation_key is not None and plan.installation_key != installation_key:
+        raise ValueError(f"{label} plan is foreign")
+    if args.action == "confirm":
+        declined = f"{label} plan was not accepted"
+        if preview_first and preview() != plan:
+            raise ValueError(f"{label} plan is stale")
+        if args.accept_fingerprint != plan.fingerprint:
+            raise ValueError(f"{label} fingerprint was not accepted" if preview_first else declined)
+        if not preview_first and preview() != plan:
+            raise ValueError(declined)
+        confirmation = PluginPrivateDataDeletionConfirmationV1(
+            plan_fingerprint=plan.fingerprint,
+            confirmation_id=confirmation_prefix + secrets.token_hex(16),
+        )
+        record(plan, confirmation)
+        return {"confirmation": confirmation.to_dict()}
+    if args.action == "delete":
+        confirmation = records.read(
+            Path(args.confirmation_file), "confirmation",
+            PluginPrivateDataDeletionConfirmationV1.from_dict, label=f"{label} confirmation",
+        )
+        return {"receipt": delete(plan, confirmation).to_dict()}
+    raise ValueError(f"{label} command action is invalid")
+
+
+def run_private_data_restore_confirmation(
+    args: Namespace,
+    *,
+    target: _RecordT,
+    confirm: Callable[[_RecordT], _PrivateDataRecord],
+    verify: Callable[[_RecordT, str], _PrivateDataRecord],
+) -> dict[str, object]:
+    record = (
+        confirm(target) if args.action == "restore-confirm"
+        else verify(target, args.confirmation_id)
+    )
+    return {"restoreConfirmation": record.to_dict()}
 
 
 def package_operator_workspace(value: str, *, not_directory: str) -> Path:

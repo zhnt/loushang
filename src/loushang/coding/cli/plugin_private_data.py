@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import secrets
 import sys
 from collections.abc import Sequence
 from importlib.metadata import version
@@ -53,7 +52,9 @@ from loushang.harness.cli.package_lifecycle import (
     add_private_data_operator_commands,
     run_package_operator_command,
     run_private_data_access,
+    run_private_data_deletion,
     run_private_data_expiry,
+    run_private_data_restore_confirmation,
 )
 from loushang.harness.package_product._private_data_custody import (
     hold_private_data_product,
@@ -65,9 +66,7 @@ from loushang.harness.plugin_management.private_data_confirmation import (
     PluginPrivateDataConfirmationJournal,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
-    PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionCoordinator,
-    PluginPrivateDataDeletionPlanV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -81,6 +80,8 @@ _RECORD_INPUT = PackageOperatorRecordInput(
     label="Coding private-data command", maximum_bytes=_MAX_INPUT_BYTES
 )
 _FINGERPRINT = attrgetter("fingerprint")
+_DELETION_LABEL = "Coding private-data"
+_DELETION_CONFIRMATION_PREFIX = "arch-private-data:"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -142,13 +143,11 @@ def _run_posix_backup_action(
     workspace: Path, args: argparse.Namespace
 ) -> dict[str, object]:
     client = open_coding_arch_private_data_backup_client(workspace)
-    if args.action == "restore-confirm":
-        return {"restoreConfirmation": client.confirm_restore(args.backup_id).to_dict()}
-    if args.action == "restore-confirm-verify":
-        confirmation = client.verify_restore_confirmation(
-            args.backup_id, args.confirmation_id
+    if args.action in {"restore-confirm", "restore-confirm-verify"}:
+        return run_private_data_restore_confirmation(
+            args, target=args.backup_id, confirm=client.confirm_restore,
+            verify=client.verify_restore_confirmation,
         )
-        return {"restoreConfirmation": confirmation.to_dict()}
     return run_private_data_access(client, args)
 
 
@@ -165,16 +164,11 @@ def _run_windows_action(
     action = args.action
     if action in PRIVATE_DATA_ACCESS_ACTIONS:
         return run_private_data_access(client, args)
-    if action == "restore-confirm-verify":
-        restore_plan = _read_windows_restore_plan(args)
-        return {
-            "restoreConfirmation": client.restore_confirm_verify(
-                restore_plan, args.confirmation_id
-            ).to_dict()
-        }
-    if action == "restore-confirm":
-        restore_plan = _read_windows_restore_plan(args)
-        return {"restoreConfirmation": client.restore_confirm(restore_plan).to_dict()}
+    if action in {"restore-confirm", "restore-confirm-verify"}:
+        return run_private_data_restore_confirmation(
+            args, target=_read_windows_restore_plan(args),
+            confirm=client.restore_confirm, verify=client.restore_confirm_verify,
+        )
     if action == "restore":
         restore_plan = _read_restore_plan(Path(args.plan_file))
         if args.accept_fingerprint != restore_plan.fingerprint:
@@ -193,33 +187,20 @@ def _run_windows_action(
             expire=lambda path: client.backup_expire(plan, _read_expiry_confirmation(path)),
             refused="Coding Arch backup expiry plan was not accepted",
         )
-    if action == "confirm":
-        deletion_plan = _read_plan(Path(args.plan_file))
-        if (
-            args.accept_fingerprint != deletion_plan.fingerprint
-            or client.deletion_preview() != deletion_plan
-        ):
-            raise ValueError("Coding private-data plan was not accepted")
-        deletion_confirmation = PluginPrivateDataDeletionConfirmationV1(
-            plan_fingerprint=deletion_plan.fingerprint,
-            confirmation_id="arch-private-data:" + secrets.token_hex(16),
+    if action in {"confirm", "delete"}:
+        return run_private_data_deletion(
+            args, _RECORD_INPUT,
+            preview=client.deletion_preview,
+            record=lambda plan, confirmation: client.deletion_confirm(
+                plan, confirmation, actor_id="local-operator:windows-private-data-cli",
+                policy_revision=_POLICY_REVISION,
+            ),
+            delete=client.delete_confirmed,
+            confirmation_prefix=_DELETION_CONFIRMATION_PREFIX,
+            label=_DELETION_LABEL,
+            preview_first=False,
         )
-        client.deletion_confirm(
-            deletion_plan,
-            deletion_confirmation,
-            actor_id="local-operator:windows-private-data-cli",
-            policy_revision=_POLICY_REVISION,
-        )
-        return {"confirmation": deletion_confirmation.to_dict()}
-    if action == "delete":
-        deletion_plan = _read_plan(Path(args.plan_file))
-        deletion_confirmation = _read_confirmation(Path(args.confirmation_file))
-        return {
-            "receipt": client.delete_confirmed(
-                deletion_plan, deletion_confirmation
-            ).to_dict()
-        }
-    raise ValueError("Coding private-data command action is invalid")
+    raise ValueError(f"{_DELETION_LABEL} command action is invalid")
 
 
 def _read_windows_restore_plan(
@@ -308,43 +289,20 @@ def _run(
     key: PluginInstallationKeyV1,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    plan = _read_plan(Path(args.plan_file))
-    if plan.installation_key != key:
-        raise ValueError("Coding private-data plan is foreign")
-    if args.action == "confirm":
-        if coordinator.preview(key) != plan:
-            raise ValueError("Coding private-data plan is stale")
-        if args.accept_fingerprint != plan.fingerprint:
-            raise ValueError("Coding private-data fingerprint was not accepted")
-        confirmation = PluginPrivateDataDeletionConfirmationV1(
-            plan_fingerprint=plan.fingerprint,
-            confirmation_id="arch-private-data:" + secrets.token_hex(16),
-        )
-        confirmations.record_confirmation(
+    return run_private_data_deletion(
+        args, _RECORD_INPUT,
+        preview=lambda: coordinator.preview(key),
+        record=lambda plan, confirmation: confirmations.record_confirmation(
             plan,
             confirmation,
             actor_id=f"local-uid:{os.geteuid()}",
             policy_revision=_POLICY_REVISION,
-        )
-        return {"confirmation": confirmation.to_dict()}
-    if args.action == "delete":
-        confirmation = _read_confirmation(Path(args.confirmation_file))
-        receipt = coordinator.delete(plan, confirmation)
-        return {"receipt": receipt.to_dict()}
-    raise ValueError("Coding private-data command action is invalid")
-
-
-def _read_plan(path: Path) -> PluginPrivateDataDeletionPlanV1:
-    return _RECORD_INPUT.read(
-        path, "plan", PluginPrivateDataDeletionPlanV1.from_dict,
-        label="Coding private-data preview", fingerprint=_FINGERPRINT,
-    )
-
-
-def _read_confirmation(path: Path) -> PluginPrivateDataDeletionConfirmationV1:
-    return _RECORD_INPUT.read(
-        path, "confirmation", PluginPrivateDataDeletionConfirmationV1.from_dict,
-        label="Coding private-data confirmation",
+        ),
+        delete=coordinator.delete,
+        confirmation_prefix=_DELETION_CONFIRMATION_PREFIX,
+        label=_DELETION_LABEL,
+        preview_first=True,
+        installation_key=key,
     )
 
 
