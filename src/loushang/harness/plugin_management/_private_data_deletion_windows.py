@@ -48,6 +48,9 @@ from .private_data_deletion import (
     PluginPrivateDataDeletionReceiptV1,
     PrivateDataDeletionDisposition,
     PrivateDataDeletionTarget,
+    _find_deletion_completion,
+    _same_deletion_operation,
+    _validate_deletion_sequence,
 )
 from .records import PluginInstallationKeyV1
 
@@ -143,14 +146,8 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
         plan: PluginPrivateDataDeletionPlanV1,
         confirmation: PluginPrivateDataDeletionConfirmationV1,
     ) -> PluginPrivateDataDeletionReceiptV1 | None:
-        for event in reversed(self.events()):
-            if (
-                event.phase == "completed"
-                and event.plan == plan
-                and event.confirmation == confirmation
-            ):
-                return event.receipt
-        return None
+        event = _find_deletion_completion(self.events(), plan, confirmation)
+        return None if event is None else event.receipt
 
     def execute(
         self,
@@ -325,7 +322,7 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
         if (
             pending is None
             or started.phase != "started"
-            or not _same_operation(pending, started)
+            or not _same_deletion_operation(pending, started)
         ):
             raise ValueError(f"{self._label} deletion start changed")
         if pending.phase == "renamed":
@@ -362,17 +359,17 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
         if (
             pending is None
             or started.phase != "started"
-            or not _same_operation(pending, started)
+            or not _same_deletion_operation(pending, started)
         ):
-            prior = next(
-                (
-                    event
-                    for event in reversed(events)
-                    if event.phase == "completed" and _same_operation(event, started)
-                ),
-                None,
+            prior = _find_deletion_completion(
+                events, started.plan, started.confirmation
             )
-            if prior is not None and prior.receipt == receipt and staged is None:
+            if (
+                prior is not None
+                and prior.target == started.target
+                and prior.receipt == receipt
+                and staged is None
+            ):
                 return prior
             raise ValueError(f"{self._label} deletion start changed")
         if (
@@ -482,17 +479,6 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
         return decode_windows_deletion_event(raw, self._event_type, label=self._label)
 
 
-def _same_operation(
-    left: _EventT,
-    right: _EventT,
-) -> bool:
-    return (
-        left.plan == right.plan
-        and left.confirmation == right.confirmation
-        and left.target == right.target
-    )
-
-
 def _open_start(
     events: tuple[_EventT, ...],
 ) -> _EventT | None:
@@ -508,49 +494,15 @@ def validate_windows_deletion_sequence(
         [PluginPrivateDataDeletionPlanV1, PluginPrivateDataDeletionConfirmationV1], str
     ],
 ) -> None:
-    pending: _EventT | None = None
-    seen_confirmations: set[str] = set()
-    for revision, event in enumerate(events, start=1):
-        if event.revision != revision or event.plan.owner_id != owner_id:
-            raise ValueError(f"{label} deletion event identity changed")
-        if event.phase == "started":
-            if (
-                pending is not None
-                or event.confirmation.confirmation_id in seen_confirmations
-            ):
-                raise ValueError(f"{label} deletion starts conflict")
-            pending = event
-            seen_confirmations.add(event.confirmation.confirmation_id)
-        elif event.phase == "renamed":
-            if (
-                pending is None
-                or pending.phase != "started"
-                or pending.target.root_identity is None
-                or not _same_operation(pending, event)
-            ):
-                raise ValueError(f"{label} deletion rename has no start")
-            pending = event
-        else:
-            receipt = event.receipt
-            if (
-                pending is None
-                or not _same_operation(pending, event)
-                or receipt is None
-                or receipt.receipt_id != receipt_id(event.plan, event.confirmation)
-                or (
-                    pending.target.root_identity is None
-                    and (
-                        pending.phase != "started"
-                        or receipt.disposition != "already_absent"
-                    )
-                )
-                or (
-                    pending.target.root_identity is not None
-                    and (pending.phase != "renamed" or receipt.disposition != "deleted")
-                )
-            ):
-                raise ValueError(f"{label} deletion completion has no start")
-            pending = None
+    _validate_deletion_sequence(
+        events,
+        revision_error=f"{label} deletion event identity changed",
+        start_error=f"{label} deletion starts conflict",
+        rename_error=f"{label} deletion rename has no start",
+        completion_error=f"{label} deletion completion has no start",
+        owner_id=owner_id,
+        receipt_id=receipt_id,
+    )
 
 
 def decode_windows_deletion_event(

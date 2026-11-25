@@ -16,6 +16,7 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionPlanV1,
     PluginPrivateDataDeletionReceiptV1,
+    require_confirmed_deletion_command,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._tree_observation import require_tree_subset
@@ -34,6 +35,7 @@ from .private_data_windows_preview import (
 )
 
 _OWNER_ID = "coding.arch.private-data:windows-v1"
+_INVALID_COMMAND = "Windows Coding Arch deletion command is invalid"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +57,7 @@ class CodingWindowsArchPrivateDataDeletionOwner:
         plan: PluginPrivateDataDeletionPlanV1,
         confirmation: PluginPrivateDataDeletionConfirmationV1,
     ) -> PluginPrivateDataDeletionReceiptV1 | None:
-        self._require_command(plan, confirmation)
+        require_confirmed_deletion_command(plan, confirmation, owner_id=_OWNER_ID, invalid=_INVALID_COMMAND)
         coding_arch_installation_private_data_root(self.layout, plan.installation_key)
         with self._journal.transaction() as transaction:
             return transaction.receipt_for(plan, confirmation)
@@ -65,7 +67,7 @@ class CodingWindowsArchPrivateDataDeletionOwner:
         plan: PluginPrivateDataDeletionPlanV1,
         confirmation: PluginPrivateDataDeletionConfirmationV1,
     ) -> PluginPrivateDataDeletionReceiptV1:
-        self._require_command(plan, confirmation)
+        require_confirmed_deletion_command(plan, confirmation, owner_id=_OWNER_ID, invalid=_INVALID_COMMAND)
         root = coding_arch_installation_private_data_root(
             self.layout, plan.installation_key
         )
@@ -77,20 +79,6 @@ class CodingWindowsArchPrivateDataDeletionOwner:
     @property
     def _journal(self) -> CodingWindowsArchPrivateDataDeletionJournal:
         return CodingWindowsArchPrivateDataDeletionJournal(self.layout, self.product)
-
-    @staticmethod
-    def _require_command(
-        plan: PluginPrivateDataDeletionPlanV1,
-        confirmation: PluginPrivateDataDeletionConfirmationV1,
-    ) -> None:
-        if (
-            not isinstance(plan, PluginPrivateDataDeletionPlanV1)
-            or not isinstance(confirmation, PluginPrivateDataDeletionConfirmationV1)
-            or plan.owner_id != _OWNER_ID
-            or confirmation.plan_fingerprint != plan.fingerprint
-        ):
-            raise ValueError("Windows Coding Arch deletion command is invalid")
-
 
 def _require_remaining_subset(
     remaining: CodingArchPrivateDataTargetSnapshotV1,

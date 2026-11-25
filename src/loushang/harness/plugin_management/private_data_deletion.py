@@ -231,6 +231,22 @@ def confirmed_deletion_digest(
     ).hexdigest()
 
 
+def require_confirmed_deletion_command(
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
+    *,
+    owner_id: str,
+    invalid: str,
+) -> None:
+    if (
+        not isinstance(plan, PluginPrivateDataDeletionPlanV1)
+        or not isinstance(confirmation, PluginPrivateDataDeletionConfirmationV1)
+        or plan.owner_id != owner_id
+        or confirmation.plan_fingerprint != plan.fingerprint
+    ):
+        raise ValueError(invalid)
+
+
 class PrivateDataDeletionTarget(PrivateTreeSnapshot, Protocol):
     @property
     def target_id(self) -> str: ...
@@ -327,6 +343,92 @@ class PluginPrivateDataDeletionEventV1(Generic[_TargetT_co]):
         if cls.schema is None:
             raise TypeError("Private-data deletion record schema is required")
         return cls.schema
+
+
+def _same_deletion_operation(
+    left: PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget],
+    right: PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget],
+) -> bool:
+    return (
+        left.plan == right.plan
+        and left.confirmation == right.confirmation
+        and left.target == right.target
+    )
+
+
+_DeletionEventT = TypeVar(
+    "_DeletionEventT", bound=PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]
+)
+
+
+def _find_deletion_completion(
+    events: Sequence[_DeletionEventT],
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
+) -> _DeletionEventT | None:
+    for event in reversed(events):
+        if (
+            event.phase == "completed"
+            and event.plan == plan
+            and event.confirmation == confirmation
+        ):
+            return event
+    return None
+
+
+def _validate_deletion_sequence(
+    events: Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]],
+    *,
+    revision_error: str,
+    start_error: str,
+    rename_error: str,
+    completion_error: str,
+    owner_id: str | None = None,
+    receipt_id: Callable[
+        [PluginPrivateDataDeletionPlanV1, PluginPrivateDataDeletionConfirmationV1], str
+    ] | None = None,
+) -> None:
+    """Check retained phase transitions with the native route's receipt policy."""
+    pending = None
+    seen_confirmations: set[str] = set()
+    for revision, event in enumerate(events, start=1):
+        if event.revision != revision or (owner_id is not None and event.plan.owner_id != owner_id):
+            raise ValueError(revision_error)
+        if event.phase == "started":
+            if pending is not None or event.confirmation.confirmation_id in seen_confirmations:
+                raise ValueError(start_error)
+            pending = event
+            seen_confirmations.add(event.confirmation.confirmation_id)
+        elif event.phase == "renamed":
+            if (
+                pending is None
+                or pending.phase != "started"
+                or (receipt_id is not None and pending.target.root_identity is None)
+                or not _same_deletion_operation(pending, event)
+            ):
+                raise ValueError(rename_error)
+            pending = event
+        else:
+            if pending is None or not _same_deletion_operation(event, pending):
+                raise ValueError(completion_error)
+            receipt = None
+            if receipt_id is not None:
+                receipt = event.receipt
+                if receipt is None or receipt.receipt_id != receipt_id(
+                    event.plan, event.confirmation
+                ):
+                    raise ValueError(completion_error)
+            target = pending.target if receipt is not None else event.target
+            present = target.root_identity is not None
+            if (
+                pending.phase != ("renamed" if present else "started")
+                or (
+                    receipt is not None
+                    and receipt.disposition != ("deleted" if present else "already_absent")
+                )
+            ):
+                raise ValueError(completion_error)
+            pending = None
 
 
 def latest_deleted_target_receipt(

@@ -34,6 +34,9 @@ from .private_data_deletion import (
     PluginPrivateDataDeletionReceiptV1,
     PrivateDataDeletionDisposition,
     PrivateDataDeletionTarget,
+    _find_deletion_completion,
+    _same_deletion_operation,
+    _validate_deletion_sequence,
 )
 from .records import PluginInstallationKeyV1
 
@@ -111,14 +114,8 @@ class PrivateDataDeletionJournal(Generic[_TargetT, _EventT]):
         plan: PluginPrivateDataDeletionPlanV1,
         confirmation: PluginPrivateDataDeletionConfirmationV1,
     ) -> PluginPrivateDataDeletionReceiptV1 | None:
-        for event in reversed(self.events()):
-            if (
-                event.phase == "completed"
-                and event.plan == plan
-                and event.confirmation == confirmation
-            ):
-                return event.receipt
-        return None
+        event = _find_deletion_completion(self.events(), plan, confirmation)
+        return None if event is None else event.receipt
 
     def execute_deletion(
         self,
@@ -199,15 +196,8 @@ class PrivateDataDeletionJournal(Generic[_TargetT, _EventT]):
         with journal_file_lock(self._path, "exclusive"):
             events = self._load_unlocked(self._write_policy)
             if not events or _open_start(events) != started:
-                replay = next(
-                    (
-                        event
-                        for event in reversed(events)
-                        if event.phase == "completed"
-                        and event.plan == started.plan
-                        and event.confirmation == started.confirmation
-                    ),
-                    None,
+                replay = _find_deletion_completion(
+                    events, started.plan, started.confirmation
                 )
                 if replay is not None and replay.receipt == receipt:
                     return replay
@@ -233,11 +223,7 @@ class PrivateDataDeletionJournal(Generic[_TargetT, _EventT]):
         with journal_file_lock(self._path, "exclusive"):
             events = self._load_unlocked(self._write_policy)
             current = _open_start(events)
-            if current is None or (
-                current.plan != started.plan
-                or current.confirmation != started.confirmation
-                or current.target != started.target
-            ):
+            if current is None or not _same_deletion_operation(current, started):
                 raise ValueError("Private-data deletion start changed")
             if current.phase == "renamed":
                 return current
@@ -263,43 +249,14 @@ class PrivateDataDeletionJournal(Generic[_TargetT, _EventT]):
         loaded.require_unique_keys(
             "Private-data deletion record has a duplicate JSON key"
         )
-        events = loaded.records
-        pending: _EventT | None = None
-        seen_confirmations: set[str] = set()
-        for revision, event in enumerate(events, start=1):
-            if event.revision != revision:
-                raise ValueError("Private-data deletion revisions are inconsistent")
-            if event.phase == "started":
-                if (
-                    pending is not None
-                    or event.confirmation.confirmation_id in seen_confirmations
-                ):
-                    raise ValueError("Private-data deletion starts are inconsistent")
-                pending = event
-                seen_confirmations.add(event.confirmation.confirmation_id)
-            elif event.phase == "renamed":
-                if (
-                    pending is None
-                    or pending.phase != "started"
-                    or pending.plan != event.plan
-                    or pending.confirmation != event.confirmation
-                    or pending.target != event.target
-                ):
-                    raise ValueError("Private-data deletion rename has no exact start")
-                pending = event
-            elif (
-                pending is None
-                or event.plan != pending.plan
-                or event.confirmation != pending.confirmation
-                or event.target != pending.target
-                or (
-                    (event.target.root_identity is None) != (pending.phase == "started")
-                )
-            ):
-                raise ValueError("Private-data deletion completion has no exact start")
-            else:
-                pending = None
-        return events
+        _validate_deletion_sequence(
+            loaded.records,
+            revision_error="Private-data deletion revisions are inconsistent",
+            start_error="Private-data deletion starts are inconsistent",
+            rename_error="Private-data deletion rename has no exact start",
+            completion_error="Private-data deletion completion has no exact start",
+        )
+        return loaded.records
 
     def _require_safe_journal(self) -> bool:
         return private_journal_exists(
