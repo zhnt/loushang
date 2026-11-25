@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from functools import partial
 from pathlib import Path
 
@@ -38,6 +37,7 @@ from loushang.harness.plugin_management.current_preview import (
     blocked_local_plugin_discovery,
     discover_local_plugins,
     read_inert_data_kinds,
+    read_local_native_fallback_metadata,
 )
 from loushang.harness.plugin_management.current_preview import (
     format_local_plugin_discovery as format_coding_local_discovery,
@@ -49,15 +49,11 @@ from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
-from loushang.harness.resources._loader_discovery_filesystem import (
-    _discover_native_fallback_metadata,
-)
 from loushang.plugin._coding_data_wheel_validation import (
     validate_coding_data_wheel as validate_coding_data_wheel,
 )
 
 _MAX_ROWS = 500
-_FALLBACK_NAME = re.compile(r"[a-z][a-z0-9-]{0,127}\Z")
 
 
 _PRODUCT_ID = "coding"
@@ -145,42 +141,9 @@ def blocked_coding_local_discovery(code: str) -> dict[str, object]:
 def _fallback_native_metadata(
     receipt: ResourceCatalogInputReceipt,
 ) -> tuple[list[dict[str, object]], set[str]]:
-    """Recover metadata under the original native discovery owner."""
-
-    return _discover_native_fallback_metadata(
-        receipt,
-        max_rows=_MAX_ROWS,
-        name_pattern=_FALLBACK_NAME,
-        diagnostic_prefix="local_discovery_",
-        authority_error=_NativeFallbackAuthorityError,
-        row_factory=_fallback_native_row,
+    return read_local_native_fallback_metadata(
+        receipt, max_rows=_MAX_ROWS, authority_error=_NativeFallbackAuthorityError,
     )
-
-
-def _fallback_native_row(
-    name: str,
-    resource_kind: str,
-    source_class: str,
-    scope: str,
-) -> dict[str, object]:
-    return {
-        "identityKind": "native_resource",
-        "pluginId": None,
-        "name": name,
-        "resourceKind": resource_kind,
-        "resourceKinds": [resource_kind],
-        "version": None,
-        "sourceClass": source_class,
-        "sourceScope": scope,
-        "candidateFingerprint": None,
-        "contentDigest": None,
-        "enabled": None,
-        "nativeCatalogSelection": "not_checked",
-        "productCompatibility": "not_checked",
-        "productSelection": "not_checked",
-        "discoveryEvidence": "fallback_metadata",
-        "diagnosticCodes": ["local_discovery_catalog_unavailable"],
-    }
 
 
 __all__ = [

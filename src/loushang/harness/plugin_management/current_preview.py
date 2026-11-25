@@ -8,8 +8,10 @@ repair or live Session authority.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol
@@ -20,6 +22,9 @@ from loushang.harness.plugin_management.records import (
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources._catalog_records import NativeHostOrigin
+from loushang.harness.resources._loader_discovery_filesystem import (
+    _discover_native_fallback_metadata,
+)
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 if TYPE_CHECKING:
@@ -813,10 +818,6 @@ class LocalDiscoveryEvidence:
 
     def project_native_catalog(self, catalog: ResourceCatalogSnapshot) -> None:
         """Project observed native resources and their live selection evidence."""
-        rows = self.rows
-        diagnostics = self.diagnostics
-        completeness = self.completeness
-        evidence = self.owner_evidence
         selected = {
             entry.primary_candidate_fingerprint for entry in catalog.effective_entries
         }
@@ -828,40 +829,34 @@ class LocalDiscoveryEvidence:
         for candidate in catalog.candidate_summaries:
             if not isinstance(candidate.content_origin, NativeHostOrigin):
                 continue
-            rows.append(
+            enabled = candidate.candidate_fingerprint in selected
+            self.rows.append(
                 {
-                    "identityKind": "native_resource",
-                    "pluginId": None,
-                    "name": candidate.canonical_name,
+                    **_native_discovery_identity(
+                        candidate.canonical_name,
+                        candidate.identity.resource_kind,
+                        candidate.source_class,
+                        candidate.content_origin.workspace_or_user_scope,
+                    ),
                     "resourceIdentity": candidate.identity.to_payload(),
-                    "resourceKind": candidate.identity.resource_kind,
-                    "resourceKinds": [candidate.identity.resource_kind],
-                    "version": None,
-                    "sourceClass": candidate.source_class,
-                    "sourceScope": candidate.content_origin.workspace_or_user_scope,
                     "candidateFingerprint": candidate.candidate_fingerprint,
                     "contentDigest": candidate.expected_content_digest,
                     "sourceEnabled": candidate.invocation_policy.enabled,
-                    "enabled": candidate.candidate_fingerprint in selected,
-                    "nativeCatalogSelection": (
-                        "selected"
-                        if candidate.candidate_fingerprint in selected
-                        else "not_selected"
-                    ),
+                    "enabled": enabled,
+                    "nativeCatalogSelection": "selected" if enabled else "not_selected",
                     "productCompatibility": "native_catalog_candidate",
-                    "productSelection": "not_checked",
                     "mergeReason": merge_reason.get(candidate.candidate_fingerprint),
                     "diagnosticCodes": sorted(
                         {item.code for item in candidate.diagnostics}
                     ),
                 }
             )
-        diagnostics.update(item.code for item in catalog.diagnostics)
-        completeness["catalog"] = (
+        self.diagnostics.update(item.code for item in catalog.diagnostics)
+        self.completeness["catalog"] = (
             "complete" if catalog.complete and not catalog.diagnostics else "partial"
         )
-        evidence["catalogGeneration"] = catalog.catalog_generation
-        evidence["catalogSnapshotFingerprint"] = catalog.snapshot_fingerprint
+        self.owner_evidence["catalogGeneration"] = catalog.catalog_generation
+        self.owner_evidence["catalogSnapshotFingerprint"] = catalog.snapshot_fingerprint
 
     def recheck_installations(self, client: _LocalDiscoveryReader) -> None:
         rows = self.rows
@@ -955,6 +950,43 @@ class LocalDiscoveryEvidence:
             "diagnosticCodes": sorted(diagnostics),
             "ownerEvidence": evidence,
         }
+
+
+def _native_discovery_identity(
+    name: str, kind: str, source_class: str, scope: str,
+) -> dict[str, object]:
+    return {
+        "identityKind": "native_resource",
+        "pluginId": None,
+        "name": name,
+        "resourceKind": kind,
+        "resourceKinds": [kind],
+        "version": None,
+        "sourceClass": source_class,
+        "sourceScope": scope,
+        "productSelection": "not_checked",
+    }
+
+
+def _fallback_native_row(name: str, kind: str, source_class: str, scope: str) -> dict[str, object]:
+    return {
+        **_native_discovery_identity(name, kind, source_class, scope),
+        "candidateFingerprint": None,
+        "contentDigest": None,
+        "enabled": None,
+        "nativeCatalogSelection": "not_checked",
+        "productCompatibility": "not_checked",
+        "discoveryEvidence": "fallback_metadata",
+        "diagnosticCodes": ["local_discovery_catalog_unavailable"],
+    }
+
+
+read_local_native_fallback_metadata = partial(
+    _discover_native_fallback_metadata,
+    name_pattern=re.compile(r"[a-z][a-z0-9-]{0,127}\Z"),
+    diagnostic_prefix="local_discovery_",
+    row_factory=_fallback_native_row,
+)
 
 
 def discover_local_plugins(
