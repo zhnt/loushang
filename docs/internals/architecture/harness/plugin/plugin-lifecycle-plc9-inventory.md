@@ -793,8 +793,8 @@ materializes packages.
 
 PLC9B.0 began with the pre-runtime-migration snapshot at parent `4bd71d63`; A2
 revised the original snapshot. The current accepted source-wide inventories have
-119 ingress/declaration rows with 174 occurrences and 153 effect/capability rows
-with 170 occurrences. The executable
+119 ingress/declaration rows with 173 occurrences and 153 effect/capability rows
+with 171 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -826,10 +826,9 @@ forwarding calls, module-level transport specifications, and dynamic strings.
 
 <!-- plc9b-entrypoint-inventory:start -->
 ```text
-src/loushang/coding/cli/application.py::_run_coding_pre_runtime_operation::update_packages = 2
+src/loushang/coding/cli/application.py::_run_coding_pre_runtime_operation::update_packages = 1
 src/loushang/coding/cli/application.py::_run_list_packages::get_packages = 5
 src/loushang/coding/cli/application.py::run_cli::update_packages = 1
-src/loushang/coding/package/product_cli.py::_write_uninstall_success::uninstall_package = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::check_package_updates = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::update_packages = 1
 src/loushang/harness/cli/agent_args.py::agent_cli_argument_values::check_package_updates = 2
@@ -843,6 +842,7 @@ src/loushang/harness/cli/host_operations.py::agent_standard_cli_operation_reques
 src/loushang/harness/cli/host_operations.py::agent_standard_cli_operation_request::update_packages = 1
 src/loushang/harness/cli/launch.py::agent_cli_launch_plan::check_package_updates = 2
 src/loushang/harness/cli/launch.py::agent_cli_launch_plan::update_packages = 2
+src/loushang/harness/cli/package_lifecycle.py::FencedPackageOperatorOutput.removal_success::uninstall_package = 1
 src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::execute_package_lifecycle = 1
 src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::install_package = 1
 src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::uninstall_package = 3
@@ -975,7 +975,6 @@ src/loushang/coding/composition/bootstrap.py::<module>::CodingPackageMaterialize
 src/loushang/coding/composition/bootstrap.py::<module>::GitPackageMaterializerBackend = 1
 src/loushang/coding/composition/bootstrap.py::_create_agent_session::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::_create_agent_session.prepare_primary::CodingPackageMaterializer = 1
-src/loushang/coding/composition/bootstrap.py::_create_agent_session_with_model_policy::CodingPackageMaterializer = 1
 src/loushang/coding/composition/bootstrap.py::_default_package_materializer::CodingPackageMaterializer = 2
 src/loushang/coding/composition/bootstrap.py::_default_package_materializer::GitPackageMaterializerBackend = 1
 src/loushang/coding/composition/bootstrap.py::create_agent_session::CodingPackageMaterializer = 1
@@ -991,13 +990,12 @@ src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py::
 src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py::resolve_installed_continuity_sources::reopen_plugin_package = 1
 src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py::_inspect_continuity_source::PackageMaterializer = 1
 src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py::publish_continuity_runtime::PackageMaterializer = 1
+src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py::bind_installed_continuity::PackageMaterializer = 1
 src/loushang/coding/composition/continuity.py::bind_coding_configured_continuity::PackageMaterializer = 1
 src/loushang/harness/session/plugin_lifecycle/_continuity_installed_plugins.py::<module>::PackageMaterializer = 1
 src/loushang/coding/composition/managed_plugin_preparation.py::<module>::CodingPackageMaterializer = 2
-src/loushang/coding/composition/managed_plugin_preparation.py::<module>::GitPackageMaterializerBackend = 1
 src/loushang/coding/composition/managed_plugin_preparation.py::ManagedPluginPreparation::CodingPackageMaterializer = 1
 src/loushang/coding/composition/managed_plugin_preparation.py::prepare_managed_plugins::CodingPackageMaterializer = 3
-src/loushang/coding/composition/managed_plugin_preparation.py::prepare_managed_plugins::GitPackageMaterializerBackend = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::assemble_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::prepare_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
@@ -1115,8 +1113,10 @@ src/loushang/harness/session/bootstrap_configuration.py::<module>::PackageMateri
 src/loushang/harness/session/bootstrap_configuration.py::<module>::PackageSourceResolver = 1
 src/loushang/harness/session/bootstrap_configuration.py::StandardAgentSessionConfigurationRequest::PackageMaterializer = 1
 src/loushang/harness/session/bootstrap_configuration.py::StandardAgentSessionConfigurationRuntime._package_sources::PackageSourceResolver = 1
-src/loushang/harness/session/bootstrap_construction.py::<module>::PackageMaterializer = 1
+src/loushang/harness/session/bootstrap_construction.py::<module>::GitPackageMaterializerBackend = 1
+src/loushang/harness/session/bootstrap_construction.py::<module>::PackageMaterializer = 2
 src/loushang/harness/session/bootstrap_construction.py::AgentProductConstructionBinding.construct::PackageMaterializer = 1
+src/loushang/harness/session/bootstrap_construction.py::prepare_managed_plugin_startup::GitPackageMaterializerBackend = 1
 ```
 <!-- plc9b-effect-inventory:end -->
 
