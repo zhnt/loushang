@@ -7,7 +7,6 @@ import asyncio
 import json
 import os
 import re
-import subprocess
 import sys
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -40,6 +39,10 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_authoring._offline_smoke import (
     capture_authoring_input,
     hold_authoring_home,
+    smoke_worker_candidate_selection,
+)
+from loushang.harness.plugin_authoring._offline_smoke import (
+    record_product_smoke_failure as _failure,
 )
 from loushang.harness.resources.frontmatter import strip_frontmatter
 
@@ -110,6 +113,7 @@ def smoke_coding_worker_candidate_wheel(
         "productUse": "not_checked",
         "workspace": "disposable",
     }
+    native_platform: Literal["linux-x86_64", "windows-amd64"]
     if sys.platform == "linux" and os.name == "posix":
         native_platform = "linux-x86_64"
     elif sys.platform == "win32" and os.name == "nt":
@@ -124,155 +128,26 @@ def smoke_coding_worker_candidate_wheel(
         if prepared is None:
             return report
         root, workspace, captured, _ = prepared
-        try:
-            capture = _run_worker_candidate_command(
-                workspace,
-                "candidate-capture",
-                "--wheel",
-                str(captured),
-                "--contribution-id",
-                contribution_id,
-                "--owner-id",
-                owner_id,
-                *(
-                    ("--native-platform", native_platform)
-                    if native_platform == "linux-x86_64"
-                    else ()
-                ),
-            )
-            binding = capture["workerCandidateBinding"]
-            if (
-                not isinstance(binding, dict)
-                or binding.get("pluginId") != plugin_id
-            ):
-                raise ValueError("Captured Worker identity differs from request")
-            digest = binding["artifactDigest"]
-            if digest != report["artifactSha256"]:
-                raise ValueError("Captured Worker differs from the author Wheel")
-            installed = _run_worker_candidate_command(
-                workspace,
-                "candidate-install",
-                "--plugin-id",
-                plugin_id,
-                "--artifact-digest",
-                digest,
-                "--operation-id",
-                "author-smoke-install",
-            )
-        except (
-            OSError,
-            RuntimeError,
-            ValueError,
-            KeyError,
-            subprocess.SubprocessError,
-        ) as exc:
-            return _failure(
-                report,
-                "product_admission",
-                "worker_candidate_admission_refused",
-                str(exc),
-                root,
-            )
-        report["productAdmission"] = "passed"
-        try:
-            install_result = installed["candidateInstall"]
-            if not isinstance(install_result, dict):
-                raise ValueError("Product install result is unavailable")
-            revision = install_result["inventoryRevision"]
-            if type(revision) is not int:
-                raise ValueError("Product inventory revision is unavailable")
-            _run_worker_candidate_command(
-                workspace,
-                "candidate-enable",
-                "--plugin-id",
-                plugin_id,
-                "--artifact-digest",
-                digest,
-                "--operation-id",
-                "author-smoke-enable",
-                "--expected-inventory-revision",
-                str(revision),
-            )
-            status = _run_worker_candidate_command(
-                workspace,
-                "candidate-status"
-                if native_platform == "linux-x86_64"
-                else "candidate-selection",
-                "--plugin-id",
-                plugin_id,
-            )
-            selection = status["candidateSelection"]
-            if (
-                not isinstance(selection, dict)
-                or selection.get("stage") != "observed_in_read"
-                or (
-                    native_platform == "linux-x86_64"
-                    and (
-                        status.get("snapshotStatus") != "partial_evidence"
-                        or status.get("candidateOptInAlignment") != "not_allowed"
-                    )
-                )
-                or (
-                    native_platform == "windows-amd64"
-                    and (
-                        selection.get("pluginId") != plugin_id
-                        or selection.get("artifactDigest") != digest
-                        or status.get("productUse") != "not_checked"
-                    )
-                )
-            ):
-                raise ValueError("Selected Worker was not observed in Product")
-        except (
-            OSError,
-            RuntimeError,
-            ValueError,
-            KeyError,
-            subprocess.SubprocessError,
-        ) as exc:
-            return _failure(
-                report,
-                "product_selection",
-                "worker_candidate_selection_refused",
-                str(exc),
-                root,
-            )
-        report["productSelection"] = "passed"
-        report["selectedPluginVersion"] = selection["pluginVersion"]
-        report["status"] = "passed"
-        return report
-
-
-def _run_worker_candidate_command(
-    workspace: Path, action: str, *arguments: str
-) -> dict[str, object]:
-    windows = os.name == "nt"
-    completed = subprocess.run(
-        (
-            sys.executable,
-            "-m",
-            (
+        windows = native_platform == "windows-amd64"
+        return smoke_worker_candidate_selection(
+            report,
+            root=root,
+            command_prefix=(
+                sys.executable,
+                "-m",
                 "loushang.coding.cli.package_worker_windows_candidate"
                 if windows
-                else "loushang.coding.cli.package_worker_native"
+                else "loushang.coding.cli.package_worker_native",
+                "--workspace",
+                str(workspace),
+                *(("--windows-candidate",) if windows else ()),
             ),
-            "--workspace",
-            str(workspace),
-            *(("--windows-candidate",) if windows else ()),
-            action,
-            *arguments,
-        ),
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=120,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip()[-1000:] or "Worker command refused")
-    result = json.loads(completed.stdout)
-    if not isinstance(result, dict):
-        raise ValueError("Worker command returned an invalid Product result")
-    return result
+            wheel=captured,
+            plugin_id=plugin_id,
+            contribution_id=contribution_id,
+            owner_id=owner_id,
+            native_platform=native_platform,
+        )
 
 
 def smoke_coding_data_wheel(
@@ -624,30 +499,6 @@ def _user_message_text(logical_input: object) -> Iterator[str]:
                     if isinstance(value, str):
                         yield value
 
-
-def _failure(
-    report: dict[str, object],
-    stage: str,
-    code: str,
-    detail: str | None = None,
-    scratch_root: Path | None = None,
-) -> dict[str, object]:
-    report["failedStage"] = stage
-    report["errorCode"] = code
-    if stage in {"product_admission", "product_selection", "product_use"}:
-        key = {
-            "product_admission": "productAdmission",
-            "product_selection": "productSelection",
-            "product_use": "productUse",
-        }[stage]
-        report[key] = "failed"
-    if detail:
-        report["detail"] = (
-            detail.replace(str(scratch_root), "<disposable-workspace>")
-            if scratch_root is not None
-            else detail
-        )[:1000]
-    return report
 
 
 __all__ = ["main", "smoke_coding_data_wheel", "smoke_coding_worker_candidate_wheel"]
