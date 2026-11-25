@@ -23,7 +23,6 @@ from loushang.coding.adapters.harnesswork import (
 )
 from loushang.harness.artifacts import SessionBlobRef, SessionBlobStore
 from loushang.harness.session.bash import bash_verification_output_refs
-from loushang.harnesswork import WorkRunSpec
 from loushang.harnesswork.goal import (
     GoalAssessment,
     GoalBasis,
@@ -37,6 +36,7 @@ from loushang.harnesswork.goal.records import canonical, document, plain
 from loushang.harnesswork.integrations.session import (
     PreparedSessionWorkTurn,
     SessionTurnExecutor,
+    build_session_work_plan_spec,
     prepare_session_work_source,
     project_prepared_session_work_turns,
 )
@@ -350,14 +350,7 @@ class CalculatorPolicy:
             session_id=basis.header.session_id,
             operation_id=op_id,
         )
-        initial = first.to_run_spec(profile=CODING_WORK_PROFILE, run_id=None)
-        spec = WorkRunSpec(
-            method_id=first.method_id,
-            plan_id=first.plan_id,
-            run_event_payload=initial.run_event_payload,
-            scope_event_payload=initial.scope_event_payload,
-            steps=tuple(t.to_step_spec(profile=CODING_WORK_PROFILE) for t in turns),
-        )
+        spec = build_session_work_plan_spec(turns, profile=CODING_WORK_PROFILE)
         operation, executor = self._bind_source(operation, spec, executor)
         self.prepared[op_id] = WorkExecutionBinding(executor, executor)
         return WorkCandidate(basis, operation, spec, {**common, "phase": "repair"})

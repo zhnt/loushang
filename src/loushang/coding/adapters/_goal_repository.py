@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import shlex
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from functools import partial
+from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 from loushang.foundation.platform_paths import resolve_platform_home
@@ -23,12 +26,15 @@ from loushang.harnesswork.goal import (
 )
 from loushang.harnesswork.goal.records import canonical, plain
 from loushang.harnesswork.integrations.session import (
+    PreparedSessionWorkTurn,
     SessionTurnExecutor,
+    SessionWorkTurn,
     prepare_session_work_source,
     project_prepared_session_work_turns,
 )
 from loushang.harnesswork.integrations.transcript import CONTRACT_KEY
 from loushang.harnesswork.ports import WorkExecutionBinding
+from loushang.method.loader import MethodLoader
 from loushang.method.runtime import (
     MethodDomainProfile,
     MethodDomainRequest,
@@ -54,6 +60,36 @@ from .goal import CodingGoal, CodingGoalView, _inspect_goal, _view
 from .harnesswork import CODING_WORK_PROFILE, project_coding_runtime_event
 
 LIMITS = {**DEFAULT_LIMITS, "planning_intents": 8}
+
+
+def _prepare_repository_repair_turn(
+    task_path: Path,
+    workspace: Path,
+    make_prompt: Callable[[], str],
+) -> SessionWorkTurn | None:
+    """Compile the protected repository Method and verify its repair shape."""
+    descriptor = MethodDescriptor(
+        **json.loads((task_path.parent / "method.json").read_bytes())
+    )
+    turns = MethodDomainRuntime(
+        profile=MethodDomainProfile(domain="coding"),
+        method_loader=cast(
+            MethodLoader, SimpleNamespace(discover_methods=lambda cwd: [descriptor])
+        ),
+    ).prepare_turns(
+        MethodDomainRequest(
+            make_prompt(), workspace, method_policy=MethodPolicy.explicit(descriptor.id)
+        )
+    )
+    prepared = project_prepared_session_work_turns(
+        cast(Sequence[PreparedSessionWorkTurn], turns), images=None, follow_up_messages=()
+    )
+    if len(prepared) != 1:
+        return None
+    turn = prepared[0]
+    if turn.step_id != "repair" or turn.planned_constraint or turn.audit_policy:
+        return None
+    return turn
 
 
 def _repository_limits(task):
@@ -817,49 +853,33 @@ class RepositoryDomain:
             )
             executor = RepositoryReport(self, snapshot, targets=action.targets)
         else:
-            descriptor = MethodDescriptor(
-                **json.loads((self.task.path.parent / "method.json").read_bytes())
+            repair_turn = _prepare_repository_repair_turn(
+                self.task.path,
+                self.root,
+                lambda: "Implement the admitted action.\n"
+                + canonical(
+                    {
+                        "proposal": proposal.data(),
+                        "material": self.task.material(),
+                        "evidence": evidence,
+                        **(self.allowance.model_budget() if self.allowance is not None else {}),
+                    }
+                ),
             )
-            loader = SimpleNamespace(discover_methods=lambda cwd: [descriptor])
-            turns = MethodDomainRuntime(
-                profile=MethodDomainProfile(domain="coding"), method_loader=loader
-            ).prepare_turns(
-                MethodDomainRequest(
-                    "Implement the admitted action.\n"
-                    + canonical(
-                        {
-                            "proposal": proposal.data(),
-                            "material": self.task.material(),
-                            "evidence": evidence,
-                            **(self.allowance.model_budget() if self.allowance is not None else {}),
-                        }
-                    ),
-                    self.root,
-                    method_policy=MethodPolicy.explicit(descriptor.id),
-                )
-            )
-            prepared = project_prepared_session_work_turns(
-                turns, images=None, follow_up_messages=()
-            )
-            if (
-                len(prepared) != 1
-                or prepared[0].step_id != "repair"
-                or prepared[0].planned_constraint
-                or prepared[0].audit_policy
-            ):
+            if repair_turn is None:
                 raise GoalError("protected repository Method changed")
             original = SessionTurnExecutor(
                 session=self.execution_session,
                 profile=CODING_WORK_PROFILE,
                 project_event_facts=project_coding_runtime_event,
-                turns=prepared,
+                turns=(repair_turn,),
             )
-            operation = prepared[0].to_operation(
+            operation = repair_turn.to_operation(
                 profile=CODING_WORK_PROFILE,
                 session_id=basis.header.session_id,
                 operation_id=op_id,
             )
-            spec = prepared[0].to_run_spec(profile=CODING_WORK_PROFILE, run_id=None)
+            spec = repair_turn.to_run_spec(profile=CODING_WORK_PROFILE, run_id=None)
             if self.delegation is not None:
                 from loushang.harness.multiagent import MultiAgentError
 
@@ -867,7 +887,7 @@ class RepositoryDomain:
 
                 try:
                     operation, scoped, selection = self.delegation.prepare(
-                        basis, operation, spec, prepared[0]
+                        basis, operation, spec, repair_turn
                     )
                 except MultiAgentError as error:
                     return PolicyStop("child_session_admission:" + error.code)
