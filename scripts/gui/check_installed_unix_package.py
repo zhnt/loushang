@@ -1,4 +1,4 @@
-"""Install, reinstall and remove a Full DEB or PKG on a disposable hosted runner."""
+"""Install, reinstall and remove a Full DEB, RPM or PKG on a disposable hosted runner."""
 
 from __future__ import annotations
 
@@ -153,6 +153,11 @@ def verify(args: argparse.Namespace) -> None:
     deb_arch = {"x86_64": "amd64", "aarch64": "arm64"}[args.arch]
     mac_arch = "arm64" if args.arch == "aarch64" else args.arch
     package = args.package.resolve(strict=True)
+    rpm = linux and package.suffix == ".rpm"
+    if rpm:
+        release = dict(line.split("=", 1) for line in Path("/etc/os-release").read_text().splitlines()
+                       if "=" in line)
+        assert release.get("ID") == "fedora" and release.get("VERSION_ID") == "43", release
     evidence = args.evidence.resolve()
     evidence.mkdir(parents=True, exist_ok=True)
     control = Path("/opt/loushang") if linux else APP
@@ -164,9 +169,14 @@ def verify(args: argparse.Namespace) -> None:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     assert package.with_name(package.name + ".sha256").read_text().strip() == f"{digest}  {package.name}"
     if linux:
-        assert run("dpkg-deb", "-f", package, "Package", "Version", "Architecture").splitlines() == [
-            "Package: loushang", f"Version: {version}", f"Architecture: {deb_arch}",
-        ]
+        if rpm:
+            assert run("rpm", "-qp", "--qf", "%{NAME}:%{VERSION}:%{ARCH}", package) == (
+                f"loushang:{version}:{args.arch}"
+            )
+        else:
+            assert run("dpkg-deb", "-f", package, "Package", "Version", "Architecture").splitlines() == [
+                "Package: loushang", f"Version: {version}", f"Architecture: {deb_arch}",
+            ]
         resources = control
         web = control / "bin/loushang-web"
         gui = entries / "loushang"
@@ -196,9 +206,18 @@ def verify(args: argparse.Namespace) -> None:
         try:
             for phase in ("clean", "reinstall"):
                 if linux:
-                    run("sudo", "-n", "apt-get", "install", "-y",
-                        *(("--reinstall",) if phase == "reinstall" else ()), package)
-                    assert run("dpkg-query", "-W", "-f=${Version}", "loushang") == version
+                    if rpm:
+                        if phase == "clean":
+                            run("sudo", "-n", "dnf", "install", "-y", package)
+                        else:
+                            run("sudo", "-n", "rpm", "-U", "--replacepkgs", package)
+                        assert run("rpm", "-q", "--qf", "%{VERSION}:%{ARCH}", "loushang") == (
+                            f"{version}:{args.arch}"
+                        )
+                    else:
+                        run("sudo", "-n", "apt-get", "install", "-y",
+                            *(("--reinstall",) if phase == "reinstall" else ()), package)
+                        assert run("dpkg-query", "-W", "-f=${Version}", "loushang") == version
                     run("systemctl", "--user", "daemon-reload", env=env)
                     run("systemctl", "--user", "set-environment", f"LOUSHANG_HOME={state}", env=env)
                 else:
@@ -259,7 +278,7 @@ def verify(args: argparse.Namespace) -> None:
         finally:
             if linux:
                 if control.exists():
-                    run("sudo", "-n", "apt-get", "remove", "-y", "loushang")
+                    run("sudo", "-n", "dnf" if rpm else "apt-get", "remove", "-y", "loushang")
                 run("systemctl", "--user", "unset-environment", "LOUSHANG_HOME", env=env)
                 run("systemctl", "--user", "daemon-reload", env=env)
             elif APP.exists():
