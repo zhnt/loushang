@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 import sys
+from argparse import ArgumentParser, Namespace
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
 from dataclasses import dataclass
@@ -40,6 +41,102 @@ if TYPE_CHECKING:
 
 _OPERATOR_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
 _RecordT = TypeVar("_RecordT")
+
+PRIVATE_DATA_ACCESS_ACTIONS = frozenset({
+    "preview", "backup", "backup-status", "backup-verify",
+    "restore-preview", "backup-expiry-preview",
+})
+
+
+def add_private_data_operator_commands(
+    parser: ArgumentParser, *, installation_name: str
+) -> None:
+    commands = parser.add_subparsers(dest="action", required=True)
+    for action, help_text, required in (
+        ("preview", "read exact Installation deletion target", ()),
+        ("backup", "retain a verified Installation backup", ()),
+        ("backup-status", "read verified backup retention", ()),
+        ("backup-verify", "verify one exact backup", ("--backup-id",)),
+        ("backup-expiry-preview", "read an exact, confirmed restore-backed backup expiry plan",
+         ("--backup-id", "--confirmation-id")),
+        ("backup-expiry-confirm", "confirm one exact backup expiry plan",
+         ("--plan-file", "--accept-fingerprint")),
+        ("backup-expire", f"expire only a separately confirmed {installation_name} backup",
+         ("--plan-file", "--confirmation-file")),
+        ("restore-preview", "read one exact, offline backup restore plan", ("--backup-id",)),
+        ("restore", "restore only a previewed, accepted backup into absent data",
+         ("--plan-file", "--accept-fingerprint")),
+        ("restore-confirm", f"confirm one completed and verified {installation_name} restore",
+         ("--backup-id",)),
+        ("restore-confirm-verify", "reopen one exact restore confirmation",
+         ("--backup-id", "--confirmation-id")),
+        ("confirm", "separately confirm one unchanged preview fingerprint",
+         ("--plan-file", "--accept-fingerprint")),
+        ("delete", "delete only the separately confirmed, removed Installation",
+         ("--plan-file", "--confirmation-file")),
+    ):
+        command = commands.add_parser(action, help=help_text)
+        for option in required:
+            command.add_argument(option, required=True)
+        if action in {"restore-confirm", "restore-confirm-verify"}:
+            command.add_argument("--plan-file")
+
+
+class _PrivateDataRecord(Protocol):
+    def to_dict(self) -> dict[str, object]: ...
+
+
+class _PrivateDataPlan(_PrivateDataRecord, Protocol):
+    @property
+    def fingerprint(self) -> str: ...
+
+
+class _PrivateDataAccess(Protocol):
+    def status(self) -> _PrivateDataRecord: ...
+    def retain(self) -> _PrivateDataRecord: ...
+    def verify(self, backup_id: str, /) -> _PrivateDataRecord: ...
+    def deletion_preview(self) -> _PrivateDataPlan: ...
+    def restore_preview(self, backup_id: str, /) -> _PrivateDataPlan: ...
+    def backup_expiry_preview(self, backup_id: str, confirmation_id: str, /) -> _PrivateDataPlan: ...
+
+
+def run_private_data_access(
+    client: _PrivateDataAccess, args: Namespace
+) -> dict[str, object]:
+    """Use the supplied Product client and the existing operator record shapes."""
+    action = args.action
+    if action == "preview":
+        field, plan = "plan", client.deletion_preview()
+    elif action == "backup-status":
+        return {"backupRetention": client.status().to_dict()}
+    elif action == "backup":
+        return {"backupReceipt": client.retain().to_dict()}
+    elif action == "backup-verify":
+        return {"backupReceipt": client.verify(args.backup_id).to_dict()}
+    elif action == "restore-preview":
+        field, plan = "restorePlan", client.restore_preview(args.backup_id)
+    elif action == "backup-expiry-preview":
+        plan = client.backup_expiry_preview(args.backup_id, args.confirmation_id)
+        return {"backupExpiryPlan": plan.to_dict(), "fingerprint": plan.fingerprint}
+    else:
+        raise ValueError("private-data access command is invalid")
+    return {"fingerprint": plan.fingerprint, field: plan.to_dict()}
+
+
+def run_private_data_expiry(
+    args: Namespace,
+    plan: _PrivateDataPlan,
+    *,
+    confirm: Callable[[], _PrivateDataRecord],
+    expire: Callable[[Path], _PrivateDataRecord],
+    refused: str,
+) -> dict[str, object]:
+    """Require explicit acceptance for confirmation and read a separate record for expiry."""
+    if args.action == "backup-expiry-confirm":
+        if args.accept_fingerprint != plan.fingerprint:
+            raise ValueError(refused)
+        return {"expiryConfirmation": confirm().to_dict()}
+    return {"expiryReceipt": expire(Path(args.confirmation_file)).to_dict()}
 
 
 def package_operator_workspace(value: str, *, not_directory: str) -> Path:

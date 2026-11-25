@@ -36,6 +36,7 @@ from .installation_private_data import (
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
     _backup_retention_revision,
+    _digest,
     backup_manifest_codec,
     backup_parent,
     make_backup_receipt,
@@ -174,12 +175,7 @@ def _retained_receipts(
         backup_parent(layout, key),
         key,
         package_root=lambda: layout.package_root,
-        is_archive_name=lambda name: (
-            not (
-                len(name) != 64
-                or any(character not in "0123456789abcdef" for character in name)
-            )
-        ),
+        is_archive_name=_digest,
         allowed_tombstone=allowed_tombstone,
         pending_backup_id=pending_backup_id,
     )

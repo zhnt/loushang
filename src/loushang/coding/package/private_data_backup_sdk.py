@@ -116,7 +116,7 @@ class CodingArchPrivateDataBackupClientV1:
         with self._reader() as reader:
             return reader.verify_backup(self.installation_key, backup_id)
 
-    def _preview_deletion(self) -> PluginPrivateDataDeletionPlanV1:
+    def deletion_preview(self) -> PluginPrivateDataDeletionPlanV1:
         with self._reader() as reader:
             return reader.deletion_preview(self.installation_key)
 
@@ -170,6 +170,8 @@ class CodingArchPrivateDataBackupClientV1:
             return reader.expiry_preview(
                 self.installation_key, backup_id, restore_confirmation_id
             )
+
+    backup_expiry_preview = expiry_preview
 
     def confirm_expiry(
         self, plan: CodingArchPrivateDataBackupExpiryPlanV1
