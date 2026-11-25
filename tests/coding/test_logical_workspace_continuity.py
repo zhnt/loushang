@@ -9,6 +9,14 @@ from hashlib import sha256
 from secrets import token_hex
 
 import pytest
+from loushang.coding.managed_bootstrap import (
+    CodingManagedApplicationLaunchV1,
+    create_coding_managed_attempt,
+)
+from loushang.coding.managed_local import (
+    CodingManagedLocalCommandV1,
+    CodingManagedLocalLaunchV1,
+)
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.types import ToolCall, ToolResultMessage
@@ -33,20 +41,13 @@ from loushang.appserver.protocol import (
 )
 from loushang.appservice.execution_contract import ExecutionStatusV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
-from loushang.coding.managed_bootstrap import (
-    CodingManagedApplicationLaunchV1,
-    create_coding_managed_attempt,
-)
-from loushang.coding.managed_local import (
-    CodingManagedLocalCommandV1,
-    CodingManagedLocalLaunchV1,
-)
 from loushang.harness.transcript import lifecycle
 
 from .test_hosted_session import _model, _stream, synthetic_model_transport
 
 
-def test_workspace_continuity_survives_directory_loss_and_rebinding(tmp_path, monkeypatch):
+def test_workspace_continuity_survives_directory_loss_and_rebinding(standalone_workspace, monkeypatch):
+    tmp_path = standalone_workspace
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -257,7 +258,8 @@ def test_workspace_continuity_survives_directory_loss_and_rebinding(tmp_path, mo
 
 
 @pytest.mark.parametrize("legacy", [False, True])
-def test_delete_workspace_removes_attached_and_detached_history_only(tmp_path, monkeypatch, legacy):
+def test_delete_workspace_removes_attached_and_detached_history_only(standalone_workspace, monkeypatch, legacy):
+    tmp_path = standalone_workspace
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
