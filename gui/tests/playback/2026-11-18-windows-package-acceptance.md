@@ -9,7 +9,7 @@ The Windows 10 x64 desktop run used `lane/gui` at `f3e75c93b`, which matched
 - `npm run tauri -- build --no-bundle` built the native release executable
   with the production frontend. The relocated GUI opened a responsive native
   window with a fresh data directory, no AppHost, and a system-only `PATH`.
-- `scripts/gui/build_windows_tui.py` built the single-file TUI with CPython
+- The former standalone TUI build script built the single-file TUI with CPython
   3.11.15 and PyInstaller 6.22.3. The relocated executable returned `0.1.0`
   from `--version` and printed its CLI help. It reached idle in Windows ConPTY
   and `/quit` returned exit code 0.
@@ -21,7 +21,7 @@ The first installer build hit `EPERM` when `npm ci` tried to replace the Tauri
 CLI module that the standalone GUI build still had open. The retry started
 after the standalone build exited.
 
-`scripts/gui/build_windows_full.py` produced
+The former Windows Full build script produced
 `loushang-gui_0.1.0_x64-setup.exe` (293,831,029 bytes) with the offline WebView2
 runtime. The installer SHA-256 was
 `7faf3258004255345b1f6a53a61e8722ae46829f9a72c9e156f1697f460371c1`.

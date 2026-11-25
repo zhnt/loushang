@@ -1,12 +1,9 @@
-"""Build an Intel macOS 12+ full .pkg with GUI, Web, TUI and AppHost."""
+"""Build a Full macOS 12+ PKG from the current checkout."""
 
 from __future__ import annotations
 
-import argparse
-import hashlib
 import json
 import os
-import platform
 import plistlib
 import re
 import shlex
@@ -16,10 +13,21 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-TARGET = "x86_64-apple-darwin"
+from internal.common import (
+    PYINSTALLER,
+    PYTHON,
+    ROOT,
+    arguments,
+    digest,
+    prepare_npm,
+    provenance,
+    publish,
+    require_tools,
+    wheel,
+)
+
 MINIMUM = "12.0"
-PYINSTALLER = "pyinstaller==6.22.3"
+MAC_ARCH = {"x86_64": ("x86_64", "x64"), "aarch64": ("arm64", "arm64")}
 
 
 def run(*command: str, cwd: Path = ROOT) -> str:
@@ -31,8 +39,8 @@ def run(*command: str, cwd: Path = ROOT) -> str:
         raise
 
 
-def audit_native(root: Path) -> list[dict[str, object]]:
-    """Check the Intel slice of every shipped Mach-O, including dependencies."""
+def audit_native(root: Path, arch: str = "x86_64") -> list[dict[str, object]]:
+    """Check the target slice of every shipped Mach-O, including dependencies."""
     report: list[dict[str, object]] = []
     magics = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe",
               b"\xca\xfe\xba\xbf", b"\xbe\xba\xfe\xca", b"\xbf\xba\xfe\xca"}
@@ -43,14 +51,14 @@ def audit_native(root: Path) -> list[dict[str, object]]:
             if stream.read(4) not in magics:
                 continue
         architectures = run("/usr/bin/lipo", "-archs", str(path)).split()
-        if "x86_64" not in architectures:
-            raise RuntimeError(f"Intel slice missing: {path.relative_to(root)}")
-        load = run("/usr/bin/otool", "-arch", "x86_64", "-l", str(path))
+        if arch not in architectures:
+            raise RuntimeError(f"Required {arch} slice missing: {path.relative_to(root)}")
+        load = run("/usr/bin/otool", "-arch", arch, "-l", str(path))
         versions = re.findall(r"\bminos\s+(\d+(?:\.\d+){1,2})", load)
         versions += re.findall(r"cmd LC_VERSION_MIN_MACOSX\s+cmdsize \d+\s+version (\d+(?:\.\d+){1,2})", load)
         if any(tuple(map(int, value.split(".")[:2])) > (12, 0) for value in versions):
             raise RuntimeError(f"Requires newer macOS: {path.relative_to(root)}: {versions}")
-        linked = run("/usr/bin/otool", "-arch", "x86_64", "-L", str(path))
+        linked = run("/usr/bin/otool", "-arch", arch, "-L", str(path))
         # otool -L includes LC_ID_DYLIB before its actual load dependencies.
         # The library's own link-time identity is not an external file load.
         identity = re.search(r"cmd LC_ID_DYLIB\s+cmdsize \d+\s+name (.+?) \(offset", load)
@@ -66,8 +74,8 @@ def audit_native(root: Path) -> list[dict[str, object]]:
     return report
 
 
-def stage_runtime(resources: Path, wheel: Path, work: Path) -> Path:
-    python = run("uv", "python", "find", "--managed-python", "3.11")
+def stage_runtime(resources: Path, product_wheel: Path, work: Path, target: str) -> Path:
+    python = run("uv", "python", "find", "--system", "--managed-python", PYTHON)
     prefix = Path(run(python, "-I", "-c", "import sys; print(sys.base_prefix)"))
     runtime = resources / "runtime"
     shutil.copytree(prefix, runtime, symlinks=True, ignore=shutil.ignore_patterns("__pycache__"))
@@ -80,9 +88,9 @@ def stage_runtime(resources: Path, wheel: Path, work: Path) -> Path:
     requirements = work / "requirements.txt"
     run("uv", "export", "--locked", "--no-dev", "--no-emit-project", "--output-file", str(requirements))
     bundled = runtime / "bin/python3"
-    install = ["uv", "pip", "install", "--python", str(bundled), "--python-platform", TARGET]
+    install = ["uv", "pip", "install", "--python", str(bundled), "--python-platform", target]
     run(*install, "--require-hashes", "--only-binary", ":all:", "-r", str(requirements))
-    run(*install, "--no-deps", str(wheel))
+    run(*install, "--no-deps", str(product_wheel))
     for entry in (runtime / "bin").iterdir():
         if entry.name not in {"python", "python3", "python3.11"}:
             entry.unlink()
@@ -92,7 +100,7 @@ def stage_runtime(resources: Path, wheel: Path, work: Path) -> Path:
     return bundled
 
 
-def audit_frozen(python: str, executable: Path, work: Path) -> list[dict[str, object]]:
+def audit_frozen(python: str, executable: Path, work: Path, arch: str) -> list[dict[str, object]]:
     """Include the native libraries compressed inside the standalone TUI."""
     extracted = work / "frozen-native"
     extracted.mkdir()
@@ -111,7 +119,7 @@ for name, entry in reader.toc.items():
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(reader.extract(name))
 """, str(executable), str(extracted))
-    return audit_native(extracted)
+    return audit_native(extracted, arch)
 
 
 def launcher(path: Path, module: str) -> None:
@@ -131,54 +139,56 @@ def launcher(path: Path, module: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "dist/macos-full")
-    args = parser.parse_args()
-    if platform.system() != "Darwin" or platform.machine() != "x86_64":
-        parser.error("run this recipe on an Intel Mac")
+    args = arguments(__doc__, "Darwin", ("pkg",))
+    arch, label = MAC_ARCH[args.arch]
+    target = f"{args.arch}-apple-darwin"
+    require_tools("git", "uv", "node", "npm", "cargo", "rustc", "xcodebuild",
+                  "codesign", "pkgbuild", "productbuild", "pkgutil")
+    run("xcodebuild", "-version")
+    facts = provenance()
+    version = facts["version"]
     os.environ["MACOSX_DEPLOYMENT_TARGET"] = MINIMUM
     os.environ["RUSTUP_TOOLCHAIN"] = "1.98.1"
-    output = args.output.resolve()
+    os.environ.pop("CARGO_BUILD_TARGET", None)
+    os.environ.pop("CARGO_TARGET_DIR", None)
+    output = args.output
     output.mkdir(parents=True, exist_ok=True)
-    commit = run("git", "rev-parse", "HEAD")
-    version = json.loads((ROOT / "gui/package.json").read_text())["version"]
-    destination = output / f"loushang_{version}_{commit[:9]}_macos12_x86_64.pkg"
-    if destination.exists():
-        parser.error(f"refusing to overwrite {destination}")
-    with tempfile.TemporaryDirectory(prefix="loushang-macos-") as directory:
+    run("uv", "python", "install", PYTHON)
+    prepare_npm()
+    with tempfile.TemporaryDirectory(prefix=".loushang-macos-", dir=output) as directory:
         # macOS tempfile paths can use /var while realpath uses /private/var.
         work = Path(directory).resolve()
         config = work / "tauri-macos.json"
-        config.write_text(json.dumps({"bundle": {"macOS": {"minimumSystemVersion": MINIMUM}}}))
-        run("npm", "ci", cwd=ROOT / "gui")
-        run("cargo", "build", "--locked", "--release", "--target", TARGET,
+        destination = work / f"loushang-{version}-{label}.pkg"
+        config.write_text(json.dumps({"version": version,
+                                      "bundle": {"macOS": {"minimumSystemVersion": MINIMUM}}}))
+        run("cargo", "build", "--locked", "--release", "--target", target,
             "--manifest-path", str(ROOT / "gui/web/Cargo.toml"))
-        run("npm", "exec", "--", "tauri", "build", "--target", TARGET,
-            "--bundles", "app", "--config", str(config), cwd=ROOT / "gui")
+        run("npm", "exec", "--", "tauri", "build", "--target", target,
+            "--bundles", "app", "--config", str(config), "--", "--locked", cwd=ROOT / "gui")
         payload = work / "payload"
         app = payload / "Applications/loushang-gui.app"
         app.parent.mkdir(parents=True)
-        source = ROOT / f"gui/src-tauri/target/{TARGET}/release/bundle/macos/loushang-gui.app"
+        source = ROOT / f"gui/src-tauri/target/{target}/release/bundle/macos/loushang-gui.app"
         shutil.copytree(source, app, symlinks=True)
         binaries = app / "Contents/MacOS"
         resources = app / "Contents/Resources"
         resources.mkdir(exist_ok=True)
-        run("uv", "build", "--wheel", "--out-dir", str(work / "wheels"))
-        wheel = next((work / "wheels").glob("loushang-*.whl"))
-        stage_runtime(resources, wheel, work)
+        product_wheel = wheel(work)
+        stage_runtime(resources, product_wheel, work, target)
         shutil.copytree(ROOT / "gui/dist", resources / "web")
-        shutil.copy2(ROOT / f"gui/web/target/{TARGET}/release/loushang-web", binaries)
+        shutil.copy2(ROOT / f"gui/web/target/{target}/release/loushang-web", binaries)
         launcher(binaries / "loushang-mux", "loushang.coding.cli.mux")
         launcher(binaries / "loushang-host", "loushang.coding.foreground_host")
         # Freeze the existing terminal application, not the GUI bridge.
         venv = work / "tui-venv"
-        run("uv", "venv", "--python", "3.11", str(venv))
+        run("uv", "venv", "--managed-python", "--python", PYTHON, str(venv))
         python = str(venv / "bin/python")
         requirements = str(work / "requirements.txt")
-        run("uv", "pip", "install", "--python", python, "--python-platform", TARGET,
+        run("uv", "pip", "install", "--python", python, "--python-platform", target,
             "--require-hashes", "--only-binary", ":all:", "-r", requirements)
-        run("uv", "pip", "install", "--python", python, "--no-deps", str(wheel))
-        run("uv", "pip", "install", "--python", python, "--python-platform", TARGET, PYINSTALLER)
+        run("uv", "pip", "install", "--python", python, "--no-deps", str(product_wheel))
+        run("uv", "pip", "install", "--python", python, "--python-platform", target, "--only-binary", ":all:", PYINSTALLER)
         run(python, "-m", "PyInstaller", "--noconfirm", "--distpath", str(binaries),
             "--workpath", str(work / "tui-build"), str(ROOT / "loushang.spec"))
         commands = payload / "usr/local/bin"
@@ -187,10 +197,11 @@ def main() -> None:
             (commands / name).symlink_to(f"/Applications/loushang-gui.app/Contents/MacOS/{name}")
         for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, resources)
-        native = audit_native(app)
-        frozen_native = audit_frozen(python, binaries / "loushang", work)
-        manifest = {"format": "loushang-macos-full/v1", "commit": commit,
-                    "architecture": TARGET, "minimumSystemVersion": MINIMUM,
+        native = audit_native(app, arch)
+        frozen_native = audit_frozen(python, binaries / "loushang", work, arch)
+        manifest = {"format": "loushang-macos-full/v1", **facts,
+                    "wheelSha256": digest(product_wheel), "lockSha256": digest(ROOT / "uv.lock"),
+                    "architecture": target, "minimumSystemVersion": MINIMUM,
                     "signedForDistribution": False, "nativeFiles": native,
                     "frozenTuiNativeFiles": frozen_native}
         (resources / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -210,16 +221,21 @@ def main() -> None:
         components.write_bytes(plistlib.dumps(entries))
         component = work / "full.pkg"
         run("/usr/bin/pkgbuild", "--root", str(payload), "--component-plist", str(components),
+            "--scripts", str(Path(__file__).parent / "internal/macos_scripts"),
             "--install-location", "/", "--identifier", "ai.loushang.full", "--version", version,
             str(component))
         requirements_plist = work / "requirements.plist"
-        requirements_plist.write_bytes(plistlib.dumps({"os": [MINIMUM], "arch": ["x86_64"]}))
+        requirements_plist.write_bytes(plistlib.dumps({"os": [MINIMUM], "arch": [arch]}))
         run("/usr/bin/productbuild", "--product", str(requirements_plist),
             "--package", str(component), str(destination))
-        shutil.copy2(resources / "manifest.json", output / (destination.stem + ".manifest.json"))
-    digest = hashlib.sha256(destination.read_bytes()).hexdigest()
-    destination.with_suffix(".pkg.sha256").write_text(f"{digest}  {destination.name}\n")
-    print(destination)
+        expanded = work / "expanded"
+        run("/usr/bin/pkgutil", "--expand", str(destination), str(expanded))
+        if not (expanded / "Distribution").is_file():
+            raise RuntimeError("Missing PKG Distribution metadata")
+        report = work / (destination.stem + ".manifest.json")
+        shutil.copy2(resources / "manifest.json", report)
+        publish(destination, output)
+        report.replace(output / report.name)
 
 
 if __name__ == "__main__":

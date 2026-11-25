@@ -88,7 +88,7 @@ function doctor() {
   if (!hostLine) {
     throw new Error("rustc did not report a host target");
   }
-  if (process.platform === "win32" && hostLine !== "host: x86_64-pc-windows-msvc") {
+  if (process.platform === "win32" && hostLine !== `host: ${process.arch === "arm64" ? "aarch64" : "x86_64"}-pc-windows-msvc`) {
     throw new Error(`Windows requires the MSVC Rust host; found ${hostLine}`);
   }
   process.stdout.write(`${hostLine}\n`);
@@ -137,6 +137,7 @@ function runNative(command, fixtureBridge = false) {
   const args = ["exec", "--", "tauri", command];
   if (command === "build") args.push("--no-bundle");
   if (fixtureBridge) args.push("--features", "fixture-bridge");
+  if (command === "build") args.push("--", "--locked");
   runNpm(args);
   if (command === "build") {
     const name = process.platform === "win32" ? "loushang-web.exe" : "loushang-web";

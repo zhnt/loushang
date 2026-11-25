@@ -31,7 +31,7 @@ GUI platform logic or install any new CI gate.
 
 Built the native release from a fresh dedicated worktree with `npm ci` and
 `npm --prefix gui run build`. Built the portable candidate with
-`uv run python scripts/gui/build_linux_portable.py --output dist/portable`.
+the then-current Linux Portable recipe. The current [Full builder](../../../scripts/build/README.md) produces an installer.
 Python dependencies are exported from `uv.lock` and installed with hash checks.
 The copied interpreter's site-packages are cleared before installing the locked
 runtime and application wheel; the source interpreter is never modified.
