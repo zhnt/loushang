@@ -15,11 +15,8 @@ on:
         required: true
         options:
           - linux-x86_64-deb
-          - linux-aarch64-deb
           - windows-x86_64-nsis
-          - windows-x86_64-msi
           - macos-x86_64-pkg
-          - macos-aarch64-pkg
           - all
 
 permissions:
@@ -52,11 +49,8 @@ jobs:
 
           runners = {
               "linux-x86_64-deb": "ubuntu-24.04",
-              "linux-aarch64-deb": "ubuntu-24.04-arm",
               "windows-x86_64-nsis": "windows-2022",
-              "windows-x86_64-msi": "windows-2022",
               "macos-x86_64-pkg": "macos-15-intel",
-              "macos-aarch64-pkg": "macos-15",
           }
           selected = os.environ["PACKAGE_TARGET"]
           targets = runners if selected == "all" else [selected]
@@ -77,7 +71,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.resolve.outputs.include) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,7 +93,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential desktop-file-utils dpkg-dev file \
             libayatana-appindicator3-dev libssl-dev librsvg2-dev libwebkit2gtk-4.1-dev \
-            libxdo-dev pkg-config xdg-utils
+            libxdo-dev pkg-config xdg-utils xauth xdotool xvfb
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -107,12 +101,53 @@ jobs:
             gui/web -> target
           key: ${{ matrix.target }}
       - name: Build Full installer
-        run: >-
-          uv run --no-project --python 3.11 python scripts/build/build_full_${{ matrix.system }}.py
-          --arch ${{ matrix.arch }} --format ${{ matrix.format }}
+        shell: bash
+        run: |
+          mkdir -p dist/package-evidence
+          uv run --no-project --python 3.11 python scripts/build/build_full_${{ matrix.system }}.py \
+            --arch ${{ matrix.arch }} --format ${{ matrix.format }} 2>&1 | tee dist/package-evidence/build.log
+      - name: Install and test DEB
+        if: matrix.system == 'linux'
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          sudo loginctl enable-linger "$(id -un)"
+          for attempt in {1..30}; do
+            if systemctl --user show-environment >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          systemctl --user show-environment >/dev/null
+          xvfb-run -a uv run --no-project --python 3.11 python scripts/gui/check_installed_unix_package.py \
+            dist/packages/*.deb --evidence dist/package-evidence --commit "${{ needs.resolve.outputs.sha }}" \
+            2>&1 | tee dist/package-evidence/install.log
+      - name: Install and test NSIS
+        if: matrix.system == 'windows'
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $installer = @(Get-ChildItem dist/packages -Filter '*-setup.exe' -File)
+          if ($installer.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          $version = uv run --no-project --python 3.11 python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ./scripts/gui/check_windows_full.ps1 -Installer $installer[0].FullName `
+            -Version $version -Commit "${{ needs.resolve.outputs.sha }}" `
+            -Evidence (Resolve-Path dist/package-evidence).Path *>&1 | Tee-Object dist/package-evidence/install.log
+      - name: Install and test PKG
+        if: matrix.system == 'macos'
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          uv run --no-project --python 3.11 python scripts/gui/check_installed_unix_package.py \
+            dist/packages/*.pkg --evidence dist/package-evidence --commit "${{ needs.resolve.outputs.sha }}" \
+            2>&1 | tee dist/package-evidence/install.log
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: loushang-${{ matrix.target }}-${{ needs.resolve.outputs.sha }}
-          path: dist/packages/
+          path: |
+            dist/packages/
+            dist/package-evidence/
           if-no-files-found: error
           retention-days: 14

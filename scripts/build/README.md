@@ -44,14 +44,19 @@ uv run --no-project --python 3.11 python scripts/build/build_full_macos.py
 
 ### GitHub Actions
 
-新版进入默认分支后，从 **Actions → Build Full Package → Run workflow** 选择源码和目标，也可执行：
+手动工作流沿用 GitHub 已注册的 `gui-package.yml`。使用 `--ref` 选择包含新版
+工作流的分支，用 `source_ref` 指定待构建的 Branch、Tag 或 Commit。默认分支上的
+旧版定义仍接受旧参数。
 
 ```sh
-gh workflow run build-full.yml --repo zhnt/loushang --ref main \
-  -f source_ref=lane/gui -f target=linux-x86_64-deb
+gh workflow run gui-package.yml --repo zhnt/loushang --ref feature/gui-package-verification \
+  -f source_ref=feature/gui-package-verification -f target=all
 ```
 
-`source_ref` 接受分支、Tag 或 Commit，须包含新版入口。可用目标为上表中有 runner 的六项，名称按 `linux-x86_64-deb`、`windows-x86_64-msi` 或 `macos-aarch64-pkg` 的格式填写。`all` 并行构建六项，统一使用解析后的 Commit。Artifacts 名称带目标和 Commit，保留 14 天。默认分支仍使用旧工作流期间，可以用旧入口构建仍含旧脚本的历史源码。
+`target` 可选 `linux-x86_64-deb`、`windows-x86_64-nsis`、`macos-x86_64-pkg`
+及 `all`。三个任务使用同一解析后的 Commit，分别安装、覆盖安装、使用安装后的
+程序验证并卸载。每个 Artifact 含对应安装包、校验文件和验收日志，保留 14 天。
+其他平台入口仍可在原生机器上使用，远程验收留到下一阶段。
 
 [GitHub 托管 Runner 列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) · [Tauri Windows 安装选项](https://v2.tauri.app/distribute/windows-installer/#webview2-installation-options)
 

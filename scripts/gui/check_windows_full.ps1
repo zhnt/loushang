@@ -1,13 +1,22 @@
 param(
     [Parameter(Mandatory=$true)][string]$Installer,
-    [string]$TestParent = $env:TEMP
+    [string]$TestParent = $env:TEMP,
+    [string]$Version,
+    [string]$Commit,
+    [string]$Evidence
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-if ((Get-Process -Id $PID).SessionId -eq 0) {
-    throw 'Run this check in a signed-in Windows desktop session'
+$desktop = (Get-Process -Id $PID).SessionId -ne 0 -and [Environment]::UserInteractive
+$Installer = (Resolve-Path $Installer).Path
+if ($Evidence) { $Evidence = (Resolve-Path $Evidence).Path }
+$checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $Installer).Hash.ToLowerInvariant()
+$expected = "$checksum  $([IO.Path]::GetFileName($Installer))"
+if ((Get-Content -LiteralPath "$Installer.sha256" -Raw).Trim() -cne $expected) {
+    throw 'Installer SHA-256 mismatch'
 }
+'PASS NSIS SHA-256'
 $uninstallKeys = @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
     'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -45,57 +54,101 @@ function Invoke-Web([hashtable]$Body) {
         -Body ($Body | ConvertTo-Json -Compress)
 }
 
+$config = Join-Path $env:LOUSHANG_HOME 'host.json'
+$configHash = (Get-FileHash $config).Hash
+$workspace = (New-Item -ItemType Directory (Join-Path $root 'workspace')).FullName
+$expectedSession = $null
 try {
-    $setup = Start-Process (Resolve-Path $Installer).Path -ArgumentList "/S /D=$install" -Wait -PassThru
-    if ($setup.ExitCode) { throw "Installer exited with $($setup.ExitCode)" }
-    foreach ($file in @('loushang-gui.exe','loushang.exe','loushang-web.exe','loushang-mux.exe',
-            'runtime/python.exe','web/index.html','VCRUNTIME140.dll')) {
-        if (-not (Test-Path (Join-Path $install $file))) { throw "Missing installed file $file" }
-    }
-    "PASS installed GUI, TUI, Web, Mux, Python, Web assets and VC runtime into $install"
-    Set-Location $root
-    loushang --version
-    if ($LASTEXITCODE) { throw 'Installed TUI command failed' }
+    foreach ($phase in @('clean', 'reinstall')) {
+        $setup = Start-Process $Installer -ArgumentList "/S /D=$install" -Wait -PassThru
+        if ($setup.ExitCode) { throw "Installer exited with $($setup.ExitCode)" }
+        foreach ($file in @('loushang-gui.exe','loushang.exe','loushang-web.exe','loushang-mux.exe',
+                'runtime/python.exe','web/index.html','VCRUNTIME140.dll','LICENSE','NOTICE')) {
+            if (-not (Test-Path (Join-Path $install $file))) { throw "Missing installed file $file" }
+        }
+        foreach ($file in @('.git','.venv','.loushang','node_modules','src')) {
+            if (Test-Path (Join-Path $install $file)) { throw "Unexpected development or user data: $file" }
+        }
+        $manifest = Get-Content (Join-Path $install 'manifest.json') -Raw | ConvertFrom-Json
+        if ($manifest.architecture -ne 'x86_64' -or ($Version -and $manifest.version -ne $Version) -or
+            ($Commit -and $manifest.commit -ne $Commit)) {
+            throw 'Unexpected installed manifest'
+        }
+        if ($Version) {
+            $registered = @(Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -eq 'loushang-gui' })
+            if ($registered.Count -ne 1 -or $registered[0].DisplayVersion -ne $Version) {
+                throw 'Unexpected NSIS registered product version'
+            }
+        }
+        if ((Get-FileHash $config).Hash -ne $configHash) { throw 'Configuration changed during install' }
+        Set-Location $root
+        & (Join-Path $install 'loushang.exe') --version
+        if ($LASTEXITCODE) { throw 'Installed TUI command failed' }
+        $python = Join-Path $install 'runtime/python.exe'
+        & $python -I -c "import loushang.coding, pathlib, struct, sys; assert struct.calcsize('P') == 8; assert pathlib.Path(loushang.coding.__file__).resolve().is_relative_to(pathlib.Path(sys.prefix).resolve())"
+        if ($LASTEXITCODE) { throw 'Bundled Python or product code failed to load' }
 
-    if ((Invoke-Mux status).state -ne 'not_running') { throw 'Expected AppHost to start stopped' }
-    $gui = Start-Process (Join-Path $install 'loushang-gui.exe') -PassThru
-    for ($attempt=0; $attempt -lt 30; $attempt++) {
-        $gui.Refresh()
-        if ($gui.HasExited) { throw "GUI exited with $($gui.ExitCode)" }
-        if ($gui.MainWindowHandle -ne 0) { break }
-        Start-Sleep -Seconds 1
-    }
-    if ($gui.MainWindowHandle -eq 0) { throw 'GUI window did not open' }
-    'PASS GUI opened before starting AppHost'
+        if ((Invoke-Mux status).state -ne 'not_running') { throw 'Expected AppHost to start stopped' }
+        if ($phase -eq 'reinstall') {
+            if ($desktop) {
+                $gui = Start-Process (Join-Path $install 'loushang-gui.exe') -PassThru
+                for ($attempt=0; $attempt -lt 40; $attempt++) {
+                    $gui.Refresh()
+                    if ($gui.HasExited) { throw "GUI exited with $($gui.ExitCode)" }
+                    if ($gui.MainWindowHandle -ne 0) { break }
+                    Start-Sleep -Seconds 1
+                }
+                if ($gui.MainWindowHandle -eq 0) { throw 'GUI window did not open' }
+                'PASS GUI opened before starting AppHost'
+                Stop-Process -Id $gui.Id
+                if (-not $gui.WaitForExit(10000)) { throw 'GUI did not exit' }
+            } else {
+                'NOT VERIFIED: Windows runner has no interactive desktop session'
+            }
+        }
 
-    $first = Invoke-Mux start
-    $hostStarted = $true
-    if ($first.state -ne 'running') { throw 'AppHost did not start' }
-    $second = Invoke-Mux restart
-    if ($second.state -ne 'running' -or $second.instanceId -eq $first.instanceId) {
-        throw 'AppHost did not restart into a new instance'
+        $hostStarted = $true
+        $hostStatus = Invoke-Mux start
+        if ($hostStatus.state -ne 'running') { throw 'AppHost did not start' }
+        Remove-Item $endpoint -ErrorAction SilentlyContinue
+        $url = $null
+        $logRoot = if ($Evidence) { $Evidence } else { $root }
+        $web = Start-Process (Join-Path $install 'loushang-web.exe') -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $logRoot "web-$phase.out") `
+            -RedirectStandardError (Join-Path $logRoot "web-$phase.err")
+        for ($attempt=0; $attempt -lt 80 -and -not (Test-Path $endpoint); $attempt++) {
+            if ($web.HasExited) { throw (Get-Content (Join-Path $logRoot "web-$phase.err") -Raw) }
+            Start-Sleep -Milliseconds 250
+        }
+        $url = (Get-Content $endpoint -Raw | ConvertFrom-Json).url
+        $page = Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 15
+        if ($page.StatusCode -ne 200 -or $page.Content -notmatch '<html') { throw 'Web did not serve HTML' }
+        $connected = (Invoke-Web @{operation='manage';action='connect'}).result
+        if ($connected.state -ne 'running' -or $connected.instanceId -ne $hostStatus.instanceId) {
+            throw "Web failed to connect: $($connected | ConvertTo-Json -Compress)"
+        }
+        if ($phase -eq 'clean') {
+            Invoke-Web @{operation='workspace';action='register';path=$workspace} | Out-Null
+            Invoke-Web @{operation='workspace';action='open';path=$workspace} | Out-Null
+        }
+        $viewId = [guid]::NewGuid().ToString()
+        $snapshot = (Invoke-Web @{operation='live';action='snapshot';viewId=$viewId;workspace=$workspace}).result
+        $session = $snapshot.sessions[0].executions.identity | ConvertTo-Json -Compress
+        if (-not $snapshot.sessions[0].executions.identity) { throw 'Installed AppHost returned no Session' }
+        Invoke-Web @{operation='live';action='close';viewId=$viewId;workspace=$workspace} | Out-Null
+        if ($phase -eq 'clean') { $expectedSession = $session }
+        elseif ($session -cne $expectedSession) { throw 'Session identity changed after reinstall' }
+        Invoke-Web @{operation='shutdown-adapter'} | Out-Null
+        if (-not $web.WaitForExit(15000) -or $web.ExitCode) { throw 'Web did not stop cleanly' }
+        $stopped = Invoke-Mux stop
+        if ($stopped.state -ne 'not_running' -or -not $stopped.cleanlyStopped) {
+            throw 'AppHost did not stop cleanly'
+        }
+        $hostStarted = $false
+        "PASS $phase install, AppHost connection, Session and clean stop"
+        if ($phase -eq 'clean') { Remove-Item (Join-Path $install 'web/index.html') }
     }
-    'PASS AppHost start and restart'
-    $web = Start-Process (Join-Path $install 'loushang-web.exe') -PassThru -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $root 'web.out') -RedirectStandardError (Join-Path $root 'web.err')
-    for ($attempt=0; $attempt -lt 40 -and -not (Test-Path $endpoint); $attempt++) {
-        if ($web.HasExited) { throw (Get-Content (Join-Path $root 'web.err') -Raw) }
-        Start-Sleep -Milliseconds 250
-    }
-    $url = (Get-Content $endpoint -Raw | ConvertFrom-Json).url
-    $page = Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 15
-    if ($page.StatusCode -ne 200 -or $page.Content -notmatch '<html') { throw 'Web did not serve HTML' }
-    $connected = (Invoke-Web @{operation='manage';action='connect'}).result
-    if ($connected.state -ne 'running' -or $connected.instanceId -ne $second.instanceId) {
-        throw "Web failed to connect: $($connected | ConvertTo-Json -Compress)"
-    }
-    $workspace = (New-Item -ItemType Directory (Join-Path $root 'workspace')).FullName
-    Invoke-Web @{operation='workspace';action='register';path=$workspace} | Out-Null
-    $listed = (Invoke-Web @{operation='workspace';action='list'}).result
-    if ($workspace -notin @($listed.workspaces | ForEach-Object { $_.path })) {
-        throw 'Workspace registered through Web was missing from AppHost'
-    }
-    'PASS Web page, AppHost connection and workspace round trip'
 } finally {
     if ($gui -and -not $gui.HasExited) { Stop-Process -Id $gui.Id }
     if ($web -and -not $web.HasExited) {
@@ -115,7 +168,7 @@ try {
         if ($result.ExitCode -or (Test-Path (Join-Path $install 'loushang-gui.exe'))) {
             throw "Uninstall failed: $($result.ExitCode)"
         }
-        if (-not (Test-Path (Join-Path $env:LOUSHANG_HOME 'host.json'))) {
+        if ((Get-FileHash $config).Hash -ne $configHash -or -not (Test-Path (Join-Path $env:LOUSHANG_HOME 'data'))) {
             throw 'Uninstaller removed user data'
         }
         'PASS uninstall retained user data'
