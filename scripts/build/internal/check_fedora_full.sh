@@ -10,8 +10,7 @@ image=loushang-fedora-ci:43
 evidence=dist/package-evidence
 mkdir -p "$evidence" "${UV_CACHE_DIR:-$HOME/.cache/uv}" "$HOME/.npm"
 
-docker build --tag "$image" --build-arg HOST_UID="$uid" --build-arg HOST_GID="$gid" - <<'DOCKERFILE' |
-  tee "$evidence/environment.log"
+docker build --tag "$image" --build-arg HOST_UID="$uid" --build-arg HOST_GID="$gid" - <<'DOCKERFILE' 2>&1 | tee "$evidence/environment.log"
 FROM registry.fedoraproject.org/fedora:43
 ENV container=docker
 RUN dnf -y --setopt=install_weak_deps=False install \
