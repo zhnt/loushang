@@ -24,6 +24,7 @@ APPHOST_OPTIONAL_MODULES = {
     APPHOST_ROOT / "launcher.py",
     APPHOST_ROOT / "workspace_registry.py",
     APPHOST_ROOT / "local.py",
+    APPHOST_ROOT / "local_application.py",
     APPHOST_ROOT / "hosted.py",
 }
 HARNESS_SESSION_ADAPTER = Path("src/loushang/apphost/integrations/harness_session.py")

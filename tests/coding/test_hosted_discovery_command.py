@@ -9,6 +9,7 @@ import pytest
 
 from loushang.apphost.application import HostedApplicationError
 from loushang.coding.cli import hosted
+from loushang.coding.hosted import bootstrap as hosted_bootstrap
 
 from .test_hosted_command import _argv
 
@@ -92,7 +93,7 @@ def test_G17_COMPAT_command_rejects_non_boolean_activation_before_bootstrap(
     launch, _ = hosted.parse_launch(_argv(tmp_path))
     calls = []
     monkeypatch.setattr(
-        hosted,
+        hosted_bootstrap,
         "create_coding_hosted_attempt",
         lambda *args, **kwargs: calls.append(kwargs),
     )
@@ -138,7 +139,7 @@ def test_G17_COMPAT_missing_port_keeps_command_cleanup_ownership(tmp_path, monke
             assert kwargs["session_discovery"] is True
             return Attempt()
 
-        monkeypatch.setattr(hosted, "create_coding_hosted_attempt", bootstrap)
+        monkeypatch.setattr(hosted_bootstrap, "create_coding_hosted_attempt", bootstrap)
         monkeypatch.setattr(
             "loushang.apphost.integrations._foreground_stdio.InheritedStdioTransportV1", Transport
         )

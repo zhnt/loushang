@@ -515,11 +515,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "integrations/_goal_commands.py",
         "integrations/_managed_mux_command.py",
         "integrations/user_choice.py",
-        "integrations/_resource_client_reference.py",
-        "integrations/_resource_host_reference.py",
-        "integrations/_session_commands.py",
         "integrations/_session_projection.py",
-        "integrations/resource_access.py",
         "integrations/resource_tools.py",
     } == {
         "__init__.py",
@@ -529,7 +525,11 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "contracts.py",
         "errors.py",
         "integrations/__init__.py",
+        "integrations/_resource_client_reference.py",
+        "integrations/_resource_host_reference.py",
+        "integrations/_session_commands.py",
         "integrations/harness_session.py",
+        "integrations/resource_access.py",
         "integrations/session_control.py",
         "integrations/session_product.py",
         "router.py",
@@ -729,6 +729,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                     session_projection,
                     session_projection + "._HostedApprovalPresentation",
                     session_projection + "._project_hosted_approval",
+                    "loushang.apphost.integrations.resource_access",
+                    "loushang.apphost.integrations.resource_access.HostedResourceAccess",
                 }
                 if path == Path('src/loushang/coding/hosted/resume.py')
                 else set()

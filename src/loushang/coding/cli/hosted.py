@@ -7,6 +7,7 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
@@ -15,13 +16,24 @@ from loushang.apphost.integrations._foreground_stdio import _InheritedStdioForeg
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.protocol import AppServiceError
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
-from loushang.coding.hosted.bootstrap import (
-    CodingHostedLaunchV1,
-    create_coding_hosted_attempt,
-    prepare_coding_hosted_session_roots,
-)
-from loushang.coding.hosted.session import CodingHostedProductRuntimeFactoryForSession
 from loushang.harness.tools.core import ToolDefinition
+
+if TYPE_CHECKING:
+    from loushang.coding.hosted.bootstrap import (
+        CodingHostedLaunchV1 as CodingHostedLaunchV1,
+    )
+    from loushang.coding.hosted.session import (
+        CodingHostedProductRuntimeFactoryForSession,
+    )
+
+
+def __getattr__(name: str) -> type[CodingHostedLaunchV1]:
+    if name == "CodingHostedLaunchV1":
+        from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+
+        globals()[name] = CodingHostedLaunchV1
+        return CodingHostedLaunchV1
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class CodingHostedCommandV1(_InheritedStdioForeground):
@@ -52,6 +64,11 @@ class CodingHostedCommandV1(_InheritedStdioForeground):
             raise TypeError("invalid execution activation")
         require_timeout(connection_timeout)
         require_timeout(settlement_timeout)
+        from loushang.coding.hosted.bootstrap import (
+            create_coding_hosted_attempt,
+            prepare_coding_hosted_session_roots,
+        )
+
         self._launch = launch
         attempt = create_coding_hosted_attempt(
             launch,
@@ -143,6 +160,8 @@ def _parse_options(
 ) -> tuple[CodingHostedLaunchV1, bool, bool, bool]:
     parser = _parser(allow_discovery=allow_discovery)
     args = parser.parse_args(argv)
+    from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+
     try:
         launch = CodingHostedLaunchV1(
             workspace=args.workspace.expanduser().resolve(),

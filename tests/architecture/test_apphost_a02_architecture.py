@@ -21,6 +21,7 @@ OPTIONAL = {
     APPHOST / "continuity.py",
     APPHOST / "foreground.py",
     APPHOST / "local.py",
+    APPHOST / "local_application.py",
     APPHOST / "hosted.py",
     APPHOST / "launcher.py",
     APPHOST / "workspace_registry.py",
@@ -213,6 +214,9 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),
         Path("src/loushang/coding/cli/hosted_client.py"),
+        Path("src/loushang/coding/cli/mux.py"),
+        Path("src/loushang/coding/cli/mux_service.py"),
+        Path("src/loushang/coding/hosted/foreground.py"),
         Path('src/loushang/coding/hosted/bootstrap.py'),
         Path('src/loushang/coding/hosted/local.py'),
         # Accepted optional lmux deployment composition; never a core edge.

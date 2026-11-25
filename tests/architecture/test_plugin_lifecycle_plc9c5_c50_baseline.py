@@ -890,6 +890,7 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         Path("src/loushang/harness/package_product/_linux_worker_native_release.py"),
         Path("src/loushang/harness/package_product/_linux_worker_recovery.py"),
         Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
+        HARNESS_ROOT / "session/_resume_continuation.py",
         Path("src/loushang/harness/session/_worker_operator_query.py"),
         Path("src/loushang/harness/session/_resume_continuation.py"),
         Path("src/loushang/harness/session/_worker_provider.py"),

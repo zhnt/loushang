@@ -42,6 +42,7 @@ def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
         CONTINUITY,
         FOREGROUND,
         APPHOST / "local.py",
+        APPHOST / "local_application.py",
         APPHOST / "launcher.py",
         APPHOST / "workspace_registry.py",
     }
