@@ -1,5 +1,11 @@
 # Coding剩余职责实施优先级
 
+## C01 启动装配与 Continuity 交付候选
+
+以旧版切换候选 `12fc10042` 为基线。Harness Session 接管已围栏、历史和初始工作区的 Catalog 准备、刷新与失败交接，并统一能力插件的已批准输入绑定。Harness Package Product 负责已安装来源的身份与工厂交接。Harness Continuity 接管已安装 Provider 的启动、发布、状态复原与关闭。Coding 保留 CompositionSet、产品默认值、批准和工作区执行上限。只读资源预览沿用基线的围栏复核和句柄寿命，并复用 Harness Plugin Management 的资源编译。
+
+本批 Coding 减少 838 行，Harness 增加 886 行，系统生产 Python 增加 48 行。接收端增量用于复用三条 Catalog 启动路径、刷新和 Continuity 发布及清理。五批候选合计比 `546b209f6` 的 Coding 少 5,589 行，系统生产 Python 少 867 行。职责复核采用本地架构方法 `0f9bd3f`。
+
 ## 旧版插件首次切换交付候选
 
 以合并候选 `b4aff3388` 为基线。Harness Package Product 接管冻结 Source 准入、首次快照与围栏的资源寿命、审阅证据校验、接受回执及已提交事务重放。离线迁移和普通会话启动共用围栏与重试机制。Coding 保留迁移允许范围、历史成员映射、具体命令、批准要求及公开记录类型。
