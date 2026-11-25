@@ -45,7 +45,10 @@ from ._goal_proposal import LIMITS as DEFAULT_LIMITS
 from ._goal_proposal import Action, ProposalRejected, _strings, parse_proposal
 from ._goal_repository_review import review_candidate, review_value, validate_review
 from ._goal_repository_task import RepositoryTask, digest
-from ._verification_work import inspect_verification
+from ._verification_work import (
+    inspect_verification,
+    prepare_coding_verification_command,
+)
 from ._work_evidence import project_work_evidence
 from .goal import CodingGoal, CodingGoalView, _inspect_goal, _view
 from .harnesswork import CODING_WORK_PROFILE, project_coding_runtime_event
@@ -770,27 +773,20 @@ class RepositoryDomain:
                 str(self.task.path.parent / "driver.py"),
             ]
         )
-        operation = WorkOperation(
-            op_id,
-            "VerifyCodingCommand",
-            basis.header.session_id,
-            "coding",
-            {
-                "command": command,
-                "execution": {
-                    "stdin": canonical(request),
-                    "cwd": str(self.root),
-                    "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
-                },
+        operation, spec = prepare_coding_verification_command(
+            operation_id=op_id,
+            session_id=basis.header.session_id,
+            command=command,
+            execution={
+                "stdin": canonical(request),
+                "cwd": str(self.root),
+                "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
             },
         )
         return WorkCandidate(
             basis,
             operation,
-            WorkRunSpec(
-                plan_id="verification:" + op_id,
-                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
-            ),
+            spec,
             {
                 "inventory": snapshot,
                 "basis": basis.identity,

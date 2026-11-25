@@ -13,7 +13,10 @@ from typing import Any, cast
 from uuid import uuid4
 
 from loushang.coding.adapters import _goal_driver as driver
-from loushang.coding.adapters._verification_work import inspect_verification
+from loushang.coding.adapters._verification_work import (
+    inspect_verification,
+    prepare_coding_verification_command,
+)
 from loushang.coding.adapters.harnesswork import (
     CODING_WORK_PROFILE,
     project_coding_runtime_event,
@@ -41,7 +44,6 @@ from loushang.harnesswork.integrations.transcript import (
     WorkTranscriptSource,
 )
 from loushang.harnesswork.ports import WorkExecutionBinding
-from loushang.harnesswork.types import WorkOperation, WorkStepSpec
 from loushang.method.loader import MethodLoader
 from loushang.method.runtime import (
     MethodDomainProfile,
@@ -392,27 +394,20 @@ class CalculatorPolicy:
                 str(Path(driver.__file__).resolve()),
             ]
         )
-        operation = WorkOperation(
-            op_id,
-            "VerifyCodingCommand",
-            basis.header.session_id,
-            "coding",
-            {
-                "command": command,
-                "execution": {
-                    "stdin": bundle.decode(),
-                    "cwd": str(self.root),
-                    "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
-                },
+        operation, spec = prepare_coding_verification_command(
+            operation_id=op_id,
+            session_id=basis.header.session_id,
+            command=command,
+            execution={
+                "stdin": bundle.decode(),
+                "cwd": str(self.root),
+                "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
             },
         )
         return WorkCandidate(
             basis,
             operation,
-            WorkRunSpec(
-                plan_id=f"verification:{op_id}",
-                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
-            ),
+            spec,
             {
                 **common,
                 "phase": "verification",

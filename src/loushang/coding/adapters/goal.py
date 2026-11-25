@@ -34,7 +34,10 @@ from loushang.coding.adapters._goal_work_sources import (
 from loushang.coding.adapters._goal_work_sources import (
     read_goal_work_sources as read_goal_work_sources,
 )
-from loushang.coding.adapters._verification_work import CodingVerificationExecutor
+from loushang.coding.adapters._verification_work import (
+    _OPERATION,
+    CodingVerificationExecutor,
+)
 from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.artifacts import SessionBlobStore, resolve_session_blob_data_root
 from loushang.harness.policy import PolicyEvaluatorChain
@@ -620,7 +623,7 @@ class CodingGoal(_SessionGoalLifetime):
         return self._coordinator.current_execution()
 
     def _goal_binding(self, candidate, reservation):
-        if candidate.operation.kind == "VerifyCodingCommand":
+        if candidate.operation.kind == _OPERATION:
             return WorkExecutionBinding(self._verification_executor, cancellation=self._verification_executor)
         try:
             return self._prepared.pop(candidate.operation.operation_id)

@@ -26,6 +26,8 @@ from loushang.harnesswork.types import (
     WorkCancellationOutcome,
     WorkOperation,
     WorkRun,
+    WorkRunSpec,
+    WorkStepSpec,
 )
 
 from .evidence import EvidenceRecord, SupportReference, WorkEvidenceCodec
@@ -41,6 +43,29 @@ class VerificationProfile:
     evidence_source: str
     wrong_run: str
     invalid_document: str
+
+    def prepare_command(
+        self,
+        *,
+        operation_id: str,
+        session_id: str | None,
+        command: str,
+        execution: Mapping[str, object] | None = None,
+        run_id: str | None = None,
+        plan_id: str | None = None,
+    ) -> tuple[WorkOperation, WorkRunSpec]:
+        """Bind a selected command to the existing report and validation steps."""
+        payload: dict[str, object] = {"command": command}
+        if execution is not None:
+            payload["execution"] = execution
+        return (
+            WorkOperation(operation_id, self.operation, session_id, self.domain, payload),
+            WorkRunSpec(
+                run_id=run_id,
+                plan_id=f"verification:{operation_id}" if plan_id is None else plan_id,
+                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
+            ),
+        )
 
 
 class _VerificationSession(Protocol):

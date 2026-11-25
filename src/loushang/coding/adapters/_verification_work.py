@@ -20,7 +20,7 @@ from loushang.harnesswork.integrations.verification import (
     inspect_verification as _inspect_verification,
 )
 from loushang.harnesswork.runtime import WorkRuntime
-from loushang.harnesswork.types import WorkOperation, WorkRun, WorkRunSpec, WorkStepSpec
+from loushang.harnesswork.types import WorkRun
 
 from ._work_evidence import EVIDENCE_CODEC
 
@@ -35,6 +35,7 @@ _PROFILE = VerificationProfile(
     wrong_run="run is not a Coding verification",
     invalid_document="invalid Coding verification document",
 )
+prepare_coding_verification_command = _PROFILE.prepare_command
 
 
 class CodingVerificationFailed(RuntimeError):
@@ -90,18 +91,11 @@ class CodingVerificationWork(CodingVerificationExecutor):
         if not isinstance(command, str) or not command.strip():
             raise ValueError("verification command must be non-empty")
         operation_id = operation_id or f"coding-verification-{uuid4().hex}"
-        run = await self.runtime.accept(
-            WorkOperation(
-                operation_id,
-                _OPERATION,
-                self._session.session_id,
-                "coding",
-                {"command": command},
-            ),
-            spec=WorkRunSpec(
-                run_id=run_id,
-                plan_id=f"verification:{operation_id}",
-                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
-            ),
+        operation, spec = prepare_coding_verification_command(
+            operation_id=operation_id,
+            session_id=self._session.session_id,
+            command=command,
+            run_id=run_id,
         )
+        run = await self.runtime.accept(operation, spec=spec)
         return await self.runtime.wait(run.run_id)
