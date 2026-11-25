@@ -8,6 +8,7 @@ replay. Backup expiry and public restore commands remain separate decisions.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -81,12 +82,18 @@ _RESTORE_STAGE_PREFIX = ".arch-restore-"
 _RESTORE_STAGE_SUFFIX = ".staging"
 
 
-def _archive_restore(
-    layout: CodingPluginLifecycleStateLayout,
-) -> PosixPrivateDataRestore[
+_CodingArchiveRestore = PosixPrivateDataRestore[
     CodingArchPrivateDataTargetSnapshotV1,
     CodingArchPrivateDataBackupReceiptV1,
-]:
+    CodingArchPrivateDataRestoreEventV1,
+]
+
+
+def _archive_restore(
+    layout: CodingPluginLifecycleStateLayout,
+    state_root: Path,
+    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
+) -> _CodingArchiveRestore:
     return PosixPrivateDataRestore(
         private_base=layout.private_data_base,
         io=_private_io,
@@ -97,6 +104,11 @@ def _archive_restore(
         ),
         stage_prefix=_RESTORE_STAGE_PREFIX,
         stage_suffix=_RESTORE_STAGE_SUFFIX,
+        desired_snapshot=desired_snapshot,
+        deletion_journal=lambda: CodingArchPrivateDataDeletionJournal(state_root),
+        restore_journal=lambda: CodingArchPrivateDataRestoreJournal(state_root),
+        identity_for=restore_id_for,
+        resolve_target=partial(coding_arch_installation_private_data_root, layout),
     )
 
 
@@ -114,20 +126,11 @@ class CodingArchPrivateDataRestoreOwner:
         """Durably confirm exact restored bytes after completion, by request."""
 
         with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
-            completion, target_id = self._current_completed_restore(key, backup_id)
-            journal = CodingArchPrivateDataRestoreConfirmationJournal(
-                self.product.state_root
-            )
-            return journal.record(
-                CodingArchPrivateDataRestoreConfirmationV1.create(
-                    revision=journal.revision_for(completion.restore_id),
-                    installation_key=key,
-                    backup_id=backup_id,
-                    deletion_receipt_id=completion.deletion_receipt_id,
-                    restore_id=completion.restore_id,
-                    restore_completion_digest=completion.record_digest,
-                    restored_target_id=target_id,
-                )
+            return self._archive().confirm(
+                key,
+                backup_id,
+                confirmation_journal=self._confirmation_journal,
+                create_confirmation=CodingArchPrivateDataRestoreConfirmationV1.create,
             )
 
     def verify_confirmation(
@@ -136,46 +139,33 @@ class CodingArchPrivateDataRestoreOwner:
         """Reopen one confirmation against current Product and restored bytes."""
 
         with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
-            completion, target_id = self._current_completed_restore(key, backup_id)
-            return CodingArchPrivateDataRestoreConfirmationJournal(
-                self.product.state_root
-            ).require_current(
-                confirmation_id,
-                key,
-                backup_id,
-                completion,
-                target_id,
-                message="Coding Arch restore confirmation is stale",
+            return self._archive().verify_confirmation(
+                key, backup_id, confirmation_id, confirmation_journal=self._confirmation_journal
             )
+
+    def _archive(self) -> _CodingArchiveRestore:
+        return _archive_restore(self.layout, self.product.state_root, self.product.desired_state.snapshot)
+
+    def _confirmation_journal(self) -> CodingArchPrivateDataRestoreConfirmationJournal:
+        return CodingArchPrivateDataRestoreConfirmationJournal(self.product.state_root)
 
     def _current_completed_restore(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return _current_completed_restore(
-            self.layout,
-            self.product.state_root,
-            key,
-            backup_id,
-            desired_snapshot=self.product.desired_state.snapshot,
-        )
+        return self._archive().completed(backup_id, key)
 
     def preview(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> CodingArchPrivateDataRestorePlanV1:
         """Read exact Product, archive, and target facts without publishing data."""
 
-        target = coding_arch_installation_private_data_root(self.layout, key)
-        if not _digest(backup_id):
-            raise ValueError("Coding Arch restore backup ID is invalid")
-        with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
-            return _preview_restore(
-                self.layout,
-                self.product.state_root,
-                target,
-                key,
-                backup_id,
-                desired_snapshot=self.product.desired_state.snapshot,
-            )
+        return _preview_restore(
+            self.layout,
+            key,
+            backup_id,
+            archive=self._archive,
+            offline=lambda: CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline(),
+        )
 
     def restore(
         self,
@@ -196,114 +186,31 @@ class CodingArchPrivateDataRestoreOwner:
         ):
             raise ValueError("Coding Arch restore plan is foreign")
         with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
-            deletion = _admit_restore(
-                self.product.state_root,
-                key,
-                self.product.desired_state.snapshot(),
-                expected_plan=expected_plan,
-            )
-            return _archive_restore(self.layout).restore(
+            return self._archive().restore(
                 target,
                 backup_id,
                 key,
-                deletion_events=deletion.events,
-                expected_archive=(
-                    None
-                    if expected_plan is None
-                    else (
-                        expected_plan.source_target_id,
-                        expected_plan.deletion_receipt_id,
-                    )
-                ),
-                expected_target_state=(
-                    None if expected_plan is None else expected_plan.target_state
-                ),
+                expected_plan=expected_plan,
                 prepare=_prepare_private_tree,
                 verify_files=lambda fd, source: _verify_files(fd, source),
                 write_file_factory=lambda: _write_or_verify_file,
-                journal_factory=lambda: CodingArchPrivateDataRestoreJournal(
-                    self.product.state_root
-                ),
-                identity_for=restore_id_for,
                 result_factory=CodingArchPrivateDataRestoreResultV1,
             )
 
 
-def _admit_restore(
-    state_root: Path,
-    key: PluginInstallationKeyV1,
-    desired: PluginDesiredStateSnapshotV1,
-    *,
-    expected_plan: CodingArchPrivateDataRestorePlanV1 | None = None,
-    removal_error: str = "Coding Arch restore requires a removed Installation",
-) -> CodingArchPrivateDataDeletionJournal:
-    if desired.installation(key).selection.desired_state != "absent":
-        raise ValueError(removal_error)
-    if (
-        expected_plan is not None
-        and desired.inventory_revision != expected_plan.desired_inventory_revision
-    ):
-        raise ValueError("Coding Arch restore Desired revision changed")
-    deletion = CodingArchPrivateDataDeletionJournal(state_root)
-    if deletion.current_start() is not None:
-        raise ValueError("Coding Arch deletion is unfinished")
-    return deletion
-
-
-def _current_completed_restore(
-    layout: CodingPluginLifecycleStateLayout,
-    state_root: Path,
-    key: PluginInstallationKeyV1,
-    backup_id: str,
-    *,
-    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
-) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-    if not _digest(backup_id):
-        raise ValueError("Coding Arch restore backup ID is invalid")
-    deletion = _admit_restore(
-        state_root,
-        key,
-        desired_snapshot(),
-        removal_error="Coding Arch restore confirmation requires removal",
-    )
-
-    def find_completion(
-        deletion_receipt_id: str,
-    ) -> CodingArchPrivateDataRestoreEventV1:
-        restore_id = restore_id_for(key, backup_id, deletion_receipt_id)
-        return CodingArchPrivateDataRestoreJournal(state_root).completed_for(restore_id)
-
-    return _archive_restore(layout).completed(
-        backup_id,
-        key,
-        deletion_events=deletion.events,
-        find_completion=find_completion,
-        resolve_target=partial(coding_arch_installation_private_data_root, layout, key),
-    )
-
-
 def _preview_restore(
     layout: CodingPluginLifecycleStateLayout,
-    state_root: Path,
-    root: Path,
     key: PluginInstallationKeyV1,
     backup_id: str,
     *,
-    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
+    archive: Callable[[], _CodingArchiveRestore],
+    offline: Callable[[], AbstractContextManager[None]],
 ) -> CodingArchPrivateDataRestorePlanV1:
-    desired = desired_snapshot()
-    deletion = _admit_restore(state_root, key, desired)
-    source_target_id, deletion_receipt_id, target_state = _archive_restore(layout).preview(
-        root, backup_id, key, deletion_events=deletion.events
-    )
-    return CodingArchPrivateDataRestorePlanV1(
-        installation_key=key,
-        backup_id=backup_id,
-        deletion_receipt_id=deletion_receipt_id,
-        source_target_id=source_target_id,
-        desired_inventory_revision=desired.inventory_revision,
-        target_state=target_state,
-    )
+    root = coding_arch_installation_private_data_root(layout, key)
+    if not _digest(backup_id):
+        raise ValueError("Coding Arch restore backup ID is invalid")
+    with offline():
+        return archive().preview(root, backup_id, key, create_plan=CodingArchPrivateDataRestorePlanV1)
 
 
 __all__ = [

@@ -105,8 +105,10 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     for path, limit in {
         "cli/hosted.py": 290,
         'hosted/catalog.py': 1_221,
-        # Main 794156c3b contains 714 lines after GUI model persistence.
-        'hosted/session.py': 714,
+        # Reviewed d718054aa baseline: workspace, resource and policy binding,
+        # Session coordination, saved model/reasoning and transcript projection.
+        # See the G14 Session budget review in execution-service-delivery.md.
+        'hosted/session.py': 765,
     }.items():
         assert groups["g14"][path] <= limit, (path, groups["g14"][path], limit)
     assert sum(groups["goal"].values()) <= 765, groups["goal"]

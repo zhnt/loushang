@@ -368,8 +368,7 @@ class LocalAppServerV1:
             if task is not None:
                 await asyncio.gather(task, return_exceptions=True)
         servers = tuple(server for server in (self._server, self._tunnel_server) if server is not None)
-        for server in servers:
-            server.close()
+        self.fence()
         peers = tuple(self._peers)
         await asyncio.gather(*(peer.close() for peer in peers), return_exceptions=True)
         await asyncio.gather(*(peer.task for peer in peers if peer.task is not None), return_exceptions=True)

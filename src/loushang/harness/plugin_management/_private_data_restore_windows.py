@@ -48,7 +48,7 @@ from ._private_data_deletion_windows import require_finished_windows_deletion
 from ._private_data_expiry import ExpiryPlan, plan_verified_backup_expiry
 from .journal_codecs import PluginDesiredStateJournalTransition
 from .ledger import PluginDesiredStateLedger, PluginDesiredStateSnapshotV1
-from .private_data_backup import R
+from .private_data_backup import PrivateDataRestorePlan, R
 from .private_data_deletion import (
     PluginPrivateDataDeletionEventV1,
     PrivateDataDeletionTarget,
@@ -91,7 +91,7 @@ def require_windows_restore_product_state(
         raise ValueError(error)
 
 
-class _RestorePlan(Protocol):
+class _RestorePlan(PrivateDataRestorePlan, Protocol):
     __dataclass_fields__: ClassVar[dict[str, Field[object]]]
 
     def __init__(
@@ -110,14 +110,6 @@ class _RestorePlan(Protocol):
     def installation_key(self) -> PluginInstallationKeyV1: ...
     @property
     def backup_id(self) -> str: ...
-    @property
-    def deletion_receipt_id(self) -> str: ...
-    @property
-    def source_target_id(self) -> str: ...
-    @property
-    def desired_inventory_revision(self) -> int: ...
-    @property
-    def target_state(self) -> Literal["absent", "same_bytes"]: ...
     @property
     def fingerprint(self) -> str: ...
 
