@@ -84,10 +84,7 @@ from loushang.coding.composition.sets import (
     resolve_coding_composition_set,
 )
 from loushang.coding.composition.workspace_bootstrap import bind_session_workspace
-from loushang.coding.control.settings_store import (
-    default_global_settings_path,
-    default_project_settings_path,
-)
+from loushang.coding.control.settings_store import open_coding_workspace_settings
 from loushang.coding.diagnostics.profile import coding_runtime_identity
 from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._provider_api import (
@@ -367,18 +364,14 @@ def _create_agent_session_services(
         return projection.bundle
 
     def create_cwd_services(resolved_cwd: Path) -> BootstrapServices:
-        resolved_settings_manager = settings_manager or SettingsManager(
-            global_settings_path=Path(global_settings_path)
-            if global_settings_path is not None
-            else default_global_settings_path(),
-            project_settings_path=Path(project_settings_path)
-            if project_settings_path is not None
-            else default_project_settings_path(resolved_cwd),
-        )
         return create_services(
             ai_model_registry=ai_model_registry,
             resource_loader=resource_loader,
-            settings_manager=resolved_settings_manager,
+            settings_manager=settings_manager or open_coding_workspace_settings(
+                resolved_cwd,
+                global_settings_path=global_settings_path,
+                project_settings_path=project_settings_path,
+            ),
             exec_service=exec_service,
             default_model=default_model,
             thinking_level=thinking_level,
