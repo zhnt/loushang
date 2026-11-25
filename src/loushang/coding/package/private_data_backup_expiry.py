@@ -79,7 +79,6 @@ class CodingArchPrivateDataBackupExpiryOwner:
                 key,
                 backup_id,
                 confirmation_id,
-                confirmation_journal=restore._confirmation_journal,
                 create_plan=CodingArchPrivateDataBackupExpiryPlanV1,
             )
 
@@ -143,9 +142,7 @@ class CodingArchPrivateDataBackupExpiryOwner:
         self, plan: CodingArchPrivateDataBackupExpiryPlanV1
     ) -> CodingArchPrivateDataTargetSnapshotV1:
         restore = CodingArchPrivateDataRestoreOwner(self.layout, self.product)
-        return restore._archive().require_current_expiry_archive(
-            plan, confirmation_journal=restore._confirmation_journal
-        )
+        return restore._archive().require_current_expiry_archive(plan)
 
     def _require_recovery_authority(
         self, plan: CodingArchPrivateDataBackupExpiryPlanV1
@@ -153,12 +150,7 @@ class CodingArchPrivateDataBackupExpiryOwner:
         archive = _archive_restore(
             self.layout, self.product.state_root, self.product.desired_state.snapshot
         )
-        archive.require_expiry_recovery(
-            plan,
-            confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
-                self.product.state_root
-            ),
-        )
+        archive.require_expiry_recovery(plan)
 
 
 __all__ = [

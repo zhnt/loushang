@@ -82,6 +82,7 @@ _CodingArchiveRestore = PosixPrivateDataRestore[
     CodingArchPrivateDataTargetSnapshotV1,
     CodingArchPrivateDataBackupReceiptV1,
     CodingArchPrivateDataRestoreEventV1,
+    CodingArchPrivateDataRestoreConfirmationV1,
 ]
 
 
@@ -103,6 +104,10 @@ def _archive_restore(
         desired_snapshot=desired_snapshot,
         deletion_journal=lambda: CodingArchPrivateDataDeletionJournal(state_root),
         restore_journal=lambda: CodingArchPrivateDataRestoreJournal(state_root),
+        confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
+            state_root
+        ),
+        create_confirmation=CodingArchPrivateDataRestoreConfirmationV1.create,
         identity_for=restore_id_for,
         resolve_target=partial(coding_arch_installation_private_data_root, layout),
     )
@@ -122,12 +127,7 @@ class CodingArchPrivateDataRestoreOwner:
         """Durably confirm exact restored bytes after completion, by request."""
 
         with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
-            return self._archive().confirm(
-                key,
-                backup_id,
-                confirmation_journal=self._confirmation_journal,
-                create_confirmation=CodingArchPrivateDataRestoreConfirmationV1.create,
-            )
+            return self._archive().confirm(key, backup_id)
 
     def verify_confirmation(
         self, key: PluginInstallationKeyV1, backup_id: str, confirmation_id: str
@@ -135,15 +135,10 @@ class CodingArchPrivateDataRestoreOwner:
         """Reopen one confirmation against current Product and restored bytes."""
 
         with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
-            return self._archive().verify_confirmation(
-                key, backup_id, confirmation_id, confirmation_journal=self._confirmation_journal
-            )
+            return self._archive().verify_confirmation(key, backup_id, confirmation_id)
 
     def _archive(self) -> _CodingArchiveRestore:
         return _archive_restore(self.layout, self.product.state_root, self.product.desired_state.snapshot)
-
-    def _confirmation_journal(self) -> CodingArchPrivateDataRestoreConfirmationJournal:
-        return CodingArchPrivateDataRestoreConfirmationJournal(self.product.state_root)
 
     def preview(
         self, key: PluginInstallationKeyV1, backup_id: str

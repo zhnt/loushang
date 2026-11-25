@@ -653,7 +653,9 @@ _ExpiryPlanT = TypeVar("_ExpiryPlanT", bound=ExpiryPlan)
 
 
 @dataclass(frozen=True, slots=True)
-class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
+class PosixPrivateDataRestore(
+    Generic[_RestoreSourceT, R, _RestoreEventT, _RestoreConfirmationT]
+):
     """Verify and restore a Product-admitted archive under its offline fence."""
 
     private_base: Path
@@ -667,6 +669,10 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
     desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1]
     deletion_journal: Callable[[], _RestoreDeletionHistory]
     restore_journal: Callable[[], PrivateDataRestoreJournal[_RestoreEventT]]
+    confirmation_journal: Callable[
+        [], PrivateDataRestoreConfirmationJournal[_RestoreConfirmationT]
+    ]
+    create_confirmation: Callable[..., _RestoreConfirmationT]
     identity_for: Callable[[PluginInstallationKeyV1, str, str], str]
     resolve_target: Callable[[PluginInstallationKeyV1], Path]
 
@@ -771,13 +777,12 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         backup_id: str,
         confirmation_id: str,
         *,
-        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
         create_plan: Callable[..., _ExpiryPlanT],
     ) -> _ExpiryPlanT:
         """Read the completed recovery, its confirmation, and the exact archive."""
         label = self.io.label
         completion, target_id = self.completed(backup_id, key)
-        confirmation = confirmation_journal().require_current(
+        confirmation = self.confirmation_journal().require_current(
             confirmation_id,
             key,
             backup_id,
@@ -815,8 +820,6 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
     def require_current_expiry_archive(
         self,
         plan: ExpiryPlan,
-        *,
-        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
     ) -> _RestoreSourceT:
         """Recheck the original archive before the first filesystem effect."""
         key = plan.installation_key
@@ -827,7 +830,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             or target_id != plan.restored_target_id
         ):
             raise ValueError(f"{label} backup expiry restore changed")
-        self.require_expiry_recovery(plan, confirmation_journal=confirmation_journal)
+        self.require_expiry_recovery(plan)
         archive = self.capture_target(self.backup_parent(key) / plan.backup_id)
         if not matches_expiry_archive(archive, plan):
             raise ValueError(f"{label} backup expiry archive changed")
@@ -836,8 +839,6 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
     def require_expiry_recovery(
         self,
         plan: ExpiryPlan,
-        *,
-        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
     ) -> None:
         """Verify retained history and current restored bytes after archive rename."""
         label, key = self.io.label, plan.installation_key
@@ -849,7 +850,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             raise ValueError(f"{label} backup expiry Desired State changed")
         require_expiry_restore_history(
             plan,
-            confirmations=lambda: confirmation_journal().records(),
+            confirmations=lambda: self.confirmation_journal().records(),
             restores=lambda: self.restore_journal().events(),
             label=label,
         )
@@ -888,14 +889,11 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         self,
         key: PluginInstallationKeyV1,
         backup_id: str,
-        *,
-        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal[_RestoreConfirmationT]],
-        create_confirmation: Callable[..., _RestoreConfirmationT],
     ) -> _RestoreConfirmationT:
         completion, target_id = self.completed(backup_id, key)
-        journal = confirmation_journal()
+        journal = self.confirmation_journal()
         return journal.record(
-            create_confirmation(
+            self.create_confirmation(
                 revision=journal.revision_for(completion.restore_id),
                 installation_key=key,
                 backup_id=backup_id,
@@ -911,11 +909,9 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         key: PluginInstallationKeyV1,
         backup_id: str,
         confirmation_id: str,
-        *,
-        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal[_RestoreConfirmationT]],
     ) -> _RestoreConfirmationT:
         completion, target_id = self.completed(backup_id, key)
-        return confirmation_journal().require_current(
+        return self.confirmation_journal().require_current(
             confirmation_id,
             key,
             backup_id,

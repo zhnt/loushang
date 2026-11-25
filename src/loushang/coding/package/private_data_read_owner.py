@@ -64,7 +64,6 @@ from .private_data_restore import (
     _preview_restore,
 )
 from .private_data_restore_confirmation import (
-    CodingArchPrivateDataRestoreConfirmationJournal,
     CodingArchPrivateDataRestoreConfirmationV1,
 )
 from .private_data_restore_records import CodingArchPrivateDataRestorePlanV1
@@ -156,12 +155,7 @@ class CodingArchPrivateDataReadOwner:
     ) -> CodingArchPrivateDataRestoreConfirmationV1:
         with self.offline():
             return self._restore_archive().verify_confirmation(
-                key,
-                backup_id,
-                confirmation_id,
-                confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
-                    self.state_root
-                ),
+                key, backup_id, confirmation_id
             )
 
     def expiry_preview(
@@ -174,9 +168,6 @@ class CodingArchPrivateDataReadOwner:
                 key,
                 backup_id,
                 confirmation_id,
-                confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
-                    self.state_root
-                ),
                 create_plan=CodingArchPrivateDataBackupExpiryPlanV1,
             )
 
