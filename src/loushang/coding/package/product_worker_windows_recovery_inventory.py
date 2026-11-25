@@ -243,9 +243,6 @@ _inspect_windows_worker_recovery_inventory_under_gc_guard = (
 inspect_coding_windows_product_worker_attempt_references = (
     _HISTORY_INVENTORY.inspect_references
 )
-_inspect_windows_worker_attempt_references_under_gc_guard = (
-    _HISTORY_INVENTORY.inspect_references_under_guard
-)
 inspect_coding_windows_product_worker_attempt_gc_observations = (
     _HISTORY_INVENTORY.inspect_gc_observations
 )

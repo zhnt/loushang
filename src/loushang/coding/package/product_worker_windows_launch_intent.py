@@ -7,19 +7,11 @@ permission to launch or delete a payload.
 
 from __future__ import annotations
 
-import os
-import re
 from dataclasses import dataclass
-from functools import partial
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loushang.harness.package_product._worker_windows_attempt import (
     WindowsProductWorkerIntentRecords,
-    inspect_windows_product_worker_launch_intents,
-    is_attempt_id,
-    is_windows_product,
-    read_windows_product_worker_launch_intent,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -43,10 +35,6 @@ from .product_worker_windows_receipt import CodingWindowsWorkerProductReceiptOwn
 if TYPE_CHECKING:
     from .product_worker_windows_payload import CodingWindowsWorkerPayloadLeaseV1
 
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_NAME = re.compile(r"worker-launch-intent-([0-9a-f]{32})\.json\Z")
-_PREFIX = "worker-launch-intent-"
-_MAX_ATTEMPTS = 1024
 _MAX_BYTES = 4096
 
 
@@ -96,25 +84,10 @@ def commit_coding_windows_product_worker_launch_intent(
     payload_lease: CodingWindowsWorkerPayloadLeaseV1,
 ) -> CodingWindowsWorkerLaunchIntentV1:
     """Publish one exact launch identity before any native or process effect."""
-    from .product_worker_windows_payload import (
-        _PAYLOAD_PROGRAM,
-        CodingWindowsWorkerPayloadLeaseV1,
-    )
+    from .product_worker_windows_payload import _PAYLOAD_PROGRAM
 
-    _require_product(product)
-    if (
-        type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
-        or receipt_owner.product_owner is not product
-        or type(receipt) is not ProductWorkerActivationReceiptV1
-        or (type(request) is not ManagedWorkerLaunchRequestV1)
-        or (type(payload_lease) is not CodingWindowsWorkerPayloadLeaseV1)
-        or (request.identity.product_id != "coding")
-        or (receipt.policy.product_id != "coding")
-    ):
-        raise CodingWindowsWorkerLaunchIntentError(
-            "coding_worker_launch_intent_binding_mismatch"
-        )
-    return _intent_records(product).commit_bound(
+    return _INTENT_RECORDS.commit_bound(
+        product,
         receipt_owner=receipt_owner,
         receipt=receipt,
         request=request,
@@ -128,11 +101,7 @@ def read_coding_windows_product_worker_launch_intent(
 ) -> CodingWindowsWorkerLaunchIntentV1 | None:
     """Read one committed intent without creating or repairing its receipt."""
 
-    _require_product(product)
-    _require_attempt(attempt_id)
-    return read_windows_product_worker_launch_intent(
-        product, attempt_id=attempt_id, records=lambda: _intent_records(product)
-    )
+    return _INTENT_RECORDS.read(product, attempt_id=attempt_id)
 
 
 def inspect_coding_windows_product_worker_launch_intents(
@@ -140,42 +109,7 @@ def inspect_coding_windows_product_worker_launch_intents(
 ) -> tuple[CodingWindowsWorkerLaunchIntentV1, ...]:
     """Strictly inventory all committed intents and unpublished stages."""
 
-    _require_product(product)
-    return inspect_windows_product_worker_launch_intents(
-        product, records=lambda: _intent_records(product)
-    )
-
-
-def _inspect_intents_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> tuple[CodingWindowsWorkerLaunchIntentV1, ...]:
-    return _intent_records(product).inspect()
-
-
-def _read_intent_under_gc_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    attempt_id: str,
-    *,
-    allow_unpublished_stage: bool = False,
-) -> CodingWindowsWorkerLaunchIntentV1 | None:
-    return _intent_records(product).read(
-        attempt_id, allow_unpublished_stage=allow_unpublished_stage
-    )
-
-
-def _path(product: WindowsLocalWheelProductSessionOwner, attempt_id: str) -> Path:
-    _require_attempt(attempt_id)
-    return product.state_root / f"{_PREFIX}{attempt_id}.json"
-
-
-def _require_product(product: WindowsLocalWheelProductSessionOwner) -> None:
-    if not is_windows_product(product, "coding", os.name):
-        raise OSError("Windows Worker launch intent requires a Product owner")
-
-
-def _require_attempt(attempt_id: str) -> None:
-    if not is_attempt_id(attempt_id):
-        raise ValueError("Windows Worker launch intent attempt ID is invalid")
+    return _INTENT_RECORDS.inspect(product)
 
 
 __all__ = [
@@ -187,19 +121,15 @@ __all__ = [
 ]
 
 
-def _intent_records(
-    product: WindowsLocalWheelProductSessionOwner,
-) -> WindowsProductWorkerIntentRecords[CodingWindowsWorkerLaunchIntentV1]:
-    return WindowsProductWorkerIntentRecords(
-        _product=product,
-        _io=_receipt_io,
-        _record_type=CodingWindowsWorkerLaunchIntentV1,
-        _path=partial(_path, product),
-        _prefix=_PREFIX,
-        _name_pattern=_NAME,
-        _maximum_bytes=lambda: _MAX_BYTES,
-        _maximum_attempts=lambda: _MAX_ATTEMPTS,
-        _error_type=CodingWindowsWorkerLaunchIntentError,
-        _error_prefix="coding_worker_launch_intent",
-        _write_maximum_bytes=_MAX_RECEIPT_BYTES,
-    )
+_INTENT_RECORDS = WindowsProductWorkerIntentRecords(
+    _product_id="coding",
+    _io=_receipt_io,
+    _record_type=CodingWindowsWorkerLaunchIntentV1,
+    _maximum_bytes=_MAX_BYTES,
+    _maximum_attempts=1024,
+    _error_type=CodingWindowsWorkerLaunchIntentError,
+    _error_prefix="coding_worker_launch_intent",
+    _write_maximum_bytes=_MAX_RECEIPT_BYTES,
+)
+_inspect_intents_under_gc_guard = _INTENT_RECORDS.inspect_under_guard
+_read_intent_under_gc_guard = _INTENT_RECORDS.read_under_guard

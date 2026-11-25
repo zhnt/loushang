@@ -435,9 +435,12 @@ class Scenario:
         return self.session._commit_session_owner_generation_evidence()
 
     def require(self, kind):
-        return getattr(
-            self.session, f"_publish_coding_{kind}_owner_retirement_receipts"
-        )()
+        publication = self.publication(kind)
+        if publication is not None:
+            publication.require_published(
+                lambda: self.session._capability_owner_generations,
+                lambda: self.session._mounted_resource_candidate,
+            )
 
     def flow(self):
         committed = False

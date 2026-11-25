@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from loushang.harness.host.rpc.arguments import request_exact_string
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.routing import LegacyRpcHandler
 from loushang.harness.plugin_management.current_preview import (
@@ -44,10 +45,10 @@ class RpcPluginPreviewCommands:
     def preview_current_plugins(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        correlation = _request_string(payload.get("correlationId", command_id))
-        product_id = _request_string(payload.get("productId"))
-        scope_id = _request_string(payload.get("scopeId"))
-        composition_set_id = _request_string(payload.get("compositionSetId"))
+        correlation = request_exact_string(payload.get("correlationId", command_id))
+        product_id = request_exact_string(payload.get("productId"))
+        scope_id = request_exact_string(payload.get("scopeId"))
+        composition_set_id = request_exact_string(payload.get("compositionSetId"))
         if (
             correlation is None
             or product_id is None
@@ -86,14 +87,6 @@ class RpcPluginPreviewCommands:
             )
             return
         self._output.success(command=_COMMAND, request_id=command_id, data=document)
-
-
-def _request_string(value: object) -> str | None:
-    return (
-        value
-        if isinstance(value, str) and value and value == value.strip()
-        else None
-    )
 
 
 __all__ = ["RpcPluginPreviewCommands"]

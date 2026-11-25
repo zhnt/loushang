@@ -20,6 +20,9 @@ from loushang.coding.package.product_worker_history_deletion_v2 import (
 from loushang.coding.package.product_worker_history_read_v2 import (
     CodingWorkerV2ReadError,
 )
+from loushang.coding.package.product_worker_history_retention import (
+    _history_proof_bindings,
+)
 from loushang.coding.package.product_worker_history_segments import (
     _head_name,
     _segment_name,
@@ -27,7 +30,9 @@ from loushang.coding.package.product_worker_history_segments import (
 from loushang.coding.package.product_worker_history_v2_names import DELETION_LEDGER_NAME
 from loushang.coding.package.product_worker_posix_gc_history import (
     CodingPosixWorkerGcHistoryAuthority,
-    _require_committed_v2_history,
+)
+from loushang.harness.package_product._linux_worker_history import (
+    require_committed_v2_history,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -47,7 +52,9 @@ def test_v2_gc_requires_five_streams_before_old_attempt_closure(
         commit_coding_worker_v2_owner_under_guard(rooted, prepared=prepared)
     root_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        _require_committed_v2_history(state_root=tmp_path, root_fd=root_fd)
+        require_committed_v2_history(
+            _history_proof_bindings(), state_root=tmp_path, root_fd=root_fd
+        )
     finally:
         os.close(root_fd)
 
@@ -101,6 +108,8 @@ def test_v2_gc_accepts_exact_deletion_debt_but_refuses_unlogged_loss(
 def _require_committed_v2_history_for_test(state_root: Path) -> None:
     root_fd = os.open(state_root, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        _require_committed_v2_history(state_root=state_root, root_fd=root_fd)
+        require_committed_v2_history(
+            _history_proof_bindings(), state_root=state_root, root_fd=root_fd
+        )
     finally:
         os.close(root_fd)

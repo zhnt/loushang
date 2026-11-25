@@ -5,30 +5,41 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 from collections.abc import Sequence
-from contextlib import redirect_stdout
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
 from loushang.apphost.continuity import HostedApplicationContinuityRuntimeV1
 from loushang.apphost.foreground import HostedForegroundRuntimeV1
+from loushang.apphost.integrations._foreground_process import run_foreground_process
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.protocol import AppServiceError
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
 from loushang.appserver.stdio import InheritedStdioTransportV1
-from loushang.coding.hosted.bootstrap import (
-    CodingHostedLaunchV1,
-    create_coding_hosted_attempt,
-    prepare_coding_hosted_session_roots,
-)
-from loushang.coding.hosted.session import CodingHostedProductRuntimeFactoryForSession
 from loushang.foundation._owned_tasks import (
     _observe_task_result as _observe,
 )
 from loushang.harness.tools.core import ToolDefinition
+
+if TYPE_CHECKING:
+    from loushang.coding.hosted.bootstrap import (
+        CodingHostedLaunchV1 as CodingHostedLaunchV1,
+    )
+    from loushang.coding.hosted.session import (
+        CodingHostedProductRuntimeFactoryForSession,
+    )
+
+
+def __getattr__(name: str) -> type[CodingHostedLaunchV1]:
+    if name == "CodingHostedLaunchV1":
+        from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+
+        globals()[name] = CodingHostedLaunchV1
+        return CodingHostedLaunchV1
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class CodingHostedCommandV1:
@@ -59,6 +70,8 @@ class CodingHostedCommandV1:
             raise TypeError("invalid execution activation")
         require_timeout(connection_timeout)
         require_timeout(settlement_timeout)
+        from loushang.coding.hosted.bootstrap import create_coding_hosted_attempt
+
         self._launch = launch
         self._connection_timeout = connection_timeout
         self._settlement_timeout = settlement_timeout
@@ -93,6 +106,10 @@ class CodingHostedCommandV1:
         self._started = True
         try:
             if self._session_execution:
+                from loushang.coding.hosted.bootstrap import (
+                    prepare_coding_hosted_session_roots,
+                )
+
                 await asyncio.to_thread(
                     prepare_coding_hosted_session_roots, self._launch
                 )
@@ -203,6 +220,8 @@ def _parse_options(
 ) -> tuple[CodingHostedLaunchV1, bool, bool, bool]:
     parser = _parser(allow_discovery=allow_discovery)
     args = parser.parse_args(argv)
+    from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+
     try:
         launch = CodingHostedLaunchV1(
             workspace=args.workspace.expanduser().resolve(),
@@ -222,33 +241,16 @@ def _parse_options(
 
 
 def execute_hosted_command(command: CodingHostedCommandV1) -> int:
-    """Process-only runner; an incomplete cleanup is a fatal nonzero exit.
-
-    The outer parent retains terminate/reap authority. Avoid Runner.close's
-    unbounded cancellation join only when our retained cleanup is incomplete;
-    do not claim that an abrupt process exit completed application settlement.
-    """
+    """Run the explicit foreground stdio command and report its exit status."""
     input_fd, output_fd = sys.stdin.fileno(), sys.stdout.fileno()
-    runner = asyncio.Runner()
-    status = 0
-    with redirect_stdout(sys.stderr):
-        try:
-            runner.run(command.run(input_fd=input_fd, output_fd=output_fd))
-        except KeyboardInterrupt:
-            status = 130
-            print("hosted_interrupted", file=sys.stderr)
-        except AppServiceError as error:
-            status = 1
-            print(error.code.value, file=sys.stderr)
-        except Exception:
-            status = 1
-            print("hosted_application_failed", file=sys.stderr)
-        finally:
-            if command.cleanup_pending:
-                print("hosted_cleanup_incomplete", file=sys.stderr, flush=True)
-                os._exit(status or 1)
-            runner.close()
-    return status
+    return run_foreground_process(
+        lambda: command.run(input_fd=input_fd, output_fd=output_fd),
+        lambda: command.cleanup_pending,
+        reportable_errors=(AppServiceError,),
+        interrupted="hosted_interrupted",
+        failed="hosted_application_failed",
+        cleanup_incomplete="hosted_cleanup_incomplete",
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -14,7 +14,6 @@ from loushang.harness.resources.packages._file_consumption import closing_descri
 from loushang.harness.resources.packages._private_tree_posix import (
     PrivatePosixTreeIO,
     metadata_identity,
-    verify_private_tree,
 )
 from loushang.harness.resources.packages._tree_observation import (
     MetadataIdentity,
@@ -34,7 +33,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from ._private_data_expiry import (
     ExpiryHistoryEvent,
     ExpiryPlan,
+    matches_expiry_archive,
     plan_verified_backup_expiry,
+    require_expiry_restore_history,
 )
 from ._private_data_records import _valid_digest
 from .ledger import PluginDesiredStateSnapshotV1
@@ -204,12 +205,7 @@ def verify_private_archive(
         with closing_descriptor(
             io.open_directory(archive_fd, codec.files_name)
         ) as files_fd:
-            verify_private_tree(
-                files_fd,
-                source.members,
-                label=io.label,
-                max_read_bytes=io.max_read_bytes,
-            )
+            io.verify_tree(files_fd, source.members)
 
 
 def _verify_retained_private_archive_at(
@@ -304,9 +300,7 @@ def verify_posix_restored_target(
     io: PrivatePosixTreeIO,
 ) -> None:
     with closing_descriptor(io.open_path(private_base, target)) as target_fd:
-        verify_private_tree(
-            target_fd, source.members, label=io.label, max_read_bytes=io.max_read_bytes
-        )
+        io.verify_tree(target_fd, source.members)
 
 
 def inspect_private_expiry_archive(
@@ -353,7 +347,6 @@ def retain_private_archive(
     codec: PrivateArchiveCodec[S, R],
     recapture: Callable[[], S],
     prepare: PrivateTreePreparePort,
-    write_file: Callable[[int, str, bytes], None],
 ) -> R:
     """Caller owns its original maintenance admission and Product selection."""
     prepare(backup_parent, private_base=private_base, label="backup")
@@ -381,17 +374,11 @@ def retain_private_archive(
                     source.members,
                     files_fd,
                     private_base=private_base,
-                    write_file=write_file,
                 )
                 if recapture() != source:
                     raise ValueError(f"{io.label} backup source changed")
-                verify_private_tree(
-                    files_fd,
-                    source.members,
-                    label=io.label,
-                    max_read_bytes=io.max_read_bytes,
-                )
-            write_file(
+                io.verify_tree(files_fd, source.members)
+            io.write_file(
                 stage_fd, codec.manifest_name, codec.encode(key, source, receipt)
             )
             os.fsync(stage_fd)
@@ -666,7 +653,9 @@ _ExpiryPlanT = TypeVar("_ExpiryPlanT", bound=ExpiryPlan)
 
 
 @dataclass(frozen=True, slots=True)
-class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
+class PosixPrivateDataRestore(
+    Generic[_RestoreSourceT, R, _RestoreEventT, _RestoreConfirmationT]
+):
     """Verify and restore a Product-admitted archive under its offline fence."""
 
     private_base: Path
@@ -680,6 +669,10 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
     desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1]
     deletion_journal: Callable[[], _RestoreDeletionHistory]
     restore_journal: Callable[[], PrivateDataRestoreJournal[_RestoreEventT]]
+    confirmation_journal: Callable[
+        [], PrivateDataRestoreConfirmationJournal[_RestoreConfirmationT]
+    ]
+    create_confirmation: Callable[..., _RestoreConfirmationT]
     identity_for: Callable[[PluginInstallationKeyV1, str, str], str]
     resolve_target: Callable[[PluginInstallationKeyV1], Path]
 
@@ -752,6 +745,19 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             installation_error=f"{label} restore Installation changed",
             deletion_error=f"{label} restore lacks completed deletion",
         )
+        target_present = self._observe_restore_target(target, source, name)
+        return create_plan(
+            installation_key=key,
+            backup_id=name,
+            deletion_receipt_id=receipt.receipt_id,
+            source_target_id=source.target_id,
+            desired_inventory_revision=desired.inventory_revision,
+            target_state="same_bytes" if target_present else "absent",
+        )
+
+    def _observe_restore_target(
+        self, target: Path, source: _RestoreSourceT, name: str
+    ) -> bool:
         target_present = self.capture_target(target).root_identity is not None
         if target_present:
             verify_posix_restored_target(self.private_base, target, source, io=self.io)
@@ -763,14 +769,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             stage_suffix=self.stage_suffix,
             target_present=target_present,
         )
-        return create_plan(
-            installation_key=key,
-            backup_id=name,
-            deletion_receipt_id=receipt.receipt_id,
-            source_target_id=source.target_id,
-            desired_inventory_revision=desired.inventory_revision,
-            target_state="same_bytes" if target_present else "absent",
-        )
+        return target_present
 
     def preview_expiry(
         self,
@@ -778,14 +777,12 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         backup_id: str,
         confirmation_id: str,
         *,
-        completed_restore: Callable[[], tuple[PrivateDataRestoreEvent, str]],
-        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
         create_plan: Callable[..., _ExpiryPlanT],
     ) -> _ExpiryPlanT:
         """Read the completed recovery, its confirmation, and the exact archive."""
         label = self.io.label
-        completion, target_id = completed_restore()
-        confirmation = confirmation_journal().require_current(
+        completion, target_id = self.completed(backup_id, key)
+        confirmation = self.confirmation_journal().require_current(
             confirmation_id,
             key,
             backup_id,
@@ -820,6 +817,47 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             desired_inventory_revision=desired.inventory_revision,
         )
 
+    def require_current_expiry_archive(
+        self,
+        plan: ExpiryPlan,
+    ) -> _RestoreSourceT:
+        """Recheck the original archive before the first filesystem effect."""
+        key = plan.installation_key
+        completion, target_id = self.completed(plan.backup_id, key)
+        label = self.io.label
+        if (
+            completion.record_digest != plan.restore_completion_digest
+            or target_id != plan.restored_target_id
+        ):
+            raise ValueError(f"{label} backup expiry restore changed")
+        self.require_expiry_recovery(plan)
+        archive = self.capture_target(self.backup_parent(key) / plan.backup_id)
+        if not matches_expiry_archive(archive, plan):
+            raise ValueError(f"{label} backup expiry archive changed")
+        return archive
+
+    def require_expiry_recovery(
+        self,
+        plan: ExpiryPlan,
+    ) -> None:
+        """Verify retained history and current restored bytes after archive rename."""
+        label, key = self.io.label, plan.installation_key
+        desired = self.desired_snapshot()
+        if (
+            desired.inventory_revision != plan.desired_inventory_revision
+            or desired.installation(key).selection.desired_state != "absent"
+        ):
+            raise ValueError(f"{label} backup expiry Desired State changed")
+        require_expiry_restore_history(
+            plan,
+            confirmations=lambda: self.confirmation_journal().records(),
+            restores=lambda: self.restore_journal().events(),
+            label=label,
+        )
+        restored = self.capture_target(self.resolve_target(key))
+        if restored.target_id != plan.restored_target_id:
+            raise ValueError(f"{label} backup expiry restored data changed")
+
     def completed(
         self,
         name: str,
@@ -851,14 +889,11 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         self,
         key: PluginInstallationKeyV1,
         backup_id: str,
-        *,
-        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal[_RestoreConfirmationT]],
-        create_confirmation: Callable[..., _RestoreConfirmationT],
     ) -> _RestoreConfirmationT:
         completion, target_id = self.completed(backup_id, key)
-        journal = confirmation_journal()
+        journal = self.confirmation_journal()
         return journal.record(
-            create_confirmation(
+            self.create_confirmation(
                 revision=journal.revision_for(completion.restore_id),
                 installation_key=key,
                 backup_id=backup_id,
@@ -874,11 +909,9 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         key: PluginInstallationKeyV1,
         backup_id: str,
         confirmation_id: str,
-        *,
-        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal[_RestoreConfirmationT]],
     ) -> _RestoreConfirmationT:
         completion, target_id = self.completed(backup_id, key)
-        return confirmation_journal().require_current(
+        return self.confirmation_journal().require_current(
             confirmation_id,
             key,
             backup_id,
@@ -895,15 +928,16 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
         *,
         expected_plan: PrivateDataRestorePlan | None,
         prepare: PrivateTreePreparePort,
-        verify_files: Callable[[int, _RestoreSourceT], None],
-        write_file_factory: Callable[[], Callable[[int, str, bytes], None]],
         result_factory: Callable[[str, str, str], _RestoreResultT],
+        operator_submission: bool = False,
     ) -> _RestoreResultT:
         """Verify and restore the exact archive under the caller's offline fence."""
-        _, deletion = self._admit(
+        if operator_submission and expected_plan is None:
+            raise ValueError(f"{self.io.label} restore requires an accepted plan")
+        desired, deletion = self._admit(
             key,
             removal_error=f"{self.io.label} restore requires a removed Installation",
-            expected_plan=expected_plan,
+            expected_plan=None if operator_submission else expected_plan,
         )
         expected_archive = (
             None if expected_plan is None else (
@@ -926,9 +960,14 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
                 installation_error=f"{io.label} restore Installation changed",
                 deletion_error=f"{io.label} restore lacks completed deletion",
             )
-            if expected_archive is not None and expected_archive != (
+            archive_evidence = (
                 source.target_id,
                 deletion_receipt.receipt_id,
+            )
+            if (
+                not operator_submission
+                and expected_archive is not None
+                and expected_archive != archive_evidence
             ):
                 raise ValueError(f"{io.label} restore plan evidence changed")
             archive_identity = metadata_identity(
@@ -937,13 +976,27 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
             verify_private_archive(
                 parent_fd, name, key, source, receipt, io=io, codec=codec
             )
+            if operator_submission:
+                assert expected_plan is not None
+                target_present = self._observe_restore_target(target, source, name)
+                if (
+                    expected_archive != archive_evidence
+                    or desired.inventory_revision != expected_plan.desired_inventory_revision
+                    or (expected_target_state == "same_bytes" and not target_present)
+                ):
+                    raise ValueError(f"{io.label} restore plan is stale")
+                if target_present and expected_target_state == "absent":
+                    self.restore_journal().require_started(
+                        self.identity_for(key, name, deletion_receipt.receipt_id),
+                        error=f"{io.label} restore plan has no prior start",
+                    )
             with closing_descriptor(io.open_directory(parent_fd, name)) as archive_fd:
                 if metadata_identity(os.fstat(archive_fd)) != archive_identity:
                     raise ValueError(f"{io.label} restore archive changed")
                 with closing_descriptor(
                     io.open_directory(archive_fd, codec.files_name)
                 ) as files_fd:
-                    verify_files(files_fd, source)
+                    io.verify_tree(files_fd, source.members)
                     prepare(target.parent, private_base=private_base, label="data")
                     existing_target = io.preflight_restore_target(
                         private_base,
@@ -971,7 +1024,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
                         with closing_descriptor(
                             io.open_path(private_base, target)
                         ) as target_fd:
-                            verify_files(target_fd, source)
+                            io.verify_tree(target_fd, source.members)
                         disposition = "already_present"
                     else:
                         prepare(target.parent, private_base=private_base, label="data")
@@ -983,9 +1036,8 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
                             stage_name=stage_name,
                             stage_prefix=stage_prefix,
                             stage_suffix=stage_suffix,
-                            write_file=write_file_factory(),
                         )
-                    verify_files(files_fd, source)
+                    io.verify_tree(files_fd, source.members)
                 if metadata_identity(os.fstat(archive_fd)) != metadata_identity(
                     os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
                 ):

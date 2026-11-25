@@ -7,10 +7,8 @@ It keeps every Worker journal and grants no history pruning authority.
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from loushang.harness.package_product._linux_worker_history import (
-    require_committed_v2_history,
     require_settled_history,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -18,17 +16,6 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 
 from .product_worker_history_retention import _history_proof_bindings
-from .product_worker_no_effect_archive_v2 import CodingWorkerNoEffectArchiveV2
-
-
-def _require_committed_v2_history(
-    *, state_root: Path, root_fd: int
-) -> CodingWorkerNoEffectArchiveV2 | None:
-    """Prove the committed Product owner and all five retained streams."""
-
-    return require_committed_v2_history(
-        _history_proof_bindings(), state_root=state_root, root_fd=root_fd
-    )
 
 
 class CodingPosixWorkerGcHistoryAuthority:

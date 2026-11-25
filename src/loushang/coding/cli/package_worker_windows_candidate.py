@@ -9,16 +9,11 @@ import sys
 from collections.abc import Sequence
 from contextlib import closing
 from functools import partial
-from importlib.metadata import version
 from pathlib import Path
 
 from loushang.coding.package.product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    _open_installed_product,
     admit_coding_external_worker_wheel,
-    open_coding_fenced_product_application_owner,
-)
-from loushang.coding.package.product_worker_windows_activation_state_journal import (
-    CodingWindowsWorkerActivationStateJournal,
 )
 from loushang.coding.package.product_worker_windows_backend_release import (
     review_coding_windows_worker_backend_release,
@@ -39,11 +34,10 @@ from loushang.coding.package.product_worker_windows_orphan_review import (
     review_coding_windows_product_worker_orphan_runtime,
 )
 from loushang.coding.package.product_worker_windows_recovery_inventory import (
-    inspect_coding_windows_product_worker_recovery_inventory,
+    _HISTORY_INVENTORY,
 )
 from loushang.coding.package.product_worker_windows_stage_retirement import (
-    _review_for_retry,
-    retire_coding_windows_product_worker_complete_stage,
+    _operations as _NORMAL_STAGE_RETIREMENT,
 )
 from loushang.coding.package.product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewError,
@@ -60,6 +54,10 @@ from loushang.harness.cli.worker_candidate import (
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
     worker_candidate_selection_document,
+)
+from loushang.harness.cli.worker_recovery import (
+    add_windows_worker_recovery_commands,
+    execute_windows_worker_recovery_action,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -92,6 +90,7 @@ _CANDIDATE_OPERATOR = NativeWorkerCandidateOperator(
     failure_code="windows_worker_candidate_recovery_unavailable",
 )
 
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-worker-windows-candidate")
     parser.add_argument("--workspace", required=True, help="fenced Coding workspace")
@@ -99,19 +98,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--windows-candidate", action="store_true", help=argparse.SUPPRESS
     )
     actions = parser.add_subparsers(dest="action", required=True)
-    for action, help_text in (
-        ("inspect", "inspect one retained Worker attempt"),
-        ("recover-crash", "resume exact Product crash cleanup and C5 settlement"),
-        ("review-normal", "review one settled normal Worker stage offline"),
-    ):
-        command = actions.add_parser(action, help=help_text)
-        command.add_argument("--attempt-id", required=True)
-    retire_normal = actions.add_parser(
-        "retire-normal", help="retire one exactly reviewed normal Worker stage"
-    )
-    retire_normal.add_argument("--attempt-id", required=True)
-    retire_normal.add_argument("--review-id", required=True)
-    actions.add_parser("list-attempts", help="list retained Worker recovery attempts")
+    add_windows_worker_recovery_commands(actions)
     selection = actions.add_parser(
         "candidate-selection", help="read one exact selected Worker candidate"
     )
@@ -170,11 +157,9 @@ def _run_product_action(
     workspace: Path,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    owner = open_coding_fenced_product_application_owner(
+    owner = _open_installed_product(
         lifecycle,
         workspace=workspace,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         windows_candidate=True,
         worker_candidates=True,
     )
@@ -182,41 +167,23 @@ def _run_product_action(
         product = owner.runtime_owner.product_owner
         if type(product) is not WindowsLocalWheelProductSessionOwner:
             raise ValueError("Windows Worker candidate Product is unavailable")
-        if args.action == "inspect":
-            review = review_coding_windows_product_worker_orphan_runtime(
-                product, attempt_id=args.attempt_id
-            )
-            attempt = review.attempt
-            if attempt is None:
-                raise ValueError("Windows Worker attempt is absent")
-            c5 = tuple(
-                item
-                for item in CodingWindowsWorkerActivationStateJournal(
-                    product
-                ).retained_attempts_read_only()
-                if item.attempt_id == args.attempt_id
-            )
-            document = {
-                "attemptId": args.attempt_id,
-                "supervisorPhase": attempt.supervisor_phase,
-                "nativePhase": attempt.native_phase,
-                "nativeJobAbsent": review.native_job_absent,
-                "orphanLeaseCount": len(review.orphan_leases),
-                "payloadRetained": attempt.payload_directory_identity is not None,
-                "c5Phase": c5[0].phase if len(c5) == 1 else None,
-            }
-        elif args.action == "recover-crash":
-            settled = recover_coding_windows_product_worker_crash_attempt(
-                product, attempt_id=args.attempt_id
-            )
-            document = {
-                "attemptId": settled.attempt_id,
-                "c5Phase": settled.phase,
-                "c5Revision": settled.last_seen_revision,
-            }
-        else:
-            document = _execute(product, args)
-        return document
+        if args.action in {"inspect", "recover-crash"}:
+            result = _RECOVERY_OPERATOR(product, args)
+            assert result is not None
+            return result
+        return _execute(product, args)
+
+
+_RECOVERY_OPERATOR = partial(
+    execute_windows_worker_recovery_action,
+    histories=_HISTORY_INVENTORY,
+    review_orphan=review_coding_windows_product_worker_orphan_runtime,
+    recover_crash=recover_coding_windows_product_worker_crash_attempt,
+    retirement=_NORMAL_STAGE_RETIREMENT,
+    review_normal=review_coding_windows_product_worker_complete_stage,
+    retry_error=CodingWindowsWorkerStageReviewError,
+    retry_code="coding_worker_stage_review_settlement_unverified",
+)
 
 
 def _execute(
@@ -225,55 +192,16 @@ def _execute(
     if args.action == "candidate-selection":
         return _read_candidate_selection(product, args.plugin_id)
     candidate_result = _CANDIDATE_OPERATOR.execute_candidate_action(
-        product, args, opt_in_owner=lambda: CodingWindowsWorkerProductOptInOwner(product)
+        product,
+        args,
+        opt_in_owner=lambda: CodingWindowsWorkerProductOptInOwner(product),
     )
     if candidate_result is not None:
         return candidate_result
-    if args.action == "list-attempts":
-        return {
-            "attempts": [
-                {
-                    "attemptId": item.attempt_id,
-                    "nativePhase": item.native_phase,
-                    "supervisorPhase": item.supervisor_phase,
-                    "debts": list(item.observed_debts),
-                }
-                for item in inspect_coding_windows_product_worker_recovery_inventory(
-                    product
-                )
-            ]
-        }
-    if args.action in {"review-normal", "retire-normal"}:
-        review_current = partial(
-            review_coding_windows_product_worker_complete_stage,
-            product, attempt_id=args.attempt_id,
-        )
-        if args.action == "review-normal":
-            stage_review = review_current()
-            return {
-                "normalStageReview": {
-                    "attemptId": stage_review.attempt_id,
-                    "reviewId": stage_review.fingerprint,
-                }
-            }
-        stage_review = _review_for_retry(
-            product, args.attempt_id,
-            review_current=review_current,
-            retry_error=CodingWindowsWorkerStageReviewError,
-            retry_code="coding_worker_stage_review_settlement_unverified",
-        )
-        if args.review_id != stage_review.fingerprint:
-            raise ValueError("Windows Worker normal stage review changed")
-        receipt = retire_coding_windows_product_worker_complete_stage(
-            product, expected_review=stage_review
-        )
-        return {
-            "normalStageRetirement": {
-                "attemptId": receipt.attempt_id,
-                "reviewId": receipt.review_fingerprint,
-                "stageIdentity": list(receipt.stage_identity),
-            }
-        }
+    if args.action in {"list-attempts", "review-normal", "retire-normal"}:
+        recovery_result = _RECOVERY_OPERATOR(product, args)
+        assert recovery_result is not None
+        return recovery_result
     if args.action == "release-status":
         decision = CodingWindowsWorkerNativeApprovalOwner(product).current()
         return {"approvalDecision": None if decision is None else decision.to_dict()}
@@ -324,7 +252,8 @@ def _read_candidate_selection(
     )
     return {
         "candidateSelection": worker_candidate_selection_document(
-            candidate, artifact_digest=artifact_digest,
+            candidate,
+            artifact_digest=artifact_digest,
         ),
         "productUse": "not_checked",
     }

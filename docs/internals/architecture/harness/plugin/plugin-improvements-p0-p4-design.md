@@ -417,3 +417,23 @@ The experience review required a public Wheel validation path, a reproducible
 offline target run, actor-aware repair, and a discoverable local-inventory
 route. These findings are incorporated above. This review closes design
 contradictions; it is not Product rollout approval or implementation evidence.
+
+## Local discovery evidence custody
+
+The implementation at the `27bd2eb9e` baseline uses the existing Harness
+Plugin Management discovery owner to observe the installed inventory, check
+its revisions, project the native Catalog, and choose the evidence-backed
+fallback. The coordinator reads settings before and after Catalog projection.
+It rechecks the original management owner and workspace before returning.
+Outputs retain the existing version, error precedence and rendering.
+
+Coding binds the workspace fence, the selected Product's read-only wheel
+authority, the inert data Wheel validator and allowed kinds, and the native
+Catalog and fallback inputs. Loader remains the physical scan owner. The
+change adds no installer or live Session authority.
+
+Production Python changes by −146 lines in Coding and +190 lines in Harness,
+for +44 system lines. The shared entry adds typed bindings for the actual
+Product and Catalog input producers. Against the original owner, 21
+controlled observations matched both the ordered calls and output, including
+invalid requests, stale settings, absent authority, and fallback failures.

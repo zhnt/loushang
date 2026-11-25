@@ -34,7 +34,6 @@ from .installation_private_data import (
 from .private_data_backup import (
     CodingArchPrivateDataBackupReceiptV1,
     _private_io,
-    _verify_files,
 )
 from .private_data_backup import (
     _archive_codec as _archive_codec,
@@ -44,9 +43,6 @@ from .private_data_backup import (
 )
 from .private_data_backup import (
     _digest as _digest,
-)
-from .private_data_backup import (
-    _write_or_verify_file as _write_or_verify_file,
 )
 from .private_data_deletion_journal import (
     CodingArchPrivateDataDeletionJournal as CodingArchPrivateDataDeletionJournal,
@@ -86,6 +82,7 @@ _CodingArchiveRestore = PosixPrivateDataRestore[
     CodingArchPrivateDataTargetSnapshotV1,
     CodingArchPrivateDataBackupReceiptV1,
     CodingArchPrivateDataRestoreEventV1,
+    CodingArchPrivateDataRestoreConfirmationV1,
 ]
 
 
@@ -107,6 +104,10 @@ def _archive_restore(
         desired_snapshot=desired_snapshot,
         deletion_journal=lambda: CodingArchPrivateDataDeletionJournal(state_root),
         restore_journal=lambda: CodingArchPrivateDataRestoreJournal(state_root),
+        confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
+            state_root
+        ),
+        create_confirmation=CodingArchPrivateDataRestoreConfirmationV1.create,
         identity_for=restore_id_for,
         resolve_target=partial(coding_arch_installation_private_data_root, layout),
     )
@@ -126,12 +127,7 @@ class CodingArchPrivateDataRestoreOwner:
         """Durably confirm exact restored bytes after completion, by request."""
 
         with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
-            return self._archive().confirm(
-                key,
-                backup_id,
-                confirmation_journal=self._confirmation_journal,
-                create_confirmation=CodingArchPrivateDataRestoreConfirmationV1.create,
-            )
+            return self._archive().confirm(key, backup_id)
 
     def verify_confirmation(
         self, key: PluginInstallationKeyV1, backup_id: str, confirmation_id: str
@@ -139,20 +135,10 @@ class CodingArchPrivateDataRestoreOwner:
         """Reopen one confirmation against current Product and restored bytes."""
 
         with CodingArchPrivateDataDeletionPreview(self.layout, self.product)._offline():
-            return self._archive().verify_confirmation(
-                key, backup_id, confirmation_id, confirmation_journal=self._confirmation_journal
-            )
+            return self._archive().verify_confirmation(key, backup_id, confirmation_id)
 
     def _archive(self) -> _CodingArchiveRestore:
         return _archive_restore(self.layout, self.product.state_root, self.product.desired_state.snapshot)
-
-    def _confirmation_journal(self) -> CodingArchPrivateDataRestoreConfirmationJournal:
-        return CodingArchPrivateDataRestoreConfirmationJournal(self.product.state_root)
-
-    def _current_completed_restore(
-        self, key: PluginInstallationKeyV1, backup_id: str
-    ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return self._archive().completed(backup_id, key)
 
     def preview(
         self, key: PluginInstallationKeyV1, backup_id: str
@@ -175,7 +161,16 @@ class CodingArchPrivateDataRestoreOwner:
         expected_plan: CodingArchPrivateDataRestorePlanV1 | None = None,
     ) -> CodingArchPrivateDataRestoreResultV1:
         """Publish verified backup bytes only into an absent Installation root."""
+        return self._restore(key, backup_id, expected_plan=expected_plan)
 
+    def _restore(
+        self,
+        key: PluginInstallationKeyV1,
+        backup_id: str,
+        *,
+        expected_plan: CodingArchPrivateDataRestorePlanV1 | None,
+        operator_submission: bool = False,
+    ) -> CodingArchPrivateDataRestoreResultV1:
         target = coding_arch_installation_private_data_root(self.layout, key)
         if not _digest(backup_id):
             raise ValueError("Coding Arch restore backup ID is invalid")
@@ -192,9 +187,8 @@ class CodingArchPrivateDataRestoreOwner:
                 key,
                 expected_plan=expected_plan,
                 prepare=_prepare_private_tree,
-                verify_files=lambda fd, source: _verify_files(fd, source),
-                write_file_factory=lambda: _write_or_verify_file,
                 result_factory=CodingArchPrivateDataRestoreResultV1,
+                operator_submission=operator_submission,
             )
 
 

@@ -823,3 +823,87 @@ Python生产总量为Coding100,058／Harness380,062／Hosting14,235／其它154,
 全部112文件均须更新职责与处置，区分产品政策、必要名义入口、迁移、复用删除；重新审查旧轮次保留理由，Coding 类型或固定名称不单独构成保留整个实现的理由。
 每批计入 Coding/Harness/Hosting/其他生产代码及系统总量，测试和文档单列；系统成本与实际重复删除、职责迁移分别报告。
 本轮尚未达到多数退出目标；当前清单是部分迁移的阶段性交付记录，不代表整组 C07 验收完成，不修改原轮次已完成的历史证据。
+
+### Worker 候选资格与启动门追加
+
+实施 agent `/root` 在 `812ee250e` 上复核并接受这两段职责，采用本地架构方法
+`0f9bd3f`。Wheel Policy 持有候选绑定的存在性检查，Package Product 在两平台 C5
+打开前复核当前 epoch 和候选资格。POSIX 批准和 opt-in 共用 Product 资格检查。
+Windows opt-in 复用已有候选准入入口。各入口沿用原生类型校验及其与 current 检查的顺序。
+
+Worker StartGate 持有完整追加入口。Coding 给出候选拒绝政策，仍在打开追加位置前运行。
+追加前首次 C5 初始化、锁内复核、追加和失败收尾沿用原程序。历史记录字段和版本继续由
+各自的名义记录声明。追加方法的 Python 定义位置改为 Harness。
+
+Coding −42 行，Harness +33 行，系统生产 Python −9 行。定向回归 81 项通过，
+C54/C51 架构检查 17 项通过。三个工作区用例受本机测试路径权限影响，C51 的现有
+消费者清单有一项差异。四项失败在干净的 `c8c48d300` 上复现。
+
+### Windows Worker 历史准备、引用核验与基底发布
+
+实施 agent `/root` 以 `16597be99` 为本批基线，采用本地架构方法 `0f9bd3f`。
+现有 Package Product Windows 历史模块用一份不可变绑定连接准备记录、引用核验、
+检查点读写与六份基底的复核和发布。锁内调用由原模块直接串接。Coding 保留名义记录、
+wire 预算、Product 标识以及稳定入口。切换预检继续使用同一锁内检查点证明，保留其
+复读故障注入点。准备记录与检查点的磁盘名称由原 Worker History 共享。
+
+守卫与 IO 仍由原 runtime quiescence、Product GC、根描述符和 WindowsPrivateReceiptIO
+持有。普通读取沿用其原有读写权限配置。准备、检查点和基底的 staged retry 条件以及
+错误顺序分别保持。新命令绑定只保存这些既有组件与类型。
+
+生产 Python 本批 Coding −111、Harness −40、Hosting 与其他不变，系统 −151。
+候选 Coding 为 86,576 行，系统为 657,249 行。测试源码零改动。与前一提交逐项
+比较 337 组真实 Coding 入口的受控观察，含 321 组注入故障，锁取还、读写顺序、
+结果与最终记录字节相符。这些观察使用惰性 Windows 端口。
+
+本地组合为 345 passed、2 skipped、1 deselected、3 failed。三项既有架构失败
+在 `16597be99` 重现，涉及 Worker 装配消费者清单以及 LPAC canary 标记。
+C50/C54 另有 16 项通过。Ruff、六文件 mypy、架构依赖事实和文档检查通过。
+原生 Windows 路线仍待验证。
+
+### Windows 崩溃历史证明与退休复核
+
+以 `46bf795d2` 为基线，Coding 的孤儿审阅入口直接接入 Package Product 的只读恢复，
+沿用原 Product 标识与名义记录。干净退出的租约修复沿用同一个 admission 和锁内复读，
+仍要求匹配原租约、最新审阅和明确的 Job 不存在证据。
+
+Worker History 统一校验 provisioning 的阶段、修订、witness 历史、启动请求、回执、
+Job 和 Native Profile。崩溃审阅、租约修复、原生结算和退休调用同一组校验，
+各自保留原锁范围、失败码及动作特有的证明。紧邻删除的退休复核仍验证原生规格摘要，
+历史比较本身不持有 IO 或写权限。
+
+本批生产 Python 为 Coding −9 行、Harness −21 行、系统 −30 行。Hosting 和其他
+生产代码不变，测试源码不变。恢复首轮 98 passed、42 skipped、7 deselected，
+最终恢复与退休证明回归 52 passed。两组有交叠。原生 Windows LPAC、Job 和崩溃场景
+仍待平台验证。剩余产品 Profile、名义字段和适配体不计为本批迁移收益。
+
+### Linux Worker 恢复命令与证据复核
+
+Harness CLI 承接 Linux Worker 的 12 个恢复命令及其参数、预览结果与 JSON 回执。
+Package Product 的现有恢复模块持有启动门审阅、原租约复核及进程结算。命令直接调用
+这些操作，并继续复用原载荷、注册恢复及 C5 结算 owner。Coding 保留名义记录、错误、
+产品策略和原 Python 入口。读取命令仍只返回观察结果。修复继续核对完整证据，保持
+租约修复、进程结算、删除载荷和 C5 恢复各自的事务边界。
+
+本批生产 Python 为 Coding −270、Harness +235、系统 −35。Hosting 和其他生产代码
+无变化。26 组命令帮助及缺参输出逐字节一致，17 组命令结果、错误身份及操作顺序与
+前序实现一致。后者使用受控操作返回值。
+兼容探针与现有 C50/C54 架构检查共 336 项通过。定向 Ruff 和类型检查通过。
+验证使用 Linux 非 live 路线，Windows 原生路线未运行。测试源码无改动。
+
+### Windows Worker 恢复命令与正常退休
+
+Harness CLI 接管 Windows 的 5 个恢复命令，复用 Linux 命令的参数注册。
+只读检查通过已有恢复库存、孤儿审阅和 C5 日志读取原字段，保留 Job 不可观测时的
+空值。崩溃恢复继续调用原 Package Product 完整入口。正常退休由同一个现有 owner
+在预览失败时有条件复读已持久化的审阅，核对操作员提交的指纹，再执行原退休事务。
+Coding 保留产品准入、错误及记录身份。
+
+本批生产 Python 为 Coding −68、Harness +131、系统 +63。Hosting 和其他生产代码
+无变化。系统增加来自命令与原 owner 的通用接线。测试源码无改动。
+11 组受控调用证明结果、错误及操作顺序相同，12 组帮助和缺参输出逐字节一致。
+本地既有组合 61 passed、1 skipped。最终导入布局的定向复跑 42 passed、1 skipped，
+与前一组合有交叠。原生 Windows 用例仍需平台验证。
+
+上批 Linux 的 61 项定向组合随后全部通过。另一次单项跨进程预览执行超时，
+同一超时已在迁移前版本复现。

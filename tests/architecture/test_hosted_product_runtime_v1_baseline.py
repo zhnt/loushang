@@ -510,6 +510,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "integrations/_canonical_transcript_catalog.py",
         "integrations/_continuity_preparation.py",
         "integrations/_foreground_client_control.py",
+        "integrations/_foreground_process.py",
         "integrations/_managed_mux_command.py",
         "integrations/_session_projection.py",
     } == {
@@ -520,7 +521,11 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "contracts.py",
         "errors.py",
         "integrations/__init__.py",
+        "integrations/_resource_client_reference.py",
+        "integrations/_resource_host_reference.py",
+        "integrations/_session_commands.py",
         "integrations/harness_session.py",
+        "integrations/resource_access.py",
         "integrations/session_control.py",
         "integrations/session_product.py",
         "router.py",
@@ -710,6 +715,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                     session_projection,
                     session_projection + "._HostedApprovalPresentation",
                     session_projection + "._project_hosted_approval",
+                    "loushang.apphost.integrations.resource_access",
+                    "loushang.apphost.integrations.resource_access.HostedResourceAccess",
                 }
                 if path == Path('src/loushang/coding/hosted/resume.py')
                 else set()
@@ -740,10 +747,14 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/session.py'),
+        Path('src/loushang/coding/hosted/_session_commands.py'),
+        Path('src/loushang/coding/hosted/resources.py'),
+        Path('src/loushang/coding/hosted/resource_tools.py'),
         # Stage 1A: validate the original managed lease binding key.
         Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),
         Path("src/loushang/coding/cli/hosted_client.py"),
+        Path("src/loushang/coding/cli/mux.py"),
         Path('src/loushang/coding/hosted/bootstrap.py'),
         Path('src/loushang/coding/hosted/local.py'),
         Path('src/loushang/coding/hosted/managed/bootstrap.py'),

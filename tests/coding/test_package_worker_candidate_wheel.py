@@ -39,14 +39,15 @@ import loushang.coding.package.product_worker_opt_in as opt_in_journal_module
 import loushang.coding.package.product_worker_payload as worker_payload_module
 import loushang.coding.package.product_worker_receipt as receipt_journal_module
 import loushang.coding.package.product_worker_start_gate_journal as gate_journal_module
-import loushang.coding.session.agent_session as coding_agent_session_module
 import loushang.harness.package_product._linux_worker_history as history_proof_module
 import loushang.harness.package_product._linux_worker_native_release as native_release_custody_module
 import loushang.harness.package_product._linux_worker_recovery as gated_recovery_core
 import loushang.harness.package_product.product_local_wheel_runtime as local_wheel_runtime_module
 import loushang.harness.package_product.product_root_gc_runtime as root_gc_module
+import loushang.harness.session.composition_evidence as composition_evidence_module
 import loushang.harness.worker.history._checkpoint_commands as checkpoint_commands_module
 import loushang.harness.worker.history._checkpoint_history as checkpoint_history_module
+import loushang.harness.worker.history._retention as retention_owner
 import loushang.hosting.service_group as service_group_module
 from loushang.agent import Agent, synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
@@ -4291,7 +4292,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             async def verify_resume_drift_before_native() -> None:
                                 try:
                                     original_fingerprint = (
-                                        coding_agent_session_module.fingerprint_catalog_value
+                                        composition_evidence_module.fingerprint_catalog_value
                                     )
                                     original_prepare_component = (
                                         SessionCapabilityWorkerComponentRequest.prepare_component
@@ -4314,7 +4315,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
 
                                     with monkeypatch.context() as drift:
                                         drift.setattr(
-                                            coding_agent_session_module,
+                                            composition_evidence_module,
                                             "fingerprint_catalog_value",
                                             drift_catalog_fingerprint,
                                         )
@@ -4464,11 +4465,12 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             hidden_topology_path.rename(backup_topology_path)
                         assert direct_retention.unverified_receipt_gate_references == ()
                         assert direct_retention.attempt_record is not None
-                        assert history_retention_module._receipt_gate_reference_issue(
+                        assert retention_owner.receipt_gate_reference_issue(
                             direct_gate_attempts[0],
                             direct_retention.receipt_record,
                             direct_retention.attempt_record,
                             "present",
+                            product_id="coding",
                         ) == "receipt_reference_native_absence_unverified"
                         mismatched_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
                             journal_revision=direct_gate_attempts[0].journal_revision,
@@ -4485,11 +4487,12 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             ),
                             identity=direct_gate_attempts[0].identity,
                         )
-                        assert history_retention_module._receipt_gate_reference_issue(
+                        assert retention_owner.receipt_gate_reference_issue(
                             mismatched_gate,
                             direct_retention.receipt_record,
                             direct_retention.attempt_record,
                             "absent",
+                            product_id="coding",
                         ) == "receipt_reference_binding_changed"
                         assert (
                             replace(
@@ -5841,8 +5844,8 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 )
                 with monkeypatch.context() as patch:
                     patch.setattr(
-                        gated_recovery_core,
-                        "_read_gated_receipt",
+                        gated_recovery_core.PosixWorkerGatedRecovery,
+                        "_read_receipt",
                         lambda *_args, **_kwargs: None,
                     )
                     missing_receipt = review_coding_product_worker_orphan_runtime(
@@ -6258,7 +6261,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         ) as quiescence:
             with product.gc_gate.guard(require_write=True):
                 writer_review = (
-                    history_retention_module._review_coding_product_worker_history_under_guard(
+                    history_proof_module.review_history_under_guard(
+                        history_retention_module._history_proof_bindings(),
                         product,
                         attempt_id=attempt_id,
                         active_runtime_lease_ids=(

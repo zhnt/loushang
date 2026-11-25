@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import argparse
 import os
-import secrets
 import sys
 from collections.abc import Sequence
-from dataclasses import replace
 from importlib.metadata import version
 from operator import attrgetter
 from pathlib import Path
@@ -26,7 +24,6 @@ from loushang.coding.package.private_data_backup_expiry_journal import (
     CodingArchPrivateDataBackupExpiryConfirmationV1,
 )
 from loushang.coding.package.private_data_backup_sdk import (
-    CodingArchPrivateDataBackupClientV1,
     open_coding_arch_private_data_backup_client,
 )
 from loushang.coding.package.private_data_deletion_owner import (
@@ -37,18 +34,12 @@ from loushang.coding.package.private_data_restore import (
     CodingArchPrivateDataRestorePlanV1,
     CodingArchPrivateDataRestoreResultV1,
 )
-from loushang.coding.package.private_data_restore_journal import (
-    CodingArchPrivateDataRestoreJournal,
-    restore_id_for,
-)
 from loushang.coding.package.private_data_windows_backup_client import (
-    CodingWindowsArchBackupCandidateClientV1,
     open_coding_windows_arch_backup_candidate_client,
 )
 from loushang.coding.package.product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     CodingFencedProductApplicationOwner,
-    open_coding_fenced_product_application_owner,
+    _open_installed_product,
     open_coding_package_product_state,
 )
 from loushang.coding.plugin_manager.lifecycle import (
@@ -56,8 +47,14 @@ from loushang.coding.plugin_manager.lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.harness.cli.package_lifecycle import (
+    PRIVATE_DATA_ACCESS_ACTIONS,
     PackageOperatorRecordInput,
+    add_private_data_operator_commands,
     run_package_operator_command,
+    run_private_data_access,
+    run_private_data_deletion,
+    run_private_data_expiry,
+    run_private_data_restore_confirmation,
 )
 from loushang.harness.package_product._private_data_custody import (
     hold_private_data_product,
@@ -69,9 +66,7 @@ from loushang.harness.plugin_management.private_data_confirmation import (
     PluginPrivateDataConfirmationJournal,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
-    PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionCoordinator,
-    PluginPrivateDataDeletionPlanV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -81,11 +76,12 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 _POLICY_REVISION = "coding-arch-private-data-cli:1"
 _EXPIRY_POLICY_REVISION = "coding-arch-backup-expiry-cli:1"
 _MAX_INPUT_BYTES = 16 * 1024
-_BACKUP_ACCESS_ACTIONS = ("backup", "backup-status", "backup-verify", "restore-preview")
 _RECORD_INPUT = PackageOperatorRecordInput(
     label="Coding private-data command", maximum_bytes=_MAX_INPUT_BYTES
 )
 _FINGERPRINT = attrgetter("fingerprint")
+_DELETION_LABEL = "Coding private-data"
+_DELETION_CONFIRMATION_PREFIX = "arch-private-data:"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -94,58 +90,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--plugin-id", required=True, help="currently only coding.arch.default"
     )
-    commands = parser.add_subparsers(dest="action", required=True)
-    commands.add_parser("preview", help="read exact Installation deletion target")
-    commands.add_parser("backup", help="retain a verified Installation backup")
-    commands.add_parser("backup-status", help="read verified backup retention")
-    verify = commands.add_parser("backup-verify", help="verify one exact backup")
-    verify.add_argument("--backup-id", required=True)
-    expiry_preview = commands.add_parser(
-        "backup-expiry-preview",
-        help="read an exact, confirmed restore-backed backup expiry plan",
-    )
-    expiry_preview.add_argument("--backup-id", required=True)
-    expiry_preview.add_argument("--confirmation-id", required=True)
-    expiry_confirm = commands.add_parser(
-        "backup-expiry-confirm", help="confirm one exact backup expiry plan"
-    )
-    expiry_confirm.add_argument("--plan-file", required=True)
-    expiry_confirm.add_argument("--accept-fingerprint", required=True)
-    expire = commands.add_parser(
-        "backup-expire", help="expire only a separately confirmed Arch backup"
-    )
-    expire.add_argument("--plan-file", required=True)
-    expire.add_argument("--confirmation-file", required=True)
-    restore_preview = commands.add_parser(
-        "restore-preview", help="read one exact, offline backup restore plan"
-    )
-    restore_preview.add_argument("--backup-id", required=True)
-    restore = commands.add_parser(
-        "restore", help="restore only a previewed, accepted backup into absent data"
-    )
-    restore.add_argument("--plan-file", required=True)
-    restore.add_argument("--accept-fingerprint", required=True)
-    restore_confirm = commands.add_parser(
-        "restore-confirm", help="confirm one completed and verified Arch restore"
-    )
-    restore_confirm.add_argument("--backup-id", required=True)
-    restore_confirm.add_argument("--plan-file")
-    restore_confirm_verify = commands.add_parser(
-        "restore-confirm-verify", help="reopen one exact restore confirmation"
-    )
-    restore_confirm_verify.add_argument("--backup-id", required=True)
-    restore_confirm_verify.add_argument("--confirmation-id", required=True)
-    restore_confirm_verify.add_argument("--plan-file")
-    confirm = commands.add_parser(
-        "confirm", help="separately confirm one unchanged preview fingerprint"
-    )
-    confirm.add_argument("--plan-file", required=True)
-    confirm.add_argument("--accept-fingerprint", required=True)
-    delete = commands.add_parser(
-        "delete", help="delete only the separately confirmed, removed Installation"
-    )
-    delete.add_argument("--plan-file", required=True)
-    delete.add_argument("--confirmation-file", required=True)
+    add_private_data_operator_commands(parser, installation_name="Arch")
     args = parser.parse_args(argv)
 
     if os.name not in {"posix", "nt"} or (
@@ -161,11 +106,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
         if os.name == "nt":
             return _run_windows_action(workspace, layout, args)
-        if args.action in _BACKUP_ACCESS_ACTIONS or args.action in {
-            "preview",
+        if args.action in PRIVATE_DATA_ACCESS_ACTIONS or args.action in {
             "restore-confirm",
             "restore-confirm-verify",
-            "backup-expiry-preview",
         }:
             return _run_posix_backup_action(workspace, args)
         return _run_posix_product_action(workspace, layout, args)
@@ -184,12 +127,7 @@ def _run_posix_product_action(
     layout: CodingPluginLifecycleStateLayout,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    application = open_coding_fenced_product_application_owner(
-        layout,
-        workspace=workspace,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-    )
+    application = _open_installed_product(layout, workspace=workspace)
     with hold_private_data_product(
         application, PosixLocalWheelProductSessionOwner, PackageProductPosixFencedRuntimeOwner,
         error="Coding private-data Product owner is unsupported",
@@ -201,48 +139,16 @@ def _run_posix_product_action(
         return _run_product_action(layout, application, product, args)
 
 
-def _run_backup_access(
-    client: CodingArchPrivateDataBackupClientV1
-    | CodingWindowsArchBackupCandidateClientV1,
-    args: argparse.Namespace,
-) -> dict[str, object]:
-    if args.action == "backup-status":
-        return {"backupRetention": client.status().to_dict()}
-    if args.action == "backup":
-        return {"backupReceipt": client.retain().to_dict()}
-    if args.action == "backup-verify":
-        return {"backupReceipt": client.verify(args.backup_id).to_dict()}
-    plan = client.restore_preview(args.backup_id)
-    return {"fingerprint": plan.fingerprint, "restorePlan": plan.to_dict()}
-
-
 def _run_posix_backup_action(
     workspace: Path, args: argparse.Namespace
 ) -> dict[str, object]:
     client = open_coding_arch_private_data_backup_client(workspace)
-    if args.action == "preview":
-        deletion_plan = client._preview_deletion()
-        return {
-            "fingerprint": deletion_plan.fingerprint,
-            "plan": deletion_plan.to_dict(),
-        }
-    if args.action == "restore-confirm":
-        return {"restoreConfirmation": client.confirm_restore(args.backup_id).to_dict()}
-    if args.action == "restore-confirm-verify":
-        confirmation = client.verify_restore_confirmation(
-            args.backup_id, args.confirmation_id
+    if args.action in {"restore-confirm", "restore-confirm-verify"}:
+        return run_private_data_restore_confirmation(
+            args, target=args.backup_id, confirm=client.confirm_restore,
+            verify=client.verify_restore_confirmation,
         )
-        return {"restoreConfirmation": confirmation.to_dict()}
-    if args.action == "backup-expiry-preview":
-        plan = client.expiry_preview(args.backup_id, args.confirmation_id)
-        return _backup_expiry_preview_document(plan)
-    return _run_backup_access(client, args)
-
-
-def _backup_expiry_preview_document(
-    plan: CodingArchPrivateDataBackupExpiryPlanV1,
-) -> dict[str, object]:
-    return {"backupExpiryPlan": plan.to_dict(), "fingerprint": plan.fingerprint}
+    return run_private_data_access(client, args)
 
 
 def _run_windows_action(
@@ -256,78 +162,45 @@ def _run_windows_action(
         workspace, layout=layout, runtime_version=version("loushang")
     )
     action = args.action
-    if action in _BACKUP_ACCESS_ACTIONS:
-        return _run_backup_access(client, args)
-    if action == "preview":
-        deletion_plan = client.deletion_preview()
-        return {
-            "fingerprint": deletion_plan.fingerprint,
-            "plan": deletion_plan.to_dict(),
-        }
-    if action == "restore-confirm-verify":
-        restore_plan = _read_windows_restore_plan(args)
-        return {
-            "restoreConfirmation": client.restore_confirm_verify(
-                restore_plan, args.confirmation_id
-            ).to_dict()
-        }
-    if action == "restore-confirm":
-        restore_plan = _read_windows_restore_plan(args)
-        return {"restoreConfirmation": client.restore_confirm(restore_plan).to_dict()}
+    if action in PRIVATE_DATA_ACCESS_ACTIONS:
+        return run_private_data_access(client, args)
+    if action in {"restore-confirm", "restore-confirm-verify"}:
+        return run_private_data_restore_confirmation(
+            args, target=_read_windows_restore_plan(args),
+            confirm=client.restore_confirm, verify=client.restore_confirm_verify,
+        )
     if action == "restore":
         restore_plan = _read_restore_plan(Path(args.plan_file))
         if args.accept_fingerprint != restore_plan.fingerprint:
             raise ValueError("Coding Arch restore plan was not accepted")
         return _restore_document(client.restore(restore_plan))
-    if action == "backup-expiry-preview":
-        return _backup_expiry_preview_document(
-            client.backup_expiry_preview(args.backup_id, args.confirmation_id)
+    if action in {"backup-expiry-confirm", "backup-expire"}:
+        plan = _read_expiry_plan(Path(args.plan_file))
+        return run_private_data_expiry(
+            args,
+            plan,
+            confirm=lambda: client.backup_expiry_confirm(
+                plan,
+                actor_id="local-operator:windows-private-data-cli",
+                policy_revision=_EXPIRY_POLICY_REVISION,
+            ),
+            expire=lambda path: client.backup_expire(plan, _read_expiry_confirmation(path)),
+            refused="Coding Arch backup expiry plan was not accepted",
         )
-    if action == "backup-expiry-confirm":
-        expiry_plan = _read_expiry_plan(Path(args.plan_file))
-        if args.accept_fingerprint != expiry_plan.fingerprint:
-            raise ValueError("Coding Arch backup expiry plan was not accepted")
-        expiry_confirmation = client.backup_expiry_confirm(
-            expiry_plan,
-            actor_id="local-operator:windows-private-data-cli",
-            policy_revision=_EXPIRY_POLICY_REVISION,
+    if action in {"confirm", "delete"}:
+        return run_private_data_deletion(
+            args, _RECORD_INPUT,
+            preview=client.deletion_preview,
+            record=lambda plan, confirmation: client.deletion_confirm(
+                plan, confirmation, actor_id="local-operator:windows-private-data-cli",
+                policy_revision=_POLICY_REVISION,
+            ),
+            delete=client.delete_confirmed,
+            confirmation_prefix=_DELETION_CONFIRMATION_PREFIX,
+            label=_DELETION_LABEL,
+            preview_first=False,
         )
-        return {"expiryConfirmation": expiry_confirmation.to_dict()}
-    if action == "backup-expire":
-        expiry_plan = _read_expiry_plan(Path(args.plan_file))
-        expiry_confirmation = _read_expiry_confirmation(Path(args.confirmation_file))
-        return {
-            "expiryReceipt": client.backup_expire(
-                expiry_plan, expiry_confirmation
-            ).to_dict()
-        }
-    if action == "confirm":
-        deletion_plan = _read_plan(Path(args.plan_file))
-        if (
-            args.accept_fingerprint != deletion_plan.fingerprint
-            or client.deletion_preview() != deletion_plan
-        ):
-            raise ValueError("Coding private-data plan was not accepted")
-        deletion_confirmation = PluginPrivateDataDeletionConfirmationV1(
-            plan_fingerprint=deletion_plan.fingerprint,
-            confirmation_id="arch-private-data:" + secrets.token_hex(16),
-        )
-        client.deletion_confirm(
-            deletion_plan,
-            deletion_confirmation,
-            actor_id="local-operator:windows-private-data-cli",
-            policy_revision=_POLICY_REVISION,
-        )
-        return {"confirmation": deletion_confirmation.to_dict()}
-    if action == "delete":
-        deletion_plan = _read_plan(Path(args.plan_file))
-        deletion_confirmation = _read_confirmation(Path(args.confirmation_file))
-        return {
-            "receipt": client.delete_confirmed(
-                deletion_plan, deletion_confirmation
-            ).to_dict()
-        }
-    raise ValueError("Coding private-data command action is invalid")
+    raise ValueError(f"{_DELETION_LABEL} command action is invalid")
 
 
 def _read_windows_restore_plan(
@@ -351,19 +224,9 @@ def _run_restore(
     plan = _read_restore_plan(Path(args.plan_file))
     if plan.installation_key != key or args.accept_fingerprint != plan.fingerprint:
         raise ValueError("Coding Arch restore plan was not accepted")
-    current = owner.preview(key, plan.backup_id)
-    if current != plan:
-        if (
-            plan.target_state != "absent"
-            or current.target_state != "same_bytes"
-            or replace(current, target_state="absent") != plan
-        ):
-            raise ValueError("Coding Arch restore plan is stale")
-        restore_id = restore_id_for(key, plan.backup_id, plan.deletion_receipt_id)
-        CodingArchPrivateDataRestoreJournal(product.state_root).require_started(
-            restore_id, error="Coding Arch restore plan has no prior start"
-        )
-    return _restore_document(owner.restore(key, plan.backup_id, expected_plan=plan))
+    return _restore_document(
+        owner._restore(key, plan.backup_id, expected_plan=plan, operator_submission=True)
+    )
 
 
 def _restore_document(result: CodingArchPrivateDataRestoreResultV1) -> dict[str, object]:
@@ -386,18 +249,17 @@ def _run_backup_expiry(
     if plan.installation_key != key:
         raise ValueError("Coding Arch backup expiry plan is foreign")
     owner = CodingArchPrivateDataBackupExpiryOwner(layout, product)
-    if args.action == "backup-expiry-confirm":
-        if args.accept_fingerprint != plan.fingerprint:
-            raise ValueError("Coding Arch backup expiry plan was not accepted")
-        confirmation = owner.confirm(
+    return run_private_data_expiry(
+        args,
+        plan,
+        confirm=lambda: owner.confirm(
             plan,
             actor_id=f"local-uid:{os.geteuid()}",
             policy_revision=_EXPIRY_POLICY_REVISION,
-        )
-        return {"expiryConfirmation": confirmation.to_dict()}
-    confirmation = _read_expiry_confirmation(Path(args.confirmation_file))
-    receipt = owner.expire(plan, confirmation)
-    return {"expiryReceipt": receipt.to_dict()}
+        ),
+        expire=lambda path: owner.expire(plan, _read_expiry_confirmation(path)),
+        refused="Coding Arch backup expiry plan was not accepted",
+    )
 
 
 def _run_product_action(
@@ -427,43 +289,20 @@ def _run(
     key: PluginInstallationKeyV1,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    plan = _read_plan(Path(args.plan_file))
-    if plan.installation_key != key:
-        raise ValueError("Coding private-data plan is foreign")
-    if args.action == "confirm":
-        if coordinator.preview(key) != plan:
-            raise ValueError("Coding private-data plan is stale")
-        if args.accept_fingerprint != plan.fingerprint:
-            raise ValueError("Coding private-data fingerprint was not accepted")
-        confirmation = PluginPrivateDataDeletionConfirmationV1(
-            plan_fingerprint=plan.fingerprint,
-            confirmation_id="arch-private-data:" + secrets.token_hex(16),
-        )
-        confirmations.record_confirmation(
+    return run_private_data_deletion(
+        args, _RECORD_INPUT,
+        preview=lambda: coordinator.preview(key),
+        record=lambda plan, confirmation: confirmations.record_confirmation(
             plan,
             confirmation,
             actor_id=f"local-uid:{os.geteuid()}",
             policy_revision=_POLICY_REVISION,
-        )
-        return {"confirmation": confirmation.to_dict()}
-    if args.action == "delete":
-        confirmation = _read_confirmation(Path(args.confirmation_file))
-        receipt = coordinator.delete(plan, confirmation)
-        return {"receipt": receipt.to_dict()}
-    raise ValueError("Coding private-data command action is invalid")
-
-
-def _read_plan(path: Path) -> PluginPrivateDataDeletionPlanV1:
-    return _RECORD_INPUT.read(
-        path, "plan", PluginPrivateDataDeletionPlanV1.from_dict,
-        label="Coding private-data preview", fingerprint=_FINGERPRINT,
-    )
-
-
-def _read_confirmation(path: Path) -> PluginPrivateDataDeletionConfirmationV1:
-    return _RECORD_INPUT.read(
-        path, "confirmation", PluginPrivateDataDeletionConfirmationV1.from_dict,
-        label="Coding private-data confirmation",
+        ),
+        delete=coordinator.delete,
+        confirmation_prefix=_DELETION_CONFIRMATION_PREFIX,
+        label=_DELETION_LABEL,
+        preview_first=True,
+        installation_key=key,
     )
 
 

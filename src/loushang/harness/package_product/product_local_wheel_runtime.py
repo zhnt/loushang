@@ -210,6 +210,7 @@ from loushang.harness.resources.packages.product_lifecycle import (
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
+    has_worker_candidate_binding,
 )
 from loushang.harness.resources.packages.product_pinned_adoption_binding import (
     PackageProductPinnedAdoptionBindingJournal,
@@ -2333,10 +2334,7 @@ def _repair_ordinary_posix_runtime_leases(
                 )
         finally:
             os.close(root_fd)
-        if any(
-            binding.source_trust_class == "local-worker-candidate"
-            for binding in product.policy.bindings
-        ):
+        if has_worker_candidate_binding(product.policy):
             raise RuntimeError(
                 f"{error_prefix} Worker recovery requires explicit review"
             )
@@ -2393,10 +2391,7 @@ def _repair_ordinary_windows_runtime_leases(
                             f"{error_prefix} Worker recovery requires explicit review"
                         )
                     product.assert_root_gc_authority_current()
-                    if any(
-                        binding.source_trust_class == "local-worker-candidate"
-                        for binding in product.policy.bindings
-                    ):
+                    if has_worker_candidate_binding(product.policy):
                         raise RuntimeError(
                             f"{error_prefix} Worker recovery requires explicit review"
                         )

@@ -49,6 +49,9 @@ def observe(kind, case, patch):
     core = importlib.import_module(
         "loushang.harness.plugin_management._private_data_backup_windows"
     )
+    restore_core = importlib.import_module(
+        "loushang.harness.plugin_management._private_data_restore_windows"
+    )
     native = importlib.import_module(
         "loushang.harness.resources.packages._private_tree_windows"
     )
@@ -169,6 +172,17 @@ def observe(kind, case, patch):
 
     class Transaction:
         state_fd = 20
+        _label = "Windows Coding Arch"
+
+        def _backup_parent(self, key):
+            return parent
+
+        def _deletion_history(self):
+            deletion = Deletion()
+            try:
+                return deletion.events()
+            finally:
+                deletion._close()
 
         def completed_plan_revision_for(self, plan):
             trace.append("restore:revision")
@@ -198,8 +212,10 @@ def observe(kind, case, patch):
         )
 
     patch.setattr(code, "coding_arch_installation_private_data_root", lambda *a: root)
-    patch.setattr(code, "backup_parent", lambda *a: parent)
-    patch.setattr(code, "CodingWindowsArchPrivateDataDeletionTransaction", Deletion)
+    shared_expiry = kind == "expiry" and hasattr(code, "preview_windows_backup_expiry")
+    if not shared_expiry:
+        patch.setattr(code, "backup_parent", lambda *a: parent)
+        patch.setattr(code, "CodingWindowsArchPrivateDataDeletionTransaction", Deletion)
     shared_archive = not hasattr(code, "_read_archive_manifest")
     shared_restore = kind == "restore" and shared_archive
     if shared_restore:
@@ -209,6 +225,11 @@ def observe(kind, case, patch):
         patch.setattr(history, "latest_deleted_target_receipt", latest)
         patch.setattr(
             type(code._archive_io), "verify_archive", lambda self, *args: verify(*args)
+        )
+    elif shared_expiry:
+        patch.setattr(restore_core, "latest_deleted_target_receipt", latest)
+        Transaction._plan_type = (
+            code.CodingWindowsArchPrivateDataRestoreTransaction._plan_type
         )
     else:
         patch.setattr(code, "latest_deleted_target_receipt", latest)
@@ -237,6 +258,8 @@ def observe(kind, case, patch):
     )
     if kind == "restore":
         cls = code.CodingWindowsArchPrivateDataRestorePreview
+        if hasattr(code, "preview_windows_restore"):
+            patch.setattr(restore_core, "WindowsPrivateDirectoryAcl", ACL)
         patch.setattr(
             code,
             "CodingWindowsArchPrivateDataReadPreview",
@@ -277,6 +300,8 @@ def observe(kind, case, patch):
             )
         ),
     )
+    if shared_expiry:
+        Transaction._desired_state = product.desired_state
     owner = object.__new__(cls)
     object.__setattr__(owner, "layout", NS())
     object.__setattr__(owner, "product", product)

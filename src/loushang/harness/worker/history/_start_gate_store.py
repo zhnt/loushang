@@ -450,7 +450,10 @@ class StartGateHistory(Generic[_RecordT]):
     def _activation_journal(self) -> SegmentedActivationJournal:
         raise NotImplementedError("the original activation journal owner is required")
 
-    def _append_with_activation_history(
+    def _require_append_admission(self) -> None:
+        raise NotImplementedError("the original Worker append admission is required")
+
+    def append(
         self,
         *,
         phase: Literal["intent", "bound"],
@@ -462,6 +465,7 @@ class StartGateHistory(Generic[_RecordT]):
         native_closure_digest: str,
         identity: WorkerNativeProcessIdentityV1 | None = None,
     ) -> _RecordT:
+        self._require_append_admission()
         with self._append_position(
             phase=phase,
             attempt_id=attempt_id,

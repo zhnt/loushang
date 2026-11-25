@@ -15,15 +15,15 @@ from loushang.ai.types import UserMessage
 from loushang.coding.resume.activation_attempt_v2 import CodingActivationAttemptV2
 from loushang.coding.resume.binding import (
     _FIELDS,
-    CODING_RUNTIME_BINDING_METADATA_KEY,
     CodingRuntimeBindingV1,
+    _decode_runtime_binding_fields,
     _require_v1_budget,
     coding_user_payload_digest,
     freeze_coding_user_input,
-    inspect_coding_runtime_binding,
     matches_intent,
 )
 from loushang.foundation.json import JSONValue
+from loushang.harness.resume_effects import is_resume_digest
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord
@@ -42,11 +42,7 @@ class CodingRuntimeBindingV2(CodingRuntimeBindingV1):
     def __post_init__(self) -> None:
         CodingRuntimeBindingV1._validate_v1_fields(self)
         _require_v1_budget(CodingRuntimeBindingV1._document(self))
-        if (
-            type(self.intent_digest) is not str
-            or len(self.intent_digest) != 64
-            or any(char not in "0123456789abcdef" for char in self.intent_digest)
-        ):
+        if not is_resume_digest(self.intent_digest):
             raise ValueError(
                 "RuntimeBinding v2 requires the exact stored intent digest"
             )
@@ -74,16 +70,10 @@ def decode_coding_runtime_binding_v2(
         raise ValueError("RuntimeBinding v2 fields are invalid")
     if type(raw.get("version")) is not int or raw["version"] != 2:
         raise ValueError("RuntimeBinding v2 version is unsupported")
-    # Reuse validation of the common fields only after requiring the exact v2
-    # wire key, version and stored digest. A v1 fact cannot enter this decoder.
+    # The exact v2 wire envelope precedes the common field and v1 budget checks.
     common = {key: value for key, value in raw.items() if key != "intentDigest"}
     common["version"] = 1
-    observation = inspect_coding_runtime_binding(
-        {CODING_RUNTIME_BINDING_METADATA_KEY: common}
-    )
-    base = observation.binding
-    if observation.status != "known" or type(base) is not CodingRuntimeBindingV1:
-        raise ValueError("RuntimeBinding v2 common fields are invalid")
+    base = _decode_runtime_binding_fields(common)
     digest = raw["intentDigest"]
     if type(digest) is not str:
         raise ValueError("RuntimeBinding v2 intent digest is invalid")
@@ -120,13 +110,8 @@ def prepare_coding_resume_v2_user_record(
     resource_metadata: Mapping[str, JSONValue] | None = None,
 ) -> AgentTranscriptRecord:
     _require_intent(binding, intent)
-    frozen_message = freeze_coding_user_input(message)
-    if coding_user_payload_digest(frozen_message) != binding.payload_digest:
-        raise ValueError(
-            "RuntimeBinding v2 payload digest differs from the user message"
-        )
-    record = _records.make_resume_user_record(
-        frozen_message,
+    return _records.make_resume_user_record(
+        freeze_coding_user_input(message),
         binding,
         parent_id=intent.attempt_id,
         created_at=created_at,
@@ -134,9 +119,10 @@ def prepare_coding_resume_v2_user_record(
         evidence_name="Resume v2 resource evidence",
         metadata_conflict="Resume resource metadata conflicts with Binding version",
         reserved_prefix="coding.runtimeBinding",
+        digest=coding_user_payload_digest,
+        payload_error="RuntimeBinding v2 payload digest differs from the user message",
+        validate=lambda record: validate_coding_resume_v2_user_record(record, intent=intent),
     )
-    validate_coding_resume_v2_user_record(record, intent=intent)
-    return record
 
 
 def validate_coding_resume_v2_user_record(

@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import Literal
 
 from loushang.harness.plugin_management._private_data_records import (
     PRIVATE_DATA_INSTALLATION_KEY_FIELD,
     PrivateDataRecordWire,
+    private_data_identity_digest,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 
 from .private_data_backup_records import _digest as _digest
 
@@ -46,10 +43,9 @@ class CodingArchPrivateDataRestorePlanV1(PrivateDataRecordWire):
 
     @property
     def fingerprint(self) -> str:
-        return sha256(
-            b"loushang.coding-arch-restore-plan/v1\0"
-            + canonical_json_bytes(self.to_dict())
-        ).hexdigest()
+        return private_data_identity_digest(
+            b"loushang.coding-arch-restore-plan/v1\0", self.to_dict()
+        )
 
     _invalid_fields = "Coding Arch restore plan fields are invalid"
 

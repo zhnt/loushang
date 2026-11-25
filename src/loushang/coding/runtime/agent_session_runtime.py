@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar
 
 from loushang.coding.package.product_runtime import (
     CodingFencedProductApplicationSelection,
@@ -38,10 +38,12 @@ from loushang.coding.session.manager import (
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.runtime.session_operations import SessionOperationResult
 from loushang.harness.session import AgentProductSessionRuntime
-from loushang.harness.session._resume_continuation import require_resume_owner_check
+from loushang.harness.session._resume_continuation import (
+    require_resume_owner_check,
+    resume_plan_matches_history,
+)
 from loushang.harness.session.lifecycle import (
     PreparedSessionLifecycleOperation,
 )
@@ -54,7 +56,7 @@ from loushang.harness.transcript.session_catalog import (
     read_transcript_history_or_recent,
 )
 
-from .resume_planning import ResumePlanningSlot
+from .resume_planning import ResumePlanningConfiguration, ResumePlanningSlot
 
 _ResumePreview = TypeVar(
     "_ResumePreview", CodingResumeHistoryPreview, CodingResumeRecentPage
@@ -80,7 +82,6 @@ if TYPE_CHECKING:
     from loushang.harness.resources.loader import ResourceLoader
 
 SessionFactory = Callable[..., AgentSession]
-_copy_import_file = copy_file_exclusive
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,17 +108,6 @@ class CodingRuntimePreparedResume:
 
 
 @dataclass(frozen=True, slots=True)
-class _ConfiguredResumePlanning:
-    current_composition: CodingCompositionSetPlan
-    workspace_root: Path
-    resource_loader: ResourceLoader
-    subject_digest: Callable[[], str]
-    policy_digest: Callable[[], str]
-    max_work_units: int
-    time_budget_seconds: float
-
-
-@dataclass(frozen=True, slots=True)
 class _ResumeHistoryViewScope:
     runtime: AgentSessionRuntime
     target: Path
@@ -129,22 +119,6 @@ _RESUME_HISTORY_VIEW_SCOPE: ContextVar[_ResumeHistoryViewScope | None] = Context
     "coding_resume_history_view_scope",
     default=None,
 )
-
-
-def _copy_session_import(
-    source: Path,
-    destination: Path,
-    *,
-    expected_source_fingerprint: str | None = None,
-) -> None:
-    if expected_source_fingerprint is None:
-        _copy_import_file(source, destination)
-    else:
-        _copy_import_file(
-            source,
-            destination,
-            expected_source_fingerprint=expected_source_fingerprint,
-        )
 
 
 class AgentSessionRuntime(
@@ -200,7 +174,7 @@ class AgentSessionRuntime(
         self._embedded_resume_approval_owner: InteractiveApprovalResolver | None = None
         self._initialize_session_history_reads()
         self._resume_planning: ResumePlanningSlot = ResumePlanningSlot()
-        self._configured_resume_planning: _ConfiguredResumePlanning | None = None
+        self._configured_resume_planning: ResumePlanningConfiguration | None = None
         transcript_type = (
             _bind_owned_session_manager(self._owned_transcript_factory)
             if self._owned_transcript_factory is not None else SessionManager
@@ -214,8 +188,6 @@ class AgentSessionRuntime(
             new_session_header_metadata=new_session_header_metadata,
             current_session=current_session,
             diagnostics_service=diagnostics_service,
-            copy_file=_copy_session_import,
-            verified_copy_file=_copy_session_import,
             before_release=compose_multiagent_before_release(
                 resolve_runtime=lambda session: getattr(
                     session,
@@ -258,11 +230,10 @@ class AgentSessionRuntime(
         if view is None or view.runtime is not self:
             raise PermissionError("Coding Embedded Resume requires its original history input scope")
         if view.require_current_view is not None:
-            result = cast(Callable[[], object], view.require_current_view)()
-            if result is not None:
-                if inspect.iscoroutine(result):
-                    result.close()
-                raise TypeError("Coding Resume view check must return None")
+            require_resume_owner_check(
+                view.require_current_view,
+                invalid_return="Coding Resume view check must return None",
+            )
         return self._current_embedded_resume_subject_digest()
 
     def embedded_resume_approval_owner(self) -> InteractiveApprovalResolver:
@@ -398,11 +369,9 @@ class AgentSessionRuntime(
         if view is not None and (
             view.runtime is not self
             or self.resolve_discovered_session_source(session_file).path != view.target
-            or plan.session_id != view.history.header_preview.header.conversation_id
-            or plan.selected_leaf_id != view.history.selected_leaf_id
-            or plan.ancestry_digest != view.history.selected_ancestry_digest
-            or plan.source_fingerprint != view.history.source_fingerprint
-            or plan.source_content_digest != view.history.source_content_digest
+            or not resume_plan_matches_history(
+                plan, view.history, session_id=view.history.header_preview.header.conversation_id
+            )
         ):
             raise CodingResumeRecoveryRequired(
                 'input.history_view_changed'
@@ -578,7 +547,7 @@ class AgentSessionRuntime(
             raise ValueError("Coding Resume planning configuration is invalid")
         if self._configured_resume_planning is not None:
             raise RuntimeError("coding_resume_planning_already_configured")
-        self._configured_resume_planning = _ConfiguredResumePlanning(
+        self._configured_resume_planning = ResumePlanningConfiguration(
             current_composition=current_composition,
             workspace_root=workspace_root,
             resource_loader=resource_loader,
@@ -596,16 +565,7 @@ class AgentSessionRuntime(
         configured = self._configured_resume_planning
         if configured is None:
             return False
-        await self.start_resume_planning(
-            history,
-            configured.current_composition,
-            workspace_root=configured.workspace_root,
-            resource_loader=configured.resource_loader,
-            subject_digest=configured.subject_digest(),
-            policy_digest=configured.policy_digest(),
-            max_work_units=configured.max_work_units,
-            time_budget_seconds=configured.time_budget_seconds,
-        )
+        await configured.plan(self.start_resume_planning, history)
         return True
 
     async def prepare_configured_resume_plan(
@@ -619,8 +579,6 @@ class AgentSessionRuntime(
         Matching in-flight Resource work is promoted by its original owner.
         """
 
-        from loushang.coding.resume.activation_plan import plan_coding_resume_async
-
         configured = self._configured_resume_planning
         if (
             configured is None
@@ -628,17 +586,7 @@ class AgentSessionRuntime(
             or self.current_session is not None
         ):
             raise RuntimeError("coding_resume_planning_unavailable")
-        fresh = await plan_coding_resume_async(
-            history,
-            configured.current_composition,
-            workspace_root=configured.workspace_root,
-            resource_loader=configured.resource_loader,
-            subject_digest=configured.subject_digest(),
-            policy_digest=configured.policy_digest(),
-            max_work_units=configured.max_work_units,
-            time_budget_seconds=configured.time_budget_seconds,
-            priority="foreground",
-        )
+        fresh = await configured.foreground(history)
         cached = self.current_resume_plan(
             history,
             current_owner_inputs=fresh.owner_inputs,

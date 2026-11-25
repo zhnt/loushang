@@ -470,10 +470,7 @@ def test_unbound_attempt_stops_bootstrap_before_product_factory_selection(
 def test_unbound_attempt_stops_model_preparation_before_runtime_effects(tmp_path) -> None:
     from loushang.coding.session.agent_session import AgentSession
 
-    class PreparationSentinel:
-        def __init__(self, manager: SessionManager) -> None:
-            self._coding_session_manager = manager
-
+    class PreparationSentinel(AgentSession):
         def __getattr__(self, name: str):
             pytest.fail(f"unresolved Resume reached runtime preparation: {name}")
 
@@ -484,8 +481,10 @@ def test_unbound_attempt_stops_model_preparation_before_runtime_effects(tmp_path
         )
         try:
             await _append_test_activation_attempt(manager)
+            session = object.__new__(PreparationSentinel)
+            session._coding_session_manager = manager
             with pytest.raises(CodingResumeRecoveryRequired):
-                await AgentSession.prepare_model_call_runtime(PreparationSentinel(manager))
+                await session.prepare_model_call_runtime()
             assert len(manager.get_entries()) == 1
         finally:
             await manager.dispose_runtime_profile()
@@ -919,21 +918,19 @@ def test_staged_resume_first_input_uses_the_session_append_path(tmp_path) -> Non
                 await manager.append_message(UserMessage(role="user", content="next", timestamp=2.0))
             from loushang.coding.session import AgentSession
 
-            with pytest.raises(CodingResumeRecoveryRequired, match="runtime.publication_pending"):
-                await AgentSession.prepare_model_call_runtime(SimpleNamespace(_coding_session_manager=manager))
             inert = object.__new__(AgentSession)
             inert._coding_session_manager = manager
             # Each boundary fails before it can reach extension hooks, shell
             # services, or compaction setup; the inert binding has none of them.
+            with pytest.raises(CodingResumeRecoveryRequired, match="runtime.publication_pending"):
+                await inert.prepare_model_call_runtime()
             with pytest.raises(CodingResumeRecoveryRequired, match="runtime.publication_pending"):
                 await AgentSession._before_bash(inert, None)
             with pytest.raises(CodingResumeRecoveryRequired, match="runtime.publication_pending"):
                 await AgentSession._exec_command_from_extension(inert, "forbidden-command")
             with pytest.raises(CodingResumeRecoveryRequired, match="runtime.publication_pending"):
                 await AgentSession.compact(inert)
-            binding = object.__new__(AgentSession)
-            binding._coding_session_manager = manager
-            assert binding.execution_available is False
+            assert inert.execution_available is False
             assert len(manager.get_entries()) == 2
             path = manager.session_file
             assert path is not None

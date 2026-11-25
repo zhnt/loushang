@@ -7,14 +7,22 @@ import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Literal, Protocol
 
 from loushang.appserver.execution.resources import ResourceV1
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
-from loushang.coding.hosted_workspace import CodingHostedWorkspace
 from loushang.harness.artifacts import SessionBlobRef, SessionBlobStore
 
 HOST_REFERENCE = "host-reference"
+
+
+class WorkspaceReferencePaths(Protocol):
+    """Read current admitted roots and the Workspace privacy exclusions."""
+
+    def current_roots(self) -> tuple[Path, ...]: ...
+
+    @property
+    def private_roots(self) -> tuple[Path, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +50,7 @@ class HostReference:
         return ResourceV1(blob.sha256, self.kind, "host_reference", "", 0, self.path.name)
 
     @classmethod
-    def select(cls, workspace: CodingHostedWorkspace | None, value: str) -> HostReference:
+    def select(cls, workspace: WorkspaceReferencePaths | None, value: str) -> HostReference:
         path = Path(value)
         if not path.is_absolute():
             raise ValueError("Host resource path must be absolute")
@@ -57,7 +65,7 @@ class HostReference:
             raise ValueError("Host resource must be a directory or regular file")
         return cls(path, kind, info.st_dev, info.st_ino)
 
-    def resolve(self, workspace: CodingHostedWorkspace | None, relative: str = ".") -> Path:
+    def resolve(self, workspace: WorkspaceReferencePaths | None, relative: str = ".") -> Path:
         # Resource paths are relative POSIX strings on every AppClient.
         child = PurePosixPath(relative)
         if ("\\" in relative or "\x00" in relative or ":" in relative or child.is_absolute() or ".." in child.parts):
@@ -72,7 +80,7 @@ class HostReference:
         return target
 
 
-def _require_workspace_path(workspace: CodingHostedWorkspace | None, path: Path) -> None:
+def _require_workspace_path(workspace: WorkspaceReferencePaths | None, path: Path) -> None:
     if (workspace is None
             or not any(path.is_relative_to(root) for root in workspace.current_roots())
             or any(path.is_relative_to(root) for root in workspace.private_roots)):

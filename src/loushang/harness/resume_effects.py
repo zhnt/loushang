@@ -9,14 +9,19 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import ClassVar, Self, TypeVar, cast
+
+from loushang.foundation.json import JSONValue
 
 RESUME_EFFECT_PARENT_CONTEXT_VERSION = 1
 RESUME_EFFECT_PARENT_CONTEXT_MAX_BYTES = 2048
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_EFFECT_CODE = re.compile(r"[a-z][a-z0-9._-]{0,63}\Z")
 _CONTEXT_DOMAIN = b"loushang.harness.resume-parent-context/v1\0"
+_OWNER_FIELDS = {"ownerId", "scopeDigest", "contractDigest", "phases", "effectClasses"}
 _FIELDS = frozenset(
     {
         "contextVersion",
@@ -30,6 +35,83 @@ _FIELDS = frozenset(
         "contractDigest",
     }
 )
+
+
+def is_resume_identifier(value: object) -> bool:
+    return type(value) is str and _IDENTIFIER.fullmatch(value) is not None
+
+
+def is_resume_digest(value: object) -> bool:
+    return type(value) is str and _DIGEST.fullmatch(value) is not None
+
+
+def is_resume_effect_code(value: object) -> bool:
+    return type(value) is str and _EFFECT_CODE.fullmatch(value) is not None
+
+
+def valid_resume_effect_codes(value: tuple[str, ...], *, required: bool = False) -> bool:
+    return (
+        type(value) is tuple
+        and len(value) <= 16
+        and (not required or bool(value))
+        and all(is_resume_effect_code(code) for code in value)
+        and value == tuple(sorted(set(value)))
+    )
+
+
+class _ResumeEffectOwnerFields:
+    """Validation and wire values for a Product's nominal frozen obligation."""
+
+    __slots__ = ()
+    _effect_owner_label: ClassVar[str]
+    owner_id: str
+    scope_digest: str
+    contract_digest: str
+    phases: tuple[str, ...]
+    effect_classes: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        label = self._effect_owner_label
+        if not is_resume_identifier(self.owner_id):
+            raise ValueError(f"{label} effect owner id is invalid")
+        for value in (self.scope_digest, self.contract_digest):
+            if not is_resume_digest(value):
+                raise ValueError(f"{label} owner digest is invalid")
+        if not valid_resume_effect_codes(self.phases, required=True):
+            raise ValueError(f"{label} owner phases must be bounded, sorted and unique")
+        if not valid_resume_effect_codes(self.effect_classes):
+            raise ValueError(f"{label} owner effect classes must be bounded, sorted and unique")
+
+    @property
+    def identity(self) -> tuple[str, str, str]:
+        return self.owner_id, self.scope_digest, self.contract_digest
+
+    def to_data(self) -> dict[str, JSONValue]:
+        return {
+            "ownerId": self.owner_id,
+            "scopeDigest": self.scope_digest,
+            "contractDigest": self.contract_digest,
+            "phases": list(self.phases),
+            "effectClasses": list(self.effect_classes),
+        }
+
+    @classmethod
+    def from_data(cls, raw: object) -> Self:
+        label = cls._effect_owner_label
+        if type(raw) is not dict or set(raw) != _OWNER_FIELDS:
+            raise ValueError(f"{label} effect owner fields are invalid")
+        if type(raw["phases"]) is not list or type(raw["effectClasses"]) is not list:
+            raise ValueError(f"{label} owner codes require arrays")
+        construct = cast(
+            Callable[[str, str, str, tuple[str, ...], tuple[str, ...]], Self], cls
+        )
+        return construct(
+            cast(str, raw["ownerId"]),
+            cast(str, raw["scopeDigest"]),
+            cast(str, raw["contractDigest"]),
+            tuple(raw["phases"]),
+            tuple(raw["effectClasses"]),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,11 +142,11 @@ class ResumeEffectParentContextV1:
             "owner_id",
         ):
             value = getattr(self, name)
-            if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
+            if not is_resume_identifier(value):
                 raise ValueError(f"Invalid Resume parent {name}")
         for name in ("intent_digest", "scope_digest", "contract_digest"):
             value = getattr(self, name)
-            if type(value) is not str or _DIGEST.fullmatch(value) is None:
+            if not is_resume_digest(value):
                 raise ValueError(f"Invalid Resume parent {name}")
         if len(self.canonical_bytes()) > RESUME_EFFECT_PARENT_CONTEXT_MAX_BYTES:
             raise ValueError("Resume parent context exceeds its encoded budget")
@@ -121,6 +203,50 @@ class ResumeEffectParentContextV1:
         if type(version) is not int:
             raise ValueError("Unsupported Resume parent context version")
         return cls(**fields, context_version=version)
+
+
+_NativeOwnerT = TypeVar("_NativeOwnerT", bound=_ResumeEffectOwnerFields)
+
+
+def select_native_resume_parents(
+    effect_owners: tuple[_NativeOwnerT, ...],
+    *,
+    effect_classes: tuple[str, ...],
+    worker_candidate_id: str | None,
+    parent: Callable[[_NativeOwnerT], ResumeEffectParentContextV1],
+    unsupported: Callable[[], Exception],
+) -> tuple[
+    tuple[ResumeEffectParentContextV1, ResumeEffectParentContextV1] | None,
+    ResumeEffectParentContextV1 | None,
+]:
+    """Require the exact native journal participants before returning lookup contexts."""
+    definition_id = "harness.plugin-execution"
+    activation_id = "harness.plugin-activation"
+    worker_id = "harness.worker-activation"
+    plugin_ids = {definition_id, activation_id}
+    owners = {owner.owner_id: owner for owner in effect_owners}
+    selected_plugins = plugin_ids & owners.keys()
+    supported = plugin_ids | ({worker_id} if worker_candidate_id else set())
+    worker = owners.get(worker_id)
+    if (
+        (selected_plugins and selected_plugins != plugin_ids)
+        or owners.keys() - supported
+        or effect_classes
+        or any(owner.effect_classes for owner in effect_owners)
+        or (worker_candidate_id is None) != (worker is None)
+    ):
+        raise unsupported()
+    worker_parent = None
+    if worker is not None:
+        if worker.phases != ("reservation", "start"):
+            raise unsupported()
+        worker_parent = parent(worker)
+    if not selected_plugins:
+        return None, worker_parent
+    definition, activation = owners[definition_id], owners[activation_id]
+    if definition.phases != ("declaration",) or activation.phases != ("activation",):
+        raise unsupported()
+    return (parent(definition), parent(activation)), worker_parent
 
 
 __all__ = [

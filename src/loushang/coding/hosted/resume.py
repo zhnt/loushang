@@ -16,7 +16,7 @@ from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.types import ImagePart
-from loushang.ai.utils.capabilities import validate_image_input_compatibility
+from loushang.apphost.integrations.resource_access import HostedResourceAccess
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
     _HostedApprovalPresentation,
@@ -47,7 +47,6 @@ from loushang.coding.hosted.resource_tools import (
     HostReferencePolicy,
     hosted_resource_tools,
 )
-from loushang.coding.hosted.resources import HostedResourceAccess
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSnapshotProjectionV1,
@@ -64,14 +63,19 @@ from loushang.coding.resume.activation_plan import SessionActivationPlanV1
 from loushang.coding.resume.activation_projection_v2 import (
     project_coding_activation_attempt_path_v2,
 )
+from loushang.coding.resume.first_input import require_first_input_plan
 from loushang.coding.resume.input_lookup import (
     CodingResumeInputLookupQueryV1,
     CodingResumeInputLookupResultV1,
     coding_resume_input_record_digest,
 )
 from loushang.coding.resume.permission_confirmation import NativeResumePolicy
-from loushang.coding.runtime.resume_planning import ResumePlanningSlot
+from loushang.coding.runtime.resume_planning import (
+    ResumePlanningConfiguration,
+    ResumePlanningSlot,
+)
 from loushang.coding.session.agent_session import AgentSession
+from loushang.coding.session.manager import SessionManager
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import (
     ApprovalOutcome,
@@ -93,6 +97,7 @@ from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
 from loushang.harness.transcript._resume_continuation import (
     lookup_detached_resume_input,
+    update_detached_resume_selection,
 )
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
@@ -278,36 +283,24 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 )
                 self._source.require_current_source()
 
-            require_current()
-            context = self._source.history_binding.context
-            if isinstance(value, str):
-                model = self.current_model
-                if model is None or value not in available_thinking_levels(model):
-                    raise ValueError("Thinking level is unavailable for the saved session model")
-                if value == context.thinking_level:
-                    return
-            else:
-                model = self._services.model_registry.build_model(value)
-                if context.provider_window is not None and not context.provider_window.matches(model):
-                    raise ValueError("Selected model is incompatible with the active provider compaction checkpoint")
-                validate_image_input_compatibility(model, context.messages)
-            plan = await self._current_plan()
-            require_current()
-            manager = await self._source.manager_type._load_resume_writer(
-                self._source.record.path, plan=plan, current_owner_inputs=plan.owner_inputs,
-                _factory=self._source.writer_factory,
-            )
-            try:
+            async def open_writer() -> SessionManager:
+                plan = await self._current_plan()
                 require_current()
-                if isinstance(value, str):
-                    await manager.append_thinking_level_change(value)
-                else:
-                    await manager.append_model_change(
-                        value.provider, value.model_id, endpoint_id=value.endpoint_id,
-                    )
-                await self._source.refresh_after_model_change(manager)
-            finally:
-                await manager.dispose_runtime_profile()
+                return await self._source.manager_type._load_resume_writer(
+                    self._source.record.path, plan=plan, current_owner_inputs=plan.owner_inputs,
+                    _factory=self._source.writer_factory,
+                )
+
+            require_current()
+            await update_detached_resume_selection(
+                value,
+                context=self._source.history_binding.context,
+                current_model=lambda: self.current_model,
+                build_model=self._services.model_registry.build_model,
+                open_writer=open_writer,
+                require_current=require_current,
+                refresh_history=self._source.refresh_after_model_change,
+            )
 
     def _plan_subject_digest(self) -> str:
         return hashlib.sha256(
@@ -321,37 +314,33 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
             ).encode()
         ).hexdigest()
 
-    async def _current_plan(self) -> SessionActivationPlanV1:
-        from loushang.coding.resume.activation_attempt import (
-            CodingResumeRecoveryRequired,
-        )
-        from loushang.coding.resume.activation_plan import plan_coding_resume_async
-
-        self._source.require_current_source()
-        policy = workspace_tool_runtime_settings(self._services.settings_manager)
-        raw_policy_engine = policy.policy_engine
-        if raw_policy_engine is None:
+    def _resume_policy(self) -> NativeResumePolicy:
+        policy = workspace_tool_runtime_settings(self._services.settings_manager).policy_engine
+        if policy is None:
             raise CodingHostedCatalogError()
-        policy_engine = cast(NativeResumePolicy, raw_policy_engine)
-        plan = await plan_coding_resume_async(
-            self._source.history,
-            resolve_coding_composition_set("coding-standard"),
+        return cast(NativeResumePolicy, policy)
+
+    def _planning_configuration(self, policy: NativeResumePolicy) -> ResumePlanningConfiguration:
+        return ResumePlanningConfiguration(
+            current_composition=resolve_coding_composition_set("coding-standard"),
             workspace_root=self._workspace,
             resource_loader=self._services.resource_loader,
-            subject_digest=self._plan_subject_digest(),
-            policy_digest=policy_engine.configuration_fingerprint(),
-            max_work_units=200,
-            time_budget_seconds=5.0,
-            priority="foreground",
+            subject_digest=self._plan_subject_digest,
+            policy_digest=lambda: policy.configuration_fingerprint(),
         )
+
+    async def _current_plan(self) -> SessionActivationPlanV1:
+        self._source.require_current_source()
+        policy = self._resume_policy()
+        history = self._source.history
+        plan = await self._planning_configuration(policy).foreground(history)
         if self._planning is not None:
             plan = self._planning.current(
                 self._source.history, current_owner_inputs=plan.owner_inputs
             ) or plan
             await self._planning.close()
             self._planning = None
-        if plan.status != "needs_final_validation" or plan.ancestry_digest is None:
-            raise CodingResumeRecoveryRequired("input.plan_unavailable")
+        require_first_input_plan(plan)
         return plan
 
     async def start_background_planning(self) -> None:
@@ -360,23 +349,11 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
         if project_cwd is not None:
             await settled_io(load_workspace_models, self._services, project_cwd)
         self._source.require_current_source()
-        policy = workspace_tool_runtime_settings(self._services.settings_manager)
-        raw_policy_engine = policy.policy_engine
-        if raw_policy_engine is None:
-            raise CodingHostedCatalogError()
-        policy_engine = cast(NativeResumePolicy, raw_policy_engine)
+        policy = self._resume_policy()
         planning = ResumePlanningSlot()
         self._planning = planning
-        await planning.start(
-            self._source.history,
-            resolve_coding_composition_set("coding-standard"),
-            workspace_root=self._workspace,
-            resource_loader=self._services.resource_loader,
-            subject_digest=self._plan_subject_digest(),
-            policy_digest=policy_engine.configuration_fingerprint(),
-            max_work_units=200,
-            time_budget_seconds=5.0,
-        )
+        history = self._source.history
+        await self._planning_configuration(policy).plan(planning.start, history)
 
     def create_resource_access(self) -> HostedResourceAccess:
         return self._resource_access
@@ -533,11 +510,7 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 )
 
             self._source.require_current_source()
-            policy = workspace_tool_runtime_settings(self._services.settings_manager)
-            raw_policy_engine = policy.policy_engine
-            if raw_policy_engine is None:
-                raise CodingHostedCatalogError()
-            policy_engine = cast(NativeResumePolicy, raw_policy_engine)
+            policy_engine = self._resume_policy()
             model = self.current_model
             if model is None:
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)

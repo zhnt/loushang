@@ -701,6 +701,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
     } - {
         "integrations/_continuity_preparation.py",
         "integrations/_foreground_client_control.py",
+        "integrations/_foreground_process.py",
         "integrations/_managed_mux_command.py",
         "integrations/_session_projection.py",
     } == {
@@ -717,7 +718,11 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "local.py",
         "integrations/__init__.py",
         "integrations/_canonical_transcript_catalog.py",
+        "integrations/_resource_client_reference.py",
+        "integrations/_resource_host_reference.py",
+        "integrations/_session_commands.py",
         "integrations/harness_session.py",
+        "integrations/resource_access.py",
         "integrations/session_control.py",
         "integrations/session_product.py",
         "managed/__init__.py",
@@ -809,6 +814,8 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "execution/model.py",
         "execution/recovery.py",
         "execution/remote.py",
+        "execution/resources.py",
+        "execution/session_commands.py",
     }
 
     overview = _read(HOSTING_ROOT / "README.md")

@@ -650,8 +650,8 @@ def observe(name, base, patch):
                 allow_pending=case == "allow-pending",
             )
         if kind == "bind":
-            return code._bind_windows_arch_installation_root(
-                layout, key, state_root=state
+            return code._windows_root_lineage.bind(
+                key, root, state_root=state, package_root=layout.package_root
             )
         if kind == "inspect":
             return code.inspect_coding_windows_arch_installation_root(

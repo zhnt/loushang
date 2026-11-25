@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
@@ -25,6 +24,7 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionReceiptV1,
     PrivateDataDeletionDisposition,
     remove_started_private_tree,
+    require_confirmed_deletion_command,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
@@ -33,6 +33,7 @@ from .private_data_backup import _private_io
 from .private_data_deletion_journal import (
     CodingArchPrivateDataDeletionEventV1,
     CodingArchPrivateDataDeletionJournal,
+    _receipt_id,
 )
 from .private_data_deletion_journal import _tombstone_name as _tombstone_name
 from .private_data_deletion_preview import (
@@ -89,13 +90,10 @@ class CodingArchPrivateDataDeletionOwner:
         plan: PluginPrivateDataDeletionPlanV1,
         confirmation: PluginPrivateDataDeletionConfirmationV1,
     ) -> PluginPrivateDataDeletionReceiptV1:
-        if (
-            not isinstance(plan, PluginPrivateDataDeletionPlanV1)
-            or not isinstance(confirmation, PluginPrivateDataDeletionConfirmationV1)
-            or plan.owner_id != _OWNER_ID
-            or confirmation.plan_fingerprint != plan.fingerprint
-        ):
-            raise ValueError("Coding Arch private-data deletion command is invalid")
+        require_confirmed_deletion_command(
+            plan, confirmation, owner_id=_OWNER_ID,
+            invalid="Coding Arch private-data deletion command is invalid",
+        )
         root = coding_arch_installation_private_data_root(self.layout, plan.installation_key)
         with self._preview._offline():
             if not self.confirmations.is_confirmed(plan, confirmation):
@@ -138,18 +136,6 @@ def _delete_started(
         make_tombstone_name=lambda: _tombstone_name(started),
         record_renamed=journal.record_renamed,
     )
-
-
-def _receipt_id(
-    plan: PluginPrivateDataDeletionPlanV1,
-    confirmation: PluginPrivateDataDeletionConfirmationV1,
-) -> str:
-    return sha256(
-        b"loushang.coding-arch-private-data-receipt/v1\0"
-        + plan.fingerprint.encode("ascii")
-        + b"\0"
-        + confirmation.confirmation_id.encode("utf-8")
-    ).hexdigest()
 
 
 __all__ = ["CodingArchPrivateDataDeletionOwner"]

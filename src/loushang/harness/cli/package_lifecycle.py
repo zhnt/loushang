@@ -7,21 +7,28 @@ import json
 import re
 import secrets
 import sys
+from argparse import ArgumentParser, Namespace
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
 from dataclasses import dataclass
 from functools import partial
 from importlib.metadata import PackageNotFoundError
+from operator import attrgetter
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TextIO, TypeVar
 from uuid import uuid4
 
 from loushang.foundation.json import _unique_json_object_hook
+from loushang.harness.plugin_management.private_data_deletion import (
+    PluginPrivateDataDeletionConfirmationV1,
+    PluginPrivateDataDeletionPlanV1,
+)
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleAction,
     PackageProductLifecycleRecordV1,
     canonicalize_package_product_scope,
 )
+from loushang.harness.workspace.paths import require_workspace_directory
 
 if TYPE_CHECKING:
     from loushang.harness.package_product._application_runtime import (
@@ -36,16 +43,171 @@ if TYPE_CHECKING:
     from loushang.harness.plugin_management.desired_command import (
         PluginDesiredCommandAuthorityV1,
     )
+    from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 _OPERATOR_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
 _RecordT = TypeVar("_RecordT")
 
+PRIVATE_DATA_ACCESS_ACTIONS = frozenset({
+    "preview", "backup", "backup-status", "backup-verify",
+    "restore-preview", "backup-expiry-preview",
+})
+
+
+def add_private_data_operator_commands(
+    parser: ArgumentParser, *, installation_name: str
+) -> None:
+    commands = parser.add_subparsers(dest="action", required=True)
+    for action, help_text, required in (
+        ("preview", "read exact Installation deletion target", ()),
+        ("backup", "retain a verified Installation backup", ()),
+        ("backup-status", "read verified backup retention", ()),
+        ("backup-verify", "verify one exact backup", ("--backup-id",)),
+        ("backup-expiry-preview", "read an exact, confirmed restore-backed backup expiry plan",
+         ("--backup-id", "--confirmation-id")),
+        ("backup-expiry-confirm", "confirm one exact backup expiry plan",
+         ("--plan-file", "--accept-fingerprint")),
+        ("backup-expire", f"expire only a separately confirmed {installation_name} backup",
+         ("--plan-file", "--confirmation-file")),
+        ("restore-preview", "read one exact, offline backup restore plan", ("--backup-id",)),
+        ("restore", "restore only a previewed, accepted backup into absent data",
+         ("--plan-file", "--accept-fingerprint")),
+        ("restore-confirm", f"confirm one completed and verified {installation_name} restore",
+         ("--backup-id",)),
+        ("restore-confirm-verify", "reopen one exact restore confirmation",
+         ("--backup-id", "--confirmation-id")),
+        ("confirm", "separately confirm one unchanged preview fingerprint",
+         ("--plan-file", "--accept-fingerprint")),
+        ("delete", "delete only the separately confirmed, removed Installation",
+         ("--plan-file", "--confirmation-file")),
+    ):
+        command = commands.add_parser(action, help=help_text)
+        for option in required:
+            command.add_argument(option, required=True)
+        if action in {"restore-confirm", "restore-confirm-verify"}:
+            command.add_argument("--plan-file")
+
+
+class _PrivateDataRecord(Protocol):
+    def to_dict(self) -> dict[str, object]: ...
+
+
+class _PrivateDataPlan(_PrivateDataRecord, Protocol):
+    @property
+    def fingerprint(self) -> str: ...
+
+
+class _PrivateDataAccess(Protocol):
+    def status(self) -> _PrivateDataRecord: ...
+    def retain(self) -> _PrivateDataRecord: ...
+    def verify(self, backup_id: str, /) -> _PrivateDataRecord: ...
+    def deletion_preview(self) -> _PrivateDataPlan: ...
+    def restore_preview(self, backup_id: str, /) -> _PrivateDataPlan: ...
+    def backup_expiry_preview(self, backup_id: str, confirmation_id: str, /) -> _PrivateDataPlan: ...
+
+
+def run_private_data_access(
+    client: _PrivateDataAccess, args: Namespace
+) -> dict[str, object]:
+    """Use the supplied Product client and the existing operator record shapes."""
+    action = args.action
+    if action == "preview":
+        field, plan = "plan", client.deletion_preview()
+    elif action == "backup-status":
+        return {"backupRetention": client.status().to_dict()}
+    elif action == "backup":
+        return {"backupReceipt": client.retain().to_dict()}
+    elif action == "backup-verify":
+        return {"backupReceipt": client.verify(args.backup_id).to_dict()}
+    elif action == "restore-preview":
+        field, plan = "restorePlan", client.restore_preview(args.backup_id)
+    elif action == "backup-expiry-preview":
+        plan = client.backup_expiry_preview(args.backup_id, args.confirmation_id)
+        return {"backupExpiryPlan": plan.to_dict(), "fingerprint": plan.fingerprint}
+    else:
+        raise ValueError("private-data access command is invalid")
+    return {"fingerprint": plan.fingerprint, field: plan.to_dict()}
+
+
+def run_private_data_expiry(
+    args: Namespace,
+    plan: _PrivateDataPlan,
+    *,
+    confirm: Callable[[], _PrivateDataRecord],
+    expire: Callable[[Path], _PrivateDataRecord],
+    refused: str,
+) -> dict[str, object]:
+    """Require explicit acceptance for confirmation and read a separate record for expiry."""
+    if args.action == "backup-expiry-confirm":
+        if args.accept_fingerprint != plan.fingerprint:
+            raise ValueError(refused)
+        return {"expiryConfirmation": confirm().to_dict()}
+    return {"expiryReceipt": expire(Path(args.confirmation_file)).to_dict()}
+
+
+def run_private_data_deletion(
+    args: Namespace,
+    records: PackageOperatorRecordInput,
+    *,
+    preview: Callable[[], PluginPrivateDataDeletionPlanV1],
+    record: Callable[
+        [PluginPrivateDataDeletionPlanV1, PluginPrivateDataDeletionConfirmationV1], object
+    ],
+    delete: Callable[
+        [PluginPrivateDataDeletionPlanV1, PluginPrivateDataDeletionConfirmationV1],
+        _PrivateDataRecord,
+    ],
+    confirmation_prefix: str,
+    label: str,
+    preview_first: bool,
+    installation_key: PluginInstallationKeyV1 | None = None,
+) -> dict[str, object]:
+    """Confirm the exact preview or execute with a separate durable confirmation."""
+    plan = records.read(
+        Path(args.plan_file), "plan", PluginPrivateDataDeletionPlanV1.from_dict,
+        label=f"{label} preview", fingerprint=attrgetter("fingerprint"),
+    )
+    if installation_key is not None and plan.installation_key != installation_key:
+        raise ValueError(f"{label} plan is foreign")
+    if args.action == "confirm":
+        declined = f"{label} plan was not accepted"
+        if preview_first and preview() != plan:
+            raise ValueError(f"{label} plan is stale")
+        if args.accept_fingerprint != plan.fingerprint:
+            raise ValueError(f"{label} fingerprint was not accepted" if preview_first else declined)
+        if not preview_first and preview() != plan:
+            raise ValueError(declined)
+        confirmation = PluginPrivateDataDeletionConfirmationV1(
+            plan_fingerprint=plan.fingerprint,
+            confirmation_id=confirmation_prefix + secrets.token_hex(16),
+        )
+        record(plan, confirmation)
+        return {"confirmation": confirmation.to_dict()}
+    if args.action == "delete":
+        confirmation = records.read(
+            Path(args.confirmation_file), "confirmation",
+            PluginPrivateDataDeletionConfirmationV1.from_dict, label=f"{label} confirmation",
+        )
+        return {"receipt": delete(plan, confirmation).to_dict()}
+    raise ValueError(f"{label} command action is invalid")
+
+
+def run_private_data_restore_confirmation(
+    args: Namespace,
+    *,
+    target: _RecordT,
+    confirm: Callable[[_RecordT], _PrivateDataRecord],
+    verify: Callable[[_RecordT, str], _PrivateDataRecord],
+) -> dict[str, object]:
+    record = (
+        confirm(target) if args.action == "restore-confirm"
+        else verify(target, args.confirmation_id)
+    )
+    return {"restoreConfirmation": record.to_dict()}
+
 
 def package_operator_workspace(value: str, *, not_directory: str) -> Path:
-    workspace = Path(value).expanduser().resolve(strict=True)
-    if not workspace.is_dir():
-        raise ValueError(not_directory)
-    return workspace
+    return require_workspace_directory(value, unavailable=not_directory)
 
 
 def package_operator_error_code(error: Exception, *, fallback: str) -> str:

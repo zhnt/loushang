@@ -236,22 +236,21 @@ def test_windows_arch_root_rebinds_only_after_completed_deletion(
     monkeypatch.setattr(
         lineage, "inspect_windows_product_private_directory_identity", identity
     )
-    layout = SimpleNamespace(package_root=package_root)
-    rebound = root_module._bind_windows_arch_installation_root(
-        layout, key, state_root=state_root  # type: ignore[arg-type]
+    rebound = root_module._windows_root_lineage.bind(
+        key, root, state_root=state_root, package_root=package_root
     )
     second_intent, second_receipt = root_module._windows_arch_generation_paths(
         root, state_root, 2
     )
     assert second_intent in records and second_receipt in records
-    assert root_module._bind_windows_arch_installation_root(
-        layout, key, state_root=state_root  # type: ignore[arg-type]
+    assert root_module._windows_root_lineage.bind(
+        key, root, state_root=state_root, package_root=package_root
     ) == rebound
     root.rename(root.with_name("moved-root"))
     root.mkdir()
     with pytest.raises(ValueError, match="Installation root changed"):
-        root_module._bind_windows_arch_installation_root(
-            layout, key, state_root=state_root  # type: ignore[arg-type]
+        root_module._windows_root_lineage.bind(
+            key, root, state_root=state_root, package_root=package_root
         )
 
 

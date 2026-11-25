@@ -2,92 +2,48 @@
 
 from __future__ import annotations
 
-import os
-import stat as stat
 from dataclasses import dataclass
-from hashlib import sha256
+from typing import ClassVar
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+from loushang.harness.plugin_management._private_data_records import (
+    WindowsPrivateArchiveSnapshotRecord,
 )
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
     backup_parent,
 )
-from .private_data_backup_records import (
-    _digest as _digest,
-)
 from .private_data_deletion_preview import (
     CodingArchPrivateDataMemberV1,
     CodingArchPrivateDataTargetSnapshotV1,
-)
-from .private_data_deletion_preview import (
-    _valid_identity as _valid_identity,
 )
 from .private_data_windows_backup import _archive_io
 
 
 @dataclass(frozen=True, slots=True)
-class CodingWindowsArchBackupArchiveSnapshotV1:
+class CodingWindowsArchBackupArchiveSnapshotV1(
+    WindowsPrivateArchiveSnapshotRecord[CodingArchPrivateDataMemberV1]
+):
     """Archive root plus a full 4096-member files snapshot and manifest."""
 
+    label: ClassVar[str] = "Windows Coding Arch"
+    fingerprint_domain: ClassVar[bytes] = (
+        b"loushang.coding-arch-windows-backup-archive/v1\0"
+    )
     root_path_digest: str
     root_identity: tuple[int, int, int, int, int]
     files: CodingArchPrivateDataTargetSnapshotV1
     manifest: CodingArchPrivateDataMemberV1
 
-    def __post_init__(self) -> None:
-        if (
-            not _digest(self.root_path_digest)
-            or not _valid_identity(self.root_identity)
-            or not stat.S_ISDIR(self.root_identity[2])
-            or not isinstance(self.files, CodingArchPrivateDataTargetSnapshotV1)
-            or self.files.root_identity is None
-            or not isinstance(self.manifest, CodingArchPrivateDataMemberV1)
-            or self.manifest.relative_path != "manifest.json"
-            or self.manifest.kind != "file"
-        ):
-            raise ValueError("Windows Coding Arch archive snapshot is invalid")
-
-    @property
-    def target_id(self) -> str:
-        return (
-            "present:"
-            + sha256(
-                b"loushang.coding-arch-windows-backup-archive/v1\0"
-                + canonical_json_bytes(self.to_dict())
-            ).hexdigest()
-        )
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "files": self.files.to_dict(),
-            "manifest": self.manifest.to_dict(),
-            "rootIdentity": list(self.root_identity),
-            "rootPathDigest": self.root_path_digest,
-        }
+    @classmethod
+    def _archive_files_type(cls) -> type[CodingArchPrivateDataTargetSnapshotV1]:
+        return CodingArchPrivateDataTargetSnapshotV1
 
     @classmethod
-    def from_dict(cls, value: object) -> CodingWindowsArchBackupArchiveSnapshotV1:
-        if type(value) is not dict or set(value) != {
-            "files",
-            "manifest",
-            "rootIdentity",
-            "rootPathDigest",
-        }:
-            raise ValueError("Windows Coding Arch archive snapshot fields changed")
-        identity = value["rootIdentity"]
-        if type(identity) is not list or len(identity) != 5:
-            raise ValueError("Windows Coding Arch archive identity changed")
-        return cls(
-            root_path_digest=value["rootPathDigest"],
-            root_identity=tuple(identity),
-            files=CodingArchPrivateDataTargetSnapshotV1.from_dict(value["files"]),
-            manifest=CodingArchPrivateDataMemberV1.from_dict(value["manifest"]),
-        )
+    def _archive_manifest_type(cls) -> type[CodingArchPrivateDataMemberV1]:
+        return CodingArchPrivateDataMemberV1
 
 
 def capture_windows_arch_backup_archive(
@@ -98,24 +54,14 @@ def capture_windows_arch_backup_archive(
     receipt: CodingArchPrivateDataBackupReceiptV1,
 ) -> CodingWindowsArchBackupArchiveSnapshotV1:
     parent_path = backup_parent(layout, key)
-    archive_path = parent_path / backup_id
     return _archive_io.capture_archive(
         parent_path,
         backup_id,
         key,
         source,
         receipt,
-        project_manifest=lambda identity, digest: CodingArchPrivateDataMemberV1(
-            "manifest.json", "file", identity, digest
-        ),
-        project=lambda identity, files, manifest: (
-            CodingWindowsArchBackupArchiveSnapshotV1(
-                root_path_digest=sha256(os.fsencode(str(archive_path))).hexdigest(),
-                root_identity=identity,
-                files=files,
-                manifest=manifest,
-            )
-        ),
+        manifest_type=CodingArchPrivateDataMemberV1,
+        snapshot_type=CodingWindowsArchBackupArchiveSnapshotV1,
     )
 
 

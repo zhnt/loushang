@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import Field, replace
 from pathlib import Path
 from re import Pattern
@@ -175,6 +176,45 @@ _EventT = TypeVar("_EventT", bound=_RestoreEvent)
 _ConfirmationT = TypeVar("_ConfirmationT", bound=_RestoreConfirmation)
 _SourceT = TypeVar("_SourceT", bound=PrivateDataDeletionTarget)
 _PublicationT = TypeVar("_PublicationT", bound=_RestorePublication)
+
+
+def preview_windows_restore(
+    key: PluginInstallationKeyV1,
+    backup_id: str,
+    *,
+    desired_state: PluginDesiredStateLedger,
+    borrow_state: Callable[[], AbstractContextManager[int]],
+    read_deletions: Callable[
+        [int], tuple[PluginPrivateDataDeletionEventV1[_SourceT], ...]
+    ],
+    archive_io: WindowsPrivateArchiveIO[_SourceT, R],
+    backup_parent: Callable[[], Path],
+    require_absent_target: Callable[[WindowsPrivateDirectoryAcl], None],
+    plan_type: type[_PlanT],
+    label: str,
+) -> _PlanT:
+    """Join read-only restore facts while the caller holds the Product read fence."""
+    with WindowsPrivateDirectoryAcl() as acl:
+        desired = desired_state.snapshot()
+        require_windows_restore_product_state(
+            desired, key, error=f"{label} restore requires Product removal"
+        )
+        with borrow_state() as fd:
+            acl.validate(fd)
+            events = read_deletions(fd)
+        require_finished_windows_deletion(events, label=label)
+        source, deletion = archive_io.read_deleted_restore_source(
+            backup_parent(), backup_id, key, acl, events, label=label
+        )
+        require_absent_target(acl)
+        return plan_type(
+            installation_key=key,
+            backup_id=backup_id,
+            deletion_receipt_id=deletion.receipt_id,
+            source_target_id=source.target_id,
+            desired_inventory_revision=desired.inventory_revision,
+            target_state="absent",
+        )
 
 
 class WindowsPrivateRestoreTransaction(
@@ -888,6 +928,86 @@ class WindowsPrivateRestoreTransaction(
     ) -> None:
         raise NotImplementedError
 
+    def require_expiry_recovery(self, expiry: ExpiryPlan) -> None:
+        """Verify the published restore after an expiry no longer has its archive."""
+        key = expiry.installation_key
+        root, label = self._root_for(key), self._label
+        self._require_active()
+        require_windows_restore_product_state(
+            self._desired_state.snapshot(),
+            key,
+            expected_revision=expiry.desired_inventory_revision,
+            exact_revision=True,
+            error=f"{label} backup expiry Desired State changed",
+        )
+        deletion = latest_deleted_target_receipt(
+            self._deletion_history(), key, expiry.source_target_id
+        )
+        if deletion is None:
+            raise ValueError(f"{label} backup expiry deletion changed")
+        confirmations, staged = self._scan_confirmations()
+        confirmation = next(
+            (
+                item
+                for item in reversed(confirmations)
+                if item.confirmation_id == expiry.confirmation_id
+            ),
+            None,
+        )
+        if (
+            staged is not None
+            or confirmation is None
+            or confirmation.installation_key != key
+            or confirmation.backup_id != expiry.backup_id
+            or confirmation.deletion_receipt_id != deletion.receipt_id
+            or confirmation.restore_completion_digest != expiry.restore_completion_digest
+            or confirmation.restored_target_id != expiry.restored_target_id
+        ):
+            raise ValueError(f"{label} backup expiry confirmation changed")
+        plan = self._plan_type(
+            installation_key=key,
+            backup_id=expiry.backup_id,
+            deletion_receipt_id=confirmation.deletion_receipt_id,
+            source_target_id=expiry.source_target_id,
+            desired_inventory_revision=expiry.desired_inventory_revision,
+            target_state="absent",
+        )
+        events = self.events()
+        completion = events[-1] if events else None
+        started = events[-2] if len(events) >= 2 else None
+        if (
+            completion is None
+            or completion.phase != "completed"
+            or not _same_plan(completion, plan)
+            or completion.restore_id != confirmation.restore_id
+            or completion.record_digest != expiry.restore_completion_digest
+            or started is None
+            or started.phase != "started"
+            or started.restore_id != completion.restore_id
+        ):
+            raise ValueError(f"{label} backup expiry restore changed")
+        publication = self.publication_for(started, plan)
+        if publication is None:
+            raise ValueError(f"{label} backup expiry publication is missing")
+        parent_identity = inspect_windows_product_private_directory_identity(root.parent)
+        if parent_identity != publication.parent_identity:
+            raise ValueError(f"{label} backup expiry restore parent changed")
+        self._tree_io.require_recovery_parent_view(
+            root,
+            parent_identity,
+            stage_prefix=self._restore_stage_prefix,
+            changed=f"{label} backup expiry restore has debt",
+        )
+        bound_root = self._inspect_bound_root(key)
+        if bound_root != publication.stage_identity[:2]:
+            raise ValueError(f"{label} backup expiry root binding changed")
+        restored = self._capture_root(root, expected_root=bound_root)
+        if (
+            restored.root_identity != publication.stage_identity
+            or restored.target_id != expiry.restored_target_id
+        ):
+            raise ValueError(f"{label} backup expiry restored bytes changed")
+
 
 _ArchiveT = TypeVar("_ArchiveT", bound=WindowsPrivateArchiveSnapshot)
 
@@ -951,100 +1071,6 @@ def preview_windows_backup_expiry(
         restored_target_id=restored.target_id,
         desired_inventory_revision=desired.inventory_revision,
     )
-
-
-def require_windows_expiry_recovery_authority(
-    restore: WindowsPrivateRestoreTransaction[
-        _PlanT, _EventT, _ConfirmationT, _SourceT, _PublicationT
-    ],
-    expiry: ExpiryPlan,
-    root: Path,
-    *,
-    desired_state: PluginDesiredStateLedger,
-    deletion_history: Callable[
-        [], tuple[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget], ...]
-    ],
-    observe_bound_root: Callable[[], tuple[int, int] | None],
-    capture_restored: Callable[[tuple[int, int]], PrivateDataDeletionTarget],
-    tree_io: PrivateWindowsTreeIO,
-    stage_prefix: str,
-    label: str,
-) -> None:
-    """Verify the published restore after an expiry no longer has its archive."""
-    key = expiry.installation_key
-    restore._require_active()
-    require_windows_restore_product_state(
-        desired_state.snapshot(),
-        key,
-        expected_revision=expiry.desired_inventory_revision,
-        exact_revision=True,
-        error=f"{label} backup expiry Desired State changed",
-    )
-    deletion = latest_deleted_target_receipt(deletion_history(), key, expiry.source_target_id)
-    if deletion is None:
-        raise ValueError(f"{label} backup expiry deletion changed")
-    confirmations, staged = restore._scan_confirmations()
-    confirmation = next(
-        (
-            item
-            for item in reversed(confirmations)
-            if item.confirmation_id == expiry.confirmation_id
-        ),
-        None,
-    )
-    if (
-        staged is not None
-        or confirmation is None
-        or confirmation.installation_key != key
-        or confirmation.backup_id != expiry.backup_id
-        or confirmation.deletion_receipt_id != deletion.receipt_id
-        or confirmation.restore_completion_digest != expiry.restore_completion_digest
-        or confirmation.restored_target_id != expiry.restored_target_id
-    ):
-        raise ValueError(f"{label} backup expiry confirmation changed")
-    plan = restore._plan_type(
-        installation_key=key,
-        backup_id=expiry.backup_id,
-        deletion_receipt_id=confirmation.deletion_receipt_id,
-        source_target_id=expiry.source_target_id,
-        desired_inventory_revision=expiry.desired_inventory_revision,
-        target_state="absent",
-    )
-    events = restore.events()
-    completion = events[-1] if events else None
-    started = events[-2] if len(events) >= 2 else None
-    if (
-        completion is None
-        or completion.phase != "completed"
-        or not _same_plan(completion, plan)
-        or completion.restore_id != confirmation.restore_id
-        or completion.record_digest != expiry.restore_completion_digest
-        or started is None
-        or started.phase != "started"
-        or started.restore_id != completion.restore_id
-    ):
-        raise ValueError(f"{label} backup expiry restore changed")
-    publication = restore.publication_for(started, plan)
-    if publication is None:
-        raise ValueError(f"{label} backup expiry publication is missing")
-    parent_identity = inspect_windows_product_private_directory_identity(root.parent)
-    if parent_identity != publication.parent_identity:
-        raise ValueError(f"{label} backup expiry restore parent changed")
-    tree_io.require_recovery_parent_view(
-        root,
-        parent_identity,
-        stage_prefix=stage_prefix,
-        changed=f"{label} backup expiry restore has debt",
-    )
-    bound_root = observe_bound_root()
-    if bound_root != publication.stage_identity[:2]:
-        raise ValueError(f"{label} backup expiry root binding changed")
-    restored = capture_restored(bound_root)
-    if (
-        restored.root_identity != publication.stage_identity
-        or restored.target_id != expiry.restored_target_id
-    ):
-        raise ValueError(f"{label} backup expiry restored bytes changed")
 
 
 def decode_windows_restore_event(

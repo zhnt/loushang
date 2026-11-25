@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Generic, Literal, Self, TypeVar, cast
@@ -57,6 +58,10 @@ PRIVATE_DATA_INSTALLATION_KEY_FIELD = RecordField(
 )
 
 
+def private_data_identity_digest(domain: bytes, facts: Mapping[str, object]) -> str:
+    return sha256(domain + canonical_json_bytes(facts)).hexdigest()
+
+
 class PrivateDataRecordWire:
     """Encode and admit an exact conventional private-data record envelope."""
 
@@ -81,6 +86,52 @@ class PrivateDataRecordWire:
     @classmethod
     def from_dict(cls, value: object) -> Self:
         return cls._wire_schema.decode(cls, cls._wire_document(value))
+
+
+class PrivateDataRestoreRecordWire(PrivateDataRecordWire):
+    """Seal restore evidence with the same fields used to decode its history."""
+
+    __slots__ = ()
+    _unsigned_order: ClassVar[tuple[str, ...]]
+    record_digest: str
+
+    @classmethod
+    def _bind_restore_wire_schema(cls) -> RecordSchema:
+        return cls._bind_wire_schema(
+            RecordField(
+                "installation_key",
+                decoder=PluginInstallationKeyV1.from_dict,
+                encoder=lambda key: key.to_dict(),
+            )
+        )
+
+    @classmethod
+    def _encode_values(cls, values: Mapping[str, object]) -> dict[str, object]:
+        document = {}
+        for field in cls._wire_schema.fields:
+            if field.attribute in values:
+                value = values[field.attribute]
+                document[field.wire_key] = (
+                    value if field.encoder is None else field.encoder(value)
+                )
+        return document
+
+    @staticmethod
+    def _digest_document(document: dict[str, object]) -> str:
+        return private_data_identity_digest(b"", document)
+
+    @classmethod
+    def _seal(cls, **values: object) -> Self:
+        create: Callable[..., Self] = cls
+        digest = cls._digest_document(cls._encode_values(values))
+        return create(record_digest=digest, **values)
+
+    def _unsigned(self) -> dict[str, object]:
+        document = self._wire_schema.encode(self)
+        return {key: document[key] for key in self._unsigned_order}
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._unsigned(), "recordDigest": self.record_digest}
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,11 +231,8 @@ class PrivateDataTargetSnapshotV1(Generic[M]):
     def target_id(self) -> str:
         if self.root_identity is None:
             return "absent:" + self.root_path_digest
-        return (
-            "present:"
-            + sha256(
-                self.fingerprint_domain + canonical_json_bytes(self.to_dict())
-            ).hexdigest()
+        return "present:" + private_data_identity_digest(
+            self.fingerprint_domain, self.to_dict()
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -218,6 +266,73 @@ class PrivateDataTargetSnapshotV1(Generic[M]):
             )
 
         return cast(Self, _TARGET_SCHEMA.decode(construct, value))
+
+
+class WindowsPrivateArchiveSnapshotRecord(Generic[M]):
+    """Validate and serialize an archive's directory, files tree and manifest."""
+
+    __slots__ = ()
+    label: ClassVar[str]
+    fingerprint_domain: ClassVar[bytes]
+    root_path_digest: str
+    root_identity: tuple[int, int, int, int, int]
+    files: PrivateDataTargetSnapshotV1[M]
+    manifest: M
+
+    @classmethod
+    def _archive_files_type(cls) -> type[PrivateDataTargetSnapshotV1[M]]:
+        raise NotImplementedError
+
+    @classmethod
+    def _archive_manifest_type(cls) -> type[M]:
+        raise NotImplementedError
+
+    def __post_init__(self) -> None:
+        if (
+            not _valid_digest(self.root_path_digest)
+            or not _valid_identity(self.root_identity)
+            or not stat.S_ISDIR(self.root_identity[2])
+            or not isinstance(self.files, self._archive_files_type())
+            or self.files.root_identity is None
+            or not isinstance(self.manifest, self._archive_manifest_type())
+            or self.manifest.relative_path != "manifest.json"
+            or self.manifest.kind != "file"
+        ):
+            raise ValueError(f"{self.label} archive snapshot is invalid")
+
+    @property
+    def target_id(self) -> str:
+        return "present:" + private_data_identity_digest(
+            self.fingerprint_domain, self.to_dict()
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "files": self.files.to_dict(),
+            "manifest": self.manifest.to_dict(),
+            "rootIdentity": list(self.root_identity),
+            "rootPathDigest": self.root_path_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        if type(value) is not dict or set(value) != {
+            "files",
+            "manifest",
+            "rootIdentity",
+            "rootPathDigest",
+        }:
+            raise ValueError(f"{cls.label} archive snapshot fields changed")
+        identity = value["rootIdentity"]
+        if type(identity) is not list or len(identity) != 5:
+            raise ValueError(f"{cls.label} archive identity changed")
+        make_record: Callable[..., Self] = cls
+        return make_record(
+            root_path_digest=value["rootPathDigest"],
+            root_identity=tuple(identity),
+            files=cls._archive_files_type().from_dict(value["files"]),
+            manifest=cls._archive_manifest_type().from_dict(value["manifest"]),
+        )
 
 
 def _valid_identity(value: object) -> bool:

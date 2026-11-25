@@ -710,10 +710,10 @@ def test_private_data_reads_refuse_partial_epoch_without_product_recovery(
         raise AssertionError("read command opened writable Product")
 
     monkeypatch.setattr(
-        private_cli_module, "open_coding_fenced_product_application_owner", forbid_product
+        private_cli_module, "_open_installed_product", forbid_product
     )
     monkeypatch.setattr(
-        backup_sdk_module, "open_coding_fenced_product_application_owner", forbid_product
+        backup_sdk_module, "_open_installed_product", forbid_product
     )
 
     def control_snapshot() -> tuple[tuple[str, int, bytes | None], ...]:
@@ -886,7 +886,7 @@ def test_backup_sdk_refuses_replaced_fenced_workspace_at_owner_boundaries(
 
     workspace.rmdir()
     original.rename(workspace)
-    open_product = backup_sdk_module.open_coding_fenced_product_application_owner
+    open_product = backup_sdk_module._open_installed_product
 
     def replace_after_product_open(*args: object, **kwargs: object):
         application = open_product(*args, **kwargs)
@@ -899,7 +899,7 @@ def test_backup_sdk_refuses_replaced_fenced_workspace_at_owner_boundaries(
     with monkeypatch.context() as patch:
         patch.setattr(
             backup_sdk_module,
-            "open_coding_fenced_product_application_owner",
+            "_open_installed_product",
             replace_after_product_open,
         )
         with pytest.raises(RuntimeError) as changed_during_open:

@@ -9,7 +9,7 @@ and presentation.
 from __future__ import annotations
 
 import inspect
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, cast
 
@@ -21,11 +21,13 @@ from loushang.ai.model import (
 )
 from loushang.ai.types import (
     AssistantMessage,
+    ProviderCompactionWindow,
     TextPart,
     ToolCall,
     ToolResultMessage,
     UserMessage,
 )
+from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.events import (
@@ -220,6 +222,19 @@ class AgentTranscriptInspector:
             return sum(count(child) for child in children)
 
         return sum(count(node) for node in self.session.get_tree())
+
+
+def require_model_history_compatibility(
+    model: Model,
+    *,
+    messages: Iterable[object],
+    provider_window: ProviderCompactionWindow | None,
+) -> None:
+    if provider_window is not None and not provider_window.matches(model):
+        raise ValueError(
+            "Selected model is incompatible with the active provider compaction checkpoint"
+        )
+    validate_image_input_compatibility(model, messages)
 
 
 @dataclass
@@ -614,6 +629,28 @@ def assistant_message_text(message: AssistantMessage) -> str | None:
     return text if text.strip() else None
 
 
+def readonly_transcript_history_text(records: Sequence[object]) -> str | None:
+    """Show a few selected-path messages without activating their Session."""
+
+    recent: list[str] = []
+    for record in reversed(records):
+        payload = getattr(record, "payload", None)
+        text: str | None
+        if isinstance(payload, UserMessage):
+            label, text = "You", user_message_text(payload)
+        elif isinstance(payload, AssistantMessage):
+            label, text = "Assistant", assistant_message_text(payload)
+        else:
+            continue
+        normalized = " ".join(text.split()) if text else ""
+        if not normalized:
+            continue
+        recent.append(f"{label}: {normalized[:160]}")
+        if len(recent) == 3:
+            break
+    return "\n".join(reversed(recent)) if recent else None
+
+
 def model_selection_from_model(model: object) -> ModelSelection | None:
     provider = getattr(model, "provider_id", None) or getattr(model, "provider", None)
     endpoint_id = getattr(model, "endpoint_id", None) or getattr(
@@ -683,6 +720,7 @@ __all__ = [
     "application_message_text",
     "assistant_message_text",
     "model_selection_from_model",
+    "readonly_transcript_history_text",
     "user_message_text",
     "validate_model",
 ]

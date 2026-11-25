@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
+from typing import TypeVar
 from weakref import ref as ref
 
 from loushang.coding.composition.sets import CodingCompositionSetPlan
@@ -30,6 +33,39 @@ from loushang.coding.resume.activation_plan import (
 from loushang.coding.resume.history import CodingResumeHistoryPreview
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.session.agent_product_runtime import _SessionPlanningSlot
+
+_PlanningResultT = TypeVar("_PlanningResultT")
+
+
+@dataclass(frozen=True, slots=True)
+class ResumePlanningConfiguration:
+    """Observe the same Product-owned inputs for background and foreground planning."""
+
+    current_composition: CodingCompositionSetPlan
+    workspace_root: Path
+    resource_loader: ResourceLoader
+    subject_digest: Callable[[], str]
+    policy_digest: Callable[[], str]
+    max_work_units: int = 200
+    time_budget_seconds: float = 5.0
+
+    def plan(
+        self, operation: Callable[..., _PlanningResultT], history: CodingResumeHistoryPreview,
+    ) -> _PlanningResultT:
+        return operation(
+            history, self.current_composition,
+            workspace_root=self.workspace_root,
+            resource_loader=self.resource_loader,
+            subject_digest=self.subject_digest(),
+            policy_digest=self.policy_digest(),
+            max_work_units=self.max_work_units,
+            time_budget_seconds=self.time_budget_seconds,
+        )
+
+    async def foreground(self, history: CodingResumeHistoryPreview) -> SessionActivationPlanV1:
+        from loushang.coding.resume.activation_plan import plan_coding_resume_async
+
+        return await self.plan(partial(plan_coding_resume_async, priority="foreground"), history)
 
 
 class ResumePlanningSlot(_SessionPlanningSlot[SessionActivationPlanV1]):

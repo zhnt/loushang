@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -72,6 +73,31 @@ class AgentEventRouter:
         init=False,
         repr=False,
     )
+
+    @contextmanager
+    def bind_user_input_metadata(
+        self, metadata: Mapping[str, JSONValue] | None, *, message: UserMessage | None = None,
+    ) -> Iterator[None]:
+        """Attach metadata to the exact input or the first user input in this scope."""
+        if metadata is None:
+            yield
+            return
+
+        previous = self.prepare_message_metadata
+
+        def prepare(value: object) -> Mapping[str, JSONValue] | None:
+            nonlocal message
+            prior = previous(value) if previous is not None else None
+            if not isinstance(value, UserMessage) or (message is not None and value is not message):
+                return prior
+            message = value
+            return {**(prior or {}), **metadata}
+
+        self.prepare_message_metadata = prepare
+        try:
+            yield
+        finally:
+            self.prepare_message_metadata = previous
 
     async def handle(self, event: AgentEvent, signal: AbortSignal) -> None:
         del signal

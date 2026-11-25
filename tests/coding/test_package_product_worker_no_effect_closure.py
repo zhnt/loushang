@@ -7,9 +7,6 @@ from dataclasses import replace
 from loushang.coding.package.product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
-from loushang.coding.package.product_worker_history_retention import (
-    _receipt_gate_reference_issue,
-)
 from loushang.coding.package.product_worker_no_effect_closure import (
     is_coding_worker_no_effect_closure,
 )
@@ -17,6 +14,7 @@ from loushang.coding.package.product_worker_receipt import CodingWorkerReceiptRe
 from loushang.coding.package.product_worker_start_gate_journal import (
     CodingWorkerStartGateRecordV1,
 )
+from loushang.harness.worker.history._retention import receipt_gate_reference_issue
 from tests.harness.worker.test_product_activation import _receipt
 
 
@@ -55,12 +53,14 @@ def test_no_effect_closure_requires_exact_c5_receipt_and_unreleased_gate() -> No
     evidence = dict(gate=gate, activation=activation, supervisor=None, receipt=recorded)
     assert is_coding_worker_no_effect_closure(**evidence)
     assert (
-        _receipt_gate_reference_issue(gate, recorded, None, "unobserved", activation)
+        receipt_gate_reference_issue(
+            gate, recorded, None, "unobserved", activation, product_id="coding"
+        )
         is None
     )
-    assert _receipt_gate_reference_issue(gate, recorded, None, "unobserved") == (
-        "receipt_reference_gate_unbound"
-    )
+    assert receipt_gate_reference_issue(
+        gate, recorded, None, "unobserved", product_id="coding"
+    ) == "receipt_reference_gate_unbound"
     assert not is_coding_worker_no_effect_closure(
         **{**evidence, "activation": replace(activation, no_effect=False)}
     )

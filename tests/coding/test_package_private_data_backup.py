@@ -8,8 +8,6 @@ from pathlib import Path
 
 import pytest
 
-import loushang.coding.package.private_data_backup as backup_module
-import loushang.coding.package.private_data_restore as restore_module
 import loushang.harness.plugin_management.private_data_backup as expiry_module
 from loushang.coding.package.installation_private_data import (
     coding_arch_installation_private_data_root,
@@ -24,6 +22,7 @@ from loushang.coding.package.pre_b_snapshot import (
 from loushang.coding.package.private_data_backup import (
     CodingArchPrivateDataBackupOwner,
     CodingArchPrivateDataBackupReceiptV1,
+    _private_io,
 )
 from loushang.coding.package.private_data_backup_expiry import (
     CodingArchPrivateDataBackupExpiryOwner,
@@ -124,10 +123,10 @@ def test_private_tree_preserves_explicit_empty_directories_and_metadata(
         )
     descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        backup_module._verify_files(descriptor, snapshot)
+        _private_io.verify_tree(descriptor, snapshot.members)
         (root / "empty").rmdir()
         with pytest.raises(ValueError, match="backup is incomplete"):
-            backup_module._verify_files(descriptor, snapshot)
+            _private_io.verify_tree(descriptor, snapshot.members)
     finally:
         os.close(descriptor)
 
@@ -163,7 +162,7 @@ def test_archive_file_error_precedes_later_tree_failure(
     descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     try:
         with pytest.raises(ValueError, match=message):
-            backup_module._verify_files(descriptor, source)
+            _private_io.verify_tree(descriptor, source.members)
     finally:
         os.close(descriptor)
 
@@ -193,7 +192,7 @@ def test_archive_content_error_precedes_post_read_metadata_change(
         with monkeypatch.context() as patch:
             patch.setattr(os, "read", mutate_after_read)
             with pytest.raises(ValueError, match="backup content changed"):
-                backup_module._verify_files(descriptor, source)
+                _private_io.verify_tree(descriptor, source.members)
     finally:
         os.close(descriptor)
 
@@ -216,7 +215,7 @@ def test_archive_directory_symlink_rejected_before_corrupted_regular_file(
     descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     try:
         with pytest.raises(ValueError, match="backup directory changed"):
-            backup_module._verify_files(descriptor, source)
+            _private_io.verify_tree(descriptor, source.members)
     finally:
         os.close(descriptor)
 
@@ -248,11 +247,9 @@ def test_private_capture_keeps_observed_directory_when_child_open_fails(
 def test_interrupted_backup_refuses_nonmatching_staged_bytes(tmp_path: Path) -> None:
     directory_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        backup_module._write_or_verify_file(directory_fd, "cache.json", b"wrong")
+        _private_io.write_file(directory_fd, "cache.json", b"wrong")
         with pytest.raises(ValueError, match="existing content changed"):
-            backup_module._write_or_verify_file(
-                directory_fd, "cache.json", b"private content"
-            )
+            _private_io.write_file(directory_fd, "cache.json", b"private content")
         assert (tmp_path / "cache.json").read_bytes() == b"wrong"
     finally:
         os.close(directory_fd)
@@ -264,13 +261,13 @@ def test_backup_write_refuses_zero_progress(
 ) -> None:
     directory_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        backup_module._write_or_verify_file(directory_fd, "partial", b"pri")
+        _private_io.write_file(directory_fd, "partial", b"pri")
         with monkeypatch.context() as patch:
-            patch.setattr(backup_module.os, "write", lambda fd, content: 0)
+            patch.setattr(os, "write", lambda fd, content: 0)
             with pytest.raises(OSError, match="made no progress"):
-                backup_module._write_or_verify_file(directory_fd, "new", b"private")
+                _private_io.write_file(directory_fd, "new", b"private")
             with pytest.raises(OSError, match="made no progress"):
-                backup_module._write_or_verify_file(directory_fd, "partial", b"private")
+                _private_io.write_file(directory_fd, "partial", b"private")
         assert (tmp_path / "new").read_bytes() == b""
         assert (tmp_path / "partial").read_bytes() == b"pri"
     finally:
@@ -344,18 +341,18 @@ def test_arch_backup_retention_survives_source_deletion_and_detects_tampering(
             )
             with pytest.raises(ValueError, match="no Product history"):
                 backup.retain(key)
-        original_write = backup_module._write_or_verify_file
+        original_write = _private_io.write_file
 
-        def interrupt_copy(parent_fd: int, name: str, content: bytes) -> None:
+        def interrupt_copy(_io, parent_fd: int, name: str, content: bytes) -> None:
             if name == "cache.json":
                 original_write(parent_fd, name, content[:3])
                 raise RuntimeError("injected backup interruption")
             original_write(parent_fd, name, content)
 
-        monkeypatch.setattr(backup_module, "_write_or_verify_file", interrupt_copy)
-        with pytest.raises(RuntimeError, match="injected backup interruption"):
-            backup.retain(key)
-        monkeypatch.setattr(backup_module, "_write_or_verify_file", original_write)
+        with monkeypatch.context() as patch:
+            patch.setattr(type(_private_io), "write_file", interrupt_copy)
+            with pytest.raises(RuntimeError, match="injected backup interruption"):
+                backup.retain(key)
         assert backup.snapshot().records[0].status == "unknown"
         receipt = backup.retain(key)
         with pytest.raises(ValueError, match="removed Installation"):
@@ -487,16 +484,14 @@ def test_arch_backup_retention_survives_source_deletion_and_detects_tampering(
         with pytest.raises(ValueError, match="foreign staging debt"):
             restore.restore(key, receipt.backup_id)
         foreign_stage.rmdir()
-        original_restore_write = restore_module._write_or_verify_file
-
-        def interrupt_restore(parent_fd: int, name: str, content: bytes) -> None:
+        def interrupt_restore(_io, parent_fd: int, name: str, content: bytes) -> None:
             if name == "cache.json":
-                original_restore_write(parent_fd, name, content[:3])
+                original_write(parent_fd, name, content[:3])
                 raise RuntimeError("injected restore interruption")
-            original_restore_write(parent_fd, name, content)
+            original_write(parent_fd, name, content)
 
         with monkeypatch.context() as patch:
-            patch.setattr(restore_module, "_write_or_verify_file", interrupt_restore)
+            patch.setattr(type(_private_io), "write_file", interrupt_restore)
             with pytest.raises(RuntimeError, match="injected restore interruption"):
                 restore.restore(key, receipt.backup_id)
         assert not source_root.exists()

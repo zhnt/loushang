@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import re
 import sys
+from contextlib import ExitStack
 from email.parser import BytesParser
 from email.policy import compat32
 from hashlib import sha256
+from pathlib import Path
 from typing import Never
 
+from loushang.harness.resources.packages._file_consumption import (
+    closing_descriptor,
+    read_exact_bounded_file,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
     VerifiedPackageClosureCandidate,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    open_windows_regular_file_at,
 )
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductTransactionRoute,
@@ -36,6 +47,28 @@ from loushang.harness.worker.package_candidate import (
 )
 
 _SIMPLE_PLUGIN_ID = re.compile(r"[a-z][a-z0-9-]*\Z")
+
+
+def read_native_worker_release_input(
+    value: str, *, maximum_bytes: int, label: str, windows: bool
+) -> bytes:
+    """Capture an operator-supplied native Wheel before review or approval."""
+    path = Path(value).expanduser().absolute()
+    with ExitStack() as custody:
+        if windows:
+            parent = open_windows_directory(path.parent, writable=False)
+            custody.enter_context(closing_descriptor(parent))
+            descriptor = open_windows_regular_file_at(
+                parent, path.name, create_new=False, write=False
+            )
+        else:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        return read_exact_bounded_file(
+            custody.enter_context(closing_descriptor(descriptor)),
+            maximum_bytes,
+            label=label,
+            check_regular=not windows,
+        )
 
 
 def admit_explicit_local_worker_wheel_candidate(

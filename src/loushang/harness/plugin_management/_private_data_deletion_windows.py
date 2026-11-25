@@ -6,21 +6,39 @@ component's Windows implementation, not a configurable phase graph.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar, Generic, Protocol, TypeVar
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.journal._record_sequence import scan_numbered_revisions
 from loushang.harness.journal.codec import decode_json_record
+from loushang.harness.resources.packages._file_consumption import closing_descriptor
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
+)
+from loushang.harness.resources.packages._private_tree_windows import (
+    PrivateWindowsTreeIO,
+)
+from loushang.harness.resources.packages._tree_observation import (
+    metadata_identity,
+    require_tree_subset,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_deletion_entry_at,
+    open_windows_directory,
+    windows_delete_open_entry,
+    windows_flush_directory,
     windows_listdir_at,
+    windows_rename_open_directory_at,
+)
+from loushang.harness.resources.packages.product_windows_epoch_guard import (
+    inspect_windows_product_private_directory_identity,
 )
 
 from .private_data_deletion import (
@@ -28,7 +46,11 @@ from .private_data_deletion import (
     PluginPrivateDataDeletionEventV1,
     PluginPrivateDataDeletionPlanV1,
     PluginPrivateDataDeletionReceiptV1,
+    PrivateDataDeletionDisposition,
     PrivateDataDeletionTarget,
+    _find_deletion_completion,
+    _same_deletion_operation,
+    _validate_deletion_sequence,
 )
 from .records import PluginInstallationKeyV1
 
@@ -67,6 +89,8 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
     _max_event_bytes: ClassVar[int]
     _max_events: ClassVar[int]
     _receipt_io: ClassVar[WindowsPrivateReceiptIO]
+    _tree_io: ClassVar[PrivateWindowsTreeIO]
+    _tombstone_name: Callable[[_EventT], str]
 
     @property
     def _event_type(self) -> type[_EventT]:
@@ -74,6 +98,11 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
 
     @property
     def _target_type(self) -> type[_TargetT]:
+        raise NotImplementedError
+
+    def _capture_tree(
+        self, root: Path, *, expected_root: tuple[int, int]
+    ) -> _TargetT:
         raise NotImplementedError
 
     def _domain(self) -> WindowsDeletionDomain[_TargetT, _EventT]:
@@ -117,14 +146,124 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
         plan: PluginPrivateDataDeletionPlanV1,
         confirmation: PluginPrivateDataDeletionConfirmationV1,
     ) -> PluginPrivateDataDeletionReceiptV1 | None:
-        for event in reversed(self.events()):
-            if (
-                event.phase == "completed"
-                and event.plan == plan
-                and event.confirmation == confirmation
-            ):
-                return event.receipt
-        return None
+        event = _find_deletion_completion(self.events(), plan, confirmation)
+        return None if event is None else event.receipt
+
+    def execute(
+        self,
+        root: Path,
+        plan: PluginPrivateDataDeletionPlanV1,
+        confirmation: PluginPrivateDataDeletionConfirmationV1,
+    ) -> PluginPrivateDataDeletionReceiptV1:
+        """Replay or finish one admitted deletion under the offline Product gate."""
+        replay = self.receipt_for(plan, confirmation)
+        if replay is not None:
+            return replay
+        pending = self.current_start()
+        if pending is None:
+            target = self._domain().capture_current(plan.installation_key)
+            if target.target_id != plan.target_id:
+                raise ValueError(f"{self._label} deletion plan is stale")
+            started = self.record_start(plan, confirmation, target)
+        elif pending.plan == plan and pending.confirmation == confirmation:
+            events = self.events()
+            started = events[-2] if pending.phase == "renamed" else pending
+            if started.phase != "started" or started.target != pending.target:
+                raise ValueError(f"{self._label} deletion event changed")
+        else:
+            raise ValueError(f"Another {self._label} deletion is unfinished")
+        disposition = self._remove_started(root, started)
+        receipt = PluginPrivateDataDeletionReceiptV1._from_confirmed_plan(
+            plan,
+            confirmation,
+            receipt_id=lambda: self._receipt_id(plan, confirmation),
+            disposition=disposition,
+        )
+        self.record_completion(started, receipt)
+        return receipt
+
+    def _remove_started(
+        self, root: Path, started: _EventT
+    ) -> PrivateDataDeletionDisposition:
+        target = started.target
+        io = self._tree_io
+        key = started.plan.installation_key
+        if target.root_identity is None:
+            if self._domain().capture_current(key, allow_pending=True) != target:
+                raise ValueError(f"{io.label} absent target changed")
+            return "already_absent"
+
+        parent_identity = inspect_windows_product_private_directory_identity(root.parent)
+        tombstone_name = self._tombstone_name(started)
+        with WindowsPrivateDirectoryAcl() as exact_acl:
+            with closing_descriptor(
+                open_windows_directory(root.parent, share_delete=False, read_control=True)
+            ) as parent_fd:
+                io.require_directory(parent_fd, parent_identity, exact_acl)
+                names = set(windows_listdir_at(parent_fd))
+                root_present = root.name in names
+                tombstone_present = tombstone_name in names
+                if root_present and tombstone_present:
+                    raise ValueError(f"{io.label} root and tombstone coexist")
+                if not root_present and not tombstone_present:
+                    pending = self.current_start()
+                    if pending is None or pending.phase != "renamed":
+                        raise ValueError(f"{io.label} deletion is ambiguous")
+                    return "deleted"
+                if root_present:
+                    if self.current_start() != started:
+                        raise ValueError(f"{io.label} deletion root reappeared")
+                    if self._domain().capture_current(key, allow_pending=True) != target:
+                        raise ValueError(f"{io.label} target changed before rename")
+                    with closing_descriptor(
+                        open_windows_deletion_entry_at(parent_fd, root.name, directory=True)
+                    ) as source_fd:
+                        exact_acl.validate(source_fd)
+                        io.require_simple_metadata(os.fstat(source_fd), directory=True)
+                        io.require_no_named_directory_streams(source_fd)
+                        if (
+                            metadata_identity(os.fstat(source_fd))[:3]
+                            != target.root_identity[:3]
+                        ):
+                            raise ValueError(f"{io.label} root identity changed")
+                        windows_rename_open_directory_at(
+                            parent_fd,
+                            source_fd,
+                            tombstone_name,
+                            expected_identity=target.root_identity,
+                        )
+                    windows_flush_directory(parent_fd)
+                renamed = self.record_renamed(started)
+                if renamed.phase != "renamed":
+                    raise ValueError(f"{io.label} rename event changed")
+                tombstone = root.parent / tombstone_name
+                remaining = self._capture_tree(
+                    tombstone, expected_root=target.root_identity[:2]
+                )
+                require_tree_subset(remaining, target, label=io.label)
+                io.remove_members(tombstone, remaining.members, target)
+                if root.name in windows_listdir_at(parent_fd):
+                    raise ValueError(f"{io.label} root was recreated")
+                with closing_descriptor(
+                    open_windows_deletion_entry_at(
+                        parent_fd, tombstone_name, directory=True
+                    )
+                ) as tombstone_fd:
+                    io.require_directory(tombstone_fd, target.root_identity[:2], exact_acl)
+                    if windows_listdir_at(tombstone_fd):
+                        raise ValueError(f"{io.label} tombstone is not empty")
+                    windows_delete_open_entry(
+                        tombstone_fd,
+                        expected_identity=target.root_identity,
+                        directory=True,
+                    )
+                windows_flush_directory(parent_fd)
+                if root.name in windows_listdir_at(parent_fd) or (
+                    tombstone_name in windows_listdir_at(parent_fd)
+                ):
+                    raise ValueError(f"{io.label} deletion did not settle")
+                io.require_directory(parent_fd, parent_identity, exact_acl)
+                return "deleted"
 
     def record_start(
         self,
@@ -183,7 +322,7 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
         if (
             pending is None
             or started.phase != "started"
-            or not _same_operation(pending, started)
+            or not _same_deletion_operation(pending, started)
         ):
             raise ValueError(f"{self._label} deletion start changed")
         if pending.phase == "renamed":
@@ -220,17 +359,17 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
         if (
             pending is None
             or started.phase != "started"
-            or not _same_operation(pending, started)
+            or not _same_deletion_operation(pending, started)
         ):
-            prior = next(
-                (
-                    event
-                    for event in reversed(events)
-                    if event.phase == "completed" and _same_operation(event, started)
-                ),
-                None,
+            prior = _find_deletion_completion(
+                events, started.plan, started.confirmation
             )
-            if prior is not None and prior.receipt == receipt and staged is None:
+            if (
+                prior is not None
+                and prior.target == started.target
+                and prior.receipt == receipt
+                and staged is None
+            ):
                 return prior
             raise ValueError(f"{self._label} deletion start changed")
         if (
@@ -340,17 +479,6 @@ class WindowsPrivateDeletionTransaction(Generic[_TargetT, _EventT]):
         return decode_windows_deletion_event(raw, self._event_type, label=self._label)
 
 
-def _same_operation(
-    left: _EventT,
-    right: _EventT,
-) -> bool:
-    return (
-        left.plan == right.plan
-        and left.confirmation == right.confirmation
-        and left.target == right.target
-    )
-
-
 def _open_start(
     events: tuple[_EventT, ...],
 ) -> _EventT | None:
@@ -366,49 +494,15 @@ def validate_windows_deletion_sequence(
         [PluginPrivateDataDeletionPlanV1, PluginPrivateDataDeletionConfirmationV1], str
     ],
 ) -> None:
-    pending: _EventT | None = None
-    seen_confirmations: set[str] = set()
-    for revision, event in enumerate(events, start=1):
-        if event.revision != revision or event.plan.owner_id != owner_id:
-            raise ValueError(f"{label} deletion event identity changed")
-        if event.phase == "started":
-            if (
-                pending is not None
-                or event.confirmation.confirmation_id in seen_confirmations
-            ):
-                raise ValueError(f"{label} deletion starts conflict")
-            pending = event
-            seen_confirmations.add(event.confirmation.confirmation_id)
-        elif event.phase == "renamed":
-            if (
-                pending is None
-                or pending.phase != "started"
-                or pending.target.root_identity is None
-                or not _same_operation(pending, event)
-            ):
-                raise ValueError(f"{label} deletion rename has no start")
-            pending = event
-        else:
-            receipt = event.receipt
-            if (
-                pending is None
-                or not _same_operation(pending, event)
-                or receipt is None
-                or receipt.receipt_id != receipt_id(event.plan, event.confirmation)
-                or (
-                    pending.target.root_identity is None
-                    and (
-                        pending.phase != "started"
-                        or receipt.disposition != "already_absent"
-                    )
-                )
-                or (
-                    pending.target.root_identity is not None
-                    and (pending.phase != "renamed" or receipt.disposition != "deleted")
-                )
-            ):
-                raise ValueError(f"{label} deletion completion has no start")
-            pending = None
+    _validate_deletion_sequence(
+        events,
+        revision_error=f"{label} deletion event identity changed",
+        start_error=f"{label} deletion starts conflict",
+        rename_error=f"{label} deletion rename has no start",
+        completion_error=f"{label} deletion completion has no start",
+        owner_id=owner_id,
+        receipt_id=receipt_id,
+    )
 
 
 def decode_windows_deletion_event(

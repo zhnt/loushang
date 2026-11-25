@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai import Context, PreparedRequestLimits
@@ -125,9 +124,6 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.policy import PolicyEvaluator
-from loushang.harness.resources._catalog_records import (
-    fingerprint_catalog_value,
-)
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
@@ -146,7 +142,6 @@ from loushang.harness.session import CommandExecutionResult
 from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session._resume_continuation import (
     _ResumeContinuationSession,
-    _ResumeRuntimeCandidate,
 )
 from loushang.harness.session.bootstrap_construction import (
     rollback_unpublished_construction,
@@ -300,24 +295,6 @@ async def _execute_coding_branch_summary(
         replace_instructions=replace_instructions,
         prepare_model_call=prepare_model_call,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class _CodingResumeRuntimeCandidate:
-    attempt: CodingActivationAttemptV1
-    consumer: object
-    graph_generation: int
-    receipt_fingerprint: str
-
-
-@dataclass(frozen=True, slots=True)
-class _CodingResumeRuntimePublication:
-    candidate: _CodingResumeRuntimeCandidate
-    input_record_id: str
-    current_admission: Callable[[CodingActivationAttemptV1], None]
-    current_epoch_settlement: Callable[
-        [CodingActivationAttemptV1, Mapping[str, object]], None
-    ]
 
 
 class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
@@ -1026,7 +1003,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             level="error",
         )
 
-    def _require_current_coding_runtime_selection(self) -> None:
+    def _require_current_runtime_selection(self) -> None:
         runtime_selection.require_current_selection(self, self._current_selection_failure)
 
     def _current_selection_failure(
@@ -1083,7 +1060,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             message, code="coding_capability_product_restart_required"
         )
 
-    def _claim_current_coding_runtime_owners(self) -> None:
+    def _claim_runtime_owners(self) -> None:
         capability_plugins = self._coding_capability_plugin_assembly
         runtime_claim_id = (
             "coding-session-runtime:"
@@ -1099,96 +1076,22 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
                 else None
             )
 
-    async def prepare_model_call_runtime(self) -> None:
-        await self._coding_session_manager.prepare_resume_activation_guard()
-        publication = self._resume_publication
-        if publication is not None:
-            self._require_current_resume_publication(publication)
-            await super().prepare_model_call_runtime()
-            self._require_current_resume_publication(publication)
-            return
-        self._require_current_coding_runtime_selection()
-        self._claim_current_coding_runtime_owners()
-        await super().prepare_model_call_runtime()
-        worker_tool_lease = self._coding_worker_turn_tool_lease
-        if worker_tool_lease is not None and worker_tool_lease.state == "staged":
-            worker_tool_lease.activate()
-            self._composition.tool_controller.activate_tool_names(
-                [CODING_WORKER_QUERY_TOOL_NAME]
-            )
-        self._publish_coding_capability_owner_retirement_receipts()
-        self._publish_coding_base_owner_retirement_receipts()
-        await self._record_coding_composition_startup()
-        self._coding_product_desired_preflight_completed = True
-
     _resume_label = "Coding Resume"
     _resume_recovery_error = CodingResumeRecoveryRequired
+    _resume_candidate_fingerprint_domain = "loushang.coding-resume-candidate/v1"
 
     @staticmethod
     def _resume_user_input_digest(message: UserMessage) -> str:
         return coding_user_input_digest(message)
 
-    def _require_current_resume_selection(self) -> None:
-        self._require_current_coding_runtime_selection()
-
-    def _claim_resume_runtime_owners(self) -> None:
-        self._claim_current_coding_runtime_owners()
-
     @property
     def _resume_transcript(self) -> SessionManager:
         return self._coding_session_manager
 
-    def _resume_graph_prepared(self) -> None:
-        self._publish_coding_capability_owner_retirement_receipts()
-        self._publish_coding_base_owner_retirement_receipts()
-
     def _build_resume_composition_receipt(self) -> dict[str, object]:
         return self._build_current_coding_composition_receipt()
 
-    def _create_resume_runtime_candidate(
-        self,
-        attempt: CodingActivationAttemptV1,
-        receipt: Mapping[str, object],
-    ) -> _CodingResumeRuntimeCandidate:
-        return _CodingResumeRuntimeCandidate(
-            attempt,
-            self._model_call_consumer,
-            self._capability_graph_runtime.generation,
-            fingerprint_catalog_value("loushang.coding-resume-candidate/v1", receipt),
-        )
-
-    def _require_resume_candidate_policy(
-        self,
-        candidate: _ResumeRuntimeCandidate[CodingActivationAttemptV1],
-    ) -> dict[str, object]:
-        self._require_current_coding_runtime_selection()
-        self.require_current_capability_component_activations()
-        receipt = self._build_current_coding_composition_receipt()
-        if (
-            fingerprint_catalog_value("loushang.coding-resume-candidate/v1", receipt)
-            != candidate.receipt_fingerprint
-        ):
-            raise CodingResumeRecoveryRequired("runtime.candidate_changed")
-        return receipt
-
-    def _create_resume_runtime_publication(
-        self,
-        candidate: _ResumeRuntimeCandidate[CodingActivationAttemptV1],
-        input_record_id: str,
-        current_admission: Callable[[CodingActivationAttemptV1], None],
-        current_epoch_settlement: Callable[
-            [CodingActivationAttemptV1, Mapping[str, object]], None
-        ],
-    ) -> _CodingResumeRuntimePublication:
-        # Only the original factory above supplies candidates to this profile.
-        return _CodingResumeRuntimePublication(
-            cast(_CodingResumeRuntimeCandidate, candidate),
-            input_record_id,
-            current_admission,
-            current_epoch_settlement,
-        )
-
-    def _activate_resume_runtime_tools(self) -> None:
+    def _activate_prepared_runtime_tools(self) -> None:
         worker_tool_lease = self._coding_worker_turn_tool_lease
         if worker_tool_lease is not None and worker_tool_lease.state == "staged":
             worker_tool_lease.activate()
@@ -1196,7 +1099,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
                 [CODING_WORKER_QUERY_TOOL_NAME],
             )
 
-    def _resume_runtime_published(self) -> None:
+    def _mark_runtime_preflight_complete(self) -> None:
         self._coding_product_desired_preflight_completed = True
 
     def _require_resume_worker_effect_settlement(
@@ -1233,7 +1136,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         attempt_id = self._resume_graph_attempt_id
         if attempt_id is not None:
             self._coding_session_manager._require_resume_runtime_preparation(attempt_id)
-            self._require_current_coding_runtime_selection()
+            self._require_current_runtime_selection()
             self._build_current_coding_composition_receipt(
                 prepared_catalog_snapshot=catalog_snapshot
             )
@@ -1244,7 +1147,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
                 prepared_catalog_snapshot=catalog_snapshot,
             )
 
-    async def _record_coding_composition_startup(self) -> None:
+    async def _record_ordinary_runtime_startup(self) -> None:
         async with self._coding_composition_record_lock:
             await self._record_coding_composition_startup_locked()
 
@@ -1357,23 +1260,6 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             )
             if publication is not None
         )
-
-    def _publish_coding_base_owner_retirement_receipts(self) -> None:
-        publication = self._coding_base_owner_publication
-        if publication is not None:
-            publication.require_published(
-                lambda: (
-                    self._capability_owner_generations,
-                    self._mounted_resource_candidate,
-                )
-            )
-
-    def _publish_coding_capability_owner_retirement_receipts(self) -> None:
-        publication = self._coding_capability_owner_publication
-        if publication is not None:
-            publication.require_published(
-                lambda: (self._capability_owner_generations, None)
-            )
 
     async def _dispose_session_runtime_profile(self) -> None:
         await self._retire_session_profile_owners(
