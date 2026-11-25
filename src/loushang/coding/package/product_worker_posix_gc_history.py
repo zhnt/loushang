@@ -6,10 +6,11 @@ It keeps every Worker journal and grants no history pruning authority.
 
 from __future__ import annotations
 
-import sys
-
 from loushang.harness.package_product._linux_worker_history import (
     require_settled_history,
+)
+from loushang.harness.package_product._worker_history_access import (
+    is_exact_posix_worker_history_product,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -22,10 +23,8 @@ class CodingPosixWorkerGcHistoryAuthority:
     """Join all retained Product attempts under the GC owner's existing guard."""
 
     def __init__(self, product: PosixLocalWheelProductSessionOwner) -> None:
-        if (
-            not sys.platform.startswith("linux")
-            or type(product) is not PosixLocalWheelProductSessionOwner
-            or product.policy.product_id != "coding"
+        if not is_exact_posix_worker_history_product(
+            product, product_id="coding", linux_only=True
         ):
             raise ValueError("Coding Linux Worker GC requires its Product owner")
         self._product = product

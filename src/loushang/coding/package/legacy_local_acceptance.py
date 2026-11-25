@@ -226,21 +226,18 @@ def _require_live_resource_kind(
     resource_kind: Literal["skill", "prompt", "theme"],
 ) -> None:
     # Keep the cutover inspector out of the acceptance codec's import path.
-    from loushang.coding.package.legacy_reacquisition import (
-        reacquire_coding_legacy_installed_local_source,
-    )
-    from loushang.coding.package.legacy_skill_cutover_admission import (
-        inspect_coding_legacy_local_data_wheel,
+    from loushang.harness.plugin_authoring.resource_item import (
+        _inspect_legacy_local_data_wheel,
     )
 
-    reacquired = reacquire_coding_legacy_installed_local_source(
-        lifecycle, epoch_runtime, plugin_id=plugin_id
-    )
+    from .legacy_reacquisition import _reacquire_source
+
+    _, _, wheel = _reacquire_source(lifecycle, epoch_runtime, plugin_id=plugin_id)
     try:
-        inspected = inspect_coding_legacy_local_data_wheel(reacquired.wheel)
+        inspected_kind, _ = _inspect_legacy_local_data_wheel(wheel)
     except (OSError, ValueError) as exc:
         raise _acceptance_error("Resource type is unsupported") from exc
-    if inspected.resource_kind != resource_kind:
+    if inspected_kind != resource_kind:
         raise _acceptance_error("Resource type differs from accepted route")
 
 

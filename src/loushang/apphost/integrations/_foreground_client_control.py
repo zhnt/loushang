@@ -7,18 +7,34 @@ The public Product wrapper carries no duplicate lifecycle state.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import signal
 import sys
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import redirect_stdout, suppress
+from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TextIO, TypeAlias, TypeVar
+
+from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
+from loushang.appserver.local_record import LocalConnectionDirectoryV1
+from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
+    MuxAttachV1,
+    MuxCloseV1,
+    MuxCreateV1,
+    MuxReadV1,
+    MuxSelectorV1,
+    MuxSpaceV1,
+    SessionScopeV1,
+    WorkspaceRequestV1,
+)
 
 if TYPE_CHECKING:
     from loushang.apphost.launcher import HostedForegroundClientV1
     from loushang.appserver.client import AppServicePortV1, SessionDiscoveryPortV1
-    from loushang.appserver.protocol import MuxSelectorV1, MuxSpaceV1
 
 
 class _Shell(Protocol):
@@ -26,6 +42,136 @@ class _Shell(Protocol):
 
 
 ShellT = TypeVar("ShellT", bound=_Shell)
+_MuxScopes = tuple[tuple[SessionScopeV1, str], ...]
+_LocalMuxPresentation: TypeAlias = tuple[
+    Callable[[LocalAppClientConnectionV1, MuxSelectorV1, _MuxScopes], ShellT],
+    Callable[[ShellT, TextIO], Awaitable[int]],
+]
+
+
+def emit_local_mux_value(value: dict[str, object], stream: TextIO) -> None:
+    # ASCII JSON escapes terminal control sequences.
+    print(json.dumps(value, ensure_ascii=True, sort_keys=True), file=stream, flush=True)
+
+
+def mux_member_scopes(mux: MuxSpaceV1) -> _MuxScopes:
+    return tuple(
+        dict.fromkeys(
+            (member.session.scope, member.session.scope_fingerprint)
+            for member in mux.members
+        )
+    )
+
+
+def _mux_summary(mux: MuxSpaceV1) -> dict[str, object]:
+    return {
+        "muxId": mux.mux_space_id,
+        "name": mux.name,
+        "revision": mux.revision,
+        "members": len(mux.members),
+    }
+
+
+class _LocalMuxClientCommand(Generic[ShellT]):
+    """Own the authenticated local connection through command or terminal settlement."""
+
+    def __init__(
+        self,
+        root: Path,
+        endpoint: str,
+        action: str,
+        name: str | None,
+        output: TextIO,
+        *,
+        product_id: str,
+    ) -> None:
+        self._directory = LocalConnectionDirectoryV1(root)
+        self._connection = LocalAppClientConnectionV1(
+            self._directory,
+            endpoint,
+            expected_product_id=product_id,
+            mode=LocalConnectionModeV1.STOP
+            if action == "stop"
+            else LocalConnectionModeV1.APP,
+        )
+        self._action, self._name, self._output = action, name, output
+        self.cleanup_pending = True
+
+    async def _attachment_scopes(
+        self,
+        selector: MuxSelectorV1,
+    ) -> _MuxScopes:
+        if self._connection.scopes:
+            return tuple(
+                (item.scope, item.fingerprint) for item in self._connection.scopes
+            )
+        client = self._connection.client
+        mux = await client.read_mux(MuxReadV1(selector))
+        scopes = mux_member_scopes(mux)
+        if scopes:
+            return scopes
+
+        # An empty logical Workspace Mux can have no member-derived scope.
+        workspaces = await client.workspace(WorkspaceRequestV1("workspaces"))
+        for item in workspaces.workspaces:
+            if item.workspace is not None and item.workspace.get("muxName") == mux.name:
+                return ((item.scope, item.scope_fingerprint),)
+        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
+    async def run(
+        self,
+        load_presentation: Callable[[], _LocalMuxPresentation[ShellT]],
+    ) -> None:
+        shell = None
+        try:
+            await self._connection.start()
+            if self._action == "stop":
+                emit_local_mux_value({"status": "stop_requested"}, self._output)
+                return
+            client = self._connection.client
+            if self._action == "attach":
+                bind_shell, run_shell = load_presentation()
+                selector = MuxSelectorV1(name=self._name)
+                shell = bind_shell(
+                    self._connection, selector, await self._attachment_scopes(selector)
+                )
+                if await run_shell(shell, self._output):
+                    raise RuntimeError("interactive connection ended")
+            elif self._action == "list":
+                emit_local_mux_value(
+                    {
+                        "muxes": [
+                            _mux_summary(item)
+                            for item in (await client.list_muxes()).mux_spaces
+                        ]
+                    },
+                    self._output,
+                )
+            elif self._action == "create":
+                assert self._name is not None
+                emit_local_mux_value(
+                    _mux_summary(await client.create_mux(MuxCreateV1(self._name))),
+                    self._output,
+                )
+            elif self._action == "close":
+                selector = MuxSelectorV1(name=self._name)
+                await client.attach_mux(MuxAttachV1(selector))
+                await client.close_mux(MuxCloseV1(selector))
+                emit_local_mux_value(
+                    {"status": "mux_closed", "name": self._name}, self._output
+                )
+            else:
+                raise ValueError("unsupported local management action")
+        finally:
+            try:
+                if shell is not None:
+                    await shell.close()
+            finally:
+                await self._connection.close()
+                self._directory.close()
+            self.cleanup_pending = False
+
+
 _ShellArg = TypeVar("_ShellArg", bound=_Shell, contravariant=True)
 _ShellFactory: TypeAlias = Callable[
     ["AppServicePortV1", "MuxSpaceV1", "SessionDiscoveryPortV1"], ShellT

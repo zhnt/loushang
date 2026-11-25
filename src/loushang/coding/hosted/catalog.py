@@ -513,53 +513,13 @@ class CodingHostedSessionCatalogV1(
         if len({item.session_dir for item in scopes}) != len(scopes):
             raise ValueError("hosted scopes require distinct Session roots")
 
-    def _record_compatible(self, record: _Record) -> bool:
-        envelope = record.projection.envelope
-        return record.compatible and envelope is not None and (
-            envelope.product_compatibility_id == CODING_HOSTED_COMPATIBILITY_ID
-        )
-
     def _validate_open_record(self, record: _Record) -> None:
         # Legacy v1 compatibility remains the Product validator's decision.
         # Managed catalogs additionally fence workspace/runtime before IO.
         return None
 
-    def _validate_records(self, records: list[_Record]) -> None:
-        identities = [item.identity.session_id for item in records]
-        if len(set(identities)) != len(identities):
-            raise CodingHostedCatalogError()
-
     async def delete_session_history(self, identity: SessionIdentityV1) -> None:
         await self._delete_canonical_history(identity, _hosted_session_path)
-
-    def _workspace_transcripts(self) -> tuple[Path, ...]:
-        paths: list[Path] = []
-        scopes = {scope.session_dir: scope for scope in self.scopes}
-        for directory, scope in scopes.items():
-            if directory != directory.resolve():
-                raise CodingHostedCatalogError()
-            if self._directory_revision(directory) is None:
-                continue
-            layout = self._candidate_layout(directory)
-            scan = layout.scan_candidate_path_snapshot(layout.namespace, raise_on_error=True)
-            if not scan.complete:
-                raise CodingHostedCatalogError()
-            paths.extend(
-                path for path in scan.paths if self._read_record(scope, path) is not None
-            )
-        return tuple(paths)
-
-    async def delete_workspace_history(self) -> None:
-        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
-
-        async with self._lock:
-            if not self._closing:
-                for path in await settled_io(self._workspace_transcripts):
-                    await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
-                    self._records.clear()
-        # Fence only after deletion has finished, then let retries settle
-        # any original factory cleanup before removing the registration.
-        await self.close()
 
     async def preview_history_header(
         self, reference: SessionCandidateRefV1,
@@ -569,8 +529,7 @@ class CodingHostedSessionCatalogV1(
         self._accepting()
         async with self._current_discovered_record(reference) as record:
             preview = inspect_coding_resume_header(record.header)
-            if self._source_revision(record.path) != reference.revision:
-                raise CodingHostedCatalogError()
+            self._require_source_revision(record.path, reference.revision)
             return preview
 
     async def preview_history_snapshot(
@@ -673,7 +632,6 @@ class CodingHostedResumeCatalogV1:
             raise ValueError("Coding Hosted Resume history budget is invalid")
         self._catalog = catalog
         self._max_bytes = max_bytes
-        self._closing = False
 
     @property
     def scopes(self) -> tuple[CodingHostedScopeV1, ...]:
@@ -717,11 +675,9 @@ class CodingHostedResumeCatalogV1:
         return await self._catalog.create_candidate(intent)
 
     def fence(self) -> None:
-        self._closing = True
         self._catalog.fence()
 
     async def close(self) -> None:
-        self._closing = True
         await self._catalog.close()
 
 

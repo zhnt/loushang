@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar
 
+from loushang.harness.capabilities.owner_component_host import (
+    CapabilityOwnerComponentHost,
+)
+from loushang.harness.continuity._binding_lifetime import _ContinuityCompositionLifetime
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
 )
+from loushang.harness.continuity.plugin_runtime import ResolvedContinuityPluginSelection
 from loushang.harness.plugin_authoring.host import (
     PluginDeclarationHost,
     PluginDefinitionApprovalIssuer,
@@ -18,6 +23,14 @@ from loushang.harness.plugin_management.assembly import (
     _ManagedPluginLease,
     _ManagedPluginLifecycle,
 )
+from loushang.harness.plugin_management.continuity_adapter import (
+    PluginContinuitySecurityRetirementJournal,
+    PluginInstanceLedgerContinuityFamilyAuthority,
+)
+from loushang.harness.plugin_management.continuity_mutation import (
+    PluginContinuityDeletionAuthority,
+    PluginContinuityDeletionJournal,
+)
 from loushang.harness.plugin_management.enablement_migration import (
     plugin_enablement_legacy_input_fingerprint,
 )
@@ -25,6 +38,9 @@ from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeLedger,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.package_lifecycle import (
+    PluginPackageLifecycleLedger,
+)
 from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
     PluginInstallationStateV1,
@@ -65,7 +81,62 @@ class _ContinuitySelectionFailure(Protocol):
 class _InstalledContinuityLifecycle(_ManagedPluginLifecycle[_ManagedPluginLease], Protocol):
     @property
     def instances(self) -> PluginInstanceRuntimeLedger: ...
+    @property
+    def packages(self) -> PluginPackageLifecycleLedger: ...
     def complete_startup_recovery(self) -> None: ...
+
+
+_CompositionT = TypeVar("_CompositionT", bound=_ContinuityCompositionLifetime)
+_CompositionCo = TypeVar(
+    "_CompositionCo", bound=_ContinuityCompositionLifetime, covariant=True
+)
+_PreparedActivation = tuple[
+    ResolvedContinuityPluginSelection, CapabilityOwnerComponentHost, dict[str, str]
+]
+
+
+@dataclass(slots=True)
+class InstalledContinuityLifecycle:
+    common: _InstalledContinuityLifecycle
+    family_authority: PluginInstanceLedgerContinuityFamilyAuthority
+    deletion_authority: PluginContinuityDeletionAuthority
+
+    @classmethod
+    def open(
+        cls,
+        instance_runtime: Path,
+        build_lifecycle: Callable[
+            [PluginContinuitySecurityRetirementJournal], _InstalledContinuityLifecycle
+        ],
+    ) -> InstalledContinuityLifecycle:
+        security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
+            instance_runtime
+        )
+        common = build_lifecycle(security)
+        return cls(
+            common=common,
+            family_authority=PluginInstanceLedgerContinuityFamilyAuthority(
+                ledger=common.instances,
+                package_lifecycle=common.packages,
+                security_acceptance_journal=security,
+            ),
+            deletion_authority=PluginContinuityDeletionAuthority(
+                PluginContinuityDeletionJournal.for_instance_runtime(instance_runtime)
+            ),
+        )
+
+
+class _BindInstalledGeneration(Protocol[_CompositionCo]):
+    def __call__(
+        self,
+        *,
+        resolved_plugins: ResolvedContinuityPluginSelection,
+        component_host: CapabilityOwnerComponentHost,
+        activation_decision_ids: Mapping[str, str],
+        instance_family_authority: PluginInstanceLedgerContinuityFamilyAuthority,
+        deletion_authority: PluginContinuityDeletionAuthority,
+        owned_cleanup: Callable[[], None],
+    ) -> Awaitable[_CompositionCo]: ...
 
 
 def resolve_installed_continuity_definitions(
@@ -137,30 +208,37 @@ def resolve_installed_continuity_definitions(
     )
 
 
-@contextmanager
-def hold_installed_continuity_runtime(
+async def bind_installed_continuity(
     sources: tuple[str, ...],
-    lifecycle: _InstalledContinuityLifecycle,
+    lifecycle: InstalledContinuityLifecycle,
     *,
+    request_fingerprint: str,
     materializer: PackageMaterializer,
     product_id: str,
     scope_id: str,
     activation_id_prefix: str,
     direct_host_reference: str,
+    lifecycle_error: _ContinuitySelectionFailure,
     legacy_disabled_plugin_ids: frozenset[str],
     reconcile_compatibility: Callable[[], None] | None,
     supports_secure_staging: Callable[[], bool],
-    lifecycle_error: _ContinuitySelectionFailure,
     cleanup_note: str,
-) -> Iterator[tuple[PluginRuntimeResolution, tuple[PluginInstanceRevisionRef, ...]]]:
-    """Hold selected revisions through publication and transfer on success."""
-    lifecycle.reconcile_retirements()
+    finalize_selection: Callable[
+        [PluginRuntimeResolution, tuple[PluginInstanceRevisionRef, ...]], PluginSelection
+    ],
+    prepare_activation: Callable[[PluginSelection], _PreparedActivation],
+    bind_base: Callable[[], _CompositionT],
+    bind_generation: _BindInstalledGeneration[_CompositionT],
+    record_ready: Callable[[int, int, int], None],
+) -> _CompositionT:
+    """Recover, authorize and publish while keeping the exact revisions alive."""
+    lifecycle.common.reconcile_retirements()
     authority = PluginResolutionAuthority()
     replayed, inspections = resolve_installed_continuity_sources(
         sources,
         authority=authority,
         materializer=materializer,
-        desired_state=lifecycle.desired,
+        desired_state=lifecycle.common.desired,
         product_id=product_id,
         scope_id=scope_id,
         lifecycle_error=lifecycle_error,
@@ -169,9 +247,8 @@ def hold_installed_continuity_runtime(
         if reconcile_compatibility is not None:
             reconcile_compatibility()
         if not replayed.packages and not inspections:
-            lifecycle.complete_startup_recovery()
-            yield replayed, ()
-            return
+            lifecycle.common.complete_startup_recovery()
+            return bind_base()
         staging_supported = supports_secure_staging()
     except BaseException as error:
         _close_runtime_after_failure(replayed, error, cleanup_note)
@@ -190,7 +267,7 @@ def hold_installed_continuity_runtime(
     try:
         refs = reconcile_enabled_continuity_instances(
             runtime,
-            lifecycle,
+            lifecycle.common,
             activation_id_prefix=activation_id_prefix,
             direct_host_reference=direct_host_reference,
             lifecycle_error=lifecycle_error,
@@ -201,11 +278,28 @@ def hold_installed_continuity_runtime(
         runtime = retain_enabled_continuity_runtime(
             runtime, enabled_plugin_ids=frozenset(item.plugin_id for item in refs)
         )
-        lifecycle.complete_startup_recovery()
-        yield runtime, refs
+        lifecycle.common.complete_startup_recovery()
+        if not runtime.packages:
+            return bind_base()
+        selection = finalize_selection(runtime, refs)
+        resolved, component_host, decisions = prepare_activation(selection)
+        pending_before = len(lifecycle.deletion_authority.journal.pending())
+        result = await bind_generation(
+            resolved_plugins=resolved,
+            component_host=component_host,
+            activation_decision_ids=decisions,
+            instance_family_authority=lifecycle.family_authority,
+            deletion_authority=lifecycle.deletion_authority,
+            owned_cleanup=runtime.close,
+        )
+        result.configured_request_fingerprint = request_fingerprint
     except BaseException as error:
         _close_runtime_after_failure(runtime, error, cleanup_note)
         raise
+    record_ready(
+        len(selection.plan.selected_plugin_ids), len(resolved.candidates), pending_before
+    )
+    return result
 
 
 def _close_runtime_after_failure(

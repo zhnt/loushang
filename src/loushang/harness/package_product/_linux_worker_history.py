@@ -131,9 +131,6 @@ class HistoryProofBindings(Generic[ReviewT]):
     gated_review: Callable[[], Callable[..., GatedReview]]
     review: Callable[[], Callable[..., ReviewT]]
     reference: Callable[[], Callable[..., AttemptReference]]
-    known_state_name: Callable[[str], bool]
-    payload_repair: re.Pattern[str]
-    registered_staging: re.Pattern[str]
     backup_attestation: Callable[..., BackupObservation]
 
 
@@ -493,20 +490,20 @@ def review_history_under_guard(
                 name
                 for name in state_names
                 if name.startswith("worker-payload-")
-                or bindings.registered_staging.fullmatch(name)
+                or _REGISTERED_REPAIR_STAGING.fullmatch(name)
             )
         )
         repair_references = tuple(
             sorted(
                 name
                 for name in state_names
-                if bindings.payload_repair.fullmatch(name) is not None
+                if _PAYLOAD_REPAIR.fullmatch(name) is not None
             )
         )
         receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
         registered_repair_reference_verified = bool(repair_references)
         for name in repair_references:
-            match = bindings.payload_repair.fullmatch(name)
+            match = _PAYLOAD_REPAIR.fullmatch(name)
             if match is None or match.group("kind") != "registered":
                 registered_repair_reference_verified = False
                 break
@@ -540,7 +537,7 @@ def review_history_under_guard(
                 name
                 for name in state_names
                 if name.casefold().startswith(("worker-", ".worker-"))
-                and not bindings.known_state_name(name)
+                and not known_worker_state_name(name)
             )
         )
     product.assert_root_gc_authority_current()
@@ -703,11 +700,11 @@ def require_settled_history(
             raise ValueError("Linux Worker GC inventory changed")
         for name in observed_names:
             lowered = name.casefold()
-            if bindings.registered_staging.fullmatch(name):
+            if _REGISTERED_REPAIR_STAGING.fullmatch(name):
                 raise ValueError("Linux Worker GC payload repair is incomplete")
             if lowered.startswith(
                 ("worker-", ".worker-")
-            ) and not bindings.known_state_name(name):
+            ) and not known_worker_state_name(name):
                 raise ValueError("Linux Worker GC reference owner is unrecognized")
             if any(
                 lowered.startswith(stem) or lowered.startswith("." + stem)
@@ -791,7 +788,7 @@ def require_settled_history(
             else {item.attempt_id: item for item in archive.proofs}
         )
         for name in observed_names:
-            repair = bindings.payload_repair.fullmatch(name)
+            repair = _PAYLOAD_REPAIR.fullmatch(name)
             if repair is None:
                 continue
             attempt_id = repair.group("attempt")

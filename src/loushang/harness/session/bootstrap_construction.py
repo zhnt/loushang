@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
+from operator import methodcaller
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
@@ -25,6 +27,9 @@ from loushang.harness.bootstrap import (
     register_resource_extension_tools,
 )
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionCompilation,
+)
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
@@ -40,6 +45,14 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.package_product._selected_plugin_revisions import (
     ProductAdmissionFailure,
+    ProductBaseSelectionEvidence,
+    ProductCatalogSelection,
+    capture_catalog_base_selection,
+    capture_selected_manifests,
+    observe_requested_plugins,
+)
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PackageProductSelectedPluginManifestV1,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
@@ -92,6 +105,10 @@ from loushang.harness.session.bootstrap_utils import (
     normalize_no_tools,
     resolve_base_system_prompt,
     resolve_initial_active_tool_names,
+)
+from loushang.harness.session.extension_profiles import (
+    SessionExtensionProfileResolution,
+    prepare_session_resource_candidate,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.model_resolution import (
@@ -182,6 +199,7 @@ class AgentBootstrapRequest:
     thinking_budgets: object
     max_retry_delay_ms: int | None
     stream_fn: Callable[..., object] | None = None
+    restore_history: bool = False
 
 
 class AgentBootstrapRuntime(Generic[AgentT, SessionT]):
@@ -214,6 +232,12 @@ class AgentBootstrapRuntime(Generic[AgentT, SessionT]):
         if request.stream_fn is not None:
             agent_kwargs["stream_fn"] = request.stream_fn
 
+        if request.restore_history:
+            from loushang.ai.options import CallOptions
+
+            # An interrupted transcript can have unmatched tool calls.
+            agent_kwargs["call_options"] = CallOptions(pairing_mode="repair")
+
         agent = agent_factory(**agent_kwargs)
         setattr(agent, "session_id", request.session_id)
         return session_factory(agent)
@@ -240,6 +264,7 @@ class AgentSessionConstructionRequest(Generic[BundleT, RegistryT]):
     allowed_tool_names: Sequence[str] | ToolSelection | None
     active_tool_names: Sequence[str] | None
     no_tools_mode: NoToolsMode | None
+    restore_history: bool = False
 
 
 class AgentSessionConstructionRuntime(
@@ -317,6 +342,7 @@ class AgentSessionConstructionRuntime(
                 thinking_budgets=request.thinking_budgets,
                 max_retry_delay_ms=request.max_retry_delay_ms,
                 stream_fn=request.stream_fn,
+                restore_history=request.restore_history,
             ),
             agent_factory=agent_factory,
             session_factory=lambda agent: session_factory(
@@ -382,6 +408,7 @@ class AgentProductConstructionRequest(Generic[AgentT, SessionT, StandardExtensio
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
     use_default_model: bool = True
+    restore_history: bool = False
 
 
 @dataclass(frozen=True)
@@ -489,6 +516,7 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
                     allowed_tool_names=request.allowed_tool_names,
                     active_tool_names=request.active_tool_names,
                     no_tools_mode=normalize_no_tools(request.no_tools),
+                    restore_history=request.restore_history,
                 ),
                 agent_factory=request.agent_factory,
                 register_extension_tools=register_extension_tools,
@@ -560,7 +588,10 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         Callable[[StandardExtensionT], LegacySideQuestionBinding] | None
     ) = None
     resolve_session_capability_profile: (
-        Callable[[StandardExtensionT], ResolvedRuntimeProfile] | None
+        Callable[
+            [StandardExtensionT],
+            ResolvedRuntimeProfile | SessionExtensionProfileResolution,
+        ] | None
     ) = None
 
     def construct(
@@ -638,6 +669,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         ],
         set_scoped_models: Callable[[SessionT, Sequence[object]], None],
         use_default_model: bool = True,
+        restore_history: bool = False,
     ) -> AgentProductConstructionResult[SessionT, StandardExtensionT]:
         """Build the canonical request and delegate all execution to its owner."""
 
@@ -691,77 +723,37 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             product_inventory: PackageProductLifecycleInventoryPort | None,
             product_lifecycle_mode: PackageProductLifecycleMode,
         ) -> SessionT:
+            factory_prefix: tuple[
+                StagedResourceCompositionCandidate | LegacySideQuestionBinding, ...
+            ] = (bootstrap_capability_runtime,)
+            prepare_side_question = None
             if self.resolve_session_capability_profile is not None:
-                bootstrap_capability_runtime.select_final_profile(
-                    self.resolve_session_capability_profile(extension_runtime)
-                )
-            side_question_binding = (
-                self.bind_session_side_question(extension_runtime)
-                if self.bind_session_side_question is not None
-                else None
-            )
+                resolved = self.resolve_session_capability_profile(extension_runtime)
+                if isinstance(resolved, SessionExtensionProfileResolution):
+                    prepare_session_resource_candidate(
+                        candidate=bootstrap_capability_runtime, resolution=resolved
+                    )
+                    prepare_side_question = resolved.bind_side_question
+                else:
+                    bootstrap_capability_runtime.select_final_profile(resolved)
+            if self.bind_session_side_question is not None:
+                side_question_binding = self.bind_session_side_question(extension_runtime)
+            elif prepare_side_question is not None:
+                side_question_binding = prepare_side_question()
+            else:
+                side_question_binding = None
             if side_question_binding is not None:
                 session_side_question_bindings.append(side_question_binding)
-            if self.bind_session_side_question is None:
-                legacy_factory = cast(
-                    Callable[
-                        [
-                            StagedResourceCompositionCandidate,
-                            AgentT,
-                            ResourceBundle,
-                            StandardExtensionT,
-                            WorkspaceToolRegistry | None,
-                            list[str] | None,
-                            str,
-                            NoToolsMode | None,
-                            PackageProductLifecycleOperationPort | None,
-                            PackageProductLifecycleInventoryPort | None,
-                            PackageProductLifecycleMode,
-                        ],
-                        SessionT,
-                    ],
-                    session_factory,
-                )
-                return bind_package_runtime(
-                    legacy_factory(
-                        bootstrap_capability_runtime,
-                        agent,
-                        bundle,
-                        extension_runtime,
-                        registry,
-                        active,
-                        prompt,
-                        mode,
-                        product_lifecycle,
-                        product_inventory,
-                        product_lifecycle_mode,
-                    )
-                )
-            factory_with_side_question = cast(
-                Callable[
-                    [
-                        StagedResourceCompositionCandidate,
-                        LegacySideQuestionBinding,
-                        AgentT,
-                        ResourceBundle,
-                        StandardExtensionT,
-                        WorkspaceToolRegistry | None,
-                        list[str] | None,
-                        str,
-                        NoToolsMode | None,
-                        PackageProductLifecycleOperationPort | None,
-                        PackageProductLifecycleInventoryPort | None,
-                        PackageProductLifecycleMode,
-                    ],
-                    SessionT,
-                ],
-                session_factory,
-            )
-            assert side_question_binding is not None
+                factory_prefix += (side_question_binding,)
+            elif (
+                self.bind_session_side_question is not None
+                or prepare_side_question is not None
+            ):
+                raise AssertionError("Session side-question binding is unavailable")
+            factory = cast(Callable[..., SessionT], session_factory)
             return bind_package_runtime(
-                factory_with_side_question(
-                    bootstrap_capability_runtime,
-                    side_question_binding,
+                factory(
+                    *factory_prefix,
                     agent,
                     bundle,
                     extension_runtime,
@@ -867,6 +859,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     append_system_prompt=append_system_prompt,
                     model=model,
                     use_default_model=use_default_model,
+                    restore_history=restore_history,
                     thinking_level=thinking_level,
                     tools=tools,
                     tool_registry=tool_registry,
@@ -890,38 +883,18 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
 
                 if issubclass(type(constructed_session), AgentProductSession):
                     raise
-            if package_runtime is not None:
-                run_cleanup_steps(
-                    error,
-                    (
-                        (
-                            "Package Product runtime cleanup",
-                            lambda: cast(
-                                PackageProductRuntimeBindingV1, package_runtime
-                            ).dispose_runtime(),
-                        ),
-                    ),
-                )
-            for side_question_binding in reversed(session_side_question_bindings):
+            def cleanup_steps() -> Iterator[CleanupStep]:
+                if package_runtime is not None:
+                    yield (
+                        "Package Product runtime cleanup",
+                        partial(methodcaller("dispose_runtime"), package_runtime),
+                    )
+                dispose = methodcaller("dispose")
+                for binding in reversed(session_side_question_bindings):
+                    yield "final Session side-question cleanup", partial(dispose, binding)
+                yield "bootstrap capability cleanup", partial(dispose, bootstrap_capability_runtime)
 
-                def dispose_side_question(
-                    binding: LegacySideQuestionBinding = side_question_binding,
-                ) -> None:
-                    binding.dispose()
-
-                run_cleanup_steps(
-                    error,
-                    (("final Session side-question cleanup", dispose_side_question),),
-                )
-            run_cleanup_steps(
-                error,
-                (
-                    (
-                        "bootstrap capability cleanup",
-                        lambda: bootstrap_capability_runtime.dispose(),
-                    ),
-                ),
-            )
+            run_cleanup_steps(error, cleanup_steps())
             raise
 
         return result
@@ -1253,18 +1226,177 @@ class PreparationRootCustody(Generic[_PreparationT]):
 
 
 _StartupSessionT = TypeVar("_StartupSessionT", bound="AgentProductSession")
+_CatalogBaseT = TypeVar("_CatalogBaseT", bound=ProductBaseSelectionEvidence)
 
 
-@dataclass(slots=True)
+class _CatalogDataCompilation(Protocol):
+    @property
+    def selected_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+
+
+_CatalogDataT = TypeVar("_CatalogDataT", bound=_CatalogDataCompilation)
+
+
+@dataclass(slots=True, kw_only=True)
 class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
     """Hand prepared Catalog and Plugin owners to one original Session."""
 
+    product_id: str
+    product_label: str
+    session_id: str
+    admission_failure: ProductAdmissionFailure
     catalog_adapter: InitialResourceCatalogProductAdapter | None = field(
         default=None, init=False, repr=False
+    )
+    catalog_selection: ProductCatalogSelection = field(
+        default_factory=ProductCatalogSelection, init=False, repr=False
     )
     _constructed_session: AgentProductSession | None = field(
         default=None, init=False, repr=False
     )
+
+    def prepare_fenced_catalog(
+        self,
+        runtime: PackageProductRuntimeBindingV1,
+        loader: ResourceLoader,
+        *,
+        cwd: Path,
+        base_plugin_id: str,
+        capability_requests: tuple[tuple[str, bool], ...],
+        require_capabilities: bool,
+        max_files: int,
+        max_total_bytes: int,
+        clock: Callable[[], int],
+        compile_base: Callable[[PackageProductSelectedPluginManifestV1, int], _CatalogBaseT],
+        compile_data: Callable[
+            [_CatalogBaseT | None, tuple[PackageProductSelectedPluginManifestV1, ...], int],
+            tuple[_CatalogBaseT | None, _CatalogDataT | None],
+        ],
+        prepare_capabilities: Callable[
+            [_CatalogBaseT | None, list[str]], tuple[_CatalogBaseT | None, _PreparationT]
+        ],
+        build_adapter: Callable[
+            [ResourceCatalogInputReceipt, _CatalogBaseT | None, _CatalogDataT | None, int | None],
+            InitialResourceCatalogProductAdapter,
+        ],
+    ) -> tuple[ResourceBundle, _CatalogBaseT | None, _CatalogDataT | None]:
+        """Prepare and retain one fenced selection for Session handoff and refresh."""
+        disabled_base = capture_catalog_base_selection(runtime, base_plugin_id, self.admission_failure)
+        capture_manifests = partial(
+            capture_selected_manifests, runtime.capture_selected_plugin_manifest_for,
+            max_files=max_files, max_total_bytes=max_total_bytes,
+        )
+        base = external = receipt = evaluated_at = None
+        if disabled_base is not None:
+            external_ids = runtime.selected_external_data_plugin_ids()
+            if external_ids:
+                base, external = compile_data(None, capture_manifests(external_ids), clock())
+        else:
+            (selected,) = capture_manifests((base_plugin_id,))
+            evaluated_at = clock()
+            base = compile_base(selected, evaluated_at)
+            receipt = self.require_catalog_input(loader, cwd)
+
+        enabled, selections = observe_requested_plugins(
+            runtime, capability_requests, self.admission_failure
+        )
+        if enabled:
+            base, self.preparation = prepare_capabilities(base, enabled)
+            self.attach_cleanup(self.preparation)
+        elif require_capabilities:
+            raise self.admission_failure(("resume_plugin_participation_changed",))
+        elif base is not None:
+            assert evaluated_at is not None
+            external_ids = runtime.selected_external_data_plugin_ids()
+            if external_ids:
+                base, external = compile_data(base, capture_manifests(external_ids), evaluated_at)
+
+        if receipt is None:
+            receipt = self.require_catalog_input(loader, cwd)
+        bundle = self.prepare_initial_catalog(
+            build_adapter(receipt, base, external, evaluated_at if base is not None else None),
+            cwd=cwd,
+        )
+        self.catalog_selection = ProductCatalogSelection(
+            runtime=runtime,
+            capability_selections=selections,
+            disabled_base=disabled_base,
+            base=base.selected_manifest if base is not None else None,
+            capabilities=base.selected_capability_manifests if base is not None else (),
+            external=(
+                base.selected_external_data_manifests
+                if base is not None
+                else external.selected_manifests if external is not None else ()
+            ),
+        )
+        return bundle, base, external
+
+    def prepare_legacy_catalog(
+        self,
+        loader: ResourceLoader,
+        *,
+        cwd: Path,
+        clock: Callable[[], int] | None,
+        compile_composition: Callable[
+            [ResourceCatalogInputReceipt, int], ProductCompositionCompilation | None
+        ],
+        reconcile_compatibility: Callable[[], None],
+        build_adapter: Callable[
+            [ResourceCatalogInputReceipt, ProductCompositionCompilation | None, int],
+            InitialResourceCatalogProductAdapter,
+        ],
+    ) -> ResourceBundle:
+        """Settle the selected legacy Plugin plan before staging its Catalog."""
+        receipt = self.require_catalog_input(loader, cwd)
+        evaluated_at = clock() if clock is not None else int(time.time())
+        composition = compile_composition(receipt, evaluated_at)
+        reconcile_compatibility()
+        if composition is not None:
+            evaluated_at = composition.authority_context.evaluated_at
+        return self.prepare_initial_catalog(
+            build_adapter(receipt, composition, evaluated_at), cwd=cwd
+        )
+
+    def prepare_initial_catalog(
+        self,
+        adapter: InitialResourceCatalogProductAdapter,
+        *,
+        cwd: Path,
+    ) -> ResourceBundle:
+        """Stage only an adapter whose synchronous Catalog projection succeeded."""
+        bundle = adapter.prepare_bootstrap_projection(
+            product_id=self.product_id, session_id=self.session_id, cwd=cwd
+        )
+        self.catalog_adapter = adapter
+        return bundle
+
+    def prepare_catalog_refresh(
+        self,
+        catalog_generation: int,
+        *,
+        loader: ResourceLoader,
+        get_cwd: Callable[[], str],
+        prepare_adapter: Callable[
+            [ResourceCatalogInputReceipt], InitialResourceCatalogProductAdapter
+        ],
+    ) -> InitialSessionResourceCatalogBootstrap:
+        """Read and prepare a replacement only after rechecking startup evidence."""
+        self.catalog_selection.require_current(
+            product_label=self.product_label, refresh_failure=self.admission_failure
+        )
+        cwd = Path(get_cwd())
+        adapter = prepare_adapter(self.require_catalog_input(loader, cwd))
+        return adapter.prepare_session_bootstrap(
+            product_id=self.product_id,
+            session_id=self.session_id,
+            base_resource_bundle=adapter.prepare_bootstrap_projection(
+                product_id=self.product_id, session_id=self.session_id, cwd=cwd
+            ),
+            catalog_generation=catalog_generation,
+        )
+
+    def require_catalog_input(self, loader: ResourceLoader, cwd: Path) -> ResourceCatalogInputReceipt:
+        return require_catalog_receipt(loader, cwd, self.admission_failure)
 
     def require_catalog_unprepared(self, error: str) -> None:
         if self.catalog_adapter is not None:
@@ -1275,14 +1407,13 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         if adapter is None:
             raise RuntimeError("Initial Resource Catalog projection adapter is unavailable")
         self.catalog_adapter = None
+        self.catalog_selection.require_current(product_label=self.product_label)
         return adapter
 
     def construct_catalog_session(
         self,
         adapter: InitialResourceCatalogProductAdapter,
         *,
-        product_id: str,
-        session_id: str,
         bundle: ResourceBundle,
         construct: Callable[[InitialSessionResourceCatalogBootstrap], _StartupSessionT],
         abort_unpublished: CleanupStep | None = None,
@@ -1290,8 +1421,8 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         # The Catalog rolls back its inputs before the outer Plugin handoff.
         try:
             session = adapter.construct_session(
-                product_id=product_id,
-                session_id=session_id,
+                product_id=self.product_id,
+                session_id=self.session_id,
                 base_resource_bundle=bundle,
                 construct=construct,
             )
@@ -1302,12 +1433,10 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         self._constructed_session = session
         return session
 
-    async def emit_workspace_audit(
-        self, event: Mapping[str, object], *, product_label: str
-    ) -> None:
+    async def emit_workspace_audit(self, event: Mapping[str, object]) -> None:
         session = self._constructed_session
         if session is None:
-            raise RuntimeError(f"{product_label} workspace Session is not yet bound")
+            raise RuntimeError(f"{self.product_label} workspace Session is not yet bound")
         await session.emit_product_tool_audit_event(event)
 
     @contextmanager
@@ -1316,7 +1445,6 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
         *,
         read_failure_custodian: Callable[[BaseException], _PreparationFailureCleanup | None],
         management_cleanup: Callable[[], None] | None,
-        product_label: str,
         private_label: str,
         before: tuple[str, Callable[[], None] | None],
         base_preparation: _PreparedCompositionCleanup | None,
@@ -1330,17 +1458,17 @@ class SessionStartupCustody(PreparationRootCustody[_PreparationT]):
                 raise
             failure_custodian = read_failure_custodian(error)
             after = (
-                f"{product_label} base Plugin cleanup",
+                f"{self.product_label} base Plugin cleanup",
                 base_preparation.close if base_preparation is not None else None,
             )
             # A retained failure custodian settles its own leases and roots.
             preparation = self.preparation if failure_custodian is None else failure_custodian
-            preparation_label = f"{product_label} Capability Plugin preparation cleanup"
+            preparation_label = f"{self.product_label} Capability Plugin preparation cleanup"
             steps: tuple[tuple[str, Callable[[], None] | None], ...]
             if preparation is None:
                 steps = (
                     (
-                        f"{product_label} Capability Plugin management-state cleanup",
+                        f"{self.product_label} Capability Plugin management-state cleanup",
                         management_cleanup,
                     ),
                     (preparation_label, self.state_cleanup),

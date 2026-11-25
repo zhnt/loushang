@@ -6,20 +6,15 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.config.agent import SettingsManager as SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
     read_settled_legacy_local_adoption,
+    require_legacy_local_resource_kind,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
 )
 
-from ..control.settings_store import (
-    default_global_settings_path as default_global_settings_path,
-)
-from ..control.settings_store import (
-    default_project_settings_path as default_project_settings_path,
-)
+from ..control.settings_store import open_coding_workspace_settings
 from .epoch_layout import (
     resolve_coding_package_epoch_layout as resolve_coding_package_epoch_layout,
 )
@@ -42,9 +37,6 @@ from .product_preview import (
 )
 from .product_runtime import (
     _CODING_BUILTIN_BOOTSTRAP_POLICY as _CODING_BUILTIN_BOOTSTRAP_POLICY,
-)
-from .product_runtime import (
-    _CODING_BUILTIN_PLUGIN_IDS,
 )
 from .product_runtime import (
     CODING_PACKAGE_PRODUCT_POLICY_REVISION as CODING_PACKAGE_PRODUCT_POLICY_REVISION,
@@ -77,13 +69,7 @@ def coding_legacy_local_data_adoption_settled(
 ) -> bool:
     """Check one typed old local adoption without mutating Product state."""
 
-    if resource_kind not in {
-        "skill",
-        "prompt",
-        "theme",
-    }:
-        raise ValueError("Unsupported legacy Resource type")
-
+    require_legacy_local_resource_kind(resource_kind)
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     runtime = PackageProductPosixFencedRuntimeOwner.open(
         **epoch.fenced_runtime_open_kwargs(), read_only=True
@@ -105,10 +91,7 @@ def coding_legacy_local_data_adoption_settled(
                 lifecycle,
                 runtime,
                 accepted,
-                SettingsManager(
-                    global_settings_path=default_global_settings_path(),
-                    project_settings_path=default_project_settings_path(workspace),
-                ),
+                open_coding_workspace_settings(workspace),
             )
         )
     finally:
@@ -126,7 +109,6 @@ def coding_legacy_local_data_adoption_settled(
             plugin_id=plugin_id,
             source_trust_class=trust_class_for_legacy_data_resource(resource_kind),
             install_policy=_INSTALL_POLICY,
-            builtin_ids=_CODING_BUILTIN_PLUGIN_IDS,
             choices=_reviewed_local_builtin_choices(accepted.review),
             bootstrap_policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             handoff_error="Coding legacy adoption handoff changed",

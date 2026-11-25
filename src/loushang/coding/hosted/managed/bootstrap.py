@@ -15,7 +15,9 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.apphost.managed.contracts import ManagedContractError
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.apphost.managed.paths import (
-    resolve_managed_admission_root,
+    _overlaps,
+    _session_storage_roots,
+    require_separate_managed_session_storage,
     resolve_managed_paths,
 )
 from loushang.appservice.continuity import require_application_id
@@ -49,19 +51,14 @@ class CodingManagedApplicationLaunchV1:
                 raise ValueError("managed application requires canonical paths")
         if not self.host_root.is_dir() or not self.application_root.parent.is_dir():
             raise ValueError("managed Host root and application parent must exist")
-        for data in (
-            self.session_root, self.session_root.parent / "session-assets",
-            self.session_root.parent / ".session-blob-writers",
-        ):
-            if self.application_root.is_relative_to(data) or data.is_relative_to(self.application_root):
+        for data in _session_storage_roots(self.session_root):
+            if _overlaps(self.application_root, data):
                 raise ValueError("managed application state must be separate from Session storage")
         if self.store_state_root is not None:
             state = self.store_state_root
             if (not state.is_absolute() or state != state.resolve()
-                    or state.is_relative_to(self.session_root.parent)
-                    or self.session_root.parent.is_relative_to(state)
-                    or state.is_relative_to(self.application_root)
-                    or self.application_root.is_relative_to(state)):
+                    or _overlaps(state, self.session_root.parent)
+                    or _overlaps(state, self.application_root)):
                 raise ValueError("store admission state must be separate from writable application data")
 
 
@@ -128,24 +125,8 @@ def create_coding_managed_launch(
         ),
         Path(paths.connection), endpoint, session_discovery=session_discovery,
     )
-    # Deployment control and scratch are not Session catalogs, even where they
-    # are siblings of (rather than nested in) the application/connection roots.
-    for catalog in (cwd_sessions, home_sessions):
-        for data in (catalog, catalog.parent / "session-assets", catalog.parent / ".session-blob-writers"):
-            for managed in _managed_control_roots(invocation):
-                if data.is_relative_to(managed) or managed.is_relative_to(data):
-                    raise ManagedContractError()
+    require_separate_managed_session_storage(invocation, cwd_sessions, home_sessions)
     return launch
-
-
-def _managed_control_roots(invocation: ManagedChildInvocationV1) -> tuple[Path, ...]:
-    return (
-        Path(invocation.namespace.platform_home) / "hosts",
-        Path(invocation.runtime_root) / "hosts",
-        Path(resolve_managed_admission_root(invocation.namespace)).parent,
-        Path(invocation.namespace.platform_home) / "state/session-stores",
-        *((Path(invocation.temporary_override) / "hosts",) if invocation.temporary_override is not None else ()),
-    )
 
 
 __all__ = ["CodingManagedApplicationLaunchV1", "create_coding_managed_attempt", "create_coding_managed_launch"]

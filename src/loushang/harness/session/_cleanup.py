@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager, suppress
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator
+from contextlib import (
+    AbstractContextManager,
+    asynccontextmanager,
+    contextmanager,
+    suppress,
+)
+from pathlib import Path
 from tempfile import TemporaryDirectory as _TemporaryDirectoryCleanup
 from tempfile import mkdtemp
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
+
+if TYPE_CHECKING:
+    from loushang.harness.session.agent_product import AgentProductSession
+    from loushang.harness.transcript.product_session import ProductTranscriptSession
 
 CleanupStep = tuple[str, Callable[[], None]]
 
@@ -34,6 +44,31 @@ def run_cleanup_steps(
 
 class _ConstructedSession(Protocol):
     async def dispose(self) -> None: ...
+
+
+_TranscriptT = TypeVar("_TranscriptT", bound="ProductTranscriptSession")
+_SessionT = TypeVar("_SessionT", bound="AgentProductSession")
+
+
+@asynccontextmanager
+async def hold_authoring_session(
+    registration: AbstractContextManager[None],
+    transcript_type: type[_TranscriptT],
+    build_session: Callable[[_TranscriptT], _SessionT],
+    *,
+    workspace: Path,
+    session_dir: Path,
+) -> AsyncIterator[tuple[_TranscriptT, _SessionT]]:
+    """Keep the offline transport registered through Session disposal."""
+    with registration:
+        manager = await transcript_type.new(
+            session_dir=session_dir, cwd=str(workspace), persist=True
+        )
+        session = build_session(manager)
+        try:
+            yield manager, session
+        finally:
+            await session.dispose()
 
 
 class SessionConstructionCleanup:
@@ -163,6 +198,7 @@ __all__ = [
     "SessionConstructionCleanup",
     "SessionConstructionCleanupAttachmentError",
     "get_session_construction_cleanup",
+    "hold_authoring_session",
     "retain_session_construction_failure",
     "run_cleanup_steps",
 ]

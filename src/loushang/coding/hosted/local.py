@@ -2,28 +2,19 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
-from loushang.apphost.continuity import HostedApplicationContinuityRuntimeV1
-from loushang.apphost.local import (
-    HostedLocalRuntimeV1,
-    _LocalApplicationStartup,
-)
 from loushang.apphost.local import (
     _failed as _failed,
 )
-from loushang.apphost.local import (
+from loushang.apphost.local_application import (
+    _LocalApplicationStartup,
+)
+from loushang.apphost.local_application import (
     _LocalLaunchFacts as _LocalLaunchFacts,
-)
-from loushang.apphost.local import (
-    _spawn as _spawn,
-)
-from loushang.apphost.local import (
-    _wait as _wait_shared,
 )
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.local_record import (
@@ -132,19 +123,7 @@ class CodingLocalCommandV1(_LocalApplicationStartup):
         self._attempt = self._create_attempt(
             launch, model=model, stream_fn=stream_fn, tools=tools
         )
-        self._application: HostedApplicationContinuityRuntimeV1 | None = None
-        self._local: HostedLocalRuntimeV1 | None = None
-        self._startup_timeout, self._timeout = startup_timeout, settlement_timeout
-        self._start_task: asyncio.Task[None] | None = None
-        self._activate_task: asyncio.Task[None] | None = None
-        self._startup_deadline: float | None = None
-        self._prepared = False
-        self._one_step = False
-        self._close_task: asyncio.Task[None] | None = None
-        self._phases: dict[str, asyncio.Task[None]] = {}
-        self._deadline: float | None = None
-        self._closing = False
-        self._settled = False
+        super().__init__(startup_timeout, settlement_timeout)
 
     def _validate_launch(self, launch: _LocalLaunchFacts) -> None:
         if type(launch) is not CodingLocalLaunchV1:
@@ -189,25 +168,11 @@ class CodingLocalCommandV1(_LocalApplicationStartup):
 
     _startup_error_prefix = "coding_local"
 
-    def _prepare_unavailable(self) -> bool:
-        return self._closing or self._start_task is not None
-
-    def _startup_accepting(self) -> bool:
-        return self._local is not None and self._local.accepting
-
 
 def _require_budget(value: float) -> None:
     require_timeout(value)
     if value > 30:
         raise ValueError("Coding local budget exceeds profile bound")
-
-
-async def _wait(
-    task: asyncio.Task[None], deadline: float, *, ignore_failure: bool = False
-) -> None:
-    await _wait_shared(
-        task, deadline, ignore_failure=ignore_failure, error_prefix="coding_local"
-    )
 
 
 __all__ = ["CodingLocalLaunchV1", "CodingLocalCommandV1"]

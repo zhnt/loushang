@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 
 from loushang.coding.composition.base_plugin import CodingBasePluginAssembly
 from loushang.coding.composition.capability_specs import (
     CODING_CAPABILITY_PLUGIN_IDS,
     CODING_CAPABILITY_PLUGIN_SPEC_BY_ID,
+    CODING_CAPABILITY_PLUGIN_SPECS,
     CodingCapabilityPluginConfig,
     CodingCapabilityToolOwner,
     ordered_coding_capability_plugin_specs,
@@ -56,9 +57,6 @@ from loushang.harness.approval.plugin_execution import (
 from loushang.harness.approval.plugin_execution import (
     PluginExecutionJournalError as PluginExecutionJournalError,
 )
-from loushang.harness.capabilities import (
-    WORKSPACE_CAPABILITY_DEFINITION,
-)
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
@@ -76,7 +74,10 @@ from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
 )
 from loushang.harness.config.agent import CapabilityMountMode
-from loushang.harness.plugin_authoring.host import PluginDeclarationHost
+from loushang.harness.plugin_authoring.host import (
+    PluginDeclarationHost,
+    bind_selected_approval_instances,
+)
 from loushang.harness.plugin_management.assembly import (
     _ManagedPluginErrors,
     _resolve_managed_plugin_runtimes,
@@ -85,33 +86,27 @@ from loushang.harness.resources.plugins.authority import (
     PluginRuntimeResolution,
 )
 from loushang.harness.resources.plugins.selection import (
-    PluginEffectiveConfigurationEntry,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
     PluginSelection,
     PluginSourceTrustSnapshotV1,
 )
-from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
-from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
 )
 from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
     _PreparationFailureCleanup,
-    _PreparedCompositionCleanup,
     _PublishedCapabilityComposition,
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
-    ProductContributionOwnerBinding,
     ProductPluginCompositionAssembly,
     ProductPluginCompositionAssemblyRequest,
     ProductPluginCompositionPreparation,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
-    bind_selected_registration_authority,
-    build_product_plugin_selection_plan,
+    _PreparedCapabilityComposition,
 )
 from loushang.harness.session.product_composition_assembly import (
     prepare_product_plugin_composition as prepare_product_plugin_composition,
@@ -154,17 +149,6 @@ class CodingCapabilityPluginApprovalOwner(Protocol):
         journal: PluginActivationDecisionJournal,
         subject: ContributionActivationApprovalSubject,
     ) -> PluginActivationDecisionRecordV1: ...
-
-
-class _CodingCapabilityApprovalInstanceBinder(Protocol):
-    """Optional neutral port for issuers that bind exact managed instances."""
-
-    def bind_selected_instances(
-        self,
-        *,
-        selected_plugin_ids: frozenset[str],
-        instance_revision_refs: Mapping[str, PluginInstanceRevisionRef],
-    ) -> CodingCapabilityPluginApprovalOwner: ...
 
 
 class CodingCapabilityPluginCompositionError(RuntimeError):
@@ -392,36 +376,22 @@ class _CodingDefaultCapabilityPluginApprovalOwner:
         selected_plugin_ids: frozenset[str],
         instance_revision_refs: Mapping[str, PluginInstanceRevisionRef],
     ) -> CodingCapabilityPluginApprovalOwner:
-        selected = selected_plugin_ids & self.plugin_ids
-        if not selected:
-            raise CodingCapabilityPluginCompositionError(
-                "Coding Capability approval has no selected managed instance.",
-                code="coding_capability_approval_selection_empty",
-            )
-        selected_refs = {
-            plugin_id: instance_revision_refs[plugin_id]
-            for plugin_id in selected
-            if plugin_id in instance_revision_refs
-        }
-        if frozenset(selected_refs) != selected:
-            raise CodingCapabilityPluginCompositionError(
-                "Coding Capability approval lacks an exact managed instance.",
-                code="coding_capability_approval_instance_missing",
-            )
-        if self.instance_revision_refs is not None:
-            if dict(self.instance_revision_refs) != selected_refs:
-                raise CodingCapabilityPluginCompositionError(
-                    "Coding Capability approval instance changed after binding.",
-                    code="coding_capability_approval_instance_changed",
-                )
+        selected_refs = bind_selected_approval_instances(
+            selected_plugin_ids & self.plugin_ids,
+            instance_revision_refs,
+            bound=self.instance_revision_refs,
+            label="Coding Capability",
+            error_prefix="coding_capability",
+            reject=lambda message, code: CodingCapabilityPluginCompositionError(
+                message, code=code
+            ),
+        )
+        if selected_refs is None:
             return self
-        return _CodingDefaultCapabilityPluginApprovalOwner(
-            clock=self.clock,
-            plugin_ids=selected,
+        return replace(
+            self,
+            plugin_ids=frozenset(selected_refs),
             instance_revision_refs=selected_refs,
-            approval_source=self.approval_source,
-            product_policy_revision=self.product_policy_revision,
-            source_trust_policy_revision=self.source_trust_policy_revision,
         )
 
     def approve_definition(
@@ -515,16 +485,10 @@ def _bind_default_approval_request_to_plan(
     binder = getattr(request.approval_owner, "bind_selected_instances", None)
     if not callable(binder):
         return request
-    instance_revision_refs = {
-        item.plugin_id: item for item in seed.plan.context.instance_revision_refs
-    }
-    instance_binder = cast(
-        _CodingCapabilityApprovalInstanceBinder, request.approval_owner
-    )
     return CodingCapabilityPluginCompositionRequest(
-        approval_owner=instance_binder.bind_selected_instances(
+        approval_owner=binder(
             selected_plugin_ids=frozenset(seed.plan.selected_plugin_ids),
-            instance_revision_refs=instance_revision_refs,
+            instance_revision_refs=seed.plan.context.instance_revisions_by_plugin(),
         )
     )
 
@@ -588,7 +552,7 @@ class CodingCapabilityPluginCompositionAssembly(_PublishedCapabilityComposition)
 
 
 @dataclass(slots=True)
-class CodingCapabilityPluginCompositionPreparation(_PreparedCompositionCleanup):
+class CodingCapabilityPluginCompositionPreparation(_PreparedCapabilityComposition):
     """Definition-approved closure compiled before host Provider construction."""
 
     _cleanup_label = "Coding Capability"
@@ -647,23 +611,11 @@ class CodingCapabilityPluginCompositionPreparation(_PreparedCompositionCleanup):
         tool_modes: Mapping[str, CapabilityMountMode],
         clock: Callable[[], int],
     ) -> CodingCapabilityPluginCompositionAssembly:
-        if self._closed or self._transferred:
-            raise RuntimeError(
-                "Coding Capability Plugin preparation is no longer available"
-            )
-        _validate_workspace_binding(
-            workspace_binding,
-            host_boot_id=host_boot_id,
-            tool_modes=tool_modes,
-            selected_capability_ids=frozenset(self.provider_owner_authorities.keys()),
-            clock=clock,
-        )
-        try:
-            if self.selection_recheck is not None:
-                self.selection_recheck()
-            plugin_assembly = self.product.bind_host_providers(
-                (workspace_binding.provider,)
-            )
+        def complete(plugin_assembly: ProductPluginCompositionAssembly) -> tuple[
+            CapabilityComponentHost,
+            SessionCapabilityCompositionInputs,
+            Mapping[str, CodingCapabilityToolOwner],
+        ]:
             component_host, session_inputs = _approve_activation_and_bind_inputs(
                 self.selection,
                 plugin_assembly,
@@ -675,21 +627,36 @@ class CodingCapabilityPluginCompositionPreparation(_PreparedCompositionCleanup):
                 clock=clock,
                 resume_parents=self.resume_parents,
             )
-            tool_owners = _build_tool_owners(
+            tool_owners = plugin_assembly.bind_tool_pack_owners(
                 self.selection,
-                plugin_assembly,
+                (
+                    (
+                        spec.plugin_id,
+                        spec.tool_contribution_id,
+                        spec.capability.capability_id,
+                        spec.tool_owner_factory,
+                    )
+                    for spec in CODING_CAPABILITY_PLUGIN_SPECS
+                ),
                 authority=self.tool_owner_authority,
+                owner_id=_TOOL_OWNER_ID,
+                product_id=CODING_PRODUCT_ID,
                 scope_id=self.scope_id,
                 tool_modes=tool_modes,
                 clock=clock,
+                label="Coding Tool owner",
             )
-        except BaseException as error:
-            run_cleanup_steps(
-                error,
-                (("Coding Capability Plugin preparation cleanup", self.close),),
+            return component_host, session_inputs, tool_owners
+
+        plugin_assembly, (component_host, session_inputs, tool_owners) = (
+            self._bind_workspace_provider(
+                workspace_binding,
+                host_boot_id=host_boot_id,
+                tool_modes=tool_modes,
+                clock=clock,
+                complete=complete,
             )
-            raise
-        self._transferred = True
+        )
         return CodingCapabilityPluginCompositionAssembly(
             runtime=self.runtime,
             selection=self.selection,
@@ -961,57 +928,6 @@ def _prepare_capability_plugin_plan(
     )
 
 
-def _build_tool_owners(
-    selection: PluginSelection,
-    plugin_assembly: ProductPluginCompositionAssembly,
-    *,
-    authority: OwnerContributionAuthority,
-    scope_id: str,
-    tool_modes: Mapping[str, CapabilityMountMode],
-    clock: Callable[[], int],
-) -> Mapping[str, CodingCapabilityToolOwner]:
-    gate = bind_selected_registration_authority(
-        selection,
-        plugin_assembly,
-        authority=authority,
-        product_id=CODING_PRODUCT_ID,
-        scope_id=scope_id,
-        clock=clock,
-        label="Coding Tool owner",
-    )
-    admissions = plugin_assembly.product_composition.catalog_admissions
-
-    def exact_admission(plugin_id: str, contribution_id: str):
-        matches = tuple(
-            item
-            for item in admissions
-            if item.plugin_id == plugin_id
-            and item.contribution_id == contribution_id
-            and item.owner_id == _TOOL_OWNER_ID
-            and item.contribution_kind == "tool_pack"
-        )
-        if len(matches) != 1:
-            raise ValueError(
-                f"Coding Tool owner requires one exact admission for {plugin_id}"
-            )
-        return matches[0]
-
-    return {
-        spec.plugin_id: spec.tool_owner_factory(
-            admission=exact_admission(
-                spec.plugin_id,
-                spec.tool_contribution_id,
-            ),
-            authority_gate=gate,
-            mode=tool_modes[spec.capability.capability_id],
-            scope_id=scope_id,
-        )
-        for spec in ordered_coding_capability_plugin_specs(
-            set(selection.plan.selected_plugin_ids) & _PLUGIN_IDS
-        )
-    }
-
-
 def _approve_activation_and_bind_inputs(
     selection: PluginSelection,
     plugin_assembly: ProductPluginCompositionAssembly,
@@ -1024,7 +940,7 @@ def _approve_activation_and_bind_inputs(
     clock: Callable[[], int],
     resume_parents: CodingResumePluginParents | None = None,
 ) -> tuple[CapabilityComponentHost, SessionCapabilityCompositionInputs]:
-    component_host = CapabilityComponentHost.from_product_selection(
+    return plugin_assembly.approve_and_bind_session_inputs(
         selection,
         provider_authorities=provider_authorities,
         journal_path=state_root / _ACTIVATION_DECISIONS_FILENAME,
@@ -1033,29 +949,15 @@ def _approve_activation_and_bind_inputs(
         clock=clock,
         expected_product_id=CODING_PRODUCT_ID,
         product_label="Coding",
-        required_writer_capabilities=frozenset(
-            {"harness.plugin-activation.resume-context/v1"}
-        )
-        if resume_parents is not None
-        else frozenset(),
+        approval_owner=lambda: request.approval_owner,
+        error_code_prefix="coding_capability_plugin",
+        error_factory=lambda message, code: CodingCapabilityPluginCompositionError(
+            message, code=code
+        ),
         distribution_evidence_resolver=lambda: (
             coding_plugin_distribution_evidence_resolver()
         ),
-        resume_parent_context=lambda: (
-            resume_parents.activation if resume_parents is not None else None
-        ),
-    )
-    return (
-        component_host,
-        plugin_assembly.approve_and_bind_session_inputs(
-            component_host=component_host,
-            approval_owner=lambda: request.approval_owner,
-            product_label="Coding",
-            error_code_prefix="coding_capability_plugin",
-            error_factory=lambda message, code: CodingCapabilityPluginCompositionError(
-                message, code=code
-            ),
-        ),
+        resume_parents=resume_parents,
     )
 
 
@@ -1116,24 +1018,6 @@ def _finalize_selection(
     )
 
 
-def _capability_configuration_entries(
-    packages: Iterable[PublishedPluginPackage],
-    configurations: Mapping[str, CodingCapabilityPluginConfig],
-) -> Iterator[PluginEffectiveConfigurationEntry]:
-    for package in packages:
-        plugin_id = package.manifest.name
-        for contribution in package.contribution_index.items:
-            yield PluginEffectiveConfigurationEntry(
-                plugin_id=plugin_id,
-                contribution_id=contribution.contribution_id,
-                configuration=(
-                    configurations[plugin_id].to_dict()
-                    if contribution.kind == "capability_provider"
-                    else {}
-                ),
-            )
-
-
 def _prepare_selection_plan_seed(
     runtime: PluginRuntimeResolution,
     *,
@@ -1146,7 +1030,8 @@ def _prepare_selection_plan_seed(
     package_bindings = tuple(zip(runtime.packages, runtime.bindings, strict=True))
     base_plan = coding_product_plan_seed.plan if coding_product_plan_seed else None
     plugin_ids = tuple(sorted(configurations))
-    plan = build_product_plugin_selection_plan(
+    return ProductPluginPlanSeed.compile_capability_plan(
+        package_bindings,
         product_id=CODING_PRODUCT_ID,
         scope_id=scope_id,
         policy_revision=(
@@ -1175,18 +1060,11 @@ def _prepare_selection_plan_seed(
                 package_bindings, key=lambda pair: pair[0].manifest.name
             )
         ),
-        additions=_capability_configuration_entries(
-            (package for package, _ in package_bindings), configurations
-        ),
-        base=base_plan,
-        extend_base_selection=True,
+        configuration_packages=(package for package, _ in package_bindings),
+        configure_capability=lambda plugin_id: configurations[plugin_id].to_dict(),
         allowed_authority_ceiling=("filesystem", "process"),
-    )
-    return ProductPluginPlanSeed.from_package_bindings(
-        plan,
-        package_bindings,
-        owner_bindings=(ProductContributionOwnerBinding(authority=tool_authority),),
-        extend_seed=coding_product_plan_seed,
+        tool_authority=tool_authority,
+        base=coding_product_plan_seed,
     )
 
 
@@ -1393,35 +1271,6 @@ def _validate_preparation_inputs(
             and _BASE_PLUGIN_ID not in coding_product_plan_seed.plan.selected_plugin_ids
         ):
             raise ValueError("Coding Capability Product seed omits coding.base")
-    if not callable(clock):
-        raise TypeError("Coding Capability Plugin clock is invalid")
-
-
-def _validate_workspace_binding(
-    workspace_binding: CapabilityBundleProviderBinding,
-    *,
-    host_boot_id: str,
-    tool_modes: Mapping[str, CapabilityMountMode],
-    selected_capability_ids: frozenset[str],
-    clock: Callable[[], int],
-) -> None:
-    if not isinstance(workspace_binding, CapabilityBundleProviderBinding):
-        raise TypeError("Coding Capability Plugin workspace binding is invalid")
-    if (
-        workspace_binding.provider.capability_id
-        != WORKSPACE_CAPABILITY_DEFINITION.capability_id
-    ):
-        raise ValueError("Coding Capability Plugins require harness.workspace")
-    if not isinstance(host_boot_id, str):
-        raise TypeError("Coding Capability Plugin Host boot id is invalid")
-    if len(host_boot_id) != 32 or any(
-        item not in "0123456789abcdefABCDEF" for item in host_boot_id
-    ):
-        raise ValueError("Coding Capability Plugin Host boot id must be 32 hex digits")
-    if frozenset(tool_modes) != selected_capability_ids or any(
-        mode not in {"on_demand", "always"} for mode in tool_modes.values()
-    ):
-        raise ValueError("Coding Capability Plugins require enabled Tool modes")
     if not callable(clock):
         raise TypeError("Coding Capability Plugin clock is invalid")
 

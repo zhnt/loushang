@@ -20,43 +20,18 @@ from loushang.harness.package_product._legacy_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
-    PackagePosixEpochCutoverError as PackagePosixEpochCutoverError,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes as canonical_json_bytes,
-)
 
 from .legacy_classification import CodingScopedLegacyDisableV1
-from .legacy_desired_evidence import (
-    parse_coding_legacy_desired_evidence as parse_coding_legacy_desired_evidence,
-)
 from .legacy_installation_inventory import (
     _BUILTINS,
     CodingLegacyBuiltinIntentV1,
-    CodingLegacyInstallationInventoryV1,
+    _legacy_inventory_query,
     _legacy_inventory_reader,
-    _project_inventory_facts,
-)
-from .legacy_installation_inventory import (
-    classify_coding_legacy_installations as classify_coding_legacy_installations,
-)
-from .legacy_installation_inventory import (
-    read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
 )
 from .legacy_operation_evidence import CodingLegacyOperationEvidenceError
-from .legacy_operation_evidence import (
-    classify_coding_legacy_management_members as classify_coding_legacy_management_members,
-)
-from .legacy_operation_evidence import (
-    parse_coding_legacy_operation_evidence as parse_coding_legacy_operation_evidence,
-)
 from .legacy_snapshot_member import (
     CodingFencedEpochRuntime,
     _snapshot_reader,
-)
-from .legacy_snapshot_member import (
-    list_coding_first_b_snapshot_domain_members as list_coding_first_b_snapshot_domain_members,
 )
 from .legacy_source_evidence import (
     read_coding_legacy_source_evidence as read_coding_legacy_source_evidence,
@@ -120,22 +95,6 @@ CodingLegacyBuiltinOnlyReviewV1._schema = legacy_review_scalar_schema(
 )
 
 
-def _require_builtin_only_inventory(
-    inventory: CodingLegacyInstallationInventoryV1,
-) -> None:
-    if (
-        inventory.active_local
-        or inventory.unselected_source_identities
-        or inventory.lockfile_digest is not None
-        or inventory.desired_journal_digest is None
-        or not (inventory.builtin_intent or inventory.removed_plugin_ids)
-        or any(item not in _REMOVABLE for item in inventory.removed_plugin_ids)
-    ):
-        raise CodingLegacyBuiltinOnlyReviewError(
-            "Coding old Desired State is not builtin-only"
-        )
-
-
 def admit_coding_builtin_only_snapshot(
     lifecycle: CodingPluginLifecycleStateLayout,
     prepared: CodingPreBSnapshotPreparation,
@@ -159,14 +118,12 @@ def admit_coding_builtin_only_snapshot(
             raise CodingLegacyBuiltinOnlyReviewError(
                 "Coding old snapshot is not builtin-only"
             )
-        inventory, digest = _legacy_inventory_reader(lifecycle).read_builtin_admission(
+        _legacy_inventory_reader(lifecycle).read_builtin_admission(
             prepared.owner,
             snapshot,
             expected=_EXPECTED,
+            removable_ids=_REMOVABLE,
             review_error=CodingLegacyBuiltinOnlyReviewError,
-        )
-        _require_builtin_only_inventory(
-            _project_inventory_facts(inventory, desired_journal_digest=digest)
         )
 
 
@@ -207,19 +164,19 @@ def review_coding_first_b_builtin_only(
         raise CodingLegacyBuiltinOnlyReviewError(
             "Coding first-B snapshot has configured Sources"
         )
-    inventory = read_coding_legacy_installation_inventory(
-        lifecycle, epoch_runtime
-    ).inventory
-    _require_builtin_only_inventory(inventory)
+    evidence = _legacy_inventory_query(lifecycle, epoch_runtime)()
+    evidence.inventory.require_builtin_only(
+        desired_digest=evidence.desired_journal_digest,
+        removable_ids=_REMOVABLE,
+        error=CodingLegacyBuiltinOnlyReviewError("Coding old Desired State is not builtin-only"),
+    )
     epoch_runtime.assert_current()
-    return CodingLegacyBuiltinOnlyReviewV1(
-        **identity,
+    return CodingLegacyBuiltinOnlyReviewV1._from_verified_inventory(
+        identity,
+        evidence,
         scope_id=lifecycle.scope_id,
         source_projection_digest=source.projection_digest,
-        desired_journal_digest=inventory.desired_journal_digest or "",
-        disabled_plugins=source.classification.disabled_plugins,
-        builtin_intent=inventory.builtin_intent,
-        removed_builtin_ids=inventory.removed_plugin_ids,
+        disables=source.classification.disabled_plugins,
     )
 
 

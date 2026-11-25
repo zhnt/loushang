@@ -99,6 +99,9 @@ from loushang.harness.approval.plugin_execution import (
     PluginExecutionJournalError as PluginExecutionJournalError,
 )
 from loushang.harness.capabilities.tools import ToolSelection
+from loushang.harness.package_product._application_runtime import (
+    select_resume_worker_candidates,
+)
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resume_effects import (
     ResumeEffectParentContextV1,
@@ -230,22 +233,12 @@ async def prepare_coding_resume_continuation(
         CodingFencedProductApplicationSelection,
     ):
         raise TypeError('Coding Resume Product application owner is invalid')
-    if (
-        type(worker_candidates) is not bool
-        or (
-            worker_candidate_plugin_id is not None
-            and (
-                not isinstance(worker_candidate_plugin_id, str)
-                or not worker_candidate_plugin_id
-                or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
-            )
-        )
-        or (
-            (worker_candidates or worker_candidate_plugin_id is not None)
-            and product_owner_selection is None
-        )
-    ):
-        raise ValueError('Coding Resume Worker requires its application Product owner')
+    select_resume_worker_candidates(
+        worker_candidates,
+        worker_candidate_plugin_id,
+        has_application_owner=product_owner_selection is not None,
+        invalid='Coding Resume Worker requires its application Product owner',
+    )
     resume_plugin_parents: CodingResumePluginParents | None = None
     resume_worker_parent: ResumeEffectParentContextV1 | None = None
     if type(attempt) is CodingActivationAttemptV2:

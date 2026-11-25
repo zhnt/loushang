@@ -14,6 +14,9 @@ from loushang.harness.package_product._linux_worker_history import (
     commit_product_history_owner,
     valid_history_cutoffs,
 )
+from loushang.harness.package_product._worker_history_access import (
+    is_exact_posix_worker_history_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -53,8 +56,7 @@ def commit_coding_product_worker_v2_owner(
     """Reprove staged Product facts under custody, then publish one owner."""
 
     if (
-        type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+        not is_exact_posix_worker_history_product(product, product_id="coding")
         or not valid_history_cutoffs(first_retained_generations)
     ):
         raise ValueError(

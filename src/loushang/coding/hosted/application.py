@@ -5,10 +5,10 @@ from __future__ import annotations
 import inspect
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from secrets import token_hex
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loushang.apphost import (
     AdmissionGenerationSourceV1,
@@ -36,12 +36,13 @@ from loushang.apphost import (
 )
 from loushang.apphost._ownership import (
     _construct_product_apphost,
+    _require_async_method,
+    _require_session_catalog_methods,
 )
 from loushang.apphost.application import (
     HostedApplicationActivationV1,
     HostedApplicationRequestV1,
     HostedApplicationRuntimeV1,
-    _method_descriptor,
     create_hosted_application_runtime,
 )
 from loushang.apphost.integrations.session_control import (
@@ -82,6 +83,13 @@ from loushang.coding.hosted.service_adapter import (
     CodingHostedSnapshotProjectionV1,
 )
 from loushang.harness.runtime import await_owned_task
+
+if TYPE_CHECKING:
+    from loushang.agent.types import StreamFn
+    from loushang.ai.model import Model, ModelSelection
+    from loushang.coding.hosted.bootstrap import CodingHostedLaunchV1
+    from loushang.harness.policy import PolicyEvaluator
+    from loushang.harness.tools.core import ToolDefinition
 
 CODING_HOSTED_APPLICATION_PROFILE_ID = "coding.hosted-mux"
 CODING_MANAGED_APPLICATION_PROFILE_ID = "coding.managed-mux"
@@ -169,7 +177,7 @@ class CodingForegroundHostedApplicationRequestV1:
                                             or not self.managed_selection):
             raise ValueError("managed Mux requires managed Coding selection")
         if self.session_owner is not None:
-            _require_async_method(self.session_owner, "close")
+            _require_async_method(self.session_owner, "close", label="Coding hosted application")
             fence = inspect.getattr_static(type(self.session_owner), "fence", None)
             if not callable(fence) or inspect.iscoroutinefunction(fence):
                 raise TypeError("invalid Coding Session owner fence")
@@ -195,16 +203,10 @@ class CodingForegroundHostedApplicationRequestV1:
             self.product_admission_source,
             self.profile_admission_source,
         ):
-            _require_async_method(admission_source, "acquire_pin")
-        _require_async_method(self.candidate_validator, "open_product_candidate")
-        for method in (
-            "list_identities",
-            "open_candidate",
-            "find_created_candidate",
-            "create_candidate",
-        ):
-            _require_async_method(self.sessions, method)
-        _require_async_method(self.session_factory, "create_session")
+            _require_async_method(admission_source, "acquire_pin", label="Coding hosted application")
+        _require_async_method(self.candidate_validator, "open_product_candidate", label="Coding hosted application")
+        _require_session_catalog_methods(self.sessions, label="Coding hosted application")
+        _require_async_method(self.session_factory, "create_session", label="Coding hosted application")
         if type(self.shutdown_budget) is not AppHostShutdownBudgetV1:
             raise TypeError("Coding hosted application shutdown budget is invalid")
         if not callable(self.operation_id_factory) or (
@@ -457,6 +459,48 @@ async def create_coding_foreground_hosted_application(
     )
 
 
+async def _create_coding_scoped_work_application(
+    launch: CodingHostedLaunchV1,
+    *,
+    execution: Callable[[str], HostedExecutionServiceBindingV1],
+    model: Model | ModelSelection | None,
+    stream_fn: StreamFn | None,
+    tools: list[ToolDefinition] | None = None,
+    method: CodingHostedMethodV1 | None = None,
+    goal: HostedGoalSetup | None = None,
+    tool_policy: PolicyEvaluator | None = None,
+    active_tools: list[str] | None = None,
+    allowed_tools: list[str] | None = None,
+    system_prompt: str | None = None,
+) -> HostedApplicationRuntimeV1:
+    from loushang.coding.hosted.bootstrap import (
+        _coding_foreground_request,
+        prepare_coding_hosted_session_roots,
+    )
+    from loushang.coding.hosted.catalog import CodingHostedSessionCatalogV1
+
+    request = _coding_foreground_request(
+        application_id=launch.application_id,
+        catalog=CodingHostedSessionCatalogV1(launch.scopes),
+        generation=token_hex(16),
+        model=model,
+        stream_fn=stream_fn,
+        tools=tools,
+        session_discovery=False,
+        owned_transcripts=False,
+        profile_id=CODING_HOSTED_APPLICATION_PROFILE_ID,
+        session_tool_policy=tool_policy,
+        session_active_tools=active_tools,
+        session_allowed_tools=allowed_tools,
+        session_system_prompt=system_prompt,
+    )
+    application = await create_coding_foreground_hosted_application(
+        replace(request, method=method, goal=goal, execution=execution(launch.application_id))
+    )
+    await application._publish_client_scopes(partial(prepare_coding_hosted_session_roots, launch))
+    return application
+
+
 async def _load_coding_hosted_sessions(
     request: CodingForegroundHostedApplicationRequestV1,
 ) -> None:
@@ -567,11 +611,6 @@ def _require_managed_selection(
         HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint) for scope in sessions.scopes
     ):
         raise ValueError("managed selection requires the exact owned canonical catalog and scopes")
-
-
-def _require_async_method(value: object, name: str) -> None:
-    if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
-        raise TypeError(f"Coding hosted application {name} port is invalid")
 
 
 __all__ = [

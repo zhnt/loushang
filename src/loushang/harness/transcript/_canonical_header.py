@@ -30,6 +30,10 @@ class _CanonicalTranscriptSourceMethods:
             error=self._catalog_error,
         )
 
+    def _require_source_revision(self, path: Path, expected: str) -> None:
+        if self._source_revision(path) != expected:
+            raise self._catalog_error()
+
     def _directory_revision(self, path: Path) -> tuple[int, int, int] | None:
         return canonical_transcript_directory_revision(path, error=self._catalog_error)
 

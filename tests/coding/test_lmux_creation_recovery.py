@@ -11,6 +11,7 @@ from loushang.coding.cli import lmux
 
 from .test_lmux_command import _failure_diagnostic
 from .test_lmux_command import managed_cli as managed_cli
+from .test_lmux_command import mux_workspace as mux_workspace
 
 
 def _json_lines(output):

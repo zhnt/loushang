@@ -8,18 +8,23 @@ retains its bound child owner until application cleanup has completed.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import socket
 import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from threading import RLock, current_thread, main_thread
-from time import monotonic
+from time import monotonic, sleep
 
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.hosting.errors import HostingError
 from loushang.hosting.service import LinuxServiceObserverV1, ServiceObserverV1
 from loushang.hosting.service_handoff import require_service_channel
-from loushang.hosting.service_windows import WindowsServiceObserverV1
+from loushang.hosting.service_windows import (
+    WindowsServiceObserverV1,
+    read_windows_service_startup,
+)
 
 from ._files import ManagedStorageError, PrivateManagedDirectory, _check_deadline
 from ._lifetime import _ChildLifetime
@@ -32,10 +37,16 @@ from .contracts import (
     ManagedNamespaceV1,
     ManagedServiceKeyV1,
     _match,
+    _path,
 )
 from .defaults import current_managed_user
 from .event_log import ManagedLifecycleEventV1, ManagedLifecycleLogV1
 from .handoff import ManagedChildControlV1
+from .invocation import (
+    ManagedChildInvocationV1,
+    managed_child_environment,
+    require_managed_descriptor,
+)
 from .lifecycle import ManagedServiceJournalV1
 from .mux_management import ManagedMuxManagerV1
 from .output_capture import ManagedOutputCaptureFactory
@@ -521,6 +532,105 @@ class ManagedChildBootstrapV1:
             self._mutex.release()
 
 
+def _numeric_descriptor(value: str) -> int:
+    if not value.isascii() or not value.isdecimal() or len(value) > 20:
+        raise ManagedContractError()
+    descriptor = int(value)
+    require_managed_descriptor(descriptor)
+    return descriptor
+
+
+def _startup_settings(
+    payload: str, session_root: str, *, product_id: str,
+) -> tuple[ManagedChildInvocationV1, Path]:
+    invocation = ManagedChildInvocationV1.from_json(payload)
+    if invocation.service.product_id != product_id:
+        raise ManagedContractError()
+    _path(session_root)
+    return invocation, Path(session_root)
+
+
+ManagedChildApplicationPreparation = Callable[
+    [ManagedChildInvocationV1, Path, ManagedChildBootstrapV1, float],
+    Callable[[], ManagedChildApplicationPortV1],
+]
+
+
+def run_managed_child_entry(
+    arguments: Sequence[str],
+    *,
+    product_id: str,
+    load_application: Callable[[], ManagedChildApplicationPreparation],
+) -> int:
+    """Adopt and settle one explicitly selected Product's inherited child."""
+    if len(arguments) != 3:
+        raise ManagedContractError()
+    windows = sys.platform == "win32"
+    if windows and arguments[0] != "--inherited":
+        raise ManagedContractError()
+    settings = None if windows else _startup_settings(arguments[0], arguments[1], product_id=product_id)
+    endpoint = socket.socket(fileno=_numeric_descriptor(arguments[1 if windows else 2]))
+    bootstrap: ManagedChildBootstrapV1 | None = None
+    try:
+        if settings is None:
+            payload = read_windows_service_startup(endpoint, _numeric_descriptor(arguments[2]))
+            decoded = json.loads(payload)
+            if (type(decoded) is not list or len(decoded) != 2
+                    or any(type(item) is not str for item in decoded)):
+                raise ManagedContractError()
+            settings = _startup_settings(decoded[0], decoded[1], product_id=product_id)
+        invocation, session_root = settings
+        os.environ.update(managed_child_environment(invocation))
+        # Load the selected backend inside endpoint custody and before the
+        # bounded native admission window begins.
+        prepare_application = load_application()
+        bootstrap = ManagedChildBootstrapV1(
+            invocation.namespace, invocation.service, invocation.instance,
+            invocation.attempt_id, endpoint, runtime_root=invocation.runtime_root,
+            temporary_override=invocation.temporary_override,
+            diagnostics=True,
+        )
+        deadline = monotonic() + 15
+        while True:
+            try:
+                bootstrap.open(deadline=deadline)
+                break
+            except ManagedStorageError as error:
+                if error.code != "busy" or monotonic() >= deadline:
+                    raise
+                sleep(0.01)  # Same admission and frozen budget, never a new owner.
+        build_application = prepare_application(invocation, session_root, bootstrap, deadline)
+        trace = None
+        if invocation.trace_deadline_ms is not None:
+            trace_deadline = invocation.trace_deadline_ms / 1000
+            if monotonic() < trace_deadline:
+                try:
+                    trace = bootstrap.prepare_trace(deadline=trace_deadline)
+                except ManagedStorageError as error:
+                    if error.code != "busy" or monotonic() < trace_deadline:
+                        raise
+        bootstrap.bind(build_application())
+        if trace is not None:
+            # Dedicated process-wide composition, never a per-Session context.
+            # The child settles native work before this borrowed sink is removed.
+            from loushang.foundation.observability.runtime import (
+                observability_runtime_context,
+            )
+
+            with observability_runtime_context(
+                session_id=None, cwd=invocation.service.host_root, mode="managed",
+                trace_sink=trace, trace_scopes=frozenset({"turn.start.performance", "host"}),
+            ):
+                bootstrap.trace_sink_installed(trace)
+                return bootstrap.run_process()
+        return bootstrap.run_process()
+    finally:
+        if bootstrap is not None:
+            bootstrap.close()
+        else:
+            endpoint.close()
+
+
 def _outside_loop() -> None:
     try:
         asyncio.get_running_loop()
@@ -529,4 +639,4 @@ def _outside_loop() -> None:
     raise ManagedStorageError("busy")
 
 
-__all__ = ["ManagedChildBootstrapV1"]
+__all__ = ["ManagedChildBootstrapV1", "run_managed_child_entry"]

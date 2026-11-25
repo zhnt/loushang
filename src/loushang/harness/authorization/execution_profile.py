@@ -74,11 +74,16 @@ class WorkspaceExecutionSelection:
     workspace_profile: EffectiveExecutionProfile
     ceiling: EffectiveExecutionProfile
     permission_snapshot: Callable[[], PermissionProfileSnapshot]
+    current_workspace_roots: Callable[[], tuple[Path, ...]] | None = None
 
     def __call__(self) -> EffectiveExecutionProfile:
         return self._select(self.workspace_profile)
 
     def for_workspace_operation(self) -> EffectiveExecutionProfile:
+        if self.current_workspace_roots is not None:
+            return self._select(self.workspace_profile)
+        # Local file tools start from the workspace itself. Process scopes can
+        # include separate Git metadata for a linked worktree.
         workspace_only = constrain_execution_profile(
             self.workspace_profile,
             EffectiveExecutionProfile(
@@ -95,6 +100,12 @@ class WorkspaceExecutionSelection:
             if profile.workspace_access == "managed_ceiling"
             else workspace_profile
         )
+        if self.current_workspace_roots is not None:
+            roots = self.current_workspace_roots()
+            selected = constrain_execution_profile(
+                selected,
+                EffectiveExecutionProfile(readable_roots=roots, writable_roots=roots),
+            )
         return constrain_execution_profile(self.ceiling, selected)
 
 

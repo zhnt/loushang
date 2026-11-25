@@ -7,17 +7,9 @@ import asyncio
 import json
 import os
 import re
-import signal
-import socket
 import subprocess
 import sys
-from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from loushang.coding.hosted.local import CodingLocalCommandV1
-
 
 DEFAULT_UNIT = "loushang-host.service"
 OPERATIONS = ("start", "stop", "restart", "status", "logs", "run")
@@ -77,6 +69,7 @@ def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
 
 def run_systemd_host() -> int:
     """Start the existing managed Host and hand its PID directly to systemd."""
+    from loushang.apphost.managed.systemd import start_systemd_application
     from loushang.coding.hosted.managed.service import (
         ServiceControlError,
         control_managed_service,
@@ -86,32 +79,12 @@ def run_systemd_host() -> int:
     if notify_socket is None:
         print("loushang-mux service run requires a systemd notification socket", file=sys.stderr)
         return 1
-    started = None
-    try:
-        previous = asyncio.run(control_managed_service("status", None))
-        if previous["state"] == "running":
-            raise ServiceControlError("already_running")
-        result = asyncio.run(control_managed_service("start", None))
-        pid = result.get("pid")
-        if result["state"] != "running" or type(pid) is not int or pid <= 0:
-            raise ServiceControlError("start_failed")
-        if Path(f"/proc/{pid}/cgroup").read_bytes() != Path("/proc/self/cgroup").read_bytes():
-            raise ServiceControlError("process_scope_mismatch")
-        started = result
-        endpoint = _systemd_endpoint()
-        temporary = endpoint.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"recordRoot": started["recordRoot"]}) + "\n")
-        temporary.replace(endpoint)
-        address = "\0" + notify_socket[1:] if notify_socket.startswith("@") else notify_socket
-        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notifier:
-            notifier.settimeout(1)
-            notifier.sendto(f"MAINPID={pid}\nREADY=1".encode(), address)
+    if start_systemd_application(
+        control_managed_service, notify_socket, _systemd_endpoint, control_error=ServiceControlError,
+    ):
         return 0
-    except (ServiceControlError, OSError, ValueError, KeyError):
-        if started is not None:
-            asyncio.run(control_managed_service("stop", started.get("instanceId")))
-        print("loushang-mux service: systemd_host_start_failed", file=sys.stderr)
-        return 1
+    print("loushang-mux service: systemd_host_start_failed", file=sys.stderr)
+    return 1
 
 
 def _systemd_endpoint() -> Path:
@@ -147,14 +120,13 @@ def control(operation: str, unit: str) -> int:
     if sys.platform != "linux":
         print("loushang-mux service requires Linux and a systemd user manager", file=sys.stderr)
         return 1
-    if operation == "logs":
-        argv = ["journalctl", "--user", "--no-pager", "--lines=100", "--user-unit", unit]
-    else:
-        argv = ["systemctl", "--user", "--no-pager", operation, "--", unit]
+    from loushang.apphost.managed.systemd import run_systemd_user_action
+
     try:
-        return subprocess.run(argv, check=False).returncode
+        return run_systemd_user_action(operation, unit)
     except OSError as error:
-        print(f"loushang-mux service: cannot run {argv[0]}: {error.strerror}", file=sys.stderr)
+        executable = "journalctl" if operation == "logs" else "systemctl"
+        print(f"loushang-mux service: cannot run {executable}: {error.strerror}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         return 130
@@ -174,7 +146,12 @@ def control_local(operation: str, expected: str | None, *, as_json: bool) -> int
         elif _uses_managed_backend():
             reply = asyncio.run(control_managed_service(operation, expected))
         elif sys.platform == "linux":
-            reply = _systemd_control(operation, expected)
+            from loushang.apphost.managed.systemd import control_systemd_application
+
+            reply = control_systemd_application(
+                operation, expected, unit=DEFAULT_UNIT,
+                endpoint=_systemd_endpoint, error=ServiceControlError,
+            )
         else:
             raise ServiceControlError("platform_unsupported")
     except ServiceControlError as error:
@@ -188,87 +165,3 @@ def control_local(operation: str, expected: str | None, *, as_json: bool) -> int
     else:
         print(reply["state"])
     return int("errorCode" in reply)
-
-
-def _systemd_control(operation: str, expected: str | None) -> dict[str, object]:
-    from loushang.coding.hosted.managed.service import ServiceControlError
-
-    if expected is not None and _systemd_state().get("instanceId") != expected:
-        raise ServiceControlError("instance_changed")
-    if operation != "status":
-        result = subprocess.run(
-            ["systemctl", "--user", "--no-pager", operation, "--", DEFAULT_UNIT],
-            stdout=subprocess.DEVNULL, timeout=80, check=False,
-        )
-        if result.returncode != 0:
-            raise ServiceControlError(f"{operation}_failed")
-    return _systemd_state()
-
-
-def _systemd_state() -> dict[str, object]:
-    from loushang.coding.hosted.managed.service import ServiceControlError
-
-    command = [
-        "systemctl", "--user", "--no-pager", "show",
-        "--property=LoadState,ActiveState,InvocationID", "--", DEFAULT_UNIT,
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=True)
-    properties = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
-    if properties.get("LoadState") != "loaded":
-        raise ServiceControlError("management_unavailable")
-    state = properties.get("ActiveState", "")
-    if state == "active":
-        instance = properties.get("InvocationID", "")
-        if not re.fullmatch(r"[0-9a-f]{32}", instance):
-            raise ServiceControlError("management_unavailable")
-        try:
-            record_root = json.loads(_systemd_endpoint().read_text())["recordRoot"]
-            if type(record_root) is not str or not Path(record_root).is_absolute():
-                raise ValueError("invalid record root")
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            raise ServiceControlError("management_unavailable") from error
-        return {
-            "state": "running", "instanceId": instance,
-            "recordRoot": record_root,
-        }
-    return {"state": {
-        "inactive": "not_running", "activating": "starting", "deactivating": "stopping", "failed": "exited",
-    }.get(state, "unknown")}
-
-
-async def run_host(
-    command: CodingLocalCommandV1, notify_socket: str | None, log_ready: Callable[[], None]
-) -> None:
-    if notify_socket is None:
-        await command.run(ready=log_ready)
-        return
-    address = "\0" + notify_socket[1:] if notify_socket.startswith("@") else notify_socket
-    loop = asyncio.get_running_loop()
-    host = asyncio.current_task()
-    assert host is not None
-    stopping = False
-
-    def terminate() -> None:
-        nonlocal stopping
-        if not stopping:
-            stopping = True
-            command.fence()
-            host.cancel()
-
-    def ready() -> None:
-        log_ready()
-        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notifier:
-            notifier.settimeout(1)
-            notifier.sendto(b"READY=1", address)
-
-    previous = signal.getsignal(signal.SIGTERM)
-    loop.add_signal_handler(signal.SIGTERM, terminate)
-    try:
-        await command.run(ready=ready)
-    except asyncio.CancelledError:
-        if not stopping:
-            raise
-        await command.close()
-    finally:
-        loop.remove_signal_handler(signal.SIGTERM)
-        signal.signal(signal.SIGTERM, previous)

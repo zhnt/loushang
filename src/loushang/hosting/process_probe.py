@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from loushang.foundation._owned_tasks import _try_settle_owned_closes
@@ -25,9 +26,31 @@ class ProcessHostFactory(Protocol):
 
 
 class ProcessProbeOutputError(ValueError):
-    def __init__(self, reason: Literal["oversize", "trailing_data"]) -> None:
+    def __init__(self, reason: Literal["oversize", "trailing_data", "rejected"]) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class ProcessProbeResultError(ValueError):
+    def __init__(self, reason: Literal["child_failed", "observation_invalid"]) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+@dataclass(frozen=True, slots=True)
+class _ProbePreparation:
+    request: ProcessLaunchRequest
+
+    async def verify_current(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+
+class _ProbePreparationPort:
+    async def prepare(self, request: ProcessLaunchRequest) -> _ProbePreparation:
+        return _ProbePreparation(request)
 
 
 class ProcessProbe:
@@ -82,6 +105,31 @@ class ProcessProbe:
             output = await self._read_stdout(lease)
             exited = await lease.wait()
         return output, exited
+
+    async def run_exact_line(
+        self,
+        request: ProcessLaunchRequest,
+        *,
+        line: bytes,
+        timeout_seconds: float,
+    ) -> None:
+        """Verify one bounded line, successful exit and the observed process backend."""
+        output, exited = await self.run(
+            request, _ProbePreparationPort(), timeout_seconds=timeout_seconds
+        )
+        if output not in {line + b"\n", line + b"\r\n"}:
+            raise ProcessProbeOutputError("rejected")
+        if exited.return_code != 0:
+            raise ProcessProbeResultError("child_failed")
+        self.require_observed_backend()
+
+    def require_observed_backend(self, *transitions: str) -> str:
+        if self.overflow:
+            raise ProcessProbeResultError("observation_invalid")
+        backend = self.backend_id()
+        if backend is None or not set(transitions).issubset(self.transitions):
+            raise ProcessProbeResultError("observation_invalid")
+        return backend
 
     async def close(self) -> bool:
         async with self._close_lock:

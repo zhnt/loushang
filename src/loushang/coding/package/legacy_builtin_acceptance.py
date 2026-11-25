@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
@@ -27,7 +26,7 @@ from .legacy_builtin_review import (
     review_coding_first_b_builtin_only,
 )
 from .legacy_disabled_acceptance import CodingLegacyDisabledOnlyAcceptanceError
-from .legacy_windows_receipt import _receipt_io, write_windows_private_receipt
+from .legacy_windows_receipt import _receipt_io
 
 
 class CodingLegacyBuiltinOnlyAcceptanceError(RuntimeError):
@@ -108,18 +107,6 @@ def read_coding_first_b_builtin_only_acceptance(
     return _acceptance_journal.read_acceptance(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
-
-
-def _write_windows_builtin_acceptance(
-    path: Path, record: CodingLegacyBuiltinOnlyAcceptanceV1
-) -> None:
-    write_windows_private_receipt(path, _acceptance_journal.encode(record))
-
-
-def _write_private_acceptance(
-    path: Path, record: CodingLegacyBuiltinOnlyAcceptanceV1
-) -> None:
-    _acceptance_journal.publish(path, record)
 
 
 __all__ = [

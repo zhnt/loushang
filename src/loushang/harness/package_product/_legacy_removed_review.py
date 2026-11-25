@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Set
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, ClassVar, NamedTuple, Self, cast
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, Protocol, Self, cast
 
 from loushang.harness.package_product._legacy_binding_evidence import (
     LEGACY_BINDING_CAPTURE_MAX_BYTES,
@@ -18,8 +18,10 @@ from loushang.harness.package_product._legacy_inventory import (
     LegacyInventoryReader,
     LegacyRemovedBinding,
     LegacyReviewWireSelections,
+    _BindingHead,
     _LegacyBuiltinIntent,
     _LegacyFencedReviewRecord,
+    _LegacyScopedDisable,
     prove_removed_legacy_bindings,
     valid_legacy_disable_selections,
 )
@@ -30,7 +32,10 @@ from loushang.harness.package_product._legacy_management_evidence import (
     read_settled_management_history,
     require_empty_lock_markers,
 )
-from loushang.harness.package_product._legacy_runtime import _LegacyFirstSnapshot
+from loushang.harness.package_product._legacy_runtime import (
+    LegacyReviewFenceIdentity,
+    _LegacyFirstSnapshot,
+)
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
     RecordSchema,
@@ -85,6 +90,19 @@ _REVIEW_SCHEMA = _scalar_review_schema(
 )
 
 
+class _RemovalEntryEvidence(Protocol):
+    @property
+    def binding(self) -> _BindingHead: ...
+    @property
+    def install_operation_id(self) -> str: ...
+    @property
+    def remove_operation_id(self) -> str: ...
+    @property
+    def head_operation_id(self) -> str: ...
+    @property
+    def head_transition_kind(self) -> str: ...
+
+
 class LegacyRemovalEntryRecord:
     """Versioned install/update/remove identity over one nominal entry."""
 
@@ -102,6 +120,27 @@ class LegacyRemovalEntryRecord:
         remove_operation_id: str
         head_operation_id: str | None
         head_transition_kind: str | None
+
+    @classmethod
+    def _from_removal_evidence(cls, item: _RemovalEntryEvidence, *, review_version: int) -> Self:
+        if review_version not in {1, 2} or (
+            review_version == 1 and item.head_transition_kind == "update"
+        ):
+            raise cls._error_type("Old local removal review version is invalid")
+        binding = item.binding
+        create: Callable[..., Self] = cls
+        return create(
+            plugin_id=binding.plugin_id,
+            source_identity=binding.source_identity,
+            content_digest=binding.content_digest,
+            manifest_digest=binding.manifest_digest,
+            dependency_lock_digest=binding.dependency_lock.digest,
+            binding_digest=binding.binding_digest,
+            install_operation_id=item.install_operation_id,
+            remove_operation_id=item.remove_operation_id,
+            head_operation_id=item.head_operation_id if review_version == 2 else None,
+            head_transition_kind=item.head_transition_kind if review_version == 2 else None,
+        )
 
     def __post_init__(self) -> None:
         if (
@@ -190,6 +229,41 @@ class LegacyRemovalReviewRecord(_LegacyFencedReviewRecord):
         review_version: int
         operation_journal_digest: str | None
         retained_store_roots: tuple[str, ...]
+
+    @classmethod
+    def _from_verified_removals(
+        cls,
+        identity: LegacyReviewFenceIdentity,
+        facts: LegacyRemovalFacts,
+        *,
+        scope_id: str,
+        source_projection_digest: str,
+        disables: tuple[_LegacyScopedDisable, ...],
+        review_version: int,
+        retained_store_roots: tuple[str, ...],
+    ) -> Self:
+        lockfile_digest = facts.removed[0].binding.lockfile_digest
+        intent, removed_builtin_ids = facts.inventory.reviewed_builtin_selections(
+            cls._builtin_intent_type, cls._removable_builtin_ids
+        )
+        create: Callable[..., Self] = cls
+        return create(
+            **identity,
+            scope_id=scope_id,
+            source_projection_digest=source_projection_digest,
+            lockfile_digest=lockfile_digest,
+            desired_journal_digest=facts.desired_digest,
+            disabled_plugins=disables,
+            builtin_intent=intent,
+            removed_builtin_ids=removed_builtin_ids,
+            removed_local=tuple(
+                cls._entry_type._from_removal_evidence(item, review_version=review_version)
+                for item in facts.removed
+            ),
+            review_version=review_version,
+            operation_journal_digest=facts.operation_digest,
+            retained_store_roots=retained_store_roots,
+        )
 
     def __post_init__(self) -> None:
         digests = (
@@ -377,6 +451,17 @@ class LegacyRemovalSnapshot:
     _review_error: type[ValueError]
     _operation_error: type[ValueError]
     _label: str
+
+    def require_supported_disables(
+        self,
+        disables: tuple[_LegacyScopedDisable, ...],
+        facts: LegacyRemovalFacts,
+        *,
+        builtin_ids: Set[str],
+    ) -> None:
+        allowed = builtin_ids | {item.binding.plugin_id for item in facts.removed}
+        if any(item.plugin_id not in allowed for item in disables):
+            raise self._review_error("Old disable set is unsupported")
 
     @classmethod
     def before_fence(

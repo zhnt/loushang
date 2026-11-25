@@ -14,7 +14,15 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from types import TracebackType
-from typing import BinaryIO, ClassVar, Generic, Literal, Protocol, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    BinaryIO,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    TypeVar,
+)
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
@@ -63,6 +71,27 @@ from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     PublishedPluginPackage,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.capabilities.consumer_requirements import (
+        ProductCompositionCompilation,
+    )
+    from loushang.harness.resources.plugins.selection import PluginSelectionPlanV2
+
+
+class ProductBaseSelectionEvidence(Protocol):
+    """Compiled base and exact selected Packages retained across Session startup."""
+
+    @property
+    def plan(self) -> PluginSelectionPlanV2: ...
+    @property
+    def product_composition(self) -> ProductCompositionCompilation: ...
+    @property
+    def selected_manifest(self) -> PackageProductSelectedPluginManifestV1: ...
+    @property
+    def selected_capability_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
+    @property
+    def selected_external_data_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
 
 
 class CapabilityRevisionSpec(Protocol):

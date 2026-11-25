@@ -1,7 +1,7 @@
 """Windows backend release custody in the existing PackageProduct component.
 
 Uses existing Wheel, Windows receipt, approval and Hosting material authorities.
-The private slotted method providers hold no descriptors, state or launch rights.
+Read and write operations borrow the original Product's native custody.
 """
 
 from __future__ import annotations
@@ -11,10 +11,13 @@ import zipfile
 from collections.abc import Callable
 from hashlib import sha256
 from importlib.metadata import version
-from typing import Any, ClassVar, Literal, Protocol, Self, TypeVar, cast
+from typing import Any, ClassVar, Generic, Literal, Protocol, Self, TypeVar, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationJournal,
 )
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
@@ -28,9 +31,13 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
 )
 from loushang.harness.worker.history._native_approval import (
     _DIGEST,
+    NATIVE_APPROVAL_JOURNAL_NAME,
     _NativeApprovalMethods,
     _NativeDecision,
     _NativeReviewMethods,
+)
+from loushang.harness.worker.history._windows_record_journals import (
+    WindowsNativeApprovalRecords,
 )
 from loushang.hosting.windows_backend_material import (
     WINDOWS_LPAC_BACKEND_CODE_MEMBERS,
@@ -46,29 +53,9 @@ _N = TypeVar("_N", bound=_NativeDecision)
 _N_co = TypeVar("_N_co", bound=_NativeDecision, covariant=True)
 
 
-class _ApprovalCommandJournal(Protocol[_N_co]):
-    def change(
-        self,
-        *,
-        directory_fd: int,
-        operation_id: str,
-        expected_generation: int,
-        action: Literal["approve", "revoke"],
-        approval: Any,
-    ) -> _N_co: ...
-
-
 class _ApprovalOwner(Protocol[_N_co]):
     def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None: ...
     def current(self) -> _N_co | None: ...
-    @property
-    def _product(self) -> WindowsLocalWheelProductSessionOwner: ...
-    @property
-    def _journal(self) -> _ApprovalCommandJournal[_N_co]: ...
-
-
-class _CurrentJournal(Protocol[_N_co]):
-    def current(self, *, directory_fd: int) -> _N_co | None: ...
 
 
 class _BackendReview(Protocol):
@@ -81,33 +68,50 @@ class _BackendReview(Protocol):
 _REQUIRED = frozenset(WINDOWS_LPAC_BACKEND_CODE_MEMBERS)
 
 
-def current_windows_backend_approval(
-    product: WindowsLocalWheelProductSessionOwner,
-    journal: _CurrentJournal[_N],
-) -> _N | None:
-    with WindowsProductWorkerHistoryAccess(product).decision_root() as root:
-        return journal.current(directory_fd=root)
+class _WindowsBackendApprovalOwnerMethods(Generic[_N]):
+    """Bind and use one approval journal under its original Product root."""
 
+    _product: WindowsLocalWheelProductSessionOwner
+    _journal: WindowsNativeApprovalRecords[Any, _N]
 
-def change_windows_backend_approval(
-    owner: _ApprovalOwner[_N],
-    *,
-    operation_id: str,
-    expected_generation: int,
-    action: Literal["approve", "revoke"],
-    review: _BackendReview | None,
-) -> _N:
-    """Use the same owner fields at their original guarded mutation points."""
-    with WindowsProductWorkerHistoryAccess(owner._product).decision_root(
-        require_write=True
-    ) as root:
-        return owner._journal.change(
-            directory_fd=root,
-            operation_id=operation_id,
-            expected_generation=expected_generation,
-            action=action,
-            approval=None if review is None else review.approval,
+    def _bind_backend_approval(
+        self,
+        product: WindowsLocalWheelProductSessionOwner,
+        require_product: Callable[[WindowsLocalWheelProductSessionOwner], None],
+        journal_type: type[WindowsNativeApprovalRecords[Any, _N]],
+    ) -> None:
+        require_product(product)
+        product.assert_root_gc_authority_current()
+        self._product = product
+        self._journal = journal_type(
+            product.state_root / NATIVE_APPROVAL_JOURNAL_NAME,
+            scope_id=product.policy.project_scope_id,
         )
+
+    def _read_backend_approval(self) -> _N | None:
+        product, journal = self._product, self._journal
+        with WindowsProductWorkerHistoryAccess(product).decision_root() as root:
+            return journal.current(directory_fd=root)
+
+    def _change_backend_approval(
+        self,
+        *,
+        operation_id: str,
+        expected_generation: int,
+        action: Literal["approve", "revoke"],
+        review: _BackendReview | None = None,
+        review_id: str | None = None,
+    ) -> _N:
+        if action == "approve" and cast(_BackendReview, review).review_id != review_id:
+            raise ValueError("Windows Worker backend review changed")
+        with WindowsProductWorkerHistoryAccess(self._product).decision_root(
+            require_write=True
+        ) as root:
+            return self._journal.change(
+                directory_fd=root, operation_id=operation_id,
+                expected_generation=expected_generation, action=action,
+                approval=None if review is None else review.approval,
+            )
 
 
 class _WindowsBackendCandidateMethods:
@@ -348,3 +352,28 @@ class _WindowsBackendInstalledMethods:
         ):
             raise cls._failure("Windows Worker backend Product approval is not current")
         return decision.generation
+
+
+_ClosureT = TypeVar("_ClosureT", bound=ProductWorkerNativeClosureFacts)
+
+
+class _InstalledWindowsWorkerBackendReader(Generic[_ClosureT]):
+    """Reopen the approved backend through its original fenced Product."""
+
+    _require_product: Callable[[WindowsLocalWheelProductSessionOwner], None]
+    _read_native_closure: Callable[[WindowsLocalWheelProductSessionOwner], _ClosureT]
+
+    def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
+        self._require_product(product)
+        self._product = product
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReservationJournal:
+        return self._product.gc_gate
+
+    @property
+    def product_owner(self) -> WindowsLocalWheelProductSessionOwner:
+        return self._product
+
+    def _current_closure(self) -> _ClosureT:
+        return self._read_native_closure(self._product)

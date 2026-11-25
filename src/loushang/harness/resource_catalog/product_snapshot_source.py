@@ -231,7 +231,7 @@ def validate_product_resource_compilation(
         plugin_id for plugin_id in plan.selected_plugin_ids if plugin_id != base_plugin_id
     ]:
         raise ValueError("Product manifests changed the selected plan")
-    instance_refs = {item.plugin_id: item for item in plan.context.instance_revision_refs}
+    instance_refs = plan.context.instance_revisions_by_plugin()
     trust = {item.plugin_id: item for item in plan.source_trust_snapshots}
     if any(
         item.snapshot.instance_revision_ref != instance_refs.get(item.manifest.name)

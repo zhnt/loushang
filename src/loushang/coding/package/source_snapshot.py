@@ -36,6 +36,13 @@ _source_projection = _LegacySourceProjection(
     projection_name=_PROJECTION_NAME,
     prefix="coding-pre-b-sources-",
     maximum_bytes=_MAX_SETTINGS_BYTES,
+    loaded_fields=(
+        _LEGACY_DISABLE_SETTING,
+        "plugin_sources",
+        "resource_roots",
+        "package_roots",
+        "package_sources",
+    ),
 )
 
 
@@ -67,10 +74,7 @@ def read_coding_settings_patch_without_writes(
 def require_coding_fresh_settings_without_writes(*paths: Path) -> None:
     """Refuse legacy Plugin settings before SettingsManager writes lock files."""
 
-    if coding_settings_have_pre_b_inputs_without_writes(*paths):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(_source_projection.has_pre_fence_inputs(*paths))
 
 
 def coding_settings_have_pre_b_inputs_without_writes(*paths: Path) -> bool:

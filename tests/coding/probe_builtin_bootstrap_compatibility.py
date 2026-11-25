@@ -10,6 +10,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 import loushang.coding.package.product_runtime as module
+from loushang.harness.package_product._plugin_bootstrap import bootstrap_product_plugin
 from loushang.harness.plugin_management.records import (
     PluginDesiredSelectionV1,
     PluginDesiredStateMutationV1,
@@ -251,8 +252,12 @@ def observe(case, completed, monkeypatch):
         if completed:
             result = functions["_fresh_coding_builtin_bootstrap_completed"](owner)
         else:
-            result = functions["_bootstrap_coding_builtin_plugin"](
-                owner, plugin_ids[0], enable="no-enable" not in case
+            result = bootstrap_product_plugin(
+                product,
+                plugin_ids[0],
+                store_id=owner.epoch_runtime.registry.store_id,
+                policy=module._CODING_BUILTIN_BOOTSTRAP_POLICY,
+                enable="no-enable" not in case,
             )
     except BaseException as exc:
         result = error_graph(exc)

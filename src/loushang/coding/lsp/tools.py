@@ -108,30 +108,22 @@ class CodingLspTools:
             include_declaration=include_declaration,
             limit=limit,
         )
-        selection = await self.selector.select_async(path)
-        runtime = await self.supervisor.ensure_runtime(
-            selection,
+        server_id, runtime, document = await self._document_for_capability(
+            path,
+            _QUERY_CAPABILITIES[query],
             correlation_id=correlation_id,
             signal=signal,
         )
-        if not _supports_capability(
-            runtime.client.server_capabilities,
-            _QUERY_CAPABILITIES[query],
-        ):
+        if document is None:
             return CodeQueryResult(
                 items=(),
                 count=0,
                 truncated=False,
-                server_id=selection.definition_id,
+                server_id=server_id,
                 document_version=None,
                 readiness="unsupported",
                 warnings=(f"language server does not advertise {query} support",),
             )
-        document = await self.documents.ensure_document(
-            runtime,
-            selection.file_path,
-            language_id=selection.language_id,
-        )
         lsp_position = _to_lsp_position(
             document.content,
             CodePosition(line=line, character=character),
@@ -152,7 +144,7 @@ class CodingLspTools:
                 items=() if hover is None else (hover,),
                 count=0 if hover is None else 1,
                 truncated=truncated,
-                server_id=selection.definition_id,
+                server_id=server_id,
                 document_version=document.version,
                 warnings=warnings,
             )
@@ -166,7 +158,7 @@ class CodingLspTools:
             items=locations,
             count=total,
             truncated=total > len(locations),
-            server_id=selection.definition_id,
+            server_id=server_id,
             document_version=document.version,
             warnings=warnings,
         )
@@ -181,32 +173,24 @@ class CodingLspTools:
         signal: object | None = None,
     ) -> DocumentOutlineResult:
         _validate_outline_input(depth=depth, limit=limit)
-        selection = await self.selector.select_async(path)
-        runtime = await self.supervisor.ensure_runtime(
-            selection,
+        server_id, runtime, document = await self._document_for_capability(
+            path,
+            "documentSymbolProvider",
             correlation_id=correlation_id,
             signal=signal,
         )
-        if not _supports_capability(
-            runtime.client.server_capabilities,
-            "documentSymbolProvider",
-        ):
+        if document is None:
             return DocumentOutlineResult(
                 items=(),
                 count=0,
                 truncated=False,
-                server_id=selection.definition_id,
+                server_id=server_id,
                 document_version=None,
                 readiness="unsupported",
                 warnings=(
                     "language server does not advertise document symbol support",
                 ),
             )
-        document = await self.documents.ensure_document(
-            runtime,
-            selection.file_path,
-            language_id=selection.language_id,
-        )
         raw_result = await runtime.client.request(
             "textDocument/documentSymbol",
             {"textDocument": {"uri": document.uri}},
@@ -222,10 +206,29 @@ class CodingLspTools:
             items=items,
             count=normalizer.count,
             truncated=normalizer.truncated,
-            server_id=selection.definition_id,
+            server_id=server_id,
             document_version=document.version,
             warnings=tuple(normalizer.warnings),
         )
+
+    async def _document_for_capability(
+        self,
+        path: str,
+        capability: str,
+        *,
+        correlation_id: str,
+        signal: object | None,
+    ) -> tuple[str, LspRuntimeHandle, DocumentSnapshot | None]:
+        selection = await self.selector.select_async(path)
+        runtime = await self.supervisor.ensure_runtime(
+            selection, correlation_id=correlation_id, signal=signal
+        )
+        if not _supports_capability(runtime.client.server_capabilities, capability):
+            return selection.definition_id, runtime, None
+        document = await self.documents.ensure_document(
+            runtime, selection.file_path, language_id=selection.language_id
+        )
+        return selection.definition_id, runtime, document
 
     async def _normalize_locations(
         self,

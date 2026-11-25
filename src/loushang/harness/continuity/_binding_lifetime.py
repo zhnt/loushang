@@ -9,11 +9,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Mapping
 from contextlib import suppress
-from typing import ClassVar, TypeVar
+from hashlib import sha256
+from pathlib import Path
+from typing import ClassVar, Literal, Self, TypeVar
 
 from loushang.harness.capabilities.owner_component_host import (
     CapabilityOwnerComponentHost,
 )
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.runtime import (
     RuntimeProfileBinder,
     RuntimeProfileBinding,
@@ -38,6 +41,103 @@ from .plugin_runtime import (
 )
 
 
+def configured_continuity_request_fingerprint(
+    sources: tuple[str, ...],
+    *,
+    disabled_plugins: frozenset[str],
+    cwd: str | Path,
+    all_sessions: bool,
+    policy_revision: str,
+    digest_domain: bytes,
+) -> str:
+    """Seal the ordered Sources and enabled scope of a Continuity binding."""
+    workspace = Path(cwd).expanduser().resolve(strict=False)
+    digest = sha256(digest_domain)
+
+    def update_value(label: str, value: str) -> None:
+        label_bytes = label.encode("ascii")
+        encoded = value.encode("utf-8", errors="surrogatepass")
+        digest.update(len(label_bytes).to_bytes(4, "big"))
+        digest.update(label_bytes)
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+
+    update_value("policyRevision", policy_revision)
+    update_value("workspace", str(workspace))
+    update_value("listingScope", "all" if all_sessions else "workspace")
+    update_value("sourceCount", str(len(sources)))
+    for source in sources:
+        update_value("source", source)
+    ordered_disabled = tuple(sorted(disabled_plugins))
+    update_value("disabledPluginCount", str(len(ordered_disabled)))
+    for plugin_id in ordered_disabled:
+        update_value("disabledPlugin", plugin_id)
+    return digest.hexdigest()
+
+
+class _ContinuityBootstrapStatus:
+    """Publish and recover a Product's diagnostic projection for startup."""
+
+    __slots__ = ()
+
+    _status_attribute: ClassVar[str]
+    _last_ready_attribute: ClassVar[str]
+    _product_label: ClassVar[str]
+    state: Literal["idle", "ready", "failed"]
+    code: str
+    configured_source_count: int
+    plugin_count: int
+    provider_count: int
+    recovered_deletion_count: int
+    retryable: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "state": self.state,
+            "code": self.code,
+            "configuredSourceCount": self.configured_source_count,
+            "pluginCount": self.plugin_count,
+            "providerCount": self.provider_count,
+            "recoveredDeletionCount": self.recovered_deletion_count,
+            "retryable": self.retryable,
+        }
+
+    @classmethod
+    def _current_status(cls, runtime: object) -> Self | None:
+        status = getattr(runtime, cls._status_attribute, None)
+        return status if isinstance(status, cls) else None
+
+    @classmethod
+    def _previous_ready_status(cls, runtime: object) -> Self | None:
+        status = getattr(runtime, cls._last_ready_attribute, None)
+        if isinstance(status, cls):
+            return status
+        current = cls._current_status(runtime)
+        return current if current is not None and current.state == "ready" else None
+
+    def _publish(self, runtime: object, diagnostics: DiagnosticsService | None) -> None:
+        ready = self.state == "ready"
+        with suppress(AttributeError, TypeError):
+            setattr(runtime, self._status_attribute, self)
+            if ready:
+                setattr(runtime, self._last_ready_attribute, self)
+        capture = getattr(diagnostics, "capture_failure", None)
+        if callable(capture):
+            with suppress(Exception):
+                capture(
+                    code=self.code,
+                    error=(
+                        f"{self._product_label} Continuity composition is ready."
+                        if ready
+                        else f"{self._product_label} Continuity bootstrap failed ({self.code})."
+                    ),
+                    phase="startup",
+                    source="bootstrap",
+                    **({"level": "info"} if ready else {}),
+                    details=self.to_dict(),
+                )
+
+
 class _ContinuityCompositionLifetime:
     binding: RuntimeProfileBinding
     binder: RuntimeProfileBinder
@@ -45,9 +145,35 @@ class _ContinuityCompositionLifetime:
     plugin_publication: ContinuityPluginPublication | None
     owned_cleanup: Callable[[], None] | None
     runtime_owned: bool
+    binding_cwd: str | None
+    all_sessions: bool
+    configured_request_fingerprint: str | None
     _core_shutdown: bool
     _owned_cleanup_complete: bool
     _shutdown: bool
+
+    def admit_configured_reentry(
+        self,
+        request_fingerprint: str,
+        *,
+        has_sources: bool,
+        cwd: str | Path,
+        all_sessions: bool,
+        conflict: Callable[[], Exception],
+    ) -> bool:
+        """Reuse the exact binding, or pin a previously unconfigured base Hub."""
+        if self.configured_request_fingerprint == request_fingerprint:
+            return True
+        if (
+            not has_sources
+            and self.plugin_publication is None
+            and self.configured_request_fingerprint is None
+            and self.binding_cwd == str(Path(cwd).expanduser().resolve(strict=False))
+            and self.all_sessions == all_sessions
+        ):
+            self.configured_request_fingerprint = request_fingerprint
+            return False
+        raise conflict()
 
     async def dispose(self) -> None:
         """Release a caller view; the process-scoped runtime remains bound."""

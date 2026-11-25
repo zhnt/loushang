@@ -3,138 +3,64 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections.abc import Callable, Coroutine, Sequence
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
+    from loushang.apphost.integrations._foreground_client_control import _MuxScopes
+    from loushang.apphost.managed.connection import ManagedConnectionLeaseV1
+    from loushang.appserver.local import LocalAppClientConnectionV1
+    from loushang.appserver.protocol import MuxSelectorV1
     from loushang.harnesstui.mux.shell import HostedMuxShellV1
 
-from loushang.apphost.integrations._foreground_process import run_foreground_process
-from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
-from loushang.appserver.local_record import LocalConnectionDirectoryV1, LocalRecordError
-from loushang.appserver.protocol import (
-    AppErrorCodeV1,
-    AppServiceError,
-    MuxAttachV1,
-    MuxCloseV1,
-    MuxCreateV1,
-    MuxReadV1,
-    MuxSelectorV1,
-    MuxSpaceV1,
-    SessionScopeV1,
-    WorkspaceRequestV1,
+from loushang.apphost.integrations._foreground_client_control import (
+    _LocalMuxClientCommand,
+    _LocalMuxPresentation,
+    emit_local_mux_value,
 )
+from loushang.apphost.integrations._foreground_process import run_foreground_process
+from loushang.appserver.local_record import LocalRecordError
+from loushang.appserver.protocol import AppServiceError
 
 from . import mux_service
 
 
-def _emit(value: dict[str, object], stream: TextIO) -> None:
-    # ASCII JSON escapes terminal control sequences and never contains a key/path.
-    print(json.dumps(value, ensure_ascii=True, sort_keys=True), file=stream, flush=True)
+def _bind_coding_mux_shell() -> Callable[
+    [LocalAppClientConnectionV1 | ManagedConnectionLeaseV1, MuxSelectorV1, _MuxScopes],
+    HostedMuxShellV1,
+]:
+    from loushang.harnesstui.conversation.theme import terminal_transcript_theme
+    from loushang.harnesstui.mux.shell import HostedMuxShellV1
 
-
-def _mux(value: MuxSpaceV1) -> dict[str, object]:
-    return {
-        "muxId": value.mux_space_id,
-        "name": value.name,
-        "revision": value.revision,
-        "members": len(value.members),
-    }
-
-
-class _ClientCommand:
-    def __init__(
-        self, root: Path, endpoint: str, action: str, name: str | None, output: TextIO
-    ) -> None:
-        self._directory = LocalConnectionDirectoryV1(root)
-        self._connection = LocalAppClientConnectionV1(
-            self._directory,
-            endpoint,
-            expected_product_id="coding",
-            mode=LocalConnectionModeV1.STOP
-            if action == "stop"
-            else LocalConnectionModeV1.APP,
+    def bind(
+        connection: LocalAppClientConnectionV1 | ManagedConnectionLeaseV1,
+        selector: MuxSelectorV1,
+        scopes: _MuxScopes,
+    ) -> HostedMuxShellV1:
+        return HostedMuxShellV1(
+            connection.client,
+            selector=selector,
+            product_id="coding",
+            scopes=scopes,
+            discovery_client=connection.discovery_client,
+            execution_client=connection.execution_client,
+            transcript_theme=terminal_transcript_theme(),
         )
-        self._action, self._name, self._output = action, name, output
-        self._shell: HostedMuxShellV1 | None = None
-        self.cleanup_pending = True
 
-    async def _attachment_scopes(
-        self, selector: MuxSelectorV1,
-    ) -> tuple[tuple[SessionScopeV1, str], ...]:
-        if self._connection.scopes:
-            return tuple((item.scope, item.fingerprint) for item in self._connection.scopes)
-        client = self._connection.client
-        mux = await client.read_mux(MuxReadV1(selector))
-        scopes = tuple(dict.fromkeys(
-            (member.session.scope, member.session.scope_fingerprint) for member in mux.members
-        ))
-        if scopes:
-            return scopes
+    return bind
 
-        # A managed Host advertises no static scopes. An empty project Mux
-        # has the scope of its matching logical Workspace in that Host.
-        workspaces = await client.workspace(WorkspaceRequestV1("workspaces"))
-        for item in workspaces.workspaces:
-            if item.workspace is not None and item.workspace.get("muxName") == mux.name:
-                return ((item.scope, item.scope_fingerprint),)
-        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
 
-    async def run(self) -> None:
-        try:
-            await self._connection.start()
-            if self._action == "stop":
-                _emit({"status": "stop_requested"}, self._output)
-                return
-            client = self._connection.client
-            if self._action == "attach":
-                from loushang.harnesstui.conversation.theme import (
-                    terminal_transcript_theme,
-                )
-                from loushang.harnesstui.mux.shell import HostedMuxShellV1
-                from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
+def _load_mux_presentation() -> _LocalMuxPresentation[HostedMuxShellV1]:
+    bind = _bind_coding_mux_shell()
+    from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
 
-                selector = MuxSelectorV1(name=self._name)
-                self._shell = HostedMuxShellV1(
-                    client,
-                    selector=selector,
-                    product_id="coding",
-                    scopes=await self._attachment_scopes(selector),
-                    discovery_client=self._connection.discovery_client,
-                    execution_client=self._connection.execution_client,
-                    transcript_theme=terminal_transcript_theme(),
-                )
-                status = await run_hosted_mux_shell(
-                    self._shell, stdin=sys.stdin, stdout=self._output
-                )
-                if status:
-                    raise RuntimeError("interactive connection ended")
-            elif self._action == "list":
-                muxes = (await client.list_muxes()).mux_spaces
-                _emit({"muxes": [_mux(item) for item in muxes]}, self._output)
-            elif self._action == "create":
-                assert self._name is not None
-                _emit(
-                    _mux(await client.create_mux(MuxCreateV1(self._name))), self._output
-                )
-            elif self._action == "close":
-                selector = MuxSelectorV1(name=self._name)
-                await client.attach_mux(MuxAttachV1(selector))
-                await client.close_mux(MuxCloseV1(selector))
-                _emit({"status": "mux_closed", "name": self._name}, self._output)
-            else:
-                raise ValueError("unsupported local management action")
-        finally:
-            try:
-                if self._shell is not None:
-                    await self._shell.close()
-            finally:
-                await self._connection.close()
-                self._directory.close()
-            self.cleanup_pending = False
+    async def run(shell: HostedMuxShellV1, output: TextIO) -> int:
+        return await run_hosted_mux_shell(shell, stdin=sys.stdin, stdout=output)
+
+    return bind, run
 
 
 def _execute(
@@ -218,6 +144,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         root = args.connection_root.expanduser().resolve()
         if args.action == "serve":
+            from loushang.apphost.managed.systemd import (
+                run_systemd_foreground_application,
+            )
+
             notify_socket = mux_service.foreground_notification_socket(parser, args)
             # Management/help paths do not import the real Product/model bootstrap.
             from ..hosted.bootstrap import CodingHostedLaunchV1
@@ -236,26 +166,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                 session_discovery=args.session_discovery,
             )
             if args.describe:
-                _emit(launch.describe(), output)
+                emit_local_mux_value(launch.describe(), output)
                 return 0
             command = CodingLocalCommandV1(launch)
 
             def ready() -> None:
-                _emit({"status": "ready", **launch.describe()}, output)
+                emit_local_mux_value({"status": "ready", **launch.describe()}, output)
 
             return _execute(
-                lambda: mux_service.run_host(command, notify_socket, ready),
+                partial(run_systemd_foreground_application, command, notify_socket, ready),
                 lambda: command.cleanup_pending,
             )
-        client = _ClientCommand(
-            root, args.endpoint, args.action, getattr(args, "name", None), output
+        client: _LocalMuxClientCommand[HostedMuxShellV1] = _LocalMuxClientCommand(
+            root,
+            args.endpoint,
+            args.action,
+            getattr(args, "name", None),
+            output,
+            product_id="coding",
         )
     except (ValueError, OSError):
         parser.error("invalid local command configuration")
     except Exception:
         print("local_configuration_unavailable", file=sys.stderr)
         return 1
-    return _execute(client.run, lambda: client.cleanup_pending)
+    return _execute(
+        partial(client.run, _load_mux_presentation),
+        lambda: client.cleanup_pending,
+    )
 
 
 if __name__ == "__main__":

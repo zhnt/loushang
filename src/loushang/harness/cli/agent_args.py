@@ -326,8 +326,16 @@ def resolve_agent_session_dir(
     project_root: str | Path,
     settings_manager: object,
 ) -> Path:
-    if args.session_dir:
-        return Path(args.session_dir).expanduser().resolve()
+    return resolve_cli_session_dir(args.session_dir, settings_manager=settings_manager)
+
+
+def resolve_cli_session_dir(
+    value: str | None,
+    *,
+    settings_manager: object,
+) -> Path:
+    if value:
+        return Path(value).expanduser().resolve()
     configured = resolve_trusted_settings_session_dir(settings_manager)
     if configured is not None:
         return configured

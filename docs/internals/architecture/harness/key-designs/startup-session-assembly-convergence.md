@@ -1074,3 +1074,91 @@ format稿178至165仅稿间布局/操作体形式差，不计生产收益。最�
 合同，非独立否决理由；单一具体evidence接缝尚未建立，不发明新planner/框架或拆小片。
 当前仍A214的Code108172/系统661330/15K差93172，2063源全SHA与行不变，Goal开放。
 后续按[大块优先队列](../coding-responsibility-priority.md)核完整deferred-control状态寿命。
+
+## 34. Catalog 交接与刷新准备
+
+实施 agent `/root` 完成技术评审与接受，范围覆盖 Coding 装配与 Harness Session
+的共同构造边界，基线为 `862888481`，采用本地架构方法 `0f9bd3f`。
+
+Harness 的 `SessionStartupCustody` 绑定一次 Product 与 Session 身份。兼容和 fenced
+启动经同一入口交接已投影的 Catalog adapter。刷新先复核启动选定的证据，再按当前
+cwd 读取 Loader 回执、投影及准备下一代 bootstrap。发布与回滚继续由现有 Session
+资源代际事务处理。Coding 提供 legacy 与 fenced 的来源、编译和时钟政策，首次
+legacy 计划与刷新共用 seed 绑定。
+
+本批 Coding −74 行，Harness +44 行，系统生产 Python −30 行。Linux 上与启动、
+fenced 插件选择、刷新和失败回滚相关的 282 项通过，会话持久化与恢复冒烟通过。
+
+## 35. 已准备插件的工作区绑定
+
+实施 agent `/root` 完成技术评审，范围是 `7c4ee6a49` 上的 legacy、fenced 和按需插件
+共用的绑定入口。评审采用本地架构方法 `0f9bd3ff51`。
+
+Harness Session 在转交清理责任前校验工作区与工具模式，复核选定版本，绑定 Provider，
+打开原激活日志并把批准结果绑定为 Session 输入。Coding 通过原批准方发放批准，提供
+信任证据、工具选择、日志名称与兼容类型。激活或准备工具失败时仍由原准备对象释放资源，
+保留主异常和清理附注。输入校验失败仍可在修正调用后重试。图发布和退休使用原 Session 代际事务。
+
+生产 Python 为 Coding −55 行、Harness +100 行、系统 +45 行。增量用于既有装配和清理 owner
+接管绑定顺序，同时保留 Coding 类型和原批准边界。持久记录和 PR 门禁保持原合同。
+Linux 上 109 项现有回归通过。最终内联输入校验后，复查了其中 59 项，覆盖批准记录、普通发布、
+按需绑定和失败回滚。批准合同探针沿用原固定期望与日志字节。
+
+## 36. Catalog 与 Session 共用 Agent 编译请求
+
+以 `e6194175b` 为实现基线。实施 agent `/root` 技术评审并接受本次 Agent 编译入口收敛，
+采用本地架构方法 `0f9bd3ff51`。配置包 Catalog 和已选插件的 Session 装配通过同一
+Harness 请求构造入口取得标准模型输入根和工作区定义。Coding 的资源来源、信任和错误策略
+沿用原入口。生产 Python 为 Coding −16 行、Harness +16 行、系统持平，75 项现有回归通过。
+
+整段迁移 fenced Catalog 的试作预计 Coding −47 行、Harness +146 行、系统 +99 行。
+它需要为现有产品编译、临时根交接和名义返回值另加一组接线，且当前 legacy 与 fenced 的
+回执读取顺序不同。本轮撤回该试作，成本和未迁移的启动编排继续列入后续评估。
+
+## 配置 Continuity 插件的安装态启动
+
+基线为 `fd09164f8`，技术复核采用本地架构方法 `0f9bd3f`。CLI 与 TUI
+沿用同一个 Coding 启动入口。现有 Harness Session 安装态组件打开实例 family 和删除
+恢复权威，按原顺序重开精确历史版本、调和兼容与启用事实、完成启动恢复、取得激活
+决定并发布 Hub。发布失败由同一组件关闭已持有的版本并保留原清理错误附注。成功发布
+把版本的关闭权限交给 composition，随后才发布 ready 状态。
+
+Coding 继续解析配置，核实 Product 路线，获取早期租约并建立兼容写入边界。Coding
+还提供信任与批准策略、原来的路径和错误身份、base Provider 以及诊断投影。空选集仍
+使用 base，第二次请求沿用原 scope 指纹和已有 composition 的判定。持久记录、目录、
+权限和存储锁继续由原组件持有。
+
+生产 Python 变化为 Coding −52 行、Harness +95 行，Hosting 与其他生产 Python 不变，
+系统净增 43 行。共享边界增加了对实际绑定与安装态生命周期的类型声明。现有架构检查
+更新 7 行以验证真实调用与失败归属。
+
+现有启动、生命周期和架构回归 96 项通过，1 项因本机支持安全目录相对暂存而跳过。
+CLI 和 TUI 入口回归另有 5 项通过。受影响文件的 Ruff 和 mypy、依赖事实和文档检查通过。
+
+## Catalog 启动与 Session 共用状态
+
+以 `d0c52b408` 为基线，技术复核采用本地 archmethod `0f9bd3f`。Coding 的
+`InitialCatalogHandoff` 直接使用原 Harness `SessionStartupCustody` 状态。
+legacy 与 fenced 启动、首次 Catalog 投影、临时根移交、Session 构造及失败清理
+现在持有同一个启动对象。既有 Catalog、Package Product 和批准入口继续执行原步骤。
+
+完整 fenced 投影协调的试作减少 Coding 37 行，增加 Harness 106 行，系统净增
+69 行。试作增加了多项编译绑定，且没有消除第二份执行程序，因此撤回；最终保留
+共同启动状态，Coding 和系统生产 Python 各减 5 行。更大范围的 Catalog 选择与
+编译链路仍待收敛。
+
+58 项现有启动、Catalog、托管入口与失败清理回归通过。另有 2 项会话持久化、
+恢复和取消冒烟通过。Ruff、mypy、依赖图和文档检查通过。
+
+## Fenced Catalog 首次发布与刷新
+
+以 `c9f4899af` 为基线，技术复核采用本地 archmethod `0f9bd3f`。既有 Harness
+`SessionStartupCustody` 按顺序读取已安装 base 和 Capability 的选择，捕获精确清单，
+暂存 Catalog，并在 Session 取走适配器时复核同一份 Package 证据。Legacy 路线继续
+沿用兼容输入顺序。Coding 的首次投影和刷新共用 fenced Catalog 适配器，保留各自选择
+来源政策的规则。Session 工作区工具审计直接沿用 Harness 已有的事件投递。
+
+Coding 提供插件配置、资源准入与编译选择，维持 Capability 准备失败的清理顺序和
+错误附注。生产 Python 为 Coding −49 行、Harness +110 行，Hosting 与其他生产
+Python 持平，系统净增 61 行。新增行主要用于共享装配入口的类型签名和精确清单绑定。
+Linux 上 34 项启动、刷新、回滚及恢复回归和 19 项架构检查通过。Windows 原生路线仍待验证。

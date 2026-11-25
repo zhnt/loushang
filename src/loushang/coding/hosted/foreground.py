@@ -8,16 +8,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
-import signal
-from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
-from secrets import token_hex
 
-from loushang.appserver.managed_mux import ManagedMuxCreatedV1, ManagedMuxCreateV1
-from loushang.appservice.managed_mux import CommitMux, ManagedMuxServiceBindingV1
+from loushang.apphost.local_application import (
+    ForegroundNamedMuxProvisioner,
+    publish_local_service_endpoint,
+)
 from loushang.coding.hosted.managed.bootstrap import CodingManagedApplicationLaunchV1
 from loushang.coding.hosted.managed.local import (
     CodingManagedLocalCommandV1,
@@ -27,55 +24,11 @@ from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.machine_resources import prepare_private_directory_chain
 
 
-@dataclass
-class _CreationAdmission:
-    owner: NamedMuxProvisioner
-    request: ManagedMuxCreateV1
-
-    async def acquire(self) -> None:
-        if self.owner.fenced or self.owner.issued.get(self.request.operation_id) != self.request:
-            raise ValueError("foreground_mux_fenced")
-
-    def check_creation(self, previous: ManagedMuxCreatedV1 | None) -> None:
-        if previous is not None and (previous.operation_id, previous.name) != (
-            self.request.operation_id, self.request.name,
-        ):
-            raise ValueError("foreground_mux_conflict")
-
-    async def close(self) -> None:
-        # This permit borrows process-local authority; there is no native lease.
-        return None
-
-
-class NamedMuxProvisioner:
-    """Mint only internal named-Mux permits, fenced with this Host instance.
-
-    Stable operation IDs replay the application's existing continuity receipts
-    after restart. A per-process secret prevents callers from minting permits.
-    AppService retains its state lock and original permit through the commit.
-    """
+class NamedMuxProvisioner(ForegroundNamedMuxProvisioner):
+    """Bind the original foreground Mux authority to the Coding application."""
 
     def __init__(self, application_root: Path) -> None:
-        self.service = sha256(str(application_root).encode()).hexdigest()
-        self.instance = token_hex(16)
-        self.fenced = False
-        self.issued: dict[str, ManagedMuxCreateV1] = {}
-        self.binding = ManagedMuxServiceBindingV1(
-            "coding.default", self.service, self.instance, self.prepare,
-            ensure_named=self.ensure_named,
-        )
-
-    def prepare(self, request: ManagedMuxCreateV1) -> _CreationAdmission:
-        if self.fenced or self.issued.get(request.operation_id) != request:
-            raise ValueError("foreground_mux_not_admitted")
-        return _CreationAdmission(self, request)
-
-    async def ensure_named(self, name: str, commit: CommitMux) -> None:
-        operation = sha256(("foreground-named-mux/v1:" + name).encode()).hexdigest()[:32]
-        request = self.issued.setdefault(operation, ManagedMuxCreateV1(
-            self.service, self.instance, operation, name, token_hex(32),
-        ))
-        await commit(request)
+        super().__init__(application_root, application_id="coding.default")
 
 
 async def run_host(home: Path) -> None:
@@ -91,38 +44,15 @@ async def run_host(home: Path) -> None:
         ), connections, "workspace", session_discovery=True,
         instance_id=provisioner.instance, managed_mux=provisioner.binding,
     ))
-    task = asyncio.current_task()
-    assert task is not None
-    stopping = False
-
-    def stop() -> None:
-        nonlocal stopping
-        stopping = True
-        provisioner.fenced = True
-        command.fence()
-        task.cancel()
-
     def ready() -> None:
-        temporary = state / "endpoint.tmp"
-        temporary.write_text(json.dumps({
+        publish_local_service_endpoint(state / "endpoint.json", {
             "pid": os.getpid(), "instanceId": provisioner.instance,
             "recordRoot": str(connections),
-        }) + "\n")
-        temporary.replace(state / "endpoint.json")
+        })
 
-    loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGTERM, stop)
-    loop.add_signal_handler(signal.SIGINT, stop)
-    try:
-        await command.run(ready=ready)
-    except asyncio.CancelledError:
-        if not stopping:
-            raise
-    finally:
-        provisioner.fenced = True
-        await command.close()
-        loop.remove_signal_handler(signal.SIGTERM)
-        loop.remove_signal_handler(signal.SIGINT)
+    await command.run_under_service_manager(
+        ready=ready, include_interrupt=True, fence_external_admission=provisioner.fence,
+    )
 
 
 def main() -> None:

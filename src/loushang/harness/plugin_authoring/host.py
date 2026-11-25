@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Protocol
 
@@ -23,6 +23,7 @@ from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.selection import (
     PluginExecutionApprovalSubject,
     PluginExecutionDecisionLookupPort,
+    PluginInstanceRevisionRef,
     PluginPreflightAcceptedOutcome,
     PluginPreflightDeniedOutcome,
     PluginPreflightPendingApprovalOutcome,
@@ -54,6 +55,41 @@ class PluginDefinitionApprovalIssuer(Protocol):
         journal: PluginExecutionDecisionJournal,
         subject: PluginExecutionApprovalSubject,
     ) -> PluginApprovalDecisionRecordV1: ...
+
+
+def bind_selected_approval_instances(
+    selected: frozenset[str],
+    instance_revision_refs: Mapping[str, PluginInstanceRevisionRef],
+    *,
+    bound: Mapping[str, PluginInstanceRevisionRef] | None,
+    label: str,
+    error_prefix: str,
+    reject: Callable[[str, str], RuntimeError],
+) -> dict[str, PluginInstanceRevisionRef] | None:
+    """Capture the issuer's permitted instances. Return None for an exact rebind."""
+    if not selected:
+        raise reject(
+            f"{label} approval has no selected managed instance.",
+            f"{error_prefix}_approval_selection_empty",
+        )
+    refs = {
+        plugin_id: instance_revision_refs[plugin_id]
+        for plugin_id in selected
+        if plugin_id in instance_revision_refs
+    }
+    if frozenset(refs) != selected:
+        raise reject(
+            f"{label} approval lacks an exact managed instance.",
+            f"{error_prefix}_approval_instance_missing",
+        )
+    if bound is None:
+        return refs
+    if dict(bound) != refs:
+        raise reject(
+            f"{label} approval instance changed after binding.",
+            f"{error_prefix}_approval_instance_changed",
+        )
+    return None
 
 
 class PluginDeclarationHost:

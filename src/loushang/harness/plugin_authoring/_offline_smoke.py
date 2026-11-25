@@ -6,15 +6,80 @@ import json
 import os
 import stat
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING, Literal
+from zipfile import BadZipFile, ZipFile
 
 from loushang.harness.resources.packages._file_consumption import (
     borrowed_binary_stream,
     closing_descriptor,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.resources.types import ResourceBundle
+    from loushang.harness.transcript.product_session import ProductTranscriptSession
+
+
+class _SelectionRefusal(RuntimeError):
+    pass
+
+
+class _UseRefusal(RuntimeError):
+    pass
+
+
+def read_authoring_wheel_document(wheel: Path, member: str) -> str:
+    """Read the bounded original UTF-8 document selected by the author check."""
+    try:
+        with ZipFile(wheel) as archive:
+            info = archive.getinfo(member)
+            if not 0 < info.file_size <= 1024 * 1024:
+                raise _SelectionRefusal("selected Resource document is empty or oversized")
+            return archive.read(info).decode("utf-8")
+    except (BadZipFile, KeyError, UnicodeDecodeError) as exc:
+        raise _SelectionRefusal("Wheel lacks the requested Resource document") from exc
+
+
+def require_authoring_resource_selection(
+    bundle: ResourceBundle | None,
+    *,
+    kind: Literal["skill", "prompt", "theme"],
+    name: str,
+) -> ResourceBundle:
+    """Check the selected Resource identity before exercising its body."""
+    if bundle is None:
+        raise _SelectionRefusal("new Session has no Resource bundle")
+    selected = (
+        bundle.skills if kind == "skill" else bundle.prompts if kind == "prompt" else bundle.themes
+    )
+    if not any(
+        item.name == name and item.source_kind == "external_package" for item in selected
+    ):
+        raise _SelectionRefusal("requested external Resource is absent from new Session")
+    return bundle
+
+
+def require_authoring_tool_result(
+    messages: Sequence[object], *, tool_name: str, expected_text: str | None
+) -> None:
+    results = [
+        message
+        for message in messages
+        if getattr(message, "role", None) == "toolResult"
+        and getattr(message, "tool_name", None) == tool_name
+    ]
+    if len(results) != 1 or getattr(results[0], "is_error"):
+        raise RuntimeError("The requested tool did not return one successful result")
+    result_text = "\n".join(
+        part.text for part in getattr(results[0], "content")
+        if getattr(part, "type", None) == "text"
+    )
+    if expected_text is not None and expected_text not in result_text:
+        raise RuntimeError("Tool result did not contain the expected text")
 
 
 def capture_authoring_input(
@@ -103,6 +168,125 @@ def record_product_smoke_failure(
             else detail
         )[:1000]
     return report
+
+
+@contextmanager
+def hold_authoring_wheel(
+    path: str | Path, report: dict[str, object], *, native_worker: bool,
+) -> Iterator[tuple[Path, Path, Path] | None]:
+    """Capture one author Wheel and own its isolated environment through cleanup."""
+    try:
+        source = Path(path)
+        body = capture_authoring_input(
+            source,
+            maximum_bytes=2 * 1024 * 1024,
+            invalid_input="Wheel must be a regular file within 2 MiB",
+            changed_before_read="Wheel changed before capture",
+            changed_during_read="Wheel changed during capture",
+        )
+    except (OSError, ValueError) as exc:
+        record_product_smoke_failure(report, "artifact", "wheel_capture_refused", str(exc))
+        yield None
+        return
+    report["artifactSha256"] = sha256(body).hexdigest()
+    prefix = "loushang-worker-author-smoke-" if native_worker else "loushang-author-smoke-"
+    with TemporaryDirectory(prefix=prefix) as scratch:
+        root = Path(scratch)
+        if native_worker:
+            # Native Package admission requires resolved on-disk paths.
+            root = root.resolve(strict=True)
+        workspace = root / "workspace"
+        workspace.mkdir(mode=0o700)
+        if native_worker:
+            workspace = workspace.resolve(strict=True)
+            artifact_dir = root
+        else:
+            artifact_dir = root / "artifact"
+            artifact_dir.mkdir(mode=0o700)
+        captured = artifact_dir / source.name
+        captured.write_bytes(body)
+        with hold_authoring_home(root / "home"):
+            yield root, workspace, captured
+
+
+def smoke_data_plugin_use(
+    report: dict[str, object],
+    *,
+    root: Path,
+    wheel: Path,
+    plugin_id: str,
+    run_cli: Callable[[tuple[str, ...]], str | None],
+    prove_resource_use: Callable[[], None],
+    after_enable: Callable[[], None] | None = None,
+) -> dict[str, object]:
+    """Prove the standard Package install and enable before checking resource use."""
+    refusal = run_cli(("--install-package", str(wheel), "--package-scope", "project"))
+    if refusal is not None:
+        return record_product_smoke_failure(
+            report, "product_admission", "product_install_refused", refusal, root
+        )
+    report["productAdmission"] = "passed"
+    refusal = run_cli(("--enable-plugin", plugin_id))
+    if refusal is not None:
+        return record_product_smoke_failure(
+            report, "product_selection", "product_enable_refused", refusal, root
+        )
+    if after_enable is not None:
+        after_enable()
+    try:
+        prove_resource_use()
+    except _SelectionRefusal as exc:
+        stage, code, detail = "product_selection", "resource_not_selected", str(exc)
+    except _UseRefusal as exc:
+        report["productSelection"] = "passed"
+        stage, code, detail = "product_use", "resource_use_unproven", str(exc)
+    except Exception as exc:
+        stage, code, detail = "product_selection", "resource_selection_unproven", str(exc)
+    else:
+        report.update(productSelection="passed", productUse="passed", status="passed")
+        return report
+    return record_product_smoke_failure(report, stage, code, detail, root)
+
+
+def prove_prepared_authoring_resource_use(
+    transcript: ProductTranscriptSession, *, invocation: str, expected_body: str,
+) -> None:
+    """Check both the logical input and prepared request after the offline turn."""
+    snapshots = [
+        entry for entry in transcript.get_entries() if entry.kind == "model.input.prepared"
+    ]
+    if len(snapshots) != 1:
+        raise RuntimeError("new Session did not persist exactly one prepared model input")
+    snapshot_id = getattr(snapshots[0].payload, "snapshot_id", None)
+    if not isinstance(snapshot_id, str):
+        raise RuntimeError("prepared model input has no snapshot ID")
+    rebuilt = transcript.rebuild_model_input(snapshot_id)
+    for surface in (rebuilt.logical_input, rebuilt.prepared_payload):
+        user_text = tuple(_user_message_text(surface))
+        if not any(expected_body in text for text in user_text):
+            raise RuntimeError("selected Resource body is absent from prepared user message")
+        if any(invocation in text for text in user_text):
+            raise RuntimeError("raw slash invocation remained in prepared user message")
+
+
+def _user_message_text(logical_input: object) -> Iterator[str]:
+    if not isinstance(logical_input, dict):
+        return
+    messages = logical_input.get("messages")
+    if not isinstance(messages, list):
+        return
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            yield content
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    value = part.get("text")
+                    if isinstance(value, str):
+                        yield value
 
 
 def smoke_worker_candidate_selection(

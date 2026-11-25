@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeAlias
 
@@ -21,9 +22,18 @@ from loushang.harness.continuity.types import (
 )
 from loushang.harness.runtime.profile import (
     CONTINUITY_PROVIDER_PACKS_SLOT,
+    ProductRuntimePlan,
     ResolvedRuntimeProfile,
     ResolvedRuntimeSelection,
+    RuntimeCapabilityImplementation,
+    RuntimeCapabilityRegistry,
+    RuntimeCapabilitySelection,
+    RuntimeProfileAdmissionPolicy,
+    RuntimeProfileBinder,
     RuntimeProfileBinding,
+    RuntimeProfileLayer,
+    RuntimeProfileLayerGrant,
+    RuntimeProfileResolver,
 )
 
 
@@ -124,6 +134,49 @@ class ExperienceComposition:
 
 class ContinuityCompositionError(ValueError):
     """Raised when bound provider packs conflict with the Experience contract."""
+
+
+def _bind_base_continuity_profile(
+    *,
+    product_id: str,
+    context: object,
+    implementation: str,
+    implementation_version: int,
+    create_provider: Callable[[object | None], ContinuityProvider],
+    describe_experience: Callable[[], ExperienceDescriptor],
+    layers: tuple[RuntimeProfileLayer, ...],
+    grants: tuple[RuntimeProfileLayerGrant, ...],
+    implementations: tuple[RuntimeCapabilityImplementation, ...],
+) -> tuple[RuntimeProfileBinder, RuntimeProfileBinding, ExperienceComposition]:
+    """Resolve and bind the standard Continuity slot before composing its Providers."""
+    slot = CONTINUITY_PROVIDER_PACKS_SLOT
+    default = RuntimeCapabilitySelection(slot.key, implementation, implementation_version)
+    plan = ProductRuntimePlan(
+        product_id=product_id,
+        slots=(slot,),
+        defaults=(default,),
+    )
+    admitted = RuntimeProfileAdmissionPolicy(
+        grants=grants, slot_permissions={slot.key: frozenset({"continuity.provider"})}
+    ).admit(plan, layers)
+    profile = RuntimeProfileResolver().resolve(plan, layers=admitted.require_valid())
+    base_implementation = RuntimeCapabilityImplementation(
+        slot=slot.key,
+        implementation=implementation,
+        implementation_version=implementation_version,
+        create=lambda _selection, context: ContinuityProviderPack(
+            (create_provider(context),)
+        ),
+    )
+    binder = RuntimeProfileBinder(
+        RuntimeCapabilityRegistry((base_implementation, *implementations))
+    )
+    binding = binder.bind_sync(profile, context=context)
+    composition = compose_experience_continuity(
+        experience=describe_experience(),
+        binding=binding,
+    )
+    return binder, binding, composition
 
 
 def compose_experience_continuity(

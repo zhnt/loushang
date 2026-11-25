@@ -9,13 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.harness.package_product._windows_worker_backend_release import (
+    _InstalledWindowsWorkerBackendReader,
     _WindowsBackendInstalledMethods,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
-)
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageWheelVerificationError,
@@ -66,25 +64,20 @@ class CodingWindowsWorkerInstalledBackendV1(_WindowsBackendInstalledMethods):
         )
 
 
-class CodingWindowsWorkerInstalledBackendReader:
+class CodingWindowsWorkerInstalledBackendReader(
+    _InstalledWindowsWorkerBackendReader[CodingWorkerNativeClosureV1]
+):
     """Product-bound native closure port; this grants no launch authority."""
 
-    def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
-        _require_product(product)
-        self._product = product
-
-    @property
-    def gc_gate(self) -> PluginPackageGcReservationJournal:
-        return self._product.gc_gate
-
-    @property
-    def product_owner(self) -> WindowsLocalWheelProductSessionOwner:
-        return self._product
+    _require_product = staticmethod(lambda product: _require_product(product))
+    _read_native_closure = staticmethod(
+        lambda product: read_coding_windows_worker_installed_backend_release(
+            product
+        ).native_closure()
+    )
 
     def current_closure(self) -> CodingWorkerNativeClosureV1:
-        return read_coding_windows_worker_installed_backend_release(
-            self._product
-        ).native_closure()
+        return self._current_closure()
 
 
 def install_coding_windows_worker_backend_release(

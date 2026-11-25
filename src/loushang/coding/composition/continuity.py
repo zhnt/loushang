@@ -2,19 +2,17 @@
 
 The module is deliberately a Coding composition root.  Harness owns the
 selection, approval, Instance, generation, recovery, and Hub mechanisms; this
-adapter supplies Product policy, durable paths, configuration, and lifecycle
-ordering.
+adapter supplies Product policy, durable paths, and configuration preflight.
 """
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import secrets
 import sys as sys
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -31,7 +29,6 @@ from loushang.coding.plugin_manager.lifecycle import (
     CODING_PLUGIN_RUNTIME_BOOT_ID as _CODING_PLUGIN_RUNTIME_BOOT_ID,
 )
 from loushang.coding.plugin_manager.lifecycle import (
-    CodingPluginLifecycle,
     CodingPluginLifecycleStateLayout,
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
@@ -67,6 +64,10 @@ from loushang.harness.approval.plugin_execution import (
     PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
 )
+from loushang.harness.continuity._binding_lifetime import (
+    _ContinuityBootstrapStatus,
+    configured_continuity_request_fingerprint,
+)
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
 )
@@ -75,16 +76,8 @@ from loushang.harness.continuity.plugin_runtime import (
     resolve_continuity_plugin_selection as resolve_continuity_plugin_selection,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.plugin_management import (
-    PluginContinuityDeletionAuthority,
-    PluginContinuityDeletionJournal,
-)
 from loushang.harness.plugin_management.configured_sources import (
-    resolve_configured_plugin_local_path,
-)
-from loushang.harness.plugin_management.continuity_adapter import (
-    PluginContinuitySecurityRetirementJournal,
-    PluginInstanceLedgerContinuityFamilyAuthority,
+    read_configured_plugin_selection,
 )
 from loushang.harness.resources.packages._private_directory import (
     prepare_private_directory,
@@ -103,10 +96,10 @@ from loushang.harness.resources.plugins import (
     PluginSourceBinding,
     PluginSourceTrustSnapshotV1,
     PublishedPluginPackage,
-    is_remote_plugin_source,
 )
 from loushang.harness.session.plugin_lifecycle._continuity_installed_plugins import (
-    hold_installed_continuity_runtime,
+    InstalledContinuityLifecycle,
+    bind_installed_continuity,
     resolve_installed_continuity_definitions,
 )
 
@@ -149,8 +142,12 @@ CodingContinuityBootstrapState = Literal["idle", "ready", "failed"]
 
 
 @dataclass(frozen=True, slots=True)
-class CodingContinuityBootstrapStatus:
+class CodingContinuityBootstrapStatus(_ContinuityBootstrapStatus):
     """Finite operational projection; it intentionally contains no source path."""
+
+    _status_attribute = _BOOTSTRAP_STATUS_ATTRIBUTE
+    _last_ready_attribute = _LAST_READY_STATUS_ATTRIBUTE
+    _product_label = "Coding"
 
     state: CodingContinuityBootstrapState = "idle"
     code: str = "coding_continuity_not_started"
@@ -159,17 +156,6 @@ class CodingContinuityBootstrapStatus:
     provider_count: int = 0
     recovered_deletion_count: int = 0
     retryable: bool = False
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "state": self.state,
-            "code": self.code,
-            "configuredSourceCount": self.configured_source_count,
-            "pluginCount": self.plugin_count,
-            "providerCount": self.provider_count,
-            "recoveredDeletionCount": self.recovered_deletion_count,
-            "retryable": self.retryable,
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,13 +186,6 @@ def _continuity_lifecycle_error(
     return CodingContinuityBootstrapError(
         code=f"coding_continuity_{reason}", retryable=retryable
     )
-
-
-@dataclass(slots=True)
-class _InstalledLifecycle:
-    common: CodingPluginLifecycle
-    family_authority: PluginInstanceLedgerContinuityFamilyAuthority
-    deletion_authority: PluginContinuityDeletionAuthority
 
 
 def resolve_coding_continuity_state_layout(
@@ -246,12 +225,8 @@ def resolve_coding_continuity_state_layout(
 def get_coding_continuity_bootstrap_status(
     runtime: object,
 ) -> CodingContinuityBootstrapStatus:
-    status = getattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, None)
-    return (
-        status
-        if isinstance(status, CodingContinuityBootstrapStatus)
-        else (CodingContinuityBootstrapStatus())
-    )
+    status = CodingContinuityBootstrapStatus._current_status(runtime)
+    return status if status is not None else CodingContinuityBootstrapStatus()
 
 
 def get_coding_configured_continuity_composition(
@@ -308,27 +283,16 @@ async def bind_coding_configured_continuity(
         )
 
     configured_count = len(sources)
-    common_layout: CodingPluginLifecycleStateLayout | None = None
-    existing: CodingContinuityComposition | None = None
-    compatibility = None
-    owns_early_startup_lease = False
+    startup_lease = ExitStack()
 
-    def release_early_startup_lease() -> None:
-        nonlocal owns_early_startup_lease
-        if owns_early_startup_lease and common_layout is not None:
-            _release_process_startup_lease(
-                common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
-            )
-            owns_early_startup_lease = False
-
-    def record_base_ready() -> None:
+    def record_ready(plugin_count: int, provider_count: int, recovered_count: int) -> None:
         _record_ready_status(
             runtime,
             diagnostics_service,
             configured_source_count=configured_count,
-            plugin_count=0,
-            provider_count=0,
-            recovered_deletion_count=0,
+            plugin_count=plugin_count,
+            provider_count=provider_count,
+            recovered_deletion_count=recovered_count,
         )
 
     def finish_base_binding() -> CodingContinuityComposition:
@@ -336,9 +300,8 @@ async def bind_coding_configured_continuity(
             runtime, cwd=cwd, all_sessions=all_sessions
         )
         result.configured_request_fingerprint = request_fingerprint
-        record_base_ready()
-        if compatibility is None:
-            release_early_startup_lease()
+        record_ready(0, 0, 0)
+        startup_lease.close()
         return result
 
     try:
@@ -356,9 +319,15 @@ async def bind_coding_configured_continuity(
                 or settings_manager is not None
                 or (existing is not None and existing.plugin_publication is not None)
             )
-        ):
-            owns_early_startup_lease = _hold_process_startup_lease(
+            and _hold_process_startup_lease(
                 common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
+            )
+            and (existing is None or existing.plugin_publication is None)
+        ):
+            startup_lease.callback(
+                _release_process_startup_lease,
+                common_layout,
+                startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
             )
         compatibility = (
             None
@@ -369,6 +338,8 @@ async def bind_coding_configured_continuity(
             )
         )
         if compatibility is not None:
+            # The settings writer now owns the pre-fence registration.
+            startup_lease.pop_all()
             compatibility.reconcile()
             sources, disabled_plugins = _configured_sources(
                 settings_manager,
@@ -383,36 +354,25 @@ async def bind_coding_configured_continuity(
         )
 
         if existing is not None:
-            if existing.configured_request_fingerprint == request_fingerprint:
-                _restore_ready_status(runtime, diagnostics_service)
-                if existing.plugin_publication is None and compatibility is None:
-                    release_early_startup_lease()
-                return existing
-            if (
-                not sources
-                and existing.plugin_publication is None
-                and existing.configured_request_fingerprint is None
-                and existing.binding_cwd
-                == str(Path(cwd).expanduser().resolve(strict=False))
-                and existing.all_sessions == all_sessions
+            if existing.admit_configured_reentry(
+                request_fingerprint,
+                has_sources=bool(sources),
+                cwd=cwd,
+                all_sessions=all_sessions,
+                conflict=lambda: CodingContinuityBootstrapError(
+                    code=_CONTINUITY_ALREADY_BOUND, retryable=False
+                ),
             ):
-                existing.configured_request_fingerprint = request_fingerprint
-                record_base_ready()
-                if compatibility is None:
-                    release_early_startup_lease()
-                return existing
-            raise CodingContinuityBootstrapError(
-                code=_CONTINUITY_ALREADY_BOUND,
-                retryable=False,
-            )
+                _restore_ready_status(runtime, diagnostics_service)
+            else:
+                record_ready(0, 0, 0)
+            startup_lease.close()
+            return existing
 
         if not sources:
             return finish_base_binding()
     except BaseException as error:
-        if compatibility is None and (
-            existing is None or existing.plugin_publication is None
-        ):
-            release_early_startup_lease()
+        startup_lease.close()
         if (
             isinstance(error, CodingContinuityBootstrapError)
             and error.code == _CONTINUITY_ALREADY_BOUND
@@ -424,7 +384,6 @@ async def bind_coding_configured_continuity(
             runtime, diagnostics_service, error, configured_source_count=configured_count
         )
 
-    lifecycle_started = False
     try:
         resolved_runtime_id = runtime_id or _new_runtime_id()
         if materializer is not None:
@@ -435,10 +394,12 @@ async def bind_coding_configured_continuity(
         _prepare_private_state_layout(layout)
         _prepare_private_runtime_roots(layout)
         lifecycle = _build_lifecycle(layout)
-        lifecycle_started = True
-        with hold_installed_continuity_runtime(
+        # Installed lifecycle recovery owns the process startup lease now.
+        startup_lease.pop_all()
+        return await bind_installed_continuity(
             sources,
-            lifecycle.common,
+            lifecycle,
+            request_fingerprint=request_fingerprint,
             materializer=resolved_materializer,
             product_id=CODING_EXPERIENCE_ID,
             scope_id=layout.scope_id,
@@ -451,17 +412,9 @@ async def bind_coding_configured_continuity(
             ),
             supports_secure_staging=supports_coding_continuity_secure_staging,
             cleanup_note=_REVISION_CLEANUP_NOTE,
-        ) as (runtime_resolution, instance_refs):
-            if not runtime_resolution.packages:
-                return finish_base_binding()
-            selection = _finalize_selection(
-                runtime_resolution,
-                instance_refs=instance_refs,
-                layout=layout,
-                clock=clock,
-            )
-            resolved, component_host, decisions = prepare_continuity_activation(
-                selection,
+            finalize_selection=partial(_finalize_selection, layout=layout, clock=clock),
+            prepare_activation=partial(
+                prepare_continuity_activation,
                 owner_policy_revision=_OWNER_POLICY_REVISION,
                 revocation_epoch=_CONTINUITY_REVOCATION_EPOCH,
                 decision_path=layout.activation_decisions,
@@ -470,35 +423,21 @@ async def bind_coding_configured_continuity(
                 read_clock=partial(_read_clock, clock),
                 validate_subject=partial(_validate_activation_subject, layout=layout),
                 authorization=_approval_authorization,
-            )
-            pending_before = len(lifecycle.deletion_authority.journal.pending())
-            result = await bind_coding_plugin_continuity(
+            ),
+            bind_base=finish_base_binding,
+            bind_generation=partial(
+                bind_coding_plugin_continuity,
                 runtime,
-                resolved_plugins=resolved,
-                component_host=component_host,
-                activation_decision_ids=decisions,
-                instance_family_authority=lifecycle.family_authority,
                 runtime_id=resolved_runtime_id,
-                deletion_authority=lifecycle.deletion_authority,
-                owned_cleanup=runtime_resolution.close,
                 cwd=cwd,
                 all_sessions=all_sessions,
                 temporary_root=layout.temporary_root,
                 fallback_cwd=cwd,
-            )
-            result.configured_request_fingerprint = request_fingerprint
-        _record_ready_status(
-            runtime,
-            diagnostics_service,
-            configured_source_count=configured_count,
-            plugin_count=len(selection.plan.selected_plugin_ids),
-            provider_count=len(resolved.candidates),
-            recovered_deletion_count=pending_before,
+            ),
+            record_ready=record_ready,
         )
-        return result
     except BaseException as error:
-        if not lifecycle_started and compatibility is None:
-            release_early_startup_lease()
+        startup_lease.close()
         _raise_bootstrap_failure(
             runtime, diagnostics_service, error, configured_source_count=configured_count
         )
@@ -530,8 +469,8 @@ class _ContinuityDefinitionApprovalOwner:
 
 def _finalize_selection(
     runtime: PluginRuntimeResolution,
-    *,
     instance_refs: tuple[PluginInstanceRevisionRef, ...],
+    *,
     layout: CodingContinuityStateLayout,
     clock: Callable[[], int],
 ) -> PluginSelection:
@@ -568,39 +507,11 @@ def _configured_sources(
     *,
     cwd: str | Path,
 ) -> tuple[tuple[str, ...], frozenset[str]]:
-    get_settings = getattr(settings_manager, "get_settings", None)
-    if not callable(get_settings):
-        return (), frozenset()
-    settings = get_settings()
-    raw_sources = getattr(settings, "plugin_sources", ())
-    raw_disabled = getattr(settings, "disabled_plugins", ())
-    if not isinstance(raw_sources, tuple | list) or any(
-        not isinstance(item, str) or not item.strip() for item in raw_sources
-    ):
-        raise CodingContinuityBootstrapError(
-            code="coding_continuity_plugin_sources_invalid",
-            retryable=False,
-        )
-    if not isinstance(raw_disabled, tuple | list) or any(
-        not isinstance(item, str) or not item.strip() for item in raw_disabled
-    ):
-        raise CodingContinuityBootstrapError(
-            code="coding_continuity_disabled_plugins_invalid",
-            retryable=False,
-        )
-    sources = tuple(
-        dict.fromkeys(
-            source
-            if is_remote_plugin_source(source)
-            else str(
-                resolve_configured_plugin_local_path(
-                    source, cwd, settings_manager=settings_manager
-                )
-            )
-            for source in (item.strip() for item in raw_sources)
-        )
+    return read_configured_plugin_selection(
+        settings_manager,
+        cwd=cwd,
+        invalid=partial(_continuity_lifecycle_error, retryable=False),
     )
-    return sources, frozenset(item.strip() for item in raw_disabled)
 
 
 def _bootstrap_request_fingerprint(
@@ -610,29 +521,14 @@ def _bootstrap_request_fingerprint(
     cwd: str | Path,
     all_sessions: bool,
 ) -> str:
-    workspace = Path(cwd).expanduser().resolve(strict=False)
-    digest = hashlib.sha256()
-    digest.update(b"loushang.coding-continuity-bootstrap-request/v2\0")
-
-    def update_value(label: str, value: str) -> None:
-        label_bytes = label.encode("ascii")
-        encoded = value.encode("utf-8", errors="surrogatepass")
-        digest.update(len(label_bytes).to_bytes(4, "big"))
-        digest.update(label_bytes)
-        digest.update(len(encoded).to_bytes(8, "big"))
-        digest.update(encoded)
-
-    update_value("policyRevision", _PRODUCT_POLICY_REVISION)
-    update_value("workspace", str(workspace))
-    update_value("listingScope", "all" if all_sessions else "workspace")
-    update_value("sourceCount", str(len(sources)))
-    for source in sources:
-        update_value("source", source)
-    ordered_disabled = tuple(sorted(disabled_plugins))
-    update_value("disabledPluginCount", str(len(ordered_disabled)))
-    for plugin_id in ordered_disabled:
-        update_value("disabledPlugin", plugin_id)
-    return digest.hexdigest()
+    return configured_continuity_request_fingerprint(
+        sources,
+        disabled_plugins=disabled_plugins,
+        cwd=cwd,
+        all_sessions=all_sessions,
+        policy_revision=_PRODUCT_POLICY_REVISION,
+        digest_domain=b"loushang.coding-continuity-bootstrap-request/v2\0",
+    )
 
 
 def _require_continuity_package_authority(
@@ -660,28 +556,12 @@ def _coding_continuity_materializer(
     )
 
 
-def _build_lifecycle(
-    layout: CodingContinuityStateLayout,
-) -> _InstalledLifecycle:
-    security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
-        layout.instance_runtime
-    )
-    common = build_coding_plugin_lifecycle(
-        _common_lifecycle_layout(layout),
-        security_acceptances=security,
-    )
-    family_authority = PluginInstanceLedgerContinuityFamilyAuthority(
-        ledger=common.instances,
-        package_lifecycle=common.packages,
-        security_acceptance_journal=security,
-    )
-    deletion_journal = PluginContinuityDeletionJournal.for_instance_runtime(
-        layout.instance_runtime
-    )
-    return _InstalledLifecycle(
-        common=common,
-        family_authority=family_authority,
-        deletion_authority=PluginContinuityDeletionAuthority(deletion_journal),
+def _build_lifecycle(layout: CodingContinuityStateLayout) -> InstalledContinuityLifecycle:
+    return InstalledContinuityLifecycle.open(
+        layout.instance_runtime,
+        lambda security: build_coding_plugin_lifecycle(
+            _common_lifecycle_layout(layout), security_acceptances=security
+        ),
     )
 
 
@@ -808,60 +688,21 @@ def _record_ready_status(
     provider_count: int,
     recovered_deletion_count: int,
 ) -> None:
-    _publish_bootstrap_status(
-        runtime,
-        diagnostics,
-        CodingContinuityBootstrapStatus(
-            state="ready",
-            code="coding_continuity_ready",
-            configured_source_count=configured_source_count,
-            plugin_count=plugin_count,
-            provider_count=provider_count,
-            recovered_deletion_count=recovered_deletion_count,
-        ),
-    )
-
-
-def _publish_bootstrap_status(
-    runtime: object,
-    diagnostics: DiagnosticsService | None,
-    status: CodingContinuityBootstrapStatus,
-) -> None:
-    ready = status.state == "ready"
-    with suppress(AttributeError, TypeError):
-        setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
-        if ready:
-            setattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, status)
-    capture = getattr(diagnostics, "capture_failure", None)
-    if callable(capture):
-        with suppress(Exception):
-            capture(
-                code=status.code,
-                error=(
-                    "Coding Continuity composition is ready."
-                    if ready
-                    else f"Coding Continuity bootstrap failed ({status.code})."
-                ),
-                phase="startup",
-                source="bootstrap",
-                **({"level": "info"} if ready else {}),
-                details=status.to_dict(),
-            )
+    CodingContinuityBootstrapStatus(
+        state="ready",
+        code="coding_continuity_ready",
+        configured_source_count=configured_source_count,
+        plugin_count=plugin_count,
+        provider_count=provider_count,
+        recovered_deletion_count=recovered_deletion_count,
+    )._publish(runtime, diagnostics)
 
 
 def _restore_ready_status(
     runtime: object,
     diagnostics: DiagnosticsService | None,
 ) -> None:
-    status = getattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, None)
-    if not isinstance(status, CodingContinuityBootstrapStatus):
-        current = getattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, None)
-        status = (
-            current
-            if isinstance(current, CodingContinuityBootstrapStatus)
-            and current.state == "ready"
-            else None
-        )
+    status = CodingContinuityBootstrapStatus._previous_ready_status(runtime)
     if status is None:
         return
     _record_ready_status(
@@ -884,20 +725,14 @@ def _raise_bootstrap_failure(
     if not isinstance(error, Exception):
         raise error
     code = _stable_error_code(error)
-    _publish_bootstrap_status(
-        runtime,
-        diagnostics_service,
-        CodingContinuityBootstrapStatus(
-            state="failed",
-            code=code,
-            configured_source_count=configured_source_count,
-            retryable=(
-                error.retryable
-                if isinstance(error, CodingContinuityBootstrapError)
-                else True
-            ),
+    CodingContinuityBootstrapStatus(
+        state="failed",
+        code=code,
+        configured_source_count=configured_source_count,
+        retryable=(
+            error.retryable if isinstance(error, CodingContinuityBootstrapError) else True
         ),
-    )
+    )._publish(runtime, diagnostics_service)
     if isinstance(error, CodingContinuityBootstrapError):
         raise error
     raise CodingContinuityBootstrapError(code=code) from None

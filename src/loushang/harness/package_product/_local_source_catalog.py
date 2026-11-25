@@ -26,6 +26,7 @@ from typing import (
     cast,
 )
 
+from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from packaging.version import Version
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -99,8 +100,12 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 from ._legacy_runtime import _LegacyEpoch, matches_epoch_layout
 
 if TYPE_CHECKING:
+    from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
+        PackageInspectionBudgetV1,
+    )
+
     from ._application_runtime import FencedSourceCatalogRoots
-    from ._legacy_inventory import _BindingHead
+    from ._legacy_inventory import LegacyInventoryEvidence, _BindingHead
     from ._legacy_local_migration import _AcceptedSource
 
 
@@ -510,7 +515,16 @@ class _PosixSourceCatalog(_SourceCatalogReadScopes[RecordT]):
     _path_label: str
     _error_factory: Callable[[str], Exception]
     _codec: JournalRecordCodec[RecordT]
+    _product_journal_name: str
     _catalog_regular_single_link = False
+
+    @classmethod
+    def for_roots(cls, roots: FencedSourceCatalogRoots, *, read_only: bool = False) -> Self:
+        return cls(
+            roots.state_root / cls._product_journal_name,
+            **roots.identity,
+            read_only=read_only,
+        )
 
     def __init__(
         self,
@@ -880,15 +894,6 @@ class _PosixWorkerSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
 class _DataWheelSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
     _record_type: type[PluginRecordT]
     _error_factory: type[Exception]
-    _product_journal_name: str
-
-    @classmethod
-    def for_roots(cls, roots: FencedSourceCatalogRoots, *, read_only: bool = False) -> Self:
-        return cls(
-            roots.state_root / cls._product_journal_name,
-            **roots.identity,
-            read_only=read_only,
-        )
 
     def project_policy_group(
         self, policy: PackageProductLocalWheelPolicy, *, trust_class: str
@@ -999,6 +1004,58 @@ class _DataWheelSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
         )
 
 
+_DEPENDENCY_WHEEL_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.whl\Z")
+
+
+def dependency_wheel_identity(filename: str, *, maximum_length: int) -> tuple[str, str]:
+    """Validate a catalog filename before selecting a project and version."""
+    invalid_filename = "Dependency Wheel filename is invalid"
+    if (
+        not isinstance(filename, str)
+        or len(filename) > maximum_length
+        or _DEPENDENCY_WHEEL_FILENAME.fullmatch(filename) is None
+    ):
+        raise ValueError(invalid_filename)
+    try:
+        project_name, version, _, _ = parse_wheel_filename(filename)
+    except InvalidWheelFilename as exc:
+        raise ValueError(invalid_filename) from exc
+    return project_name, str(version)
+
+
+def verify_dependency_wheel_source(
+    filename: str,
+    body: bytes,
+    *,
+    maximum_filename_length: int,
+    maximum_artifact_bytes: int,
+    budgets: PackageInspectionBudgetV1,
+    error_factory: Callable[[str], Exception],
+) -> None:
+    """Bind inert source bytes to the same identity used by the catalog."""
+    from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
+        PackageWheelVerificationError,
+        inspect_package_wheel_bytes,
+    )
+
+    project_name, version = dependency_wheel_identity(
+        filename, maximum_length=maximum_filename_length
+    )
+    try:
+        inspected = inspect_package_wheel_bytes(
+            body,
+            wheel_filename=filename,
+            budgets=budgets,
+            max_artifact_bytes=maximum_artifact_bytes,
+        )
+    except PackageWheelVerificationError as exc:
+        raise error_factory("Dependency Wheel metadata is invalid") from exc
+    if inspected.distribution != project_name or Version(inspected.version) != Version(
+        version
+    ):
+        raise error_factory("Dependency Wheel metadata identity changed")
+
+
 class _DependencySourceRecord(_SourceRecord, Protocol):
     @property
     def project_name(self) -> str: ...
@@ -1016,10 +1073,13 @@ class _DependencyWheelBindingMethods(_ExternalWheelBindingMethods):
     project_name: str
     version: str
     _dependency_directory: ClassVar[str]
+    _max_wheel_filename: ClassVar[int]
 
-    @staticmethod
-    def _wheel_identity(wheel_filename: str) -> tuple[str, str]:
-        raise NotImplementedError
+    @classmethod
+    def _wheel_identity(cls, wheel_filename: str) -> tuple[str, str]:
+        return dependency_wheel_identity(
+            wheel_filename, maximum_length=cls._max_wheel_filename
+        )
 
     @classmethod
     def _wheel_identity_fields(cls, wheel_filename: str) -> dict[str, str]:
@@ -1436,6 +1496,47 @@ class _LegacyLocalSourceCatalog(
         return cls(
             roots.state_root / cls._product_journal_name,
             **roots.identity,
+            policy_revision=policy_revision,
+            acceptance_reader=acceptance_reader,
+        )
+
+    @classmethod
+    def publish_reviewed_source(
+        cls,
+        *,
+        plugin_id: str,
+        acceptance_reader: Callable[[str], LegacyAcceptanceT | None],
+        reacquire: Callable[[], tuple[LegacyInventoryEvidence, int, LegacyCandidateT]],
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+        resolve_epoch: Callable[[], _LegacyEpoch],
+        read_scope_id: Callable[[], str],
+        policy_revision: str,
+    ) -> LegacyRecordT:
+        """Reopen approval and bind the recaptured local Wheel in its original epoch."""
+        from loushang.harness.plugin_authoring.resource_item import (
+            _inspect_legacy_local_data_wheel,
+        )
+
+        accepted = acceptance_reader(plugin_id)
+        if accepted is None:
+            raise cls._error_factory("Legacy local Source has no accepted review")
+        evidence, position, candidate = reacquire()
+        binding, desired_state, _ = evidence.inventory.active_local[position]
+        try:
+            resource_kind, _ = _inspect_legacy_local_data_wheel(candidate)
+        except (OSError, ValueError) as exc:
+            raise cls._error_factory(
+                "Legacy local Source Resource type is unsupported"
+            ) from exc
+        return cls.publish_from_accepted_review(
+            candidate,
+            accepted=accepted,
+            binding=binding,
+            desired_state=desired_state,
+            inspected_kind=resource_kind,
+            epoch_runtime=epoch_runtime,
+            resolve_epoch=resolve_epoch,
+            scope_id=read_scope_id(),
             policy_revision=policy_revision,
             acceptance_reader=acceptance_reader,
         )

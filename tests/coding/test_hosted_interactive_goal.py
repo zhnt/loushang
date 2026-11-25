@@ -834,8 +834,8 @@ def test_hosted_review_checks_authority_and_required_evidence_then_joins_review_
 @pytest.mark.parametrize("accept", [False, True], ids=["review-required", "completed"])
 def test_hosted_goal_cold_projection_preserves_original_journals(tmp_path, monkeypatch, accept):
     from loushang.coding.adapters._goal_store import goal_journal_path
-    from loushang.coding.hosted import goal_recovery as hosted_goal_recovery
     from loushang.coding.hosted.goal_recovery import read_interactive_goal_recovery
+    from loushang.harnesswork.integrations import goal_store
 
     async def scenario():
         async with _managed(tmp_path) as (_, client, _, address, hosted, adapter, session_id):
@@ -868,16 +868,16 @@ def test_hosted_goal_cold_projection_preserves_original_journals(tmp_path, monke
             assert original == (journal.read_bytes(), work.read_bytes(), adapter.calls)
             assert binding._goal._interactive_goal_owner is None
 
-            original_read = hosted_goal_recovery._read
+            original_read = goal_store._read_recovery_journal
 
-            def change_work_during_read(path, stamp):
-                data = original_read(path, stamp)
+            def change_work_during_read(path, stamp, *, max_bytes):
+                data = original_read(path, stamp, max_bytes=max_bytes)
                 if path == work:
                     work.write_bytes(original[1] + b"\n")
                 return data
 
             with monkeypatch.context() as patch:
-                patch.setattr(hosted_goal_recovery, "_read", change_work_during_read)
+                patch.setattr(goal_store, "_read_recovery_journal", change_work_during_read)
                 changed = read_interactive_goal_recovery(directory, session_id)
                 assert changed.reason_code == "source_changed" and changed.goal_id is None
             work.write_bytes(original[1])

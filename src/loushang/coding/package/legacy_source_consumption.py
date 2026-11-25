@@ -2,24 +2,18 @@
 
 from __future__ import annotations
 
-import json as json
-from pathlib import Path
-
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
-    _FrozenSources,
     _SourceConsumptionProtocol,
     project_frozen_legacy_sources,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
 from .legacy_configured_source import _index_configured_sources
+from .legacy_installation_inventory import _legacy_inventory_query
 from .legacy_installation_inventory import (
     read_coding_legacy_installation_inventory as read_coding_legacy_installation_inventory,
 )
@@ -67,21 +61,29 @@ def coding_accepted_legacy_local_source_consumed(
     ).consumed()
 
 
-def _receipt_bytes(identity: dict[str, object], phase: str) -> bytes:
-    return canonical_json_bytes({**identity, "phase": phase}) + b"\n"
-
-
-def _receipt_path(state_root: Path, plugin_id: str) -> Path:
-    return _SourceConsumptionProtocol._receipt_path(state_root, plugin_id)
-
-
 def _consumption_protocol(
     lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
     acceptance: CodingLegacyLocalAcceptanceV1,
     settings: SettingsManager,
 ) -> _SourceConsumptionProtocol:
-    frozen = _frozen_sources(lifecycle, epoch_runtime, acceptance, settings)
+    global_path, project_path = _SourceConsumptionProtocol._settings_paths(
+        settings, CodingLegacySourceConsumptionError
+    )
+    evidence = read_coding_legacy_source_evidence(
+        lifecycle,
+        epoch_runtime,
+        global_settings_path=global_path,
+        project_settings_path=project_path,
+    )
+    frozen = project_frozen_legacy_sources(
+        acceptance,
+        evidence.projection_bytes,
+        projection_digest=evidence.projection_digest,
+        read_inventory=lambda: _legacy_inventory_query(lifecycle, epoch_runtime)(),
+        index_configured_sources=_index_configured_sources,
+        error_type=CodingLegacySourceConsumptionError,
+    )
     return _SourceConsumptionProtocol(
         epoch_runtime,
         acceptance,
@@ -95,49 +97,10 @@ def _consumption_protocol(
         ),
         _source_projection,
         _CONSUMPTION_BLOCKING_SOURCE_KEYS,
-        lambda identity, phase: _receipt_bytes(identity, phase),
         CodingLegacySourceConsumptionError,
         _MAX_RECEIPT_BYTES,
     )
 
-
-def _frozen_sources(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-    acceptance: CodingLegacyLocalAcceptanceV1,
-    settings: SettingsManager,
-) -> _FrozenSources:
-    global_path, project_path = _SourceConsumptionProtocol._settings_paths(
-        settings, CodingLegacySourceConsumptionError
-    )
-    evidence = read_coding_legacy_source_evidence(
-        lifecycle,
-        epoch_runtime,
-        global_settings_path=global_path,
-        project_settings_path=project_path,
-    )
-    projection = json.loads(evidence.projection_bytes)
-    inventory = read_coding_legacy_installation_inventory(lifecycle, epoch_runtime)
-    installations = inventory.inventory.active_local
-    configured = (
-        _index_configured_sources(
-            projection, tuple(item.binding.source_identity for item in installations)
-        )
-        if installations
-        else {}
-    )
-    return project_frozen_legacy_sources(
-        acceptance,
-        projection,
-        projection_digest=evidence.projection_digest,
-        by_plugin={
-            item.binding.plugin_id: configured.get(
-                item.binding.source_identity.removeprefix("local:")
-            )
-            for item in installations
-        },
-        error_type=CodingLegacySourceConsumptionError,
-    )
 
 
 __all__ = [

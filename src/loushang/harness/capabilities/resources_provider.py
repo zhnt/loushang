@@ -14,7 +14,6 @@ from loushang.harness.capabilities.composition_runtime import (
     resource_capability_profile,
     standard_capability_composition_implementations,
 )
-from loushang.harness.capabilities.contracts import CapabilityContractRange
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
     CapabilityPackComposition,
@@ -334,36 +333,10 @@ def resources_capability_provider_binding(
         )
         if implementation.slot in RESOURCE_CAPABILITY_SLOT_KEYS
     )
-    provider = CapabilityBundleProvider(
-        capability_id=(
-            RESOURCES_CAPABILITY_DEFINITION_V4.capability_id
-            if enable_skill_catalog_v4
-            else RESOURCES_CAPABILITY_DEFINITION_V3.capability_id
-            if enable_skill_catalog_v3
-            else RESOURCES_CAPABILITY_DEFINITION_V2.capability_id
-            if has_prepared_generation
-            else RESOURCES_CAPABILITY_DEFINITION.capability_id
-        ),
+    provider = CapabilityBundleProvider.for_definition(
+        definition,
         provider_id=provider_id,
         implementation_version=provider_version,
-        compatible_contract=CapabilityContractRange.exact(
-            RESOURCES_CAPABILITY_DEFINITION_V4.contract_version
-            if enable_skill_catalog_v4
-            else RESOURCES_CAPABILITY_DEFINITION_V3.contract_version
-            if enable_skill_catalog_v3
-            else RESOURCES_CAPABILITY_DEFINITION_V2.contract_version
-            if has_prepared_generation
-            else RESOURCES_CAPABILITY_DEFINITION.contract_version
-        ),
-        facets=(
-            RESOURCES_CAPABILITY_DEFINITION_V4.facets
-            if enable_skill_catalog_v4
-            else RESOURCES_CAPABILITY_DEFINITION_V3.facets
-            if enable_skill_catalog_v3
-            else RESOURCES_CAPABILITY_DEFINITION_V2.facets
-            if has_prepared_generation
-            else RESOURCES_CAPABILITY_DEFINITION.facets
-        ),
         source_id=source_id,
         selection_rule="Product resource mechanism selections",
     )

@@ -80,6 +80,7 @@ class CodingExternalWorkerWheelCatalog(
     _codec = _CODEC
     _create_binding = staticmethod(CodingExternalWorkerWheelBindingV1.create)
     _product_id = "coding"
+    _product_journal_name = "external-worker-wheel-bindings.jsonl"
     _source_label = "External Worker Wheel"
     _wheel_name = _WHEEL_NAME
     _max_wheel_filename = _MAX_WHEEL_FILENAME

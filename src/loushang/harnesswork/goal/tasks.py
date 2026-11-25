@@ -70,47 +70,26 @@ class TaskPolicy(BatchPlanningPolicy):
     """Domain mixin after BatchPlanningPolicy; no second proposal-selection loop."""
 
     limits = TASK_LIMITS
+    _observations = BatchPlanningPolicy._project_observations
 
-    def _observations(self, basis, facts):
-        evidence, routes, rejections = [], [], []
-        invalid = stalled = planning = 0
-        for batch in facts.batches:
-            if batch.goal_id != basis.goal.id:
-                continue
-            run = self._run(batch, facts)
-            planning += batch.source.get("phase") == "planning"
-            if run is None or run.status == "cancelled":
-                continue
-            if batch.source.get("phase") == "planning":
-                try:
-                    proposal = self._proposal(batch, run)
-                    routes.append(
-                        {"proposal_id": batch.operation_id, "proposal": proposal.data()}
-                    )
-                except self.rejection_error as error:
-                    invalid += 1
-                    rejections.append(
-                        {"proposal_id": batch.operation_id, "reason": str(error)}
-                    )
-            else:
-                invalid = 0
-                result = self.action_result(batch, run)
-                evidence.append(
-                    {
-                        "id": batch.operation_id,
-                        "phase": batch.source["phase"],
-                        "status": run.status,
-                        "revision": batch.revision,
-                        "result": result,
-                    }
-                )
-                if batch.source["phase"] == "repair":
-                    stalled = (
-                        stalled + 1
-                        if result["inventory"] == plain(batch.source["inventory"])
-                        else 0
-                    )
-        return evidence, routes, rejections, planning, invalid, stalled
+    def _observed_work(self, basis, batch, run, evidence, knowledge, context):
+        if run.status == "cancelled":
+            return None, None
+        phase = batch.source["phase"]
+        result = self.action_result(batch, run)
+        item = {
+            "id": batch.operation_id,
+            "phase": phase,
+            "status": run.status,
+            "revision": batch.revision,
+            "result": result,
+        }
+        progress = (
+            result["inventory"] != plain(batch.source["inventory"])
+            if phase == "repair"
+            else None
+        )
+        return item, progress
 
     async def prepare(self, basis, facts):
         snapshot, _ = self.planning_context(basis)

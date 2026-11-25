@@ -10,15 +10,13 @@ import re
 import sys
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from hashlib import sha256
+from functools import partial
 from importlib.metadata import version
 from io import StringIO
 from pathlib import Path
 from secrets import token_hex
-from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from typing import Literal
-from zipfile import BadZipFile, ZipFile
 
 from loushang.ai.provider._offline_adapter import OfflineModelAdapter
 from loushang.coding.cli.application import run_cli
@@ -37,20 +35,25 @@ from loushang.coding.ui.plugin_theme import (
 from loushang.harness.capabilities.prompt import expand_prompt_template
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_authoring._offline_smoke import (
-    capture_authoring_input,
-    hold_authoring_home,
+    _SelectionRefusal,
+    _UseRefusal,
+    hold_authoring_wheel,
+    prove_prepared_authoring_resource_use,
+    read_authoring_wheel_document,
+    require_authoring_resource_selection,
+    smoke_data_plugin_use,
     smoke_worker_candidate_selection,
 )
 from loushang.harness.plugin_authoring._offline_smoke import (
     record_product_smoke_failure as _failure,
 )
 from loushang.harness.resources.frontmatter import strip_frontmatter
+from loushang.harness.session._cleanup import hold_authoring_session
 
 CodingDataSmokeKind = Literal["skill", "prompt", "theme"]
 
 _ID = re.compile(r"[a-z][a-z0-9]*\Z")
 _NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
-_MAX_WHEEL_BYTES = 2 * 1024 * 1024
 _SMOKE_ARGUMENTS = "Verify the author package."
 
 
@@ -182,76 +185,33 @@ def smoke_coding_data_wheel(
         if prepared is None:
             return report
         root, workspace, captured, settings = prepared
-        install_error = _run_coding_cli(
-            ("--install-package", str(captured), "--package-scope", "project"),
-            workspace=workspace,
-        )
-        if install_error is not None:
-            return _failure(
-                report,
-                "product_admission",
-                "product_install_refused",
-                install_error,
-                root,
-            )
-        report["productAdmission"] = "passed"
-        enable_error = _run_coding_cli(
-            ("--enable-plugin", plugin_id), workspace=workspace
-        )
-        if enable_error is not None:
-            return _failure(
-                report,
-                "product_selection",
-                "product_enable_refused",
-                enable_error,
-                root,
-            )
-        if kind == "theme":
-            settings.set_theme(f"plugin:{resource_name}", scope="project")
-        try:
+        def prove_resource_use() -> None:
             expected_body = _document_body(
-                captured,
-                kind=kind,
-                plugin_id=plugin_id,
-                resource_name=resource_name,
+                captured, kind=kind, plugin_id=plugin_id, resource_name=resource_name,
             )
-            _prove_new_session_use(
-                workspace=workspace,
-                settings=settings,
-                session_root=root / "sessions",
-                kind=kind,
-                resource_name=resource_name,
-                expected_body=expected_body,
+            asyncio.run(
+                _prove_new_session_use(
+                    workspace=workspace,
+                    settings=settings,
+                    session_root=root / "sessions",
+                    kind=kind,
+                    resource_name=resource_name,
+                    expected_body=expected_body,
+                )
             )
-        except _SelectionRefusal as exc:
-            return _failure(
-                report, "product_selection", "resource_not_selected", str(exc), root
-            )
-        except _UseRefusal as exc:
-            report["productSelection"] = "passed"
-            return _failure(
-                report, "product_use", "resource_use_unproven", str(exc), root
-            )
-        except Exception as exc:
-            return _failure(
-                report,
-                "product_selection",
-                "resource_selection_unproven",
-                str(exc),
-                root,
-            )
-        report["productSelection"] = "passed"
-        report["productUse"] = "passed"
-        report["status"] = "passed"
-        return report
 
-
-class _SelectionRefusal(RuntimeError):
-    pass
-
-
-class _UseRefusal(RuntimeError):
-    pass
+        return smoke_data_plugin_use(
+            report,
+            root=root,
+            wheel=captured,
+            plugin_id=plugin_id,
+            run_cli=partial(_run_coding_cli, workspace=workspace),
+            prove_resource_use=prove_resource_use,
+            after_enable=(
+                partial(settings.set_theme, f"plugin:{resource_name}", scope="project")
+                if kind == "theme" else None
+            ),
+        )
 
 
 @contextmanager
@@ -261,64 +221,35 @@ def _prepare_wheel_smoke(
     *,
     native_platform: str | None = None,
 ) -> Iterator[tuple[Path, Path, Path, SettingsManager] | None]:
-    try:
-        wheel_bytes = _capture_wheel(Path(wheel_path))
-    except (OSError, ValueError) as exc:
-        _failure(report, "artifact", "wheel_capture_refused", str(exc))
-        yield None
-        return
-    report["artifactSha256"] = sha256(wheel_bytes).hexdigest()
-    worker = native_platform is not None
-    prefix = "loushang-worker-author-smoke-" if worker else "loushang-author-smoke-"
-    with TemporaryDirectory(prefix=prefix) as scratch:
-        root = Path(scratch)
-        if worker:
-            # The native Product route requires a resolved on-disk workspace.
-            root = root.resolve(strict=True)
-        workspace = root / "workspace"
-        workspace.mkdir(mode=0o700)
-        if worker:
-            workspace = workspace.resolve(strict=True)
-            artifact_dir = root
-        else:
-            artifact_dir = root / "artifact"
-            artifact_dir.mkdir(mode=0o700)
-        captured = artifact_dir / Path(wheel_path).name
-        captured.write_bytes(wheel_bytes)
-        with hold_authoring_home(root / "home"):
-            layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
-            settings = SettingsManager(
-                global_settings_path=root / "global-settings.json",
-                project_settings_path=workspace / ".loushang" / "settings.json",
+    with hold_authoring_wheel(
+        wheel_path, report, native_worker=native_platform is not None,
+    ) as prepared:
+        if prepared is None:
+            yield None
+            return
+        root, workspace, captured = prepared
+        layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+        settings = SettingsManager(
+            global_settings_path=root / "global-settings.json",
+            project_settings_path=workspace / ".loushang" / "settings.json",
+        )
+        try:
+            cutover_and_bootstrap_coding_package_product(
+                layout,
+                settings,
+                workspace=workspace,
+                namespace_id=token_hex(32),
+                runtime_version=version("loushang"),
+                runtime_protocol_epoch=2,
+                windows_candidate=native_platform == "windows-amd64",
             )
-            try:
-                cutover_and_bootstrap_coding_package_product(
-                    layout,
-                    settings,
-                    workspace=workspace,
-                    namespace_id=token_hex(32),
-                    runtime_version=version("loushang"),
-                    runtime_protocol_epoch=2,
-                    windows_candidate=native_platform == "windows-amd64",
-                )
-            except Exception as exc:
-                _failure(
-                    report, "workspace_setup", "product_cutover_refused", str(exc), root
-                )
-                yield None
-                return
-            yield root, workspace, captured, settings
-
-
-def _capture_wheel(path: Path) -> bytes:
-    return capture_authoring_input(
-        path,
-        maximum_bytes=_MAX_WHEEL_BYTES,
-        invalid_input="Wheel must be a regular file within 2 MiB",
-        changed_before_read="Wheel changed before capture",
-        changed_during_read="Wheel changed during capture",
-    )
-
+        except Exception as exc:
+            _failure(
+                report, "workspace_setup", "product_cutover_refused", str(exc), root
+            )
+            yield None
+            return
+        yield root, workspace, captured, settings
 
 
 def _run_coding_cli(args: tuple[str, ...], *, workspace: Path) -> str | None:
@@ -350,16 +281,7 @@ def _document_body(
         if kind == "prompt"
         else f"{plugin_id}/themes/{resource_name}.json"
     )
-    try:
-        with ZipFile(wheel) as archive:
-            info = archive.getinfo(member)
-            if not 0 < info.file_size <= 1024 * 1024:
-                raise _SelectionRefusal(
-                    "selected Resource document is empty or oversized"
-                )
-            body = archive.read(info).decode("utf-8")
-    except (BadZipFile, KeyError, UnicodeDecodeError) as exc:
-        raise _SelectionRefusal("Wheel lacks the requested Resource document") from exc
+    body = read_authoring_wheel_document(wheel, member)
     try:
         if kind != "theme":
             body = strip_frontmatter(body).strip()
@@ -374,7 +296,7 @@ def _document_body(
     return body
 
 
-def _prove_new_session_use(
+async def _prove_new_session_use(
     *,
     workspace: Path,
     settings: SettingsManager,
@@ -388,117 +310,54 @@ def _prove_new_session_use(
         response_id="author-smoke",
         text="author smoke complete",
     )
-    with adapter.registered():
-        session = None
-        try:
-            manager = asyncio.run(
-                SessionManager.new(
-                    session_dir=session_root, cwd=str(workspace), persist=True
-                )
-            )
-            session = create_agent_session(
-                session_manager=manager,
-                model=adapter.model(
-                    model_id="author-smoke-model",
-                    name="Author Smoke Model",
-                    endpoint="author-smoke-offline",
-                ),
-                services=create_services(settings_manager=settings),
-                composition_set="coding-standard",
-            )
-            bundle = session.resource_bundle
-            if bundle is None:
-                raise _SelectionRefusal("new Session has no Resource bundle")
-            selected = (
-                bundle.skills
-                if kind == "skill"
-                else bundle.prompts
-                if kind == "prompt"
-                else bundle.themes
-            )
-            if not any(
-                item.name == resource_name and item.source_kind == "external_package"
-                for item in selected
-            ):
-                raise _SelectionRefusal(
-                    "requested external Resource is absent from new Session"
-                )
-            if kind == "theme":
-                try:
-                    expected_tokens = parse_coding_plugin_theme_document(expected_body)
-                    app = SimpleNamespace(transcript_theme=None, welcome_theme=None)
-                    current = SimpleNamespace(
-                        settings_manager=settings, resource_bundle=bundle
-                    )
-                    apply_coding_plugin_theme_to_screen(app, current)
-                    for token, style in expected_tokens.items():
-                        resolver = (
-                            app.welcome_theme
-                            if token.startswith("welcome.")
-                            else app.transcript_theme
-                        )
-                        applied = resolver.resolve(token)
-                        if any(applied.get(key) != value for key, value in style.items()):
-                            raise RuntimeError(f"Screen did not apply Theme token {token}")
-                except Exception as exc:
-                    raise _UseRefusal(str(exc)) from exc
-                return
-            invocation = (
-                f"/skill:{resource_name} {_SMOKE_ARGUMENTS}"
-                if kind == "skill"
-                else f"/{resource_name} {_SMOKE_ARGUMENTS}"
-            )
+    async with hold_authoring_session(
+        adapter.registered(),
+        SessionManager,
+        lambda manager: create_agent_session(
+            session_manager=manager,
+            model=adapter.model(
+                model_id="author-smoke-model",
+                name="Author Smoke Model",
+                endpoint="author-smoke-offline",
+            ),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-standard",
+        ),
+        workspace=workspace,
+        session_dir=session_root,
+    ) as (manager, session):
+        bundle = require_authoring_resource_selection(
+            session.resource_bundle, kind=kind, name=resource_name
+        )
+        if kind == "theme":
             try:
-                asyncio.run(session.prompt(invocation))
-                snapshots = [
-                    entry
-                    for entry in manager.get_entries()
-                    if entry.kind == "model.input.prepared"
-                ]
-                if len(snapshots) != 1:
-                    raise RuntimeError(
-                        "new Session did not persist exactly one prepared model input"
+                expected_tokens = parse_coding_plugin_theme_document(expected_body)
+                app = SimpleNamespace(transcript_theme=None, welcome_theme=None)
+                current = SimpleNamespace(
+                    settings_manager=settings, resource_bundle=bundle
+                )
+                apply_coding_plugin_theme_to_screen(app, current)
+                for token, style in expected_tokens.items():
+                    resolver = (
+                        app.welcome_theme
+                        if token.startswith("welcome.")
+                        else app.transcript_theme
                     )
-                snapshot_id = getattr(snapshots[0].payload, "snapshot_id", None)
-                if not isinstance(snapshot_id, str):
-                    raise RuntimeError("prepared model input has no snapshot ID")
-                rebuilt = manager.rebuild_model_input(snapshot_id)
-                for surface in (rebuilt.logical_input, rebuilt.prepared_payload):
-                    user_text = tuple(_user_message_text(surface))
-                    if not any(expected_body in text for text in user_text):
-                        raise RuntimeError(
-                            "selected Resource body is absent from prepared user message"
-                        )
-                    if any(invocation in text for text in user_text):
-                        raise RuntimeError(
-                            "raw slash invocation remained in prepared user message"
-                        )
+                    applied = resolver.resolve(token)
+                    if any(applied.get(key) != value for key, value in style.items()):
+                        raise RuntimeError(f"Screen did not apply Theme token {token}")
             except Exception as exc:
                 raise _UseRefusal(str(exc)) from exc
-        finally:
-            if session is not None:
-                asyncio.run(session.dispose())
-
-
-def _user_message_text(logical_input: object) -> Iterator[str]:
-    if not isinstance(logical_input, dict):
-        return
-    messages = logical_input.get("messages")
-    if not isinstance(messages, list):
-        return
-    for message in messages:
-        if not isinstance(message, dict) or message.get("role") != "user":
-            continue
-        content = message.get("content")
-        if isinstance(content, str):
-            yield content
-        elif isinstance(content, list):
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    value = part.get("text")
-                    if isinstance(value, str):
-                        yield value
-
+            return
+        command = f"/skill:{resource_name}" if kind == "skill" else f"/{resource_name}"
+        invocation = f"{command} {_SMOKE_ARGUMENTS}"
+        try:
+            await session.prompt(invocation)
+            prove_prepared_authoring_resource_use(
+                manager, invocation=invocation, expected_body=expected_body,
+            )
+        except Exception as exc:
+            raise _UseRefusal(str(exc)) from exc
 
 
 __all__ = ["main", "smoke_coding_data_wheel", "smoke_coding_worker_candidate_wheel"]

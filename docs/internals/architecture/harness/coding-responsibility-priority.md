@@ -1,5 +1,93 @@
 # Coding剩余职责实施优先级
 
+## 下一批会话启动装配
+
+以本地 Worker 交付候选 `c4ef1b7b2` 为库存基线。优先核对普通会话的旧管理态与已围栏 Product 两条启动路径。`composition/bootstrap.py`、`base_plugin.py`、`capability_plugins.py`、`product_capability_plugins.py`、`package_catalog.py` 与 `package/product_runtime.py` 共 6,441 行。沿 `create_agent_session` 的实际入口一起核对选择、插件准备、Catalog 投影、所有者发布和失败回收。
+
+Harness Session 已负责 Catalog 投影以及启动准备和失败交接。Package Product 已负责已围栏来源与运行时持有。下一批应从两条路线仍各自承担的准备和所有权交接中，找到可以接入同一现有实现的完整操作。保留 Coding 的默认组合、批准、历史来源校验和工作区策略，保留旧管理态与已围栏来源各自的锁、重试及故障顺序。
+
+同一基线上，`product_worker_*.py` 为 110 文件、9,949 行，其中函数与方法的定义和实现占 2,920 行。Windows 与 POSIX Worker 的原生操作已由 Harness 对应组件承接，剩余优先核对 Session 接入和明确重复的实际操作。`private_data_*.py` 为 28 文件、4,594 行。备份、恢复和过期执行已共用现有 Harness 事务，继续检查 CLI 与 SDK 是否在原生读写权限之外仍重复获取和复核资源。
+
+上面的行数用于界定审查范围。实际收益按同批替换的实现和 Git 跟踪的生产 Python 净变化复核。对启动路线沿实际入口复验成功、关闭与异常回收。架构职责复核参考本地方法修订 `0f9bd3f`。
+
+## Worker 历史读写入口的 Product 校验
+
+检查点读取、发布和修复，V2 预检、暂存、提交、轮换和退休，以及只读 GC 证明复用 Package Product 对原生 owner 类型、产品标识和 Linux 限制的检查。Coding 保持原入口、错误和记录类型。历史审阅直接绑定已加载的 owner，V2 读取器、暂存、按需检查点和注册修复继续在使用时加载。锁、回放、读写权限和实际变更由原来的执行体管理。
+
+相对 `69e8c2a93`，Coding 减少 46 行，Harness 增加 12 行，Hosting、其他生产 Python 和测试均变化 0 行，系统生产 Python 减少 34 行。Coding 为 77,880 行。67 项 Linux 既有用例通过，包含回收拒绝、中断后重放和保留历史复核。Ruff 与 mypy 通过，读取型绑定生成时未新增加载模块。
+
+后续 C54 架构清单移除了已由 Package Product 接管的 Windows 批准依赖。修正涉及 3 行测试代码，C54 的 7 项既有断言均通过。
+
+## Worker 原生操作入口和历史识别
+
+Harness Worker CLI 先核实原生平台，再解析工作区并持有相应的 Product。Linux 续用只读候选状态入口，Windows 续用精确的原生 owner 类型检查。Linux 发布的审阅、批准、安装和修复由共享命令实现调用原有 Package Product 权限。Windows 共用 Wheel 读取、审阅身份校验与批准回执投影，平台自身的后端安装与恢复保留各自的合同。
+
+Linux 历史审阅、准备、GC 检查和恢复直接使用 Harness 持有的已知文件名和暂存规则。故障注入仍作用于相应的实际读写 owner，Coding 保留产品授权、原记录类型和命令兼容。
+
+相对 `a06aec91e`，Coding 减少 79 行，Harness 增加 132 行，Hosting 与其他生产 Python 变化 0 行，系统生产 Python 增加 53 行，测试减少 3 行。共享入口和执行归属的变化以此成本计入，文件识别规则停用旧转发的收益计入本批。
+
+Linux 上 262 项既有用例通过，涵盖已安装原生 CLI、发布修复、准备与 GC 关联、固定历史和批准记录。Windows 平台关闭和错误优先级由既有测试在 Linux 验证，1 项原生 Windows 用例跳过。
+
+## 能力 Provider 与工作区授权去重
+
+Arch 与 LSP 共用 Harness 对 Provider 配置字段、Facet 接口和运行时所有权的校验及释放。两个内置插件分别从各自的 Provider 定义生成声明。工作区路径由 Harness Workspace 核验。LSP 共用查询与提纲的服务选择、协议能力检查和文档打开。Coding 保留分析语义、协议请求与结果、Provider 错误及产品配置类型。
+
+文件工具和进程共用 Harness 的实时授权选择。Git 根目录解析集中到现有 Workspace Git 实现，沿用普通文件工具和链接工作树进程各自的范围。Coding 执行授权类型保留原字段及 slots。
+
+以 `de9a7a7d8` 为基线，Coding 减少 207 行，Harness 增加 119 行，Hosting 变化 0 行，其他生产 Python 增加 25 行，增量位于插件声明实现。系统生产 Python 减少 63 行。测试代码变化 0 行。
+
+Linux 上通过 399 项不同的既有用例。最终授权候选复验链接工作树、只读约束、恢复首条输入、真实 LSP 启动和 Arch、LSP 共用的 Session Graph。两项跨能力用例在两组回归中均通过。
+
+## 受管服务的启动、接管与退出
+
+AppHost 管理已安装受管子进程的参数与端点接管、就绪发布、中断重放和退出清理。Hosting 管理系统通知、原生进程证明、systemd 与 launchd 的查询及控制。普通 Mux、受管 Mux、Hosted 服务与 Canary 接入各自的现有 owner。Coding 提供产品标识、入口、状态路径、环境白名单和错误映射。
+
+以 `9a9333ca5` 为基线，Coding 减少 460 行，Harness 变化 0 行，Hosting 增加 193 行，其他生产 Python 增加 519 行，增量均在 AppHost。系统生产 Python 增加 252 行。此次候选的 Coding 为 78,212 行，比 `546b209f6` 少 8,728 行，系统生产 Python 多 235 行。测试代码增加 98 行，沿用原有门禁与测试用例集合。
+
+Linux 上共有 129 项不同的既有用例通过。真实子进程回归覆盖启动、复用、注册失败后回收，以及 Canary 安装入口。普通 Mux 和 systemd 通知模式验证实际子进程的就绪及退出，使用测试自有的通知套接字。launchd 通过现有模拟验证。原生 Windows、原生 macOS 和真实 systemd 用户管理器的路线待验证。
+
+## 启用迁移的日志回放
+
+Harness Plugin Management 用同一次已校验的日志投影支持读取、继续迁移和幂等重放。旧设置写入与原迁移日志入口共用接受后封锁规则。Coding 保留工作区与存量路径的绑定。快照捕获、写锁、日志版本以及迁移错误的类型和优先级沿用原合同。
+
+以 `4f22c95b6` 为基线，Coding 减少 11 行，Harness 增加 6 行，Hosting 和其他生产代码变化均为 0 行，系统生产 Python 减少 5 行。Linux 共 39 项现有用例通过，涵盖迁移中断后重试、旧写入封锁、未来版本拒绝、普通 Session 的禁用状态以及架构边界。测试代码增量为 0。
+
+## 前台与协作命令交付候选
+
+以 `5c60d3a9a` 为基线。AppHost 管理本地 Mux 的连接、附着范围与资源关闭，以及受管 Mux 的工作区证据复核、创建恢复与停止交接。Mux 和 Hosted stdio 共用进程退出及错误输出处理。两个 Mux 入口共用 Coding 的产品接线，直接构造原 HarnessTUI Shell。Harness CLI 执行协作配方、处理失败并释放临时 Session。Coding 保留命令选择、输出合同、批准、默认模型与工具策略。合并时沿用当前 systemd 启动入口。
+
+本批 Coding 减少 527 行，Harness 增加 182 行，Hosting 变化 0 行，其他生产 Python 增加 576 行，增量均在 AppHost。系统生产 Python 增加 231 行。以 `546b209f6` 为对照，八批候选合计 Coding 减少 8,257 行，系统生产 Python 减少 12 行。统计范围为 Git 跟踪的 `src/loushang` Python 文件，按物理行计数。测试源码增加 24 行。
+
+Linux 共 155 项不同用例通过，覆盖真实 Mux 冷启动、停止后重启、创建与关闭恢复、协作命令、Hosted stdio 和精确架构约束。最后用本工作树的锁定依赖复验 17 项，覆盖 Arch 子会话的源信任以及两条 Mux 接线。原生 Windows 与 macOS 验证待完成。
+
+下一轮沿普通 Session 的旧管理态和已围栏 Product Store 核对插件准备、Catalog 发布与失败回收。优先查找可删的第二套实现，复用 `SessionStartupCustody` 和 `AgentProductConstructionBinding`。两条路径已经共用能力计划编译，贡献选择也已合并，这些成果在本轮基线内。后续保留各自的信任证明、历史恢复和产品准入。
+
+## Package 制品与作者验证交付候选
+
+以 `9c5d21ec1` 为基线。Package Product 持有只读预览的已安装清单、围栏复核与句柄交接，统一外部 Wheel 捕获和依赖 Wheel 归档校验。现有 Worker 批准事务共用原生发行记录的读取与结算机制。Harness Plugin Authoring 承接一次性 Product 生命周期与离线会话取证。Coding 保留批准政策、产品来源选项和公开记录类型。基线已有的 Worker 候选离线证明直接复用。
+
+本批 Coding 减少 251 行，Harness 增加 405 行，系统生产 Python 增加 154 行。接收端增量包括预览权限与失败清理、实际制品校验，以及作者 CLI 和 SDK 共用的会话证据流程。七批候选比 `546b209f6` 的 Coding 少 7,730 行，系统生产 Python 少 243 行。
+
+## Hosted 执行与 Goal 交付候选
+
+以 `c3581c798` 为基线。AppHost 持有显式应用准入与失败交接、Hosted 工作区目录和资源权限、交互选择恢复、会话标题请求，以及 Goal 命令与断线后的任务寿命。HarnessWork 处理工作计划准备、验证证据投影、事务关闭与历史回放。Coding 保留仓库验证和批准规则、产品默认值、会话及工作区的具体绑定。合并时保留 Windows 与 macOS 原生存储的检查路径，执行提交和资源字节保管沿用基线已有实现。
+
+本批 Coding 减少 1,892 行，Harness 增加 140 行，AppHost 增加 1,425 行，HarnessWork 增加 790 行，AppServer 增加 4 行，系统生产 Python 增加 467 行。共享的命令、资源与工作记录机制在现有组件内实现。六批候选比 `546b209f6` 的 Coding 少 7,479 行，系统生产 Python 少 397 行。
+
+Linux 定向回归通过 41 项，覆盖交互选择、资源权限、启动与失败交接、Goal 计划，以及保留原始会话日志的只读回放和历史工作区隔离。回放与隔离的三项复验保持原超时和断言。原生 Windows 与 macOS 路线仍需验证。
+
+## C01 启动装配与 Continuity 交付候选
+
+以旧版切换候选 `12fc10042` 为基线。Harness Session 接管已围栏、历史和初始工作区的 Catalog 准备、刷新与失败交接，并统一能力插件的已批准输入绑定。Harness Package Product 负责已安装来源的身份与工厂交接。Harness Continuity 接管已安装 Provider 的启动、发布、状态复原与关闭。Coding 保留 CompositionSet、产品默认值、批准和工作区执行上限。只读资源预览沿用基线的围栏复核和句柄寿命，并复用 Harness Plugin Management 的资源编译。
+
+本批 Coding 减少 838 行，Harness 增加 886 行，系统生产 Python 增加 48 行。接收端增量用于复用三条 Catalog 启动路径、刷新和 Continuity 发布及清理。五批候选合计比 `546b209f6` 的 Coding 少 5,589 行，系统生产 Python 少 867 行。职责复核采用本地架构方法 `0f9bd3f`。
+
+## 旧版插件首次切换交付候选
+
+以合并候选 `b4aff3388` 为基线。Harness Package Product 接管冻结 Source 准入、首次快照与围栏的资源寿命、审阅证据校验、接受回执及已提交事务重放。离线迁移和普通会话启动共用围栏与重试机制。Coding 保留迁移允许范围、历史成员映射、具体命令、批准要求及公开记录类型。
+
+本批 Coding 减少 576 行，Harness 增加 431 行，系统生产 Python 减少 145 行。首次围栏的投影清理由离线命令与 Session 两个入口复用，其额外代码已计入 Harness 成本。四批候选合计比 `546b209f6` 的 Coding 少 4,751 行，系统生产 Python 少 915 行。
+
 ## 历史索引与会话恢复交付候选
 
 以私有数据生命周期候选 `a61f5b431` 为基线。Harness Session 接管历史索引和预览投影、恢复准入、运行时准备与发布。Harness Transcript 接管存量恢复记录的编解码与校验、首条输入的历史证明以及分离会话的模型选择落盘。嵌入式与 Hosted 入口共用准备和提交规则，Coding 保留批准、产品选择、记录的公开类型和历史错误语义。

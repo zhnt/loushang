@@ -7,6 +7,7 @@ import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from loushang.coding.package.epoch_layout import (
@@ -40,7 +41,8 @@ from loushang.coding.package.source_snapshot import (
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_runtime import (
-    bind_legacy_pre_b_snapshot_owner,
+    commit_legacy_product_snapshot,
+    hold_legacy_pre_b_snapshot_owner,
     legacy_product_projection_parent,
     prepare_legacy_product_cutover_roots,
     reopen_legacy_product_cutover,
@@ -93,17 +95,11 @@ def prepare_coding_package_cutover_roots(
 ) -> CodingPackageEpochLayoutV1:
     """Prepare only missing private roots for an offline first B cutover."""
 
-    if os.name not in {"posix", "nt"}:
-        raise RuntimeError("Native Package cutover preparation is required")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    prepare_legacy_product_cutover_roots(
+    return prepare_legacy_product_cutover_roots(
         lifecycle,
-        control_root=epoch.control_root,
-        snapshot_root=epoch.snapshot_root,
-        epochs_root=epoch.epochs_root,
+        resolve_epoch=partial(resolve_coding_package_epoch_layout, lifecycle),
         label="Coding Package",
     )
-    return epoch
 
 
 def prepare_and_cutover_coding_package_store_from_legacy(
@@ -232,27 +228,15 @@ def cutover_coding_package_store_from_legacy(
     """Hold real Coding Source state until Product finishes the first B fence."""
 
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    with hold_coding_pre_b_snapshot_owner(
-        lifecycle, settings_manager, projection_parent=projection_parent
-    ) as prepared:
-        attempt = prepared.owner.cutover_from_legacy(
-            authority_root=epoch.authority_root,
-            control_root=epoch.control_root,
-            legacy_root_name=epoch.legacy_root_name,
-            epochs_root_name=epoch.epochs_root_name,
-            namespace_id=namespace_id,
-            minimum_runtime_version=minimum_runtime_version,
-            minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
-            snapshot_admission=(
-                None
-                if snapshot_admission is None
-                else lambda snapshot: snapshot_admission(prepared, snapshot)
-            ),
-        )
-        return CodingPackagePreBCutover(
-            attempt=attempt,
-            snapshots=prepared.owner,
-        )
+    with commit_legacy_product_snapshot(
+        epoch,
+        hold_coding_pre_b_snapshot_owner(lifecycle, settings_manager, projection_parent=projection_parent),
+        namespace_id=namespace_id,
+        minimum_runtime_version=minimum_runtime_version,
+        minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+        snapshot_admission=snapshot_admission,
+    ) as (attempt, snapshots):
+        return CodingPackagePreBCutover(attempt=attempt, snapshots=snapshots)
 
 
 @contextmanager
@@ -273,57 +257,56 @@ def hold_coding_pre_b_snapshot_owner(
     if not isinstance(global_path, Path) or not isinstance(project_path, Path):
         raise ValueError("Coding pre-B Source settings paths are required")
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    with hold_coding_pre_b_source_configuration(
-        settings_manager,
-        global_settings_path=global_path,
-        project_settings_path=project_path,
-        projection_parent=projection_parent,
-    ) as source_root:
-        with hold_legacy_product_projection_root(
-            projection_parent,
-            prefix="coding-pre-b-legacy-pointer-",
-            projection_name=_PROJECTION_NAME,
-            projection_label="Coding Source projection",
-        ) as pointer_root:
-            package = resolve_coding_package_pre_b_store_members(lifecycle)
-            state = resolve_coding_lifecycle_pre_b_members(lifecycle)
-            source_projection = json.loads(
-                read_legacy_product_projection(source_root, name=_PROJECTION_NAME)
-            )
-            legacy_classification = classify_coding_legacy_workspace(
-                source_projection,
-                lifecycle=state,
-                package=package,
-            )
-            shared_members = (
-                (
-                    PackageProductPreBSnapshotSharedMemberV1(
-                        source_root=package.source_root,
-                        member_name="package-lock.json",
-                        domains=("binding_history", "lock_history"),
-                    ),
-                )
-                if package.binding_history
-                else ()
-            )
-            owner = bind_legacy_pre_b_snapshot_owner(
-                epoch.snapshot_root,
-                store_id=epoch.store_id,
-                observed_roots=(
-                    (package.source_root, package.domain_members()),
-                    (state.source_root, state.domain_members()),
+
+    def observe(source_root: Path) -> tuple[
+        tuple[tuple[Path, dict[str, tuple[str, ...]]], ...],
+        tuple[PackageProductPreBSnapshotSharedMemberV1, ...],
+        CodingLegacyWorkspaceClassificationV1,
+    ]:
+        package = resolve_coding_package_pre_b_store_members(lifecycle)
+        state = resolve_coding_lifecycle_pre_b_members(lifecycle)
+        source_projection = json.loads(
+            read_legacy_product_projection(source_root, name=_PROJECTION_NAME)
+        )
+        classification = classify_coding_legacy_workspace(
+            source_projection, lifecycle=state, package=package,
+        )
+        shared_members = (
+            (
+                PackageProductPreBSnapshotSharedMemberV1(
+                    source_root=package.source_root,
+                    member_name="package-lock.json",
+                    domains=("binding_history", "lock_history"),
                 ),
-                fence_root=epoch.control_root,
-                source_configuration_root=source_root,
-                legacy_pointer_root=pointer_root,
-                legacy_root_pointer_name=epoch.legacy_root_name,
-                shared_members=shared_members,
             )
-            yield CodingPreBSnapshotPreparation(
-                owner=owner,
-                source_configuration_root=source_root,
-                legacy_classification=legacy_classification,
-            )
+            if package.binding_history
+            else ()
+        )
+        return (
+            ((package.source_root, package.domain_members()), (state.source_root, state.domain_members())),
+            shared_members,
+            classification,
+        )
+
+    with hold_legacy_pre_b_snapshot_owner(
+        epoch,
+        hold_coding_pre_b_source_configuration(
+            settings_manager,
+            global_settings_path=global_path,
+            project_settings_path=project_path,
+            projection_parent=projection_parent,
+        ),
+        projection_parent=projection_parent,
+        projection_name=_PROJECTION_NAME,
+        projection_label="Coding Source projection",
+        pointer_prefix="coding-pre-b-legacy-pointer-",
+        observe=observe,
+    ) as (owner, source_root, classification):
+        yield CodingPreBSnapshotPreparation(
+            owner=owner,
+            source_configuration_root=source_root,
+            legacy_classification=classification,
+        )
 
 
 __all__ = [

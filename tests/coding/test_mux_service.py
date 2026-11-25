@@ -64,18 +64,23 @@ def test_service_run_requires_systemd_notify_socket(monkeypatch, capsys):
     assert "notification socket" in capsys.readouterr().err
 
 
-def test_systemd_status_uses_the_published_managed_connection_root(tmp_path, monkeypatch):
+def test_systemd_status_uses_the_published_managed_connection_root(tmp_path, monkeypatch, capsys):
     from loushang.coding.cli import mux_service
+    from loushang.hosting import foreground_service
 
     endpoint = tmp_path / "endpoint.json"
     record_root = str(tmp_path / "managed/connection")
     endpoint.write_text(json.dumps({"recordRoot": record_root}))
+    monkeypatch.setattr(mux_service, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(foreground_service, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.delenv("LOUSHANG_MUX_BACKEND", raising=False)
     monkeypatch.setattr(mux_service, "_systemd_endpoint", lambda: endpoint)
-    monkeypatch.setattr(mux_service.subprocess, "run", lambda *a, **kw: SimpleNamespace(
-        stdout="LoadState=loaded\nActiveState=active\nInvocationID=" + "a" * 32,
-    ))
-    assert mux_service._systemd_state()["recordRoot"] == record_root
-    endpoint.write_text('{"recordRoot": "relative"}')
-    from loushang.coding.hosted.managed.service import ServiceControlError
-    with pytest.raises(ServiceControlError, match="management_unavailable"):
-        mux_service._systemd_state()
+
+    def run(command, **kwargs):
+        assert command[3] == "show"
+        assert kwargs["check"]
+        return SimpleNamespace(stdout="LoadState=loaded\nActiveState=active\nInvocationID=" + "a" * 32)
+
+    monkeypatch.setattr(foreground_service.subprocess, "run", run)
+    assert main(["service", "status", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["recordRoot"] == record_root

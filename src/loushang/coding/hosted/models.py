@@ -7,20 +7,13 @@ from loushang.ai.model import (
     ModelSelection,
 )
 from loushang.coding.composition.bootstrap import BootstrapServices, create_services
-from loushang.coding.control.settings_store import (
-    default_global_settings_path,
-    default_project_settings_path,
-)
+from loushang.coding.control.settings_store import open_coding_workspace_settings
 from loushang.foundation.reasoning import ThinkingLevel
-from loushang.harness.config.agent import SettingsManager
 from loushang.harness.session.model_resolution import resolve_session_model
 
 
 def create_hosted_services(workspace: Path | None) -> BootstrapServices:
-    return create_services(settings_manager=SettingsManager(
-        global_settings_path=default_global_settings_path(),
-        project_settings_path=default_project_settings_path(workspace) if workspace else None,
-    ))
+    return create_services(settings_manager=open_coding_workspace_settings(workspace))
 
 
 def preview_workspace_models(

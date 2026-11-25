@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import secrets
+import sys
 from collections.abc import Callable, Collection, Sequence
 from contextlib import closing
 from dataclasses import dataclass
 from hashlib import sha256
+from pathlib import Path
 from typing import NamedTuple, TypeVar
 
 from loushang.harness.plugin_management.journal_codecs import (
@@ -28,6 +31,7 @@ from loushang.harness.resources.packages.product_contract import (
 from ._application_runtime import (
     FencedOrdinaryProductApplication,
     hold_accepted_product_adoption,
+    require_current_product_admission,
 )
 from ._legacy_runtime import (
     FencedRuntimeOpenKwargs,
@@ -70,6 +74,7 @@ class _PluginBootstrapPolicy:
     operation_id_prefix: str
     enable_id_prefix: str
     error_prefix: str
+    plugin_ids: tuple[str, ...]
 
     def installation_key(self, scope_id: str, plugin_id: str) -> PluginInstallationKeyV1:
         return PluginInstallationKeyV1.workspace(self.product_id, scope_id, plugin_id)
@@ -103,7 +108,6 @@ def _initial_install_was_enabled(
 
 def product_bootstrap_completed(
     application: FencedOrdinaryProductApplication,
-    plugin_ids: tuple[str, ...],
     *,
     policy: _PluginBootstrapPolicy,
 ) -> bool:
@@ -111,7 +115,7 @@ def product_bootstrap_completed(
     product = application.runtime_owner.product_owner
     store_id = application.epoch_runtime.registry.store_id
     transitions = product.desired_state.transitions()
-    for plugin_id in plugin_ids:
+    for plugin_id in policy.plugin_ids:
         key = policy.installation_key(product.policy.project_scope_id, plugin_id)
         history = tuple(
             item for item in transitions if item.mutation.installation_key == key
@@ -127,27 +131,54 @@ def product_bootstrap_completed(
     return True
 
 
-def fresh_product_bootstrap_pending(
-    roots: FencedRuntimeOpenKwargs,
+def bootstrap_fresh_product_session(
+    workspace: Path,
     *,
-    windows: bool,
+    initial: bool,
+    windows_candidate: bool,
+    product_label: str,
+    require_fresh_inputs: Callable[[], None],
+    resolve_roots: Callable[[], FencedRuntimeOpenKwargs],
     verify_snapshot: Callable[[_FencedRuntime], bool],
     open_application: Callable[[], FencedOrdinaryProductApplication],
-    plugin_ids: tuple[str, ...],
+    require_current_admission: Callable[[], None] | None,
     policy: _PluginBootstrapPolicy,
-) -> bool:
-    """Require authenticated first-cutover evidence before inspecting startup history."""
-    if not inspect_fresh_product_epoch(
-        roots, windows=windows, verify_snapshot=verify_snapshot
-    ):
-        return False
-    with closing(open_application()) as application:
-        return not product_bootstrap_completed(application, plugin_ids, policy=policy)
+    bootstrap: Callable[[], None],
+) -> None:
+    """Run first startup or replay only a verified interruption of that startup."""
+    if initial:
+        require_fresh_inputs()
+    windows = os.name == "nt"
+    native_supported = (os.name == "posix" and sys.platform.startswith("linux")) or (
+        windows and windows_candidate
+    )
+    if not native_supported:
+        if initial:
+            raise RuntimeError(
+                f"{product_label} native automatic B Session route is not yet admitted"
+            )
+        return
+
+    if initial:
+        if not workspace.is_dir():
+            raise ValueError(
+                f"{product_label} Product workspace must be an existing directory"
+            )
+    else:
+        roots = resolve_roots()
+        require_current_product_admission(
+            require_current_admission, label=f"{product_label} Product"
+        )
+        if not inspect_fresh_product_epoch(roots, windows=windows, verify_snapshot=verify_snapshot):
+            return
+        with closing(open_application()) as application:
+            if product_bootstrap_completed(application, policy=policy):
+                return
+    bootstrap()
 
 
 def bootstrap_product_plugins(
     product: _ProductOwner,
-    plugin_ids: tuple[str, ...],
     *,
     policy: _PluginBootstrapPolicy,
     disabled_ids: Collection[str] = (),
@@ -155,7 +186,7 @@ def bootstrap_product_plugins(
 ) -> bool:
     """Replay the Product's ordered first-party selections under its admission."""
     changed = False
-    for plugin_id in plugin_ids:
+    for plugin_id in policy.plugin_ids:
         if require_current_admission is not None:
             require_current_admission()
         changed = bootstrap_product_plugin(
@@ -385,7 +416,6 @@ class ReviewedPluginChoices(NamedTuple):
 
 def replay_reviewed_product_plugins(
     product: _ProductOwner,
-    plugin_ids: tuple[str, ...],
     *,
     choices: ReviewedPluginChoices,
     removal_label: str,
@@ -408,7 +438,7 @@ def replay_reviewed_product_plugins(
             error_prefix=removal_label,
         )
 
-    for plugin_id in plugin_ids:
+    for plugin_id in policy.plugin_ids:
         if plugin_id in choices.removed_ids:
             continue
         key = (
@@ -455,26 +485,24 @@ def adopt_reviewed_product_plugins(
     open_epoch: Callable[[], _EpochT],
     accept_review: Callable[[_EpochT], _ReceiptT],
     open_application: Callable[[], FencedOrdinaryProductApplication],
-    reviewed_choices: Callable[[_ReceiptT], ReviewedPluginChoices],
-    plugin_ids: tuple[str, ...],
+    reviewed_choices: Callable[[_ReceiptT], ReviewedPluginChoices | frozenset[str]],
     policy: _PluginBootstrapPolicy,
     removal_label: str,
     history_label: str,
 ) -> _ReceiptT:
-    """Commit acceptance and replay the exact reviewed choices against scoped history."""
+    """Release the acceptance epoch before applying reviewed Product choices."""
     with hold_accepted_product_adoption(
         open_epoch=open_epoch,
         accept_review=accept_review,
         open_application=open_application,
     ) as (receipt, application):
         product = application.runtime_owner.product_owner
-        replay_reviewed_product_plugins(
-            product,
-            plugin_ids,
-            choices=reviewed_choices(receipt),
-            removal_label=removal_label,
-            policy=policy,
-            strict_history=True,
-            history_label=history_label,
-        )
+        choices = reviewed_choices(receipt)
+        if isinstance(choices, ReviewedPluginChoices):
+            replay_reviewed_product_plugins(
+                product, choices=choices, removal_label=removal_label, policy=policy,
+                strict_history=True, history_label=history_label,
+            )
+        else:
+            bootstrap_product_plugins(product, policy=policy, disabled_ids=choices)
         return receipt

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal, cast
 
@@ -238,16 +239,7 @@ class CodingAppHostCanaryControlJournal(
         *,
         operation_id: str,
     ) -> CodingAppHostCanaryControlSnapshotV1:
-        if _OPERATION_ID.fullmatch(operation_id) is None:
-            raise ValueError("Coding AppHost canary operation id is invalid")
-        target_state: Literal["enabled", "disabled"] = (
-            "enabled" if operation == "enable" else "disabled"
-        )
-        return self._mutate_locked(
-            lambda records: self._prepare_transition(
-                records, operation, target_state=target_state, operation_id=operation_id
-            )
-        )
+        return self._mutate_locked(self._bind_transition(operation, operation_id))
 
     async def _transition_async(
         self,
@@ -256,16 +248,21 @@ class CodingAppHostCanaryControlJournal(
         operation_id: str,
         timeout_seconds: float,
     ) -> CodingAppHostCanaryControlSnapshotV1:
+        return await self._mutate_locked_async(
+            self._bind_transition(operation, operation_id),
+            timeout_seconds=timeout_seconds,
+        )
+
+    def _bind_transition(
+        self, operation: CanaryControlOperation, operation_id: str
+    ) -> Callable[
+        [tuple[CodingAppHostCanaryControlRecordV1, ...]],
+        _PreparedMutation[CodingAppHostCanaryControlRecordV1, CodingAppHostCanaryControlSnapshotV1],
+    ]:
         if _OPERATION_ID.fullmatch(operation_id) is None:
             raise ValueError("Coding AppHost canary operation id is invalid")
-        target_state: Literal["enabled", "disabled"] = (
-            "enabled" if operation == "enable" else "disabled"
-        )
-        return await self._mutate_locked_async(
-            lambda records: self._prepare_transition(
-                records, operation, target_state=target_state, operation_id=operation_id
-            ),
-            timeout_seconds=timeout_seconds,
+        return partial(
+            self._prepare_transition, operation=operation, operation_id=operation_id
         )
 
     def _prepare_transition(
@@ -273,11 +270,13 @@ class CodingAppHostCanaryControlJournal(
         records: tuple[CodingAppHostCanaryControlRecordV1, ...],
         operation: CanaryControlOperation,
         *,
-        target_state: Literal["enabled", "disabled"],
         operation_id: str,
     ) -> _PreparedMutation[
         CodingAppHostCanaryControlRecordV1, CodingAppHostCanaryControlSnapshotV1
     ]:
+        target_state: Literal["enabled", "disabled"] = (
+            "enabled" if operation == "enable" else "disabled"
+        )
         current = _snapshot_from_records(records)
         if current.state == target_state:
             return None, lambda: current, lambda: current.selection_generation
@@ -291,11 +290,7 @@ class CodingAppHostCanaryControlJournal(
         )
         return (
             record,
-            lambda: CodingAppHostCanaryControlSnapshotV1(
-                state=target_state,
-                selection_generation=record.selection_generation,
-                record_revision=record.record_revision,
-            ),
+            lambda: _snapshot_from_records((record,)),
             lambda: current.selection_generation,
         )
 

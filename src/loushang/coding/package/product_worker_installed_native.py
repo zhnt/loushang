@@ -8,7 +8,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from loushang.harness.package_product._linux_worker_native_release import (
-    _PRODUCT_NATIVE_RELEASE_ROOT,
+    _InstalledLinuxWorkerReleaseReader,
     _LinuxWorkerNativeReleaseCustody,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -53,29 +53,22 @@ def open_coding_product_installed_worker_release_reader(
     return _product_native_release_custody().open_reader(product_owner)
 
 
-class CodingProductInstalledWorkerReleaseReader:
+class CodingProductInstalledWorkerReleaseReader(
+    _InstalledLinuxWorkerReleaseReader[CodingWorkerNativeLaunchMaterialV1]
+):
     """Recheck Product's retained source Wheel and receipt on each read."""
 
-    def __init__(self, *, product_owner: PosixLocalWheelProductSessionOwner) -> None:
-        self._product_owner = product_owner
-        self._root = product_owner.state_root / _PRODUCT_NATIVE_RELEASE_ROOT
+    _read_launch_material = staticmethod(
+        lambda root, product: _product_native_release_custody().current_launch_material(
+            root, product
+        )
+    )
 
-    @property
-    def gc_gate(self) -> PluginPackageGcReservationJournal:
-        return self._product_owner.gc_gate
-
-    @property
-    def product_owner(self) -> PosixLocalWheelProductSessionOwner:
-        return self._product_owner
+    def current_launch_material(self) -> CodingWorkerNativeLaunchMaterialV1:
+        return self._current_launch_material()
 
     def current_closure(self) -> CodingWorkerNativeClosureV1:
         return self.current_launch_material().closure
-
-    def current_launch_material(self) -> CodingWorkerNativeLaunchMaterialV1:
-        """Reopen the Product release before giving Hosting its native locator."""
-        return _product_native_release_custody().current_launch_material(
-            self._root, self._product_owner
-        )
 
 
 def verify_coding_product_native_release_root(

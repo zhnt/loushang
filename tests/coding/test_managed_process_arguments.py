@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from loushang.apphost.managed import bootstrap as managed_bootstrap
 from loushang.apphost.managed.contracts import (
     ManagedContractError,
     ManagedInstanceRefV1,
@@ -64,8 +65,8 @@ def test_backend_import_failure_closes_adopted_endpoint(tmp_path, monkeypatch, c
 
     for name in ("LOUSHANG_HOME", "LOUSHANG_RUNTIME_DIR", "LOUSHANG_TMPDIR"):
         monkeypatch.setenv(name, "test-original")
-    monkeypatch.setattr(module.socket, "socket", lambda **kwargs: Endpoint())
-    monkeypatch.setattr(module, "ManagedChildBootstrapV1", lambda *a, **k: pytest.fail("bootstrap before import"))
+    monkeypatch.setattr(managed_bootstrap.socket, "socket", lambda **kwargs: Endpoint())
+    monkeypatch.setattr(managed_bootstrap, "ManagedChildBootstrapV1", lambda *a, **k: pytest.fail("bootstrap before import"))
     monkeypatch.setattr(builtins, "__import__", import_module)
     assert module.main([selected.to_json(), str(tmp_path / "sessions"), "7"]) == 1
     assert closed == [True]
@@ -115,14 +116,14 @@ def test_process_installs_only_unexpired_explicit_trace(tmp_path, monkeypatch, m
                 self.record = self.trace.take()
     for name in ("LOUSHANG_HOME", "LOUSHANG_RUNTIME_DIR", "LOUSHANG_TMPDIR"):
         monkeypatch.setenv(name, "test-original")
-    monkeypatch.setattr(module, "monotonic", lambda: 100)
-    monkeypatch.setattr(module.socket, "socket", lambda **kwargs: object())
-    monkeypatch.setattr(module, "ManagedChildBootstrapV1", Bootstrap)
+    monkeypatch.setattr(managed_bootstrap, "monotonic", lambda: 100)
+    monkeypatch.setattr(managed_bootstrap.socket, "socket", lambda **kwargs: object())
+    monkeypatch.setattr(managed_bootstrap, "ManagedChildBootstrapV1", Bootstrap)
     monkeypatch.setattr(managed_local, "create_coding_managed_local_launch", lambda *args, **kwargs: object())
     monkeypatch.setattr(managed_local, "CodingManagedLocalCommandV1", lambda *args, **kwargs: object())
     reset_observability()
     try:
-        assert module._run([selected.to_json(), str(tmp_path / "sessions"), "7"]) == 0
+        assert module.main([selected.to_json(), str(tmp_path / "sessions"), "7"]) == 0
         assert instances[0].closed
         assert (instances[0].record is not None) == (mode == "active")
         if mode == "active":
@@ -147,7 +148,7 @@ def test_request_is_pure_and_freezes_environment_without_mutating_input(tmp_path
         selected = replace(selected, temporary_override=str(tmp_path / "scratch"))
     environment = {"LOUSHANG_HOME": "/other", "LOUSHANG_RUNTIME_DIR": "/elsewhere", "LOUSHANG_TMPDIR": "/mutable", "EMPTY": "", "LABEL": "中文"}
     original = dict(environment)
-    monkeypatch.setattr(module.socket, "socket", lambda *a, **k: pytest.fail("pure request opened socket"))
+    monkeypatch.setattr(managed_bootstrap.socket, "socket", lambda *a, **k: pytest.fail("pure request opened socket"))
     value = module.coding_managed_process_request(selected, 7, executable=sys.executable, environment=environment)
     assert environment == original
     assert value.argv == (
@@ -169,7 +170,7 @@ def test_request_rejects_invalid_facts_without_io(tmp_path, monkeypatch, kind):
     descriptor = {"bool_fd": True, "stdin": 0, "huge_fd": 2**31}.get(kind, 7)
     from pathlib import Path
 
-    monkeypatch.setattr(module.socket, "socket", lambda *a, **k: pytest.fail("invalid request opened socket"))
+    monkeypatch.setattr(managed_bootstrap.socket, "socket", lambda *a, **k: pytest.fail("invalid request opened socket"))
     with pytest.raises(ManagedContractError):
         module.coding_managed_process_request(
             selected, descriptor, executable="relative" if kind == "executable" else sys.executable,
@@ -189,7 +190,7 @@ def test_invalid_entry_is_bounded_and_never_adopts_descriptor(tmp_path, monkeypa
     arguments = [payload, str(tmp_path / "sessions"), "０" if kind == "fd" else "7"]
     if kind == "count":
         arguments = []
-    monkeypatch.setattr(module.socket, "socket", lambda *a, **k: pytest.fail("invalid entry adopted fd"))
+    monkeypatch.setattr(managed_bootstrap.socket, "socket", lambda *a, **k: pytest.fail("invalid entry adopted fd"))
     assert module.main(arguments) == 1
     captured = capsys.readouterr()
     assert captured.out == "" and captured.err == "managed_process_failed\n"
