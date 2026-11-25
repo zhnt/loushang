@@ -11,7 +11,6 @@ from hashlib import sha256
 from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.journal.codec import decode_json_record
 from loushang.harness.package_product._private_data_custody import (
     windows_private_data_read_descriptor,
 )
@@ -24,6 +23,7 @@ from loushang.harness.plugin_management._installation_root_windows import (
 from loushang.harness.plugin_management.private_data_confirmation import (
     PluginPrivateDataConfirmationRecordV1,
     accept_windows_private_confirmation,
+    decode_windows_private_confirmation,
     verify_windows_private_confirmation,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
@@ -31,9 +31,6 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionPlanV1,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 
 from .installation_private_data import (
     coding_arch_installation_private_data_root as coding_arch_installation_private_data_root,
@@ -105,28 +102,20 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
                 expected_target_id=plan.target_id,
                 changed="Windows Coding Arch confirmation plan is stale",
             )
-            record = PluginPrivateDataConfirmationRecordV1(
-                record_revision=1,
-                plan=plan,
-                confirmation=confirmation,
+            return accept_windows_private_confirmation(
+                plan,
+                confirmation,
                 actor_id=actor_id,
                 policy_revision=policy_revision,
+                resolve_path=lambda: self._record_path(confirmation),
+                borrow_state=lambda: (
+                    self.product.epoch_runtime.borrow_product_state_root_descriptor()
+                ),
+                io=_receipt_io,
+                maximum_bytes=_MAX_CONFIRMATION_BYTES,
+                write_maximum_bytes=_MAX_RECEIPT_BYTES,
+                label="Windows Coding Arch",
             )
-            payload = canonical_json_bytes(record.to_dict()) + b"\n"
-            if len(payload) > _MAX_CONFIRMATION_BYTES:
-                raise ValueError("Windows Coding Arch confirmation is too large")
-            path = self._record_path(confirmation)
-            with self.product.epoch_runtime.borrow_product_state_root_descriptor():
-                return accept_windows_private_confirmation(
-                    path,
-                    payload,
-                    record,
-                    io=_receipt_io,
-                    maximum_bytes=_MAX_CONFIRMATION_BYTES,
-                    write_maximum_bytes=_MAX_RECEIPT_BYTES,
-                    decode=self._decode,
-                    label="Windows Coding Arch",
-                )
 
     def is_confirmed(
         self,
@@ -181,17 +170,7 @@ class CodingWindowsArchPrivateDataConfirmationOwner:
 
     @staticmethod
     def _decode(raw: bytes) -> PluginPrivateDataConfirmationRecordV1:
-        record = decode_json_record(
-            raw,
-            PluginPrivateDataConfirmationRecordV1.from_dict,
-            label="Windows Coding Arch confirmation",
-        )
-        if (
-            record.record_revision != 1
-            or raw != canonical_json_bytes(record.to_dict()) + b"\n"
-        ):
-            raise ValueError("Windows Coding Arch confirmation is noncanonical")
-        return record
+        return decode_windows_private_confirmation(raw, label="Windows Coding Arch")
 
 
 __all__ = ["CodingWindowsArchPrivateDataConfirmationOwner"]

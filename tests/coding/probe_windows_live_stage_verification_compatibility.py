@@ -261,7 +261,7 @@ def observe(spec, monkeypatch):
             if hasattr(module, name):
                 patch.setattr(module, name, expected_marker)
         try:
-            result = code._verify_stage_marker(
+            result = code._PAYLOAD_PROGRAM.verify_stage(
                 receipt_owner=SimpleNamespace(product_owner=Product()),
                 receipt=receipt,
                 payload_lease=lease,

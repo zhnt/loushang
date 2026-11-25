@@ -15,7 +15,6 @@ from loushang.harness.worker.history._read_v2 import (
     RetainedHistoryReader,
     _RetainedHistoryFields,
 )
-from loushang.harness.worker.history._read_v2 import _seal_head as _seal_head
 
 from .product_worker_activation_base_v2 import CodingWorkerActivationReplayV2
 from .product_worker_history_checkpoint import _CHECKPOINT_HISTORY

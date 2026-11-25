@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import os
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from collections.abc import Callable, Mapping
-from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -26,16 +24,11 @@ from loushang.harness.package_product.product_worker_candidate import (
     _update_worker_candidate,
     _worker_candidate_revision_matches,
 )
+from loushang.harness.package_product.product_worker_wheel_admission import (
+    read_native_worker_release_input,
+)
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
-)
-from loushang.harness.resources.packages._file_consumption import (
-    closing_descriptor,
-    read_exact_bounded_file,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_directory,
-    open_windows_regular_file_at,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWorkerAdmissionV1,
@@ -126,23 +119,12 @@ class NativeWorkerReleaseInput:
     native_platform: Literal["linux-x86_64", "windows-amd64"]
 
     def read(self, value: str) -> bytes:
-        path = Path(value).expanduser().absolute()
-        windows = self.native_platform == "windows-amd64"
-        with ExitStack() as custody:
-            if windows:
-                parent = open_windows_directory(path.parent, writable=False)
-                custody.enter_context(closing_descriptor(parent))
-                descriptor = open_windows_regular_file_at(
-                    parent, path.name, create_new=False, write=False
-                )
-            else:
-                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-            return read_exact_bounded_file(
-                custody.enter_context(closing_descriptor(descriptor)),
-                self.maximum_bytes,
-                label=self.label,
-                check_regular=not windows,
-            )
+        return read_native_worker_release_input(
+            value,
+            maximum_bytes=self.maximum_bytes,
+            label=self.label,
+            windows=self.native_platform == "windows-amd64",
+        )
 
 
 class _WorkerCandidateRecord(Protocol):

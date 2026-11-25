@@ -7,22 +7,9 @@ from dataclasses import dataclass
 from loushang.harness.worker.history._start_gate import (
     _StartGateBaseMethods,
     _StartGateReplayFields,
-    parse_start_gate_segment,
 )
 
 from .product_worker_start_gate_journal import CodingWorkerStartGateRecordV1
-
-
-def _parse_start_gate_segment(
-    raw: bytes,
-    *,
-    first_revision: int,
-) -> tuple[CodingWorkerStartGateRecordV1, ...]:
-    return parse_start_gate_segment(
-        raw,
-        first_revision=first_revision,
-        record_type=CodingWorkerStartGateRecordV1,
-    )
 
 
 @dataclass(frozen=True, slots=True)

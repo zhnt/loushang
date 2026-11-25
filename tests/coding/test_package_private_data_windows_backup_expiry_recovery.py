@@ -11,13 +11,11 @@ from typing import cast
 import pytest
 
 import loushang.coding.package.private_data_windows_backup_expiry_recovery as recovery
+import loushang.coding.package.private_data_windows_restore_journal as restore_binding
 import loushang.harness.plugin_management._private_data_restore_windows as restore_proofs
 import loushang.harness.resources.packages._private_tree_windows as native_tree
 from loushang.coding.package.private_data_backup_expiry_records import (
     CodingArchPrivateDataBackupExpiryPlanV1,
-)
-from loushang.coding.package.private_data_restore_records import (
-    CodingArchPrivateDataRestorePlanV1,
 )
 from loushang.coding.package.private_data_windows_restore_journal import (
     CodingWindowsArchPrivateDataRestoreTransaction,
@@ -86,14 +84,6 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
     publication = SimpleNamespace(
         parent_identity=(1, 4), stage_identity=restored_identity
     )
-    restore = SimpleNamespace(
-        state_fd=9,
-        _plan_type=CodingArchPrivateDataRestorePlanV1,
-        _require_active=lambda: None,
-        _scan_confirmations=lambda: ((confirmation,), None),
-        events=lambda: (started, completed),
-        publication_for=lambda event, restore_plan: publication,
-    )
     desired = SimpleNamespace(
         inventory_revision=3,
         installation=lambda key: SimpleNamespace(
@@ -117,11 +107,11 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
             return None
 
     monkeypatch.setattr(
-        recovery, "coding_arch_installation_private_data_root", lambda layout, key: root
+        restore_binding, "coding_arch_installation_private_data_root", lambda layout, key: root
     )
     monkeypatch.setattr(native_tree, "WindowsPrivateDirectoryAcl", FakeAcl)
     monkeypatch.setattr(
-        recovery,
+        restore_binding,
         "CodingWindowsArchPrivateDataDeletionTransaction",
         lambda state_root, state_fd: SimpleNamespace(
             events=lambda: (deletion,), _close=lambda: None
@@ -151,7 +141,7 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
         native_tree, "windows_listdir_at", lambda descriptor: ("restored",)
     )
     monkeypatch.setattr(
-        recovery,
+        restore_binding,
         "inspect_coding_windows_arch_installation_root",
         lambda layout, key, state_root: restored_identity[:2],
     )
@@ -159,37 +149,61 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
         root_identity=restored_identity, target_id=plan.restored_target_id
     )
     monkeypatch.setattr(
-        recovery,
+        restore_binding,
         "_capture_windows_target_snapshot",
         lambda path, expected_root: current,
     )
     layout_mock = cast(CodingPluginLifecycleStateLayout, SimpleNamespace())
     product_mock = cast(WindowsLocalWheelProductSessionOwner, product)
-    restore_mock = cast(CodingWindowsArchPrivateDataRestoreTransaction, restore)
+    restore = CodingWindowsArchPrivateDataRestoreTransaction(
+        layout_mock, product_mock, 9
+    )
+    monkeypatch.setattr(
+        CodingWindowsArchPrivateDataRestoreTransaction,
+        "_scan_confirmations",
+        lambda self: ((confirmation,), None),
+    )
+    monkeypatch.setattr(
+        CodingWindowsArchPrivateDataRestoreTransaction,
+        "events",
+        lambda self: (started, completed),
+    )
+    monkeypatch.setattr(
+        CodingWindowsArchPrivateDataRestoreTransaction,
+        "publication_for",
+        lambda self, event, restore_plan: publication,
+    )
 
     recovery.require_windows_arch_backup_expiry_recovery_authority(
-        layout_mock, product_mock, restore_mock, plan
+        layout_mock, product_mock, restore, plan
     )
+    with pytest.raises(ValueError, match="restore owner changed"):
+        recovery.require_windows_arch_backup_expiry_recovery_authority(
+            layout_mock,
+            cast(WindowsLocalWheelProductSessionOwner, SimpleNamespace()),
+            restore,
+            plan,
+        )
     current.target_id = "present:" + "0" * 64
     with pytest.raises(ValueError, match="restored bytes changed"):
         recovery.require_windows_arch_backup_expiry_recovery_authority(
-            layout_mock, product_mock, restore_mock, plan
+            layout_mock, product_mock, restore, plan
         )
     current.target_id = plan.restored_target_id
     desired.inventory_revision = 4
     with pytest.raises(ValueError, match="Desired State changed"):
         recovery.require_windows_arch_backup_expiry_recovery_authority(
-            layout_mock, product_mock, restore_mock, plan
+            layout_mock, product_mock, restore, plan
         )
     desired.inventory_revision = 3
     deletion_receipt.receipt_id = "arch-deletion:foreign"
     with pytest.raises(ValueError, match="confirmation changed"):
         recovery.require_windows_arch_backup_expiry_recovery_authority(
-            layout_mock, product_mock, restore_mock, plan
+            layout_mock, product_mock, restore, plan
         )
     deletion_receipt.receipt_id = confirmation.deletion_receipt_id
     publication.stage_identity = (1, 6, stat.S_IFDIR | 0o700, 0, 1)
     with pytest.raises(ValueError, match="root binding changed"):
         recovery.require_windows_arch_backup_expiry_recovery_authority(
-            layout_mock, product_mock, restore_mock, plan
+            layout_mock, product_mock, restore, plan
         )

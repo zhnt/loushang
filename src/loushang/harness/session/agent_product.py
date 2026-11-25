@@ -2753,6 +2753,14 @@ class AgentProductSession(AgentSessionAdapterMixin):
         for publication in self._owner_publication_hooks:
             publication.commit_after_graph()
 
+    def _require_session_owner_generation_evidence(self) -> None:
+        """Surface deferred publication errors or finish missing owner evidence."""
+        for publication in self._owner_publication_hooks:
+            publication.require_published(
+                lambda: self._capability_owner_generations,
+                lambda: self._mounted_resource_candidate,
+            )
+
     def _restore_initial_resource_publication(self, previous: object) -> None:
         if not isinstance(previous, tuple) or len(previous) != 3:
             raise TypeError("initial Resource publication snapshot is invalid")

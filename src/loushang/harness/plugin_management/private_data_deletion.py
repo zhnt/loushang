@@ -11,30 +11,11 @@ import json
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Generic, Literal, Protocol, Self, TypeVar
+from typing import ClassVar, Generic, Literal, Protocol, Self, TypeVar
 
-from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages._private_tree_windows import (
-    PrivateWindowsTreeIO,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-    open_windows_deletion_entry_at,
-    open_windows_directory,
-    windows_delete_open_entry,
-    windows_flush_directory,
-    windows_listdir_at,
-    windows_rename_open_directory_at,
-)
-from loushang.harness.resources.packages.product_windows_epoch_guard import (
-    inspect_windows_product_private_directory_identity,
-)
-
-if TYPE_CHECKING:
-    from ._private_data_deletion_windows import WindowsPrivateDeletionTransaction
-
-
 from loushang.harness.resources.packages._file_consumption import closing_descriptor
 from loushang.harness.resources.packages._private_tree_posix import (
     PrivatePosixTreeIO,
@@ -45,7 +26,9 @@ from loushang.harness.resources.packages._tree_observation import (
     require_tree_subset,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
     RecordSchema,
+    decode_nullable,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     _entry_exists,
@@ -55,6 +38,26 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
 
 PRIVATE_DATA_DELETION_VERSION = 1
 PrivateDataDeletionDisposition = Literal["deleted", "already_absent"]
+_RecordT = TypeVar("_RecordT")
+
+
+def _read_record(
+    schema: RecordSchema,
+    construct: Callable[..., _RecordT],
+    value: object,
+    *,
+    error: str,
+) -> _RecordT:
+    if type(value) is not dict or set(value) != schema.keys:
+        raise ValueError(error)
+    return schema.decode(construct, value)
+
+
+_INSTALLATION_KEY = RecordField(
+    "installation_key",
+    decoder=PluginInstallationKeyV1.from_dict,
+    encoder=lambda key: key.to_dict(),
+)
 
 
 def _require_text(value: str, *, name: str) -> None:
@@ -99,29 +102,13 @@ class PluginPrivateDataDeletionPlanV1:
         ).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "installationKey": self.installation_key.to_dict(),
-            "ownerId": self.owner_id,
-            "planVersion": self.plan_version,
-            "targetId": self.target_id,
-        }
+        return _PLAN_SCHEMA.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataDeletionPlanV1:
-        if type(value) is not dict or set(value) != {
-            "installationKey",
-            "ownerId",
-            "planVersion",
-            "targetId",
-        }:
-            raise ValueError("Private-data deletion plan fields are invalid")
-        return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            owner_id=value["ownerId"],
-            target_id=value["targetId"],
-            plan_version=value["planVersion"],
+        return _read_record(
+            _PLAN_SCHEMA, cls, value,
+            error="Private-data deletion plan fields are invalid",
         )
 
 
@@ -143,24 +130,13 @@ class PluginPrivateDataDeletionConfirmationV1:
             raise ValueError("Unsupported private-data deletion confirmation")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "confirmationId": self.confirmation_id,
-            "confirmationVersion": self.confirmation_version,
-            "planFingerprint": self.plan_fingerprint,
-        }
+        return _CONFIRMATION_SCHEMA.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataDeletionConfirmationV1:
-        if type(value) is not dict or set(value) != {
-            "confirmationId",
-            "confirmationVersion",
-            "planFingerprint",
-        }:
-            raise ValueError("Private-data confirmation fields are invalid")
-        return cls(
-            plan_fingerprint=value["planFingerprint"],
-            confirmation_id=value["confirmationId"],
-            confirmation_version=value["confirmationVersion"],
+        return _read_record(
+            _CONFIRMATION_SCHEMA, cls, value,
+            error="Private-data confirmation fields are invalid",
         )
 
 
@@ -197,42 +173,78 @@ class PluginPrivateDataDeletionReceiptV1:
             raise ValueError("Unsupported private-data deletion receipt")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "confirmationId": self.confirmation_id,
-            "disposition": self.disposition,
-            "installationKey": self.installation_key.to_dict(),
-            "ownerId": self.owner_id,
-            "planFingerprint": self.plan_fingerprint,
-            "receiptId": self.receipt_id,
-            "receiptVersion": self.receipt_version,
-            "targetId": self.target_id,
-        }
+        return _RECEIPT_SCHEMA.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataDeletionReceiptV1:
-        if type(value) is not dict or set(value) != {
-            "confirmationId",
-            "disposition",
-            "installationKey",
-            "ownerId",
-            "planFingerprint",
-            "receiptId",
-            "receiptVersion",
-            "targetId",
-        }:
-            raise ValueError("Private-data deletion receipt fields are invalid")
-        return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            owner_id=value["ownerId"],
-            target_id=value["targetId"],
-            plan_fingerprint=value["planFingerprint"],
-            confirmation_id=value["confirmationId"],
-            receipt_id=value["receiptId"],
-            disposition=value["disposition"],
-            receipt_version=value["receiptVersion"],
+        return _read_record(
+            _RECEIPT_SCHEMA, cls, value,
+            error="Private-data deletion receipt fields are invalid",
         )
+
+    @classmethod
+    def _from_confirmed_plan(
+        cls,
+        plan: PluginPrivateDataDeletionPlanV1,
+        confirmation: PluginPrivateDataDeletionConfirmationV1,
+        *,
+        receipt_id: Callable[[], str],
+        disposition: PrivateDataDeletionDisposition,
+    ) -> PluginPrivateDataDeletionReceiptV1:
+        return cls(
+            installation_key=plan.installation_key,
+            owner_id=plan.owner_id,
+            target_id=plan.target_id,
+            plan_fingerprint=plan.fingerprint,
+            confirmation_id=confirmation.confirmation_id,
+            receipt_id=receipt_id(),
+            disposition=disposition,
+        )
+
+
+def _as_is(value: object) -> object:
+    return value
+
+
+_PLAN_SCHEMA = RecordSchema.for_dataclass(
+    PluginPrivateDataDeletionPlanV1, _as_is, _INSTALLATION_KEY
+)
+_CONFIRMATION_SCHEMA = RecordSchema.for_dataclass(
+    PluginPrivateDataDeletionConfirmationV1, _as_is
+)
+_RECEIPT_SCHEMA = RecordSchema.for_dataclass(
+    PluginPrivateDataDeletionReceiptV1, _as_is, _INSTALLATION_KEY
+)
+
+
+def confirmed_deletion_digest(
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
+    *,
+    domain: bytes,
+) -> str:
+    return hashlib.sha256(
+        domain
+        + plan.fingerprint.encode("ascii")
+        + b"\0"
+        + confirmation.confirmation_id.encode("utf-8")
+    ).hexdigest()
+
+
+def require_confirmed_deletion_command(
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
+    *,
+    owner_id: str,
+    invalid: str,
+) -> None:
+    if (
+        not isinstance(plan, PluginPrivateDataDeletionPlanV1)
+        or not isinstance(confirmation, PluginPrivateDataDeletionConfirmationV1)
+        or plan.owner_id != owner_id
+        or confirmation.plan_fingerprint != plan.fingerprint
+    ):
+        raise ValueError(invalid)
 
 
 class PrivateDataDeletionTarget(PrivateTreeSnapshot, Protocol):
@@ -297,16 +309,126 @@ class PluginPrivateDataDeletionEventV1(Generic[_TargetT_co]):
 
     @classmethod
     def from_dict(cls, value: object) -> Self:
-        schema = cls._record_schema()
-        if type(value) is not dict or set(value) != schema.keys:
-            raise ValueError("Private-data deletion event fields are invalid")
-        return schema.decode(cls, value)
+        return _read_record(
+            cls._record_schema(), cls, value,
+            error="Private-data deletion event fields are invalid",
+        )
+
+    @classmethod
+    def _bind_target_schema(cls, target: RecordField) -> RecordSchema:
+        cls.schema = RecordSchema.for_dataclass(
+            cls,
+            _as_is,
+            RecordField(
+                "plan",
+                decoder=PluginPrivateDataDeletionPlanV1.from_dict,
+                encoder=PluginPrivateDataDeletionPlanV1.to_dict,
+            ),
+            RecordField(
+                "confirmation",
+                decoder=PluginPrivateDataDeletionConfirmationV1.from_dict,
+                encoder=PluginPrivateDataDeletionConfirmationV1.to_dict,
+            ),
+            target,
+            RecordField(
+                "receipt",
+                decoder=partial(decode_nullable, decoder=PluginPrivateDataDeletionReceiptV1.from_dict),
+                encoder=lambda value: None if value is None else value.to_dict(),
+            ),
+        )
+        return cls.schema
 
     @classmethod
     def _record_schema(cls) -> RecordSchema:
         if cls.schema is None:
             raise TypeError("Private-data deletion record schema is required")
         return cls.schema
+
+
+def _same_deletion_operation(
+    left: PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget],
+    right: PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget],
+) -> bool:
+    return (
+        left.plan == right.plan
+        and left.confirmation == right.confirmation
+        and left.target == right.target
+    )
+
+
+_DeletionEventT = TypeVar(
+    "_DeletionEventT", bound=PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]
+)
+
+
+def _find_deletion_completion(
+    events: Sequence[_DeletionEventT],
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
+) -> _DeletionEventT | None:
+    for event in reversed(events):
+        if (
+            event.phase == "completed"
+            and event.plan == plan
+            and event.confirmation == confirmation
+        ):
+            return event
+    return None
+
+
+def _validate_deletion_sequence(
+    events: Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]],
+    *,
+    revision_error: str,
+    start_error: str,
+    rename_error: str,
+    completion_error: str,
+    owner_id: str | None = None,
+    receipt_id: Callable[
+        [PluginPrivateDataDeletionPlanV1, PluginPrivateDataDeletionConfirmationV1], str
+    ] | None = None,
+) -> None:
+    """Check retained phase transitions with the native route's receipt policy."""
+    pending = None
+    seen_confirmations: set[str] = set()
+    for revision, event in enumerate(events, start=1):
+        if event.revision != revision or (owner_id is not None and event.plan.owner_id != owner_id):
+            raise ValueError(revision_error)
+        if event.phase == "started":
+            if pending is not None or event.confirmation.confirmation_id in seen_confirmations:
+                raise ValueError(start_error)
+            pending = event
+            seen_confirmations.add(event.confirmation.confirmation_id)
+        elif event.phase == "renamed":
+            if (
+                pending is None
+                or pending.phase != "started"
+                or (receipt_id is not None and pending.target.root_identity is None)
+                or not _same_deletion_operation(pending, event)
+            ):
+                raise ValueError(rename_error)
+            pending = event
+        else:
+            if pending is None or not _same_deletion_operation(event, pending):
+                raise ValueError(completion_error)
+            receipt = None
+            if receipt_id is not None:
+                receipt = event.receipt
+                if receipt is None or receipt.receipt_id != receipt_id(
+                    event.plan, event.confirmation
+                ):
+                    raise ValueError(completion_error)
+            target = pending.target if receipt is not None else event.target
+            present = target.root_identity is not None
+            if (
+                pending.phase != ("renamed" if present else "started")
+                or (
+                    receipt is not None
+                    and receipt.disposition != ("deleted" if present else "already_absent")
+                )
+            ):
+                raise ValueError(completion_error)
+            pending = None
 
 
 def latest_deleted_target_receipt(
@@ -512,146 +634,6 @@ def remove_started_private_tree(
         if _entry_exists(parent_fd, root.name):
             raise ValueError(f"{io.label} private-data root was recreated")
         return "deleted", renamed
-
-
-_DeletionTargetT = TypeVar("_DeletionTargetT", bound=PrivateDataDeletionTarget)
-_DeletionEventT = TypeVar(
-    "_DeletionEventT", bound=PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]
-)
-
-
-class WindowsPrivateTreeCapture(Protocol):
-    def __call__(
-        self, path: Path, *, expected_root: tuple[int, int]
-    ) -> PrivateTreeSnapshot: ...
-
-
-def remove_started_windows_private_tree(
-    root: Path,
-    started: _CheckpointT,
-    *,
-    io: PrivateWindowsTreeIO,
-    capture_current: Callable[[], PrivateTreeSnapshot],
-    capture: WindowsPrivateTreeCapture,
-    make_tombstone_name: Callable[[], str],
-    current_start: Callable[[], _CheckpointT | None],
-    record_renamed: Callable[[_CheckpointT], _CheckpointT],
-) -> PrivateDataDeletionDisposition:
-    """Keep the original Windows rename/phase/handle ordering; caller keeps its fence."""
-    target = started.target
-    if target.root_identity is None:
-        if capture_current() != target:
-            raise ValueError(f"{io.label} absent target changed")
-        return "already_absent"
-
-    parent_identity = inspect_windows_product_private_directory_identity(root.parent)
-    tombstone_name = make_tombstone_name()
-    with WindowsPrivateDirectoryAcl() as exact_acl:
-        with closing_descriptor(
-            open_windows_directory(root.parent, share_delete=False, read_control=True)
-        ) as parent_fd:
-            io.require_directory(parent_fd, parent_identity, exact_acl)
-            names = set(windows_listdir_at(parent_fd))
-            root_present = root.name in names
-            tombstone_present = tombstone_name in names
-            if root_present and tombstone_present:
-                raise ValueError(f"{io.label} root and tombstone coexist")
-            if not root_present and not tombstone_present:
-                pending = current_start()
-                if pending is None or pending.phase != "renamed":
-                    raise ValueError(f"{io.label} deletion is ambiguous")
-                return "deleted"
-            if root_present:
-                if current_start() != started:
-                    raise ValueError(f"{io.label} deletion root reappeared")
-                if capture_current() != target:
-                    raise ValueError(f"{io.label} target changed before rename")
-                with closing_descriptor(
-                    open_windows_deletion_entry_at(parent_fd, root.name, directory=True)
-                ) as source_fd:
-                    exact_acl.validate(source_fd)
-                    io.require_simple_metadata(os.fstat(source_fd), directory=True)
-                    io.require_no_named_directory_streams(source_fd)
-                    if (
-                        metadata_identity(os.fstat(source_fd))[:3]
-                        != target.root_identity[:3]
-                    ):
-                        raise ValueError(f"{io.label} root identity changed")
-                    windows_rename_open_directory_at(
-                        parent_fd,
-                        source_fd,
-                        tombstone_name,
-                        expected_identity=target.root_identity,
-                    )
-                windows_flush_directory(parent_fd)
-            renamed = record_renamed(started)
-            if renamed.phase != "renamed":
-                raise ValueError(f"{io.label} rename event changed")
-            tombstone = root.parent / tombstone_name
-            remaining = capture(tombstone, expected_root=target.root_identity[:2])
-            require_tree_subset(remaining, target, label=io.label)
-            io.remove_members(tombstone, remaining.members, target)
-            if root.name in windows_listdir_at(parent_fd):
-                raise ValueError(f"{io.label} root was recreated")
-            with closing_descriptor(
-                open_windows_deletion_entry_at(
-                    parent_fd, tombstone_name, directory=True
-                )
-            ) as tombstone_fd:
-                io.require_directory(tombstone_fd, target.root_identity[:2], exact_acl)
-                if windows_listdir_at(tombstone_fd):
-                    raise ValueError(f"{io.label} tombstone is not empty")
-                windows_delete_open_entry(
-                    tombstone_fd,
-                    expected_identity=target.root_identity,
-                    directory=True,
-                )
-            windows_flush_directory(parent_fd)
-            if root.name in windows_listdir_at(parent_fd) or (
-                tombstone_name in windows_listdir_at(parent_fd)
-            ):
-                raise ValueError(f"{io.label} deletion did not settle")
-            io.require_directory(parent_fd, parent_identity, exact_acl)
-            return "deleted"
-
-
-def execute_windows_private_deletion(
-    transaction: WindowsPrivateDeletionTransaction[_DeletionTargetT, _DeletionEventT],
-    plan: PluginPrivateDataDeletionPlanV1,
-    confirmation: PluginPrivateDataDeletionConfirmationV1,
-    *,
-    capture_target: Callable[[], _DeletionTargetT],
-    remove_started: Callable[[_DeletionEventT], PrivateDataDeletionDisposition],
-) -> PluginPrivateDataDeletionReceiptV1:
-    """Execute one admitted deletion inside the caller's original offline transaction."""
-    replay = transaction.receipt_for(plan, confirmation)
-    if replay is not None:
-        return replay
-    pending = transaction.current_start()
-    if pending is None:
-        target = capture_target()
-        if target.target_id != plan.target_id:
-            raise ValueError(f"{transaction._label} deletion plan is stale")
-        started = transaction.record_start(plan, confirmation, target)
-    elif pending.plan == plan and pending.confirmation == confirmation:
-        events = transaction.events()
-        started = events[-2] if pending.phase == "renamed" else pending
-        if started.phase != "started" or started.target != pending.target:
-            raise ValueError(f"{transaction._label} deletion event changed")
-    else:
-        raise ValueError(f"Another {transaction._label} deletion is unfinished")
-    disposition = remove_started(started)
-    receipt = PluginPrivateDataDeletionReceiptV1(
-        installation_key=plan.installation_key,
-        owner_id=plan.owner_id,
-        target_id=plan.target_id,
-        plan_fingerprint=plan.fingerprint,
-        confirmation_id=confirmation.confirmation_id,
-        receipt_id=transaction._receipt_id(plan, confirmation),
-        disposition=disposition,
-    )
-    transaction.record_completion(started, receipt)
-    return receipt
 
 
 __all__ = [

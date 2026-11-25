@@ -220,7 +220,7 @@ def test_c55c_has_one_friend_bridge_and_one_product_dispatch() -> None:
     }
     assert profile_consumers == {BRIDGE, CODING_CANARY}
     coding = _read(CODING_CANARY)
-    assert "_bind_windows_lpac_contained_product_worker_profile" in coding
+    assert "_bind_selected_worker_components(" in coding
     assert "loushang.hosting" not in "\n".join(sorted(_imports(CODING_CANARY)))
     assert "_WindowsLpacProvisioner" not in coding
     assert "windows-restricted-direct-import-pe-v1" in production
@@ -265,11 +265,7 @@ def test_c55c_versions_cleanup_and_closes_only_after_native_settlement() -> None
         "_native_cleanup_witness_arguments",
         "_bind_windows_lpac_contained_product_worker_profile",
     ):
-        assert token in (
-            canary
-            if token == "_bind_windows_lpac_contained_product_worker_profile"
-            else attempt_lifecycle
-        )
+        assert token in attempt_lifecycle
     assert 'phase="settled"' in bridge
     assert "worker_native_containment_unsettled" in bridge
     assert "windows-restricted-direct-import-pe-v1" not in canary

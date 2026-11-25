@@ -11,7 +11,6 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar
 
@@ -37,6 +36,9 @@ from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
 )
+from loushang.harness.resources.packages._private_tree_windows import (
+    PrivateWindowsTreeIO,
+)
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
@@ -47,7 +49,10 @@ from .installation_private_data import (
     inspect_coding_windows_arch_installation_root,
 )
 from .legacy_windows_receipt import _receipt_io
-from .private_data_deletion_journal import CodingArchPrivateDataDeletionEventV1
+from .private_data_deletion_journal import (
+    CodingArchPrivateDataDeletionEventV1,
+    _receipt_id,
+)
 from .private_data_deletion_journal import _tombstone_name as _tombstone_name
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .private_data_windows_confirmation import (
@@ -109,12 +114,19 @@ class CodingWindowsArchPrivateDataDeletionTransaction(
     _max_event_bytes: ClassVar[int] = _MAX_EVENT_BYTES
     _max_events: ClassVar[int] = _MAX_EVENTS
     _receipt_io: ClassVar[WindowsPrivateReceiptIO] = _receipt_io
+    _tree_io: ClassVar[PrivateWindowsTreeIO] = _native_io
+    _tombstone_name = staticmethod(_tombstone_name)
     _event_type: ClassVar[type[CodingArchPrivateDataDeletionEventV1]] = (
         CodingArchPrivateDataDeletionEventV1
     )
     _target_type: ClassVar[type[CodingArchPrivateDataTargetSnapshotV1]] = (
         CodingArchPrivateDataTargetSnapshotV1
     )
+
+    def _capture_tree(
+        self, root: Path, *, expected_root: tuple[int, int]
+    ) -> CodingArchPrivateDataTargetSnapshotV1:
+        return _capture_windows_target_snapshot(root, expected_root=expected_root)
 
     def _domain(self) -> _CodingWindowsDeletionDomain:
         owner = self.confirmations
@@ -178,12 +190,7 @@ def windows_arch_deletion_receipt_id(
 ) -> str:
     if confirmation.plan_fingerprint != plan.fingerprint:
         raise ValueError("Windows Coding Arch deletion receipt is foreign")
-    return sha256(
-        b"loushang.coding-arch-private-data-receipt/v1\0"
-        + plan.fingerprint.encode("ascii")
-        + b"\0"
-        + confirmation.confirmation_id.encode("utf-8")
-    ).hexdigest()
+    return _receipt_id(plan, confirmation)
 
 
 def _capture_current_target(

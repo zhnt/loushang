@@ -18,6 +18,9 @@ from loushang.harness.journal import (
 from loushang.harness.package_product._linux_worker_native_release import (
     _ProductRootedNativeApprovalRecords,
 )
+from loushang.harness.package_product._worker_history_access import (
+    is_posix_worker_candidate_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -124,14 +127,7 @@ class CodingWorkerNativeApprovalJournal(
     )
 
     def __init__(self, product_owner: PosixLocalWheelProductSessionOwner) -> None:
-        if (
-            not isinstance(product_owner, PosixLocalWheelProductSessionOwner)
-            or product_owner.policy.product_id != "coding"
-            or not any(
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product_owner.policy.bindings
-            )
-        ):
+        if not is_posix_worker_candidate_product(product_owner, product_id="coding"):
             raise ValueError("Coding Product Worker candidate owner is required")
         self._product_owner = product_owner
         self._path = product_owner.state_root / NATIVE_APPROVAL_JOURNAL_NAME

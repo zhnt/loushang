@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from loushang.harness.package_product._worker_history_access import (
+    is_posix_worker_candidate_product,
+)
 from loushang.harness.package_product._worker_product_authority import (
     _PosixWorkerProductOptInAuthority,
 )
@@ -48,14 +51,7 @@ class CodingWorkerProductOptInOwner(
         ).current_closure()
 
     def __init__(self, product_owner: PosixLocalWheelProductSessionOwner) -> None:
-        if (
-            not isinstance(product_owner, PosixLocalWheelProductSessionOwner)
-            or product_owner.policy.product_id != "coding"
-            or not any(
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product_owner.policy.bindings
-            )
-        ):
+        if not is_posix_worker_candidate_product(product_owner, product_id="coding"):
             raise ValueError("Coding Worker candidate Product owner is required")
         self._product = product_owner
         self._journal = CodingWorkerOptInJournal(

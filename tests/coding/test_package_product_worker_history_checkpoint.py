@@ -9,12 +9,10 @@ from pathlib import Path
 import pytest
 
 from loushang.coding.package.product_worker_history_checkpoint import (
+    _CHECKPOINT_HISTORY,
     CodingWorkerHistoryCheckpointError,
     CodingWorkerHistoryCheckpointV1,
-    _anchor_for_records,
-    _is_empty_seal_successor,
-    _read_records,
-    _read_records_or_repair_empty_bootstrap,
+    _checkpoint_commands,
     read_coding_worker_checkpoint_writer_fence,
 )
 from loushang.coding.package.product_worker_history_checkpoint_anchor import (
@@ -38,6 +36,7 @@ from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.worker.history._checkpoint_history import _is_empty_seal_successor
 
 
 def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision() -> (
@@ -148,12 +147,12 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                     previous_raw=b"",
                     appended_line=line,
                 )
-                records, _history = _read_records(
+                records, _history = _checkpoint_commands()._read_records(
                     rooted, scope_id="project", store_id="store"
                 )
                 assert records == (checkpoint,)
                 with pytest.raises(CodingWorkerHistoryCheckpointError) as missing:
-                    _anchor_for_records(
+                    _CHECKPOINT_HISTORY.anchor_for_records(
                         rooted,
                         scope_id="project",
                         store_id="store",
@@ -171,7 +170,7 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                     rooted, expected=None, current=anchor
                 )
                 with pytest.raises(CodingWorkerHistoryCheckpointError) as lagging:
-                    _anchor_for_records(
+                    _CHECKPOINT_HISTORY.anchor_for_records(
                         rooted,
                         scope_id="project",
                         store_id="store",
@@ -188,7 +187,7 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                 assert {
                     p.name: p.read_bytes() for p in tmp_path.iterdir()
                 } == before_fence
-                settled = _anchor_for_records(
+                settled = _CHECKPOINT_HISTORY.anchor_for_records(
                     rooted,
                     scope_id="project",
                     store_id="store",
@@ -215,7 +214,9 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                         0,
                     )
                     with pytest.raises(CodingWorkerHistoryCheckpointError) as capacity:
-                        _read_records(rooted, scope_id="project", store_id="store")
+                        _checkpoint_commands()._read_records(
+                            rooted, scope_id="project", store_id="store"
+                        )
                     assert capacity.value.code == "coding_worker_checkpoint_corrupt"
                 rooted.append_bytes(b"{}\n")
                 before_fence = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
@@ -229,7 +230,9 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                     CodingWorkerHistorySegmentError,
                     match="coding_worker_segment_head_changed",
                 ):
-                    _read_records(rooted, scope_id="project", store_id="store")
+                    _checkpoint_commands()._read_records(
+                        rooted, scope_id="project", store_id="store"
+                    )
         finally:
             io.cleanup()
     finally:
@@ -253,7 +256,9 @@ def test_worker_checkpoint_bootstrap_requires_anchor_before_head_recovery(
                     CodingWorkerHistorySegmentError,
                     match="coding_worker_segment_head_missing",
                 ):
-                    _read_records(rooted, scope_id="project", store_id="store")
+                    _checkpoint_commands()._read_records(
+                        rooted, scope_id="project", store_id="store"
+                    )
                 with pytest.raises(
                     CodingWorkerHistorySegmentError,
                     match="coding_worker_segment_head_missing",
@@ -274,13 +279,18 @@ def test_worker_checkpoint_bootstrap_requires_anchor_before_head_recovery(
                 write_coding_worker_checkpoint_anchor(
                     rooted, expected=None, current=anchor
                 )
-                records, history = _read_records_or_repair_empty_bootstrap(
-                    rooted, scope_id="project", store_id="store"
+                records, history = (
+                    _checkpoint_commands().read_or_repair_empty_bootstrap(
+                        rooted, scope_id="project", store_id="store"
+                    )
                 )
                 assert records == ()
                 assert history.active_raw == b""
                 assert (
-                    _read_records(rooted, scope_id="project", store_id="store")[0] == ()
+                    _checkpoint_commands()._read_records(
+                        rooted, scope_id="project", store_id="store"
+                    )[0]
+                    == ()
                 )
         finally:
             io.cleanup()

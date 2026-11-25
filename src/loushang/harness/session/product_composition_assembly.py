@@ -5,7 +5,6 @@ from __future__ import annotations
 import secrets
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from hashlib import sha256
 from itertools import chain
 from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
@@ -73,9 +72,6 @@ from loushang.harness.plugin_authoring.resource_item import (
 )
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.plugins.contribution_types import (
     PLUGIN_OWNER_CONTRIBUTION_KINDS,
@@ -2388,6 +2384,7 @@ class ProductDataResourcePolicy:
         """Capture typed declarations before compiling or binding their owners."""
         from loushang.harness.package_product._selected_plugin_revisions import (
             capture_external_data_declaration,
+            fingerprint_external_data_selection,
         )
 
         invalid = (
@@ -2412,18 +2409,7 @@ class ProductDataResourcePolicy:
         )
         base: ProductDataBaseSelection | None = None
         if standalone:
-            digest = sha256(
-                canonical_json_bytes(
-                    [
-                        {
-                            "pluginId": item.manifest.name,
-                            "committedSetId": item.snapshot.committed_record.committed_set.set_id,
-                            "instanceRevision": item.snapshot.instance_revision_ref.to_dict(),
-                        }
-                        for item in external
-                    ]
-                )
-            ).hexdigest()
+            digest = fingerprint_external_data_selection(external)
             context = read_context()
             assert isinstance(context, StandaloneProductDataSelection)
             product_id, scope_id = context.product_id, context.scope_id

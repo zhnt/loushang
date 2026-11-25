@@ -13,9 +13,6 @@ from loushang.harness.worker.history._snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS as CODING_WORKER_HISTORY_STREAM_STEMS,
 )
 from loushang.harness.worker.history._snapshot import (
-    _is_v2_authenticated_prefix as _is_v2_authenticated_prefix,
-)
-from loushang.harness.worker.history._snapshot import (
     _SnapshotMethods,
 )
 from loushang.harness.worker.history._snapshot import (

@@ -38,19 +38,14 @@ from loushang.harness.plugin_management.application import (
 )
 from loushang.harness.plugin_management.private_data_backup import (
     enumerate_private_archives,
-    read_private_archive,
     retain_private_archive,
-    verify_private_archive,
     verify_retained_private_archive,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._file_consumption import (
     closing_descriptor as closing_descriptor,
 )
-from loushang.harness.resources.packages._private_tree_posix import (
-    PrivatePosixTreeIO,
-    verify_private_tree,
-)
+from loushang.harness.resources.packages._private_tree_posix import PrivatePosixTreeIO
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -72,17 +67,11 @@ from .private_data_backup_records import backup_parent as _backup_parent
 from .private_data_deletion_preview import _MAX_TOTAL_BYTES as _MAX_READ_BYTES
 from .private_data_deletion_preview import (
     CodingArchPrivateDataDeletionPreview,
-    CodingArchPrivateDataTargetSnapshotV1,
     _capture_target_snapshot,
 )
 from .product_backup_types import require_coding_arch_backup_writer
 
 _private_io = PrivatePosixTreeIO("Coding Arch", _MAX_READ_BYTES)
-_open_chain = _private_io.open_chain
-_mkdir_at = _private_io.mkdir
-_open_private_dir = _private_io.open_directory
-_open_private_path = _private_io.open_path
-_write_or_verify_file = _private_io.write_file
 
 
 _archive_codec = backup_manifest_codec(windows=False)
@@ -128,7 +117,6 @@ class CodingArchPrivateDataBackupOwner:
                     source_root, private_base=self.layout.private_data_base
                 ),
                 prepare=_prepare_private_tree,
-                write_file=_write_or_verify_file,
             )
 
     def snapshot(self) -> PluginBackupRetentionSnapshotV1:
@@ -223,30 +211,6 @@ def _retained_receipts(
         is_archive_name=_digest,
         staging_suffix=".staging",
         allowed_tombstone=allowed_tombstone,
-    )
-
-
-def _verify_archive(
-    parent_fd: int,
-    name: str,
-    key: PluginInstallationKeyV1,
-    source: CodingArchPrivateDataTargetSnapshotV1,
-    receipt: CodingArchPrivateDataBackupReceiptV1,
-) -> None:
-    verify_private_archive(
-        parent_fd, name, key, source, receipt, io=_private_io, codec=_archive_codec
-    )
-
-
-def _read_manifest(
-    parent_fd: int, name: str
-) -> tuple[CodingArchPrivateDataBackupReceiptV1, CodingArchPrivateDataTargetSnapshotV1]:
-    return read_private_archive(parent_fd, name, io=_private_io, codec=_archive_codec)
-
-
-def _verify_files(root_fd: int, source: CodingArchPrivateDataTargetSnapshotV1) -> None:
-    verify_private_tree(
-        root_fd, source.members, label="Coding Arch", max_read_bytes=_MAX_READ_BYTES
     )
 
 

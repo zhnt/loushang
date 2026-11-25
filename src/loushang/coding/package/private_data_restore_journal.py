@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
@@ -11,8 +10,8 @@ from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
 )
 from loushang.harness.plugin_management._private_data_records import (
-    PRIVATE_DATA_INSTALLATION_KEY_FIELD,
-    PrivateDataRecordWire,
+    PrivateDataRestoreRecordWire,
+    private_data_identity_digest,
 )
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -21,9 +20,6 @@ from loushang.harness.plugin_management.private_data_restore_journal import (
     PrivateDataRestoreJournal,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 
 _JOURNAL_NAME = "private-data-restores.jsonl"
 _MAX_EVENTS = 4096
@@ -31,7 +27,7 @@ _MAX_JOURNAL_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataRestoreEventV1(PrivateDataRecordWire):
+class CodingArchPrivateDataRestoreEventV1(PrivateDataRestoreRecordWire):
     revision: int
     phase: Literal["started", "completed"]
     installation_key: PluginInstallationKeyV1
@@ -40,6 +36,17 @@ class CodingArchPrivateDataRestoreEventV1(PrivateDataRecordWire):
     restore_id: str
     record_digest: str
     record_version: int = 1
+
+    _unsigned_order = (
+        "backupId",
+        "deletionReceiptId",
+        "installationKey",
+        "phase",
+        "recordVersion",
+        "restoreId",
+        "revision",
+    )
+    _invalid_fields = "Coding Arch restore event fields are invalid"
 
     def __post_init__(self) -> None:
         if (
@@ -56,8 +63,7 @@ class CodingArchPrivateDataRestoreEventV1(PrivateDataRecordWire):
                 self.installation_key, self.backup_id, self.deletion_receipt_id
             )
             or self.record_version != 1
-            or self.record_digest
-            != sha256(canonical_json_bytes(self._unsigned())).hexdigest()
+            or self.record_digest != self._digest_document(self._unsigned())
         ):
             raise ValueError("Coding Arch restore event is invalid")
 
@@ -71,61 +77,15 @@ class CodingArchPrivateDataRestoreEventV1(PrivateDataRecordWire):
         backup_id: str,
         deletion_receipt_id: str,
     ) -> CodingArchPrivateDataRestoreEventV1:
-        restore_id = restore_id_for(installation_key, backup_id, deletion_receipt_id)
-        unsigned = _event_fields(
-            revision,
-            phase,
-            installation_key,
-            backup_id,
-            deletion_receipt_id,
-            restore_id,
-            1,
-        )
-        return cls(
+        return cls._seal(
             revision=revision,
             phase=phase,
             installation_key=installation_key,
             backup_id=backup_id,
             deletion_receipt_id=deletion_receipt_id,
-            restore_id=restore_id,
-            record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
+            restore_id=restore_id_for(installation_key, backup_id, deletion_receipt_id),
+            record_version=1,
         )
-
-    def _unsigned(self) -> dict[str, object]:
-        return _event_fields(
-            self.revision,
-            self.phase,
-            self.installation_key,
-            self.backup_id,
-            self.deletion_receipt_id,
-            self.restore_id,
-            self.record_version,
-        )
-
-    def to_dict(self) -> dict[str, object]:
-        return {**self._unsigned(), "recordDigest": self.record_digest}
-
-    _invalid_fields = "Coding Arch restore event fields are invalid"
-
-
-def _event_fields(
-    revision: int,
-    phase: Literal["started", "completed"],
-    installation_key: PluginInstallationKeyV1,
-    backup_id: str,
-    deletion_receipt_id: str,
-    restore_id: str,
-    record_version: int,
-) -> dict[str, object]:
-    return {
-        "backupId": backup_id,
-        "deletionReceiptId": deletion_receipt_id,
-        "installationKey": installation_key.to_dict(),
-        "phase": phase,
-        "recordVersion": record_version,
-        "restoreId": restore_id,
-        "revision": revision,
-    }
 
 
 def restore_id_for(
@@ -138,18 +98,13 @@ def restore_id_for(
         or not deletion_receipt_id
     ):
         raise ValueError("Coding Arch restore identity is invalid")
-    return (
-        "arch-restore:"
-        + sha256(
-            b"loushang.coding-arch-private-data-restore/v1\0"
-            + canonical_json_bytes(
-                {
-                    "backupId": backup_id,
-                    "deletionReceiptId": deletion_receipt_id,
-                    "installationKey": key.to_dict(),
-                }
-            )
-        ).hexdigest()
+    return "arch-restore:" + private_data_identity_digest(
+        b"loushang.coding-arch-private-data-restore/v1\0",
+        {
+            "backupId": backup_id,
+            "deletionReceiptId": deletion_receipt_id,
+            "installationKey": key.to_dict(),
+        },
     )
 
 
@@ -182,8 +137,8 @@ class CodingArchPrivateDataRestoreJournal(
         )
 
 
-_SCHEMA_RESTORE_EVENT_V1 = CodingArchPrivateDataRestoreEventV1._bind_wire_schema(
-    PRIVATE_DATA_INSTALLATION_KEY_FIELD,
+_SCHEMA_RESTORE_EVENT_V1 = (
+    CodingArchPrivateDataRestoreEventV1._bind_restore_wire_schema()
 )
 
 __all__ = [

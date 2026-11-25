@@ -23,7 +23,6 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.ai.prepared_request import PreparedRequestLimits
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
-from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.capabilities.prompt_assembly import SkillPromptSummary
@@ -128,6 +127,7 @@ from loushang.harness.transcript import (
     ProductTranscriptSession,
     TranscriptCompactionPolicy,
 )
+from loushang.harness.transcript.interaction import require_model_history_compatibility
 from loushang.harness.workspace.exec import ExecService
 
 if TYPE_CHECKING:
@@ -1319,13 +1319,11 @@ async def apply_agent_session_model_selection(
         resolved = selection_runtime.resolve_model(
             cast(Model | ModelSelection, selection)
         )
-        window = agent.state.provider_window
-        if window is not None and not window.matches(resolved):
-            raise ValueError(
-                "Selected model is incompatible with the active provider "
-                "compaction checkpoint"
-            )
-        validate_image_input_compatibility(resolved, agent.state.messages)
+        require_model_history_compatibility(
+            resolved,
+            messages=agent.state.messages,
+            provider_window=agent.state.provider_window,
+        )
         previous = agent.model
         await selection_runtime.apply_model(resolved)
         await refresh_extension_runtime("model_selection_changed")

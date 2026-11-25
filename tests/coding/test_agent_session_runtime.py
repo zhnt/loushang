@@ -1294,8 +1294,8 @@ async def test_runtime_rejects_compatibility_source_replaced_after_discovery(
 ) -> None:
     import pytest
 
-    from loushang.coding.runtime import agent_session_runtime as runtime_module
     from loushang.coding.session.manager import SessionManager
+    from loushang.harness.runtime import session_operations
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1320,31 +1320,28 @@ async def test_runtime_rejects_compatibility_source_replaced_after_discovery(
         "resolve_discovered_session_source",
         lambda _session_ref: selected,
     )
-    real_copy = runtime_module._copy_import_file
+    real_fingerprint = session_operations.file_status_fingerprint
+    source_changed = False
 
-    def replace_after_stage_validation(
-        source: Path,
-        destination: Path,
-        *,
-        expected_source_fingerprint: str | None = None,
-    ) -> None:
-        with source.open("ab") as handle:
-            handle.write(b" \n")
-        real_copy(
-            source,
-            destination,
-            expected_source_fingerprint=expected_source_fingerprint,
-        )
+    def replace_after_stage_validation(metadata: os.stat_result) -> str:
+        nonlocal source_changed
+        fingerprint = real_fingerprint(metadata)
+        if not source_changed:
+            with legacy_file.open("ab") as handle:
+                handle.write(b" \n")
+            source_changed = True
+        return fingerprint
 
     monkeypatch.setattr(
-        runtime_module,
-        "_copy_import_file",
+        session_operations,
+        "file_status_fingerprint",
         replace_after_stage_validation,
     )
 
     with pytest.raises(OSError, match="no longer matches discovery"):
         await runtime.restore_session_operation(legacy_id)
 
+    assert source_changed
     assert not authority_dir.exists() or not tuple(authority_dir.glob("*.jsonl"))
 
 
@@ -1683,7 +1680,6 @@ async def test_runtime_import_from_jsonl_retries_when_unique_destination_is_clai
 ) -> None:
     import errno
 
-    from loushang.coding.runtime import agent_session_runtime as runtime_module
     from loushang.coding.session.manager import SessionManager
 
     project_root = tmp_path / "project"
@@ -1706,7 +1702,7 @@ async def test_runtime_import_from_jsonl_retries_when_unique_destination_is_clai
     import_source = import_dir / existing_file.name
     imported_file.rename(import_source)
 
-    real_copy = runtime_module._copy_import_file
+    real_copy = runtime._lifecycle._copy_file
     copy_attempts: list[Path] = []
 
     def _copy_with_external_race(source: Path, destination: Path) -> None:
@@ -1716,7 +1712,7 @@ async def test_runtime_import_from_jsonl_retries_when_unique_destination_is_clai
             raise FileExistsError(errno.EEXIST, "File exists", str(destination))
         real_copy(source, destination)
 
-    monkeypatch.setattr(runtime_module, "_copy_import_file", _copy_with_external_race)
+    monkeypatch.setattr(runtime._lifecycle, "_copy_file", _copy_with_external_race)
 
     result = await runtime.import_from_jsonl(str(import_source))
     current = runtime.get_current_session()
@@ -1745,7 +1741,6 @@ async def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for
     import errno
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.runtime import agent_session_runtime as runtime_module
     from loushang.coding.session.manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
@@ -1805,7 +1800,7 @@ async def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for
     import_source = import_dir / existing_file.name
     imported_file.rename(import_source)
 
-    real_copy = runtime_module._copy_import_file
+    real_copy = runtime._lifecycle._copy_file
     copy_attempts: list[Path] = []
 
     def _copy_with_external_race(source: Path, destination: Path) -> None:
@@ -1815,7 +1810,7 @@ async def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for
             raise FileExistsError(errno.EEXIST, "File exists", str(destination))
         real_copy(source, destination)
 
-    monkeypatch.setattr(runtime_module, "_copy_import_file", _copy_with_external_race)
+    monkeypatch.setattr(runtime._lifecycle, "_copy_file", _copy_with_external_race)
 
     result = await runtime.import_from_jsonl(str(import_source))
     current = runtime.get_current_session()

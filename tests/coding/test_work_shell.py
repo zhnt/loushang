@@ -2683,6 +2683,7 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
                 )
                 assert repeated == second and len(owner.controller.history.batches) == 2
                 assert len(owner.planning_trace("g")["evidence"]) == 1
+            transcript = Path(owner._session.session_manager.get_session_file())
         finally:
             release.set()
             if task is not None and not task.done():
@@ -2719,9 +2720,7 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
         from loushang.harness.transcript.source_reader import TranscriptSourceReader
 
         source_reader = TranscriptSourceReader(
-            session_file=next(
-                p for p in (owner.data_root / "sessions").glob("20*.jsonl")
-            ),
+            session_file=transcript,
             conversation_id=owner.session_id,
             store_state_root=standalone_workspace / "platform/state/session-stores",
         )
@@ -2751,11 +2750,6 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
         finally:
             await source_reader.aclose()
         # Missing original Transcript is unknown, regardless of exported trace copies.
-        transcript = next(
-            p
-            for p in (owner.data_root / "sessions").glob("*.jsonl")
-            if p.name.startswith("20")
-        )
         original_transcript = transcript.read_bytes()
         rows = [json.loads(line) for line in original_transcript.splitlines()]
         outcome = next(row for row in rows if row.get("kind") == "model.call.outcome")

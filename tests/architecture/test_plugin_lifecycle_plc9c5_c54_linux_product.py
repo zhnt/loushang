@@ -201,7 +201,6 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         'loushang.harness.worker.journal',
         'loushang.harness.worker.payload._selected_payload',
         'loushang.harness.worker.payload._windows_stage_io',
-        'loushang.harness.worker.product_activation',
     },
     CODING_ROOT / "package/product_worker_windows_receipt_journal.py": {
         "loushang.harness.worker.history._windows_record_journals",

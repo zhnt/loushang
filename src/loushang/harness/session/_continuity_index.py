@@ -10,7 +10,10 @@ from typing import ClassVar, Protocol
 
 from loushang.harness.continuity.activation import CallbackPreparedActivationLease
 from loushang.harness.continuity.types import (
+    ContinuityArtifactReference,
     ContinuityDiagnostic,
+    ContinuityPreview,
+    ContinuityPreviewSection,
     ContinuitySummary,
     ContinuityTarget,
     ProviderPage,
@@ -18,9 +21,11 @@ from loushang.harness.continuity.types import (
     ProviderQuery,
 )
 from loushang.harness.conversation import IndexedProjection
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.transcript import (
     AgentTranscriptSessionCatalog,
+    SessionAssetHealthSummary,
     SessionIndexPage,
     SessionQuery,
     SessionSummary,
@@ -72,9 +77,11 @@ class _IndexedSessionRuntime(Protocol):
 
 
 class _IndexedSessionContinuity:
-    """Retain and revalidate the original catalog identity through an operation."""
+    """Own the original indexed identity through preview, activation and deletion."""
 
     _provider_id: ClassVar[str]
+    _domain_id: ClassVar[str]
+    _conflicted_target_error: ClassVar[type[RuntimeError]]
     _product_label: ClassVar[str]
     _max_preview_cache: ClassVar[int]
     _requires_messages: ClassVar[bool]
@@ -97,13 +104,158 @@ class _IndexedSessionContinuity:
         )
 
     def _summarize(self, indexed: IndexedProjection[SessionSummary]) -> ContinuitySummary:
-        raise NotImplementedError
+        summary = indexed.projection
+        return ContinuitySummary(
+            target=ContinuityTarget(
+                provider_id=self._provider_id,
+                opaque_id=summary.session_id,
+                revision=session_summary_revision(summary, indexed.source_revision),
+            ),
+            domain_ids=(self._domain_id,),
+            primary_domain_id=self._domain_id,
+            title=_summary_title(summary),
+            updated_at=summary.updated_at,
+            created_at=summary.created_at,
+            subtitle=_session_subtitle(summary),
+            excerpt=summary.last_message_preview or summary.first_message,
+            status=_session_status(summary),
+            actions=(
+                ("activate", "delete")
+                if summary.discovery is None or summary.discovery.mode == "canonical"
+                else ("activate",)
+            ),
+        )
 
     def _discovery_diagnostics(self, page: SessionIndexPage) -> list[ContinuityDiagnostic]:
-        raise NotImplementedError
+        return [
+            ContinuityDiagnostic(
+                code=f"{self._domain_id}_session_discovery_{issue.code}",
+                message=f"Ignored Session source {issue.source_id}: {issue.detail}.",
+                provider_id=self._provider_id,
+            )
+            for issue in page.discovery_issues
+        ]
 
     def _require_summary_allowed(self, summary: SessionSummary, *, deleting: bool) -> None:
+        discovery = summary.discovery
+        if discovery is None:
+            return
+        if not discovery.resumable:
+            raise self._conflicted_target_error(
+                "This Session ID has different transcripts in multiple discovery "
+                "sources. Select an exact path or resolve the conflict before resume."
+            )
+        if deleting and discovery.mode != "canonical":
+            raise RuntimeError(
+                "Compatibility Sessions are read-only; resume them before deletion."
+            )
+
+    async def _preview_history(
+        self, summary: SessionSummary, path: Path, rows: list[tuple[str, str]],
+    ) -> tuple[str | None, bool]:
         raise NotImplementedError
+
+    async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
+        indexed = self._cached_target(target)
+        summary = indexed.projection
+        history_changed = False
+        history_text: str | None = None
+        rows = [
+            ("Session ID", summary.session_id),
+            ("Workspace", summary.cwd or "Unknown"),
+            (
+                "Messages",
+                str(summary.message_count)
+                if summary.counts_exact
+                else f"at least {summary.message_count}",
+            ),
+            (
+                "Entries",
+                str(summary.entry_count)
+                if summary.counts_exact
+                else f"at least {summary.entry_count}",
+            ),
+        ]
+        discovery = summary.discovery
+        if discovery is not None:
+            mode = "canonical" if discovery.mode == "canonical" else "compatibility"
+            rows.extend(
+                (
+                    ("Storage", f"{discovery.origin.capitalize()} {mode}"),
+                    ("Health", discovery.health.replace("_", " ").title()),
+                )
+            )
+            if discovery.aliases:
+                rows.append(("Compatible copies", str(len(discovery.aliases))))
+            if discovery.conflicts:
+                rows.append(("Conflicting copies", str(len(discovery.conflicts))))
+        if summary.session_file is not None:
+            history_text, history_changed = await self._preview_history(
+                summary, summary.session_file, rows
+            )
+        inspect_assets = getattr(
+            self._runtime,
+            "inspect_discovered_session_assets",
+            None,
+        )
+        if callable(inspect_assets) and summary.session_file is not None:
+            try:
+                asset_health = await settled_io(
+                    inspect_assets,
+                    summary.session_file,
+                )
+            except (OSError, ValueError):
+                asset_health = SessionAssetHealthSummary(state="unavailable")
+            if isinstance(asset_health, SessionAssetHealthSummary):
+                rows.append(("Assets", _asset_health_label(asset_health)))
+        if summary.model:
+            provider = summary.model.get("provider")
+            model_id = summary.model.get("model_id")
+            if provider and model_id:
+                rows.append(("Model", f"{provider}/{model_id}"))
+        if summary.authority_fingerprint is not None:
+            history_changed = (
+                not session_summary_authority_is_current(summary) or history_changed
+            )
+        artifacts = (
+            (
+                ContinuityArtifactReference(
+                    label="Transcript",
+                    reference=str(summary.session_file),
+                ),
+            )
+            if summary.session_file is not None
+            else ()
+        )
+        revision = session_summary_revision(summary, indexed.source_revision)
+        return ContinuityPreview(
+            target=target,
+            revision=revision,
+            heading=_summary_title(summary),
+            sections=(
+                ContinuityPreviewSection(
+                    kind="text",
+                    text=(
+                        "History changed; refresh"
+                        if history_changed
+                        else history_text
+                        or summary.last_message_preview
+                        or summary.first_message
+                    ),
+                ),
+                ContinuityPreviewSection(
+                    kind="key_value",
+                    title=f"{self._product_label} session",
+                    rows=tuple(rows),
+                ),
+                ContinuityPreviewSection(
+                    kind="artifacts",
+                    artifacts=artifacts,
+                ),
+            ),
+            stale=revision != target.revision or history_changed,
+        )
+
 
     async def query(
         self, request: ProviderQuery
@@ -317,4 +469,50 @@ def _same_session_reference(
 def canonical_session_directory(cwd: str | Path | None) -> str | None:
     return (
         str(Path(cwd).expanduser().resolve(strict=False)) if cwd is not None else None
+    )
+
+
+def _summary_title(summary: SessionSummary) -> str:
+    for value in (summary.name, summary.first_message, summary.session_id[:8]):
+        if isinstance(value, str) and (normalized := " ".join(value.split())):
+            return normalized[:512]
+    return summary.session_id[:8]
+
+
+def _session_status(summary: SessionSummary) -> str | None:
+    discovery = summary.discovery
+    if discovery is None:
+        return "Needs attention" if summary.has_diagnostics else None
+    if discovery.health == "conflict":
+        return "Conflict"
+    if discovery.health == "needs_attention":
+        return "Needs attention"
+    if summary.has_diagnostics:
+        return "Needs attention"
+    if discovery.health == "legacy":
+        return f"Legacy · {discovery.origin}"
+    return None
+
+
+def _session_subtitle(summary: SessionSummary) -> str | None:
+    discovery = summary.discovery
+    if discovery is None or discovery.mode == "canonical":
+        return summary.cwd or None
+    origin = discovery.origin.capitalize()
+    return f"{summary.cwd or 'Unknown workspace'} · {origin} compatibility"
+
+
+def _asset_health_label(health: SessionAssetHealthSummary) -> str:
+    if health.state == "none":
+        return "None"
+    if health.state == "unavailable":
+        return "Unavailable (preview budget or read boundary)"
+    suffix = f" · {health.object_count} objects · {health.total_bytes} bytes"
+    if health.state == "available":
+        return f"Available{suffix}"
+    if health.state == "partial":
+        return f"Present (integrity checked on resume){suffix}"
+    return (
+        f"{health.state.title()}{suffix} · "
+        f"{health.missing} missing · {health.corrupt} corrupt"
     )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from hashlib import sha256
@@ -485,6 +485,13 @@ class PrivatePosixTreeIO:
             max_read_bytes=self.max_read_bytes,
         )
 
+    def verify_tree(
+        self, root_fd: int, members: Sequence[PrivateTreeMember]
+    ) -> None:
+        verify_private_tree(
+            root_fd, members, label=self.label, max_read_bytes=self.max_read_bytes
+        )
+
     def read_manifest_bytes(
         self, parent_fd: int, name: str, manifest_name: str, maximum: int
     ) -> bytes:
@@ -512,8 +519,8 @@ class PrivatePosixTreeIO:
         destination_fd: int,
         *,
         private_base: Path,
-        write_file: Callable[[int, str, bytes], None],
     ) -> None:
+        write_file = self.write_file
         with closing_descriptor(self.open_path(private_base, source_root)) as source_fd:
             if metadata_identity(os.fstat(source_fd)) != root_identity:
                 raise ValueError(f"{self.label} backup source root changed")
@@ -589,8 +596,8 @@ class PrivatePosixTreeIO:
         stage_name: str,
         stage_prefix: str,
         stage_suffix: str,
-        write_file: Callable[[int, str, bytes], None],
     ) -> str:
+        write_file = self.write_file
         with closing_descriptor(
             self.open_path(private_base, target.parent)
         ) as parent_fd:
@@ -604,12 +611,7 @@ class PrivatePosixTreeIO:
                 with closing_descriptor(
                     self.open_directory(parent_fd, target.name)
                 ) as existing_fd:
-                    verify_private_tree(
-                        existing_fd,
-                        members,
-                        label=self.label,
-                        max_read_bytes=self.max_read_bytes,
-                    )
+                    self.verify_tree(existing_fd, members)
                 return "already_present"
             self.mkdir(parent_fd, stage_name)
             with closing_descriptor(
@@ -645,12 +647,7 @@ class PrivatePosixTreeIO:
                                 )
                             write_file(destination_parent, parts[-1], content)
                         os.fsync(destination_parent)
-                verify_private_tree(
-                    stage_fd,
-                    members,
-                    label=self.label,
-                    max_read_bytes=self.max_read_bytes,
-                )
+                self.verify_tree(stage_fd, members)
                 os.fsync(stage_fd)
                 visible_stage = os.stat(
                     stage_name, dir_fd=parent_fd, follow_symlinks=False
@@ -681,12 +678,7 @@ class PrivatePosixTreeIO:
             with closing_descriptor(
                 self.open_directory(parent_fd, target.name)
             ) as restored_fd:
-                verify_private_tree(
-                    restored_fd,
-                    members,
-                    label=self.label,
-                    max_read_bytes=self.max_read_bytes,
-                )
+                self.verify_tree(restored_fd, members)
             return "restored"
 
     def preflight_restore_target(
@@ -712,12 +704,7 @@ class PrivatePosixTreeIO:
                 with closing_descriptor(
                     self.open_path(private_base, target)
                 ) as target_fd:
-                    verify_private_tree(
-                        target_fd,
-                        members,
-                        label=self.label,
-                        max_read_bytes=self.max_read_bytes,
-                    )
+                    self.verify_tree(target_fd, members)
                 return True
             return False
 

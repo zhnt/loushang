@@ -7,6 +7,7 @@ does not delete data or authorize Package remove/GC to do so.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -26,12 +27,16 @@ from loushang.harness.journal._path_admission import (
     private_journal_exists,
     require_private_journal_parent,
 )
+from loushang.harness.journal.codec import decode_json_record
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionPlanV1,
 )
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
 )
 
 PRIVATE_DATA_CONFIRMATION_RECORD_VERSION = 1
@@ -247,27 +252,57 @@ __all__ = [
 
 
 def accept_windows_private_confirmation(
-    path: Path,
-    payload: bytes,
-    record: PluginPrivateDataConfirmationRecordV1,
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
     *,
+    actor_id: str,
+    policy_revision: str,
+    resolve_path: Callable[[], Path],
+    borrow_state: Callable[[], AbstractContextManager[int]],
     io: WindowsPrivateReceiptIO,
     maximum_bytes: int,
     write_maximum_bytes: int,
-    decode: Callable[[bytes], PluginPrivateDataConfirmationRecordV1],
     label: str,
 ) -> PluginPrivateDataConfirmationRecordV1:
-    """Publish one independently admitted immutable confirmation, preserving staged retry."""
-    existing = io.read_private_receipt(
-        path, maximum_bytes=maximum_bytes, allow_unpublished_stage=True
+    """Record an admitted confirmation, preserving staged retry and descriptor custody."""
+    record = PluginPrivateDataConfirmationRecordV1(
+        record_revision=1,
+        plan=plan,
+        confirmation=confirmation,
+        actor_id=actor_id,
+        policy_revision=policy_revision,
     )
-    if existing is not None:
-        if decode(existing) != record:
-            raise ValueError(f"{label} confirmation ID was reused")
-        return record
-    io.write_private_receipt(path, payload, maximum_bytes=write_maximum_bytes)
-    if io.read_private_receipt(path, maximum_bytes=maximum_bytes) != payload:
-        raise ValueError(f"{label} confirmation changed")
+    payload = canonical_json_bytes(record.to_dict()) + b"\n"
+    if len(payload) > maximum_bytes:
+        raise ValueError(f"{label} confirmation is too large")
+    path = resolve_path()
+    with borrow_state():
+        existing = io.read_private_receipt(
+            path, maximum_bytes=maximum_bytes, allow_unpublished_stage=True
+        )
+        if existing is not None:
+            if decode_windows_private_confirmation(existing, label=label) != record:
+                raise ValueError(f"{label} confirmation ID was reused")
+            return record
+        io.write_private_receipt(path, payload, maximum_bytes=write_maximum_bytes)
+        if io.read_private_receipt(path, maximum_bytes=maximum_bytes) != payload:
+            raise ValueError(f"{label} confirmation changed")
+    return record
+
+
+def decode_windows_private_confirmation(
+    raw: bytes, *, label: str
+) -> PluginPrivateDataConfirmationRecordV1:
+    record = decode_json_record(
+        raw,
+        PluginPrivateDataConfirmationRecordV1.from_dict,
+        label=f"{label} confirmation",
+    )
+    if (
+        record.record_revision != 1
+        or raw != canonical_json_bytes(record.to_dict()) + b"\n"
+    ):
+        raise ValueError(f"{label} confirmation is noncanonical")
     return record
 
 

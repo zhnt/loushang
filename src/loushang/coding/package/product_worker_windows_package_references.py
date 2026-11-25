@@ -8,18 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loushang.harness.package_product._windows_worker_history import (
-    capture_windows_product_worker_reference_inputs_under_guard,
-    review_windows_product_worker_package_references,
-)
 from loushang.harness.package_product._windows_worker_references import (
     _WindowsPackageReferenceMethods,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
-)
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationSnapshotV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
     PackageWindowsRuntimeQuiescenceV1,
@@ -27,7 +20,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry
 
 from .product_backup_types import (
     CodingWorkerBackupReferenceObservationV1,
-    observe_coding_worker_backup_references_under_gc_guard,
 )
 from .product_worker_windows_desired_references import (
     CodingWindowsWorkerDesiredReferenceReviewV1,
@@ -40,7 +32,6 @@ from .product_worker_windows_history_preparation import (
 )
 from .product_worker_windows_history_sources import (
     CodingWindowsWorkerHistorySemanticReadV1,
-    _capture_coding_windows_worker_semantics_under_gc_guard,
 )
 
 
@@ -83,38 +74,9 @@ def review_coding_windows_worker_package_references(
 ) -> CodingWindowsWorkerPackageReferenceReviewV1:
     """Capture all preflight inputs while Package and Product guards stay held."""
 
-    return review_windows_product_worker_package_references(
-        product,
-        product_id="coding",
-        review_under_guard=_review_coding_windows_worker_package_references_under_guard,
-    )
+    from .product_worker_windows_checkpoint import _HISTORY_COMMANDS
 
-
-def _review_coding_windows_worker_package_references_under_guard(
-    product: WindowsLocalWheelProductSessionOwner,
-    *,
-    quiescence: PackageWindowsRuntimeQuiescenceV1,
-    gc_snapshot: PluginPackageGcReservationSnapshotV1,
-    allow_checkpoint_stage: bool = False,
-    allow_base_stage: bool = False,
-) -> tuple[
-    CodingWindowsWorkerPackageReferenceReviewV1,
-    CodingWindowsWorkerHistoryPreparationV1,
-    CodingWindowsWorkerHistorySemanticReadV1,
-]:
-    """Return the review and exact inputs while both outer locks remain held."""
-
-    return capture_windows_product_worker_reference_inputs_under_guard(
-        product,
-        record_type=CodingWindowsWorkerPackageReferenceReviewV1,
-        preparation_type=CodingWindowsWorkerHistoryPreparationV1,
-        capture_semantic=_capture_coding_windows_worker_semantics_under_gc_guard,
-        observe_backup=observe_coding_worker_backup_references_under_gc_guard,
-        quiescence=quiescence,
-        gc_snapshot=gc_snapshot,
-        allow_checkpoint_stage=allow_checkpoint_stage,
-        allow_base_stage=allow_base_stage,
-    )
+    return _HISTORY_COMMANDS.review_references(product)
 
 
 __all__ = [

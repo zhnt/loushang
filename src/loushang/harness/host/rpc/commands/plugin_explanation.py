@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from loushang.harness.host.rpc.arguments import request_exact_string
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.routing import LegacyRpcHandler
 from loushang.harness.plugin_management.operation_explanation import (
@@ -39,10 +40,10 @@ class RpcPluginExplanationCommands:
     def explain_plugin_operation(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        correlation = _request_string(payload.get("correlationId", command_id))
-        product_id = _request_string(payload.get("productId"))
-        scope_id = _request_string(payload.get("scopeId"))
-        operation_id = _request_string(payload.get("operationId"))
+        correlation = request_exact_string(payload.get("correlationId", command_id))
+        product_id = request_exact_string(payload.get("productId"))
+        scope_id = request_exact_string(payload.get("scopeId"))
+        operation_id = request_exact_string(payload.get("operationId"))
         if (
             correlation is None
             or product_id is None
@@ -81,14 +82,6 @@ class RpcPluginExplanationCommands:
             )
             return
         self._output.success(command=_COMMAND, request_id=command_id, data=document)
-
-
-def _request_string(value: object) -> str | None:
-    return (
-        value
-        if isinstance(value, str) and value and value == value.strip()
-        else None
-    )
 
 
 __all__ = ["RpcPluginExplanationCommands"]

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 
 from loushang.harness.plugin_management._private_data_expiry import (
     expiry_acceptance_matches,
@@ -11,13 +10,11 @@ from loushang.harness.plugin_management._private_data_expiry import (
 from loushang.harness.plugin_management._private_data_records import (
     PRIVATE_DATA_INSTALLATION_KEY_FIELD,
     PrivateDataRecordWire,
+    private_data_identity_digest,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 
 from .private_data_backup_records import _digest as _digest
@@ -65,10 +62,9 @@ class CodingArchPrivateDataBackupExpiryPlanV1(PrivateDataRecordWire):
 
     @property
     def fingerprint(self) -> str:
-        return sha256(
-            b"loushang.coding-arch-backup-expiry-plan/v1\0"
-            + canonical_json_bytes(self.to_dict())
-        ).hexdigest()
+        return private_data_identity_digest(
+            b"loushang.coding-arch-backup-expiry-plan/v1\0", self.to_dict()
+        )
 
     _invalid_fields = "Coding Arch backup expiry plan fields are invalid"
 
@@ -177,33 +173,20 @@ def require_expiry_acceptance(
 
 
 def _confirmation_id(plan_fingerprint: str, actor_id: str, policy: str) -> str:
-    return (
-        "arch-backup-expiry-confirm:"
-        + sha256(
-            b"loushang.coding-arch-backup-expiry-confirmation/v1\0"
-            + canonical_json_bytes(
-                {
-                    "actorId": actor_id,
-                    "planFingerprint": plan_fingerprint,
-                    "policyRevision": policy,
-                }
-            )
-        ).hexdigest()
+    return "arch-backup-expiry-confirm:" + private_data_identity_digest(
+        b"loushang.coding-arch-backup-expiry-confirmation/v1\0",
+        {
+            "actorId": actor_id,
+            "planFingerprint": plan_fingerprint,
+            "policyRevision": policy,
+        },
     )
 
 
 def _receipt_id(plan_fingerprint: str, confirmation_id: str) -> str:
-    return (
-        "arch-backup-expiry:"
-        + sha256(
-            b"loushang.coding-arch-backup-expiry-receipt/v1\0"
-            + canonical_json_bytes(
-                {
-                    "confirmationId": confirmation_id,
-                    "planFingerprint": plan_fingerprint,
-                }
-            )
-        ).hexdigest()
+    return "arch-backup-expiry:" + private_data_identity_digest(
+        b"loushang.coding-arch-backup-expiry-receipt/v1\0",
+        {"confirmationId": confirmation_id, "planFingerprint": plan_fingerprint},
     )
 
 
@@ -238,17 +221,12 @@ def _tombstone_name(
     plan: CodingArchPrivateDataBackupExpiryPlanV1,
     confirmation: CodingArchPrivateDataBackupExpiryConfirmationV1,
 ) -> str:
-    return (
-        ".expiring-"
-        + sha256(
-            b"loushang.coding-arch-backup-expiry-tombstone/v1\0"
-            + canonical_json_bytes(
-                {
-                    "confirmationId": confirmation.confirmation_id,
-                    "planFingerprint": plan.fingerprint,
-                }
-            )
-        ).hexdigest()
+    return ".expiring-" + private_data_identity_digest(
+        b"loushang.coding-arch-backup-expiry-tombstone/v1\0",
+        {
+            "confirmationId": confirmation.confirmation_id,
+            "planFingerprint": plan.fingerprint,
+        },
     )
 
 

@@ -56,6 +56,7 @@ from loushang.coding.resume.binding import (
     coding_user_input_digest,
     freeze_coding_user_input,
     inspect_coding_runtime_binding,
+    matches_intent,
     prepare_coding_resume_user_record,
 )
 from loushang.coding.resume.binding_v2 import (
@@ -191,15 +192,8 @@ class _CodingResumeRecords:
             CodingRuntimeBindingV2,
         }:
             raise TypeError("Coding Resume activation returned an invalid binding")
-        if (
-            binding.session_id != read_session_id()
-            or binding.attempt_id != pending.attempt_id
-            or binding.input_id != pending.attempt.request_id
-            or binding.original_leaf_id != pending.original_leaf_id
-            or binding.ancestry_digest != pending.ancestry_digest
-            or binding.planned_fingerprint != pending.attempt.plan_fingerprint
-            or binding.actual_fingerprint != pending.attempt.epoch_fingerprint
-            or binding.subject_digest != pending.attempt.subject_digest
+        if binding.session_id != read_session_id() or not matches_intent(
+            binding, pending.attempt, check_session=False
         ):
             raise ValueError("Coding Resume binding differs from selected history")
         if type(binding) is CodingRuntimeBindingV2:

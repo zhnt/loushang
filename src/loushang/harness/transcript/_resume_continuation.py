@@ -15,6 +15,7 @@ from functools import partial
 from pathlib import Path
 from typing import ClassVar, Generic, Literal, NamedTuple, Protocol, Self, TypeVar
 
+from loushang.ai.model import Model, ModelSelection, available_thinking_levels
 from loushang.ai.types import UserMessage
 from loushang.foundation.json import JSONValue, require_json_mapping
 from loushang.harness.conversation import (
@@ -26,9 +27,10 @@ from loushang.harness.journal._owned_io import settled_io
 
 from ._resume_records import _HistoricalBinding, select_input_record
 from .committer import CommitResult, PrebuiltUserMessageLookupResult
+from .interaction import require_model_history_compatibility
 from .product_session import BindingInputT, ProductBindingT, ProductTranscriptSession
 from .session_factory import AgentTranscriptSessionFactory
-from .types import AgentTranscriptRecord, ExtensionData
+from .types import AgentTranscriptContext, AgentTranscriptRecord, ExtensionData
 
 
 class _ResumeIntentRead(Protocol):
@@ -71,6 +73,16 @@ class _ResumePlanRead(Protocol):
     def workspace_root(self) -> str: ...
 
 
+def resume_intent_matches_plan(attempt: _ResumeIntentRead, plan: _ResumePlanRead) -> bool:
+    """Match an intent to its exact selected history and plan."""
+    return (
+        attempt.session_id == plan.session_id
+        and attempt.original_leaf_id == plan.selected_leaf_id
+        and attempt.ancestry_digest == plan.ancestry_digest
+        and attempt.plan_fingerprint == plan.plan_id
+    )
+
+
 class _ResumeHistoryHeader(Protocol):
     @property
     def header(self) -> ConversationHeader: ...
@@ -95,6 +107,7 @@ IntentCo = TypeVar("IntentCo", bound=_ResumeIntentRead, covariant=True)
 BindingT = TypeVar("BindingT")
 PlanT = TypeVar("PlanT", bound=_ResumePlanRead)
 WriterHistoryT = TypeVar("WriterHistoryT", bound=_ResumeWriterHistory)
+_SelectionWriterT = TypeVar("_SelectionWriterT", bound=ProductTranscriptSession)
 
 
 class _ResumeProjection(Protocol[IntentCo]):
@@ -221,6 +234,44 @@ def lookup_detached_resume_input(
     if isinstance(selected, str):
         return _ResumeInputObservation(None, selected)
     return _ResumeInputObservation(selected.record_id, "committed")
+
+
+async def update_detached_resume_selection(
+    value: ModelSelection | str,
+    *,
+    context: AgentTranscriptContext,
+    current_model: Callable[[], Model | None],
+    build_model: Callable[[ModelSelection], Model],
+    open_writer: Callable[[], Awaitable[_SelectionWriterT]],
+    require_current: Callable[[], None],
+    refresh_history: Callable[[_SelectionWriterT], Awaitable[None]],
+) -> None:
+    """Validate saved history, append one selection and refresh under its Writer."""
+    if isinstance(value, str):
+        model = current_model()
+        if model is None or value not in available_thinking_levels(model):
+            raise ValueError("Thinking level is unavailable for the saved session model")
+        if value == context.thinking_level:
+            return
+    else:
+        require_model_history_compatibility(
+            build_model(value),
+            messages=context.messages,
+            provider_window=context.provider_window,
+        )
+
+    writer = await open_writer()
+    try:
+        require_current()
+        if isinstance(value, str):
+            await writer.append_thinking_level_change(value)
+        else:
+            await writer.append_model_change(
+                value.provider, value.model_id, endpoint_id=value.endpoint_id
+            )
+        await refresh_history(writer)
+    finally:
+        await writer.dispose_runtime_profile()
 
 
 class _ResumeContinuationTranscript(
@@ -383,12 +434,7 @@ class _ResumeContinuationTranscript(
                 or existing.binding_status == "unknown_version"
             ):
                 raise self._resume_recovery_error("activation.recovery_required")
-            if (
-                attempt.plan_fingerprint != writer_plan.plan_id
-                or attempt.session_id != writer_plan.session_id
-                or attempt.original_leaf_id != writer_plan.selected_leaf_id
-                or attempt.ancestry_digest != writer_plan.ancestry_digest
-            ):
+            if not resume_intent_matches_plan(attempt, writer_plan):
                 raise ValueError(
                     f"{self._resume_label} intent differs from its prepared Writer Plan"
                 )

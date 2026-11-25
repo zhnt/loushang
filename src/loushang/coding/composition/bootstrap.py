@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import partial
-from inspect import iscoroutine, iscoroutinefunction
+from inspect import iscoroutinefunction
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -243,6 +243,7 @@ from loushang.harness.session._cleanup import (
 from loushang.harness.session._cleanup import (
     guard_session_construction_handoff,
 )
+from loushang.harness.session._resume_continuation import require_resume_owner_check
 from loushang.harness.session.bootstrap_construction import (
     SessionStartupCustody,
     bind_deferred_plugin,
@@ -508,11 +509,10 @@ class _CodingResumeBootstrapAdmission:
             attempt = manager._require_resume_bootstrap_composition(self.attempt_id, composition)
             if not callable(self.current_admission) or iscoroutinefunction(self.current_admission):
                 raise TypeError("Coding Resume bootstrap admission must be synchronous")
-            result = cast(Callable[[CodingActivationAttemptV1], object], self.current_admission)(attempt)
-            if result is not None:
-                if iscoroutine(result):
-                    result.close()
-                raise TypeError("Coding Resume bootstrap admission must return None")
+            require_resume_owner_check(
+                lambda: self.current_admission(attempt),
+                invalid_return="Coding Resume bootstrap admission must return None",
+            )
         return composition
 
 

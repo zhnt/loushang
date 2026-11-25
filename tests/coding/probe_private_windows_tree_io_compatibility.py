@@ -400,7 +400,7 @@ def run_probe(
                 OsView().close(child_fd)
                 value = None
             elif operation == "copy":
-                value = backup._copy_members(
+                value = backup._native_io.copy_members(
                     source, snapshot, input_fd, Acl(), Acl(inherit_children=True)
                 )
             elif operation == "capture":

@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
-import os
 import sys
 from collections.abc import Callable, Coroutine, Sequence
-from contextlib import redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
     from loushang.harnesstui.mux.shell import HostedMuxShellV1
 
+from loushang.apphost.integrations._foreground_process import run_foreground_process
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1, LocalRecordError
 from loushang.appserver.protocol import (
@@ -143,27 +141,14 @@ def _execute(
     operation: Callable[[], Coroutine[object, object, None]],
     pending: Callable[[], bool],
 ) -> int:
-    """Process-only runner: never turn unresolved cleanup into a clean exit."""
-    runner = asyncio.Runner()
-    status = 0
-    with redirect_stdout(sys.stderr):
-        try:
-            runner.run(operation())
-        except KeyboardInterrupt:
-            status = 130
-            print("local_interrupted", file=sys.stderr)
-        except (AppServiceError, LocalRecordError) as error:
-            status = 1
-            print(error.code.value, file=sys.stderr)
-        except Exception:
-            status = 1
-            print("local_operation_failed", file=sys.stderr)
-        finally:
-            if pending():
-                print("local_cleanup_incomplete", file=sys.stderr, flush=True)
-                os._exit(status or 1)
-            runner.close()
-    return status
+    return run_foreground_process(
+        operation,
+        pending,
+        reportable_errors=(AppServiceError, LocalRecordError),
+        interrupted="local_interrupted",
+        failed="local_operation_failed",
+        cleanup_incomplete="local_cleanup_incomplete",
+    )
 
 
 def _parser() -> argparse.ArgumentParser:

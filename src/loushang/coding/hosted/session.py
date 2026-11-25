@@ -14,18 +14,20 @@ from typing import TYPE_CHECKING, cast
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.selection import is_usable_model_selection
-from loushang.ai.types import AssistantMessage, ImagePart, ToolCall, UserMessage
+from loushang.ai.types import ImagePart
 from loushang.apphost import SessionBindingKeyV1
 from loushang.apphost.integrations._canonical_transcript_catalog import (
     close_unpublished_candidate,
 )
 from loushang.apphost.integrations._session_projection import (
-    _TEXT_LIMIT,
-    _bounded,
     _first_user_prompt,
+    _hosted_committed_transcript_window,
+    _hosted_session_title,
+    _hosted_transcript_window,
     _HostedApprovalPresentation,
     _HostedConversationProjection,
 )
+from loushang.apphost.integrations.resource_access import HostedResourceAccess
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -56,11 +58,6 @@ from loushang.coding.hosted.resource_tools import (
     SESSION_FILES,
     HostReferencePolicy,
     hosted_resource_tools,
-)
-from loushang.coding.hosted.resources import (
-    SUBMISSION_ID,
-    HostedResourceAccess,
-    record_resource_ids,
 )
 from loushang.coding.hosted.service_adapter import (
     CodingHostedEventProjectionV1,
@@ -152,31 +149,16 @@ class CodingHostedHistoryBindingV1:
         self.identity = identity
         self._history = history
         self._closed = False
-        records: list[TranscriptRecordV1] = []
-        remaining = _TEXT_LIMIT
-        omitted = False
-        for entry in reversed(history.selected_records):
-            record = _committed_message_record(entry)
-            if record is None:
-                continue
-            if len(records) >= 128 or len(record.text) > remaining:
-                omitted = True
-                break
-            records.append(record)
-            remaining -= len(record.text)
-        records.reverse()
-        if omitted:
-            records.insert(0, TranscriptRecordV1(
-                TranscriptRecordKindV1.STATUS,
-                "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
-            ))
+        records, omitted = _hosted_committed_transcript_window(
+            reversed(history.selected_records), flag_clipped_rows=False,
+        )
         title = load_agent_transcript_session_metadata(
             history.header_preview.header, history.records
         ).name
-        self._explicit_title = _session_title(title, ()) if title and title.strip() else None
+        self._explicit_title = _hosted_session_title(title, ()) if title and title.strip() else None
         self._projection = CodingHostedSnapshotProjectionV1(
-            title=_session_title(title, (entry.payload for entry in history.records)),
-            revision=0, running=False, records=tuple(records), truncated=omitted,
+            title=_hosted_session_title(title, (entry.payload for entry in history.records)),
+            revision=0, running=False, records=records, truncated=omitted,
             user_choice=pending_choice_from_transcript(history.selected_records, identity.session_id),
         )
 
@@ -308,46 +290,25 @@ class CodingRealHostedSessionV1(_HostedApprovalPresentation):
 
     def project_explicit_title(self) -> str | None:
         name = self._session.session_name
-        return _session_title(name, ()) if name and name.strip() else None
+        return _hosted_session_title(name, ()) if name and name.strip() else None
 
     def project_title(self) -> str:
-        return _session_title(self._session.session_name, _title_messages(self._session))
+        return _hosted_session_title(self._session.session_name, _title_messages(self._session))
 
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1:
-        records: list[TranscriptRecordV1] = []
-        remaining = _TEXT_LIMIT
-        omitted = False
-        truncated = False
         manager = self._session.session_manager
-        messages = (
-            ((entry.payload, _committed_message_record(entry)) for entry in reversed(manager.get_active_entries()))
-            if isinstance(manager, SessionManager) and manager.persist
-            else ((message, _message_record(message)) for message in reversed(self._session.messages))
-        )
-        for message, record in messages:
-            if record is None:
-                continue
-            if len(records) >= 128 or len(record.text) > remaining:
-                omitted = True
-                break
-            records.append(record)
-            truncated |= len(_message_text(message)) > _TEXT_LIMIT
-            remaining -= len(record.text)
-        records.reverse()
-        if omitted:
-            records.insert(
-                0,
-                TranscriptRecordV1(
-                    TranscriptRecordKindV1.STATUS,
-                    "Earlier messages omitted from this bounded snapshot; the canonical transcript is unchanged.",
-                ),
+        if isinstance(manager, SessionManager) and manager.persist:
+            records, truncated = _hosted_committed_transcript_window(
+                reversed(manager.get_active_entries())
             )
+        else:
+            records, truncated = _hosted_transcript_window(reversed(self._session.messages))
         return CodingHostedSnapshotProjectionV1(
             title=self.project_title(),
             revision=self._projection.revision,
             running=self._session.is_streaming,
-            records=tuple(records),
-            truncated=omitted or truncated,
+            records=records,
+            truncated=truncated,
             user_choice=self._user_choice.pending,
         )
 
@@ -681,68 +642,6 @@ def _title_messages(session: AgentSession) -> Iterable[object]:
         yield from (entry.payload for entry in manager.entries)
     else:
         yield from session.messages
-
-
-def _session_title(name: str | None, messages: Iterable[object]) -> str:
-    if name and name.strip():
-        return _bounded(name.strip(), limit=256)
-    # Read the first prompt from the full transcript, including turns omitted
-    # by the display window or by context compaction.
-    for message in messages:
-        if isinstance(message, UserMessage) and (title := " ".join(_message_text(message).split())):
-            if len(title) <= 48:
-                return title
-            prefix = title[:47].rstrip()
-            word_boundary = prefix.rfind(" ")
-            if word_boundary >= 30:
-                prefix = prefix[:word_boundary]
-            return f"{prefix}…"
-    return "New Session"
-
-
-def _committed_message_record(entry: AgentTranscriptRecord) -> TranscriptRecordV1 | None:
-    submission = entry.metadata.get(SUBMISSION_ID)
-    return _message_record(
-        entry.payload, entry.record_id, submission if isinstance(submission, str) else None,
-        record_resource_ids(entry)[:16],
-    )
-
-
-def _message_record(
-    message: object, record_id: str | None = None, submission: str | None = None,
-    resource_ids: tuple[str, ...] = (),
-) -> TranscriptRecordV1 | None:
-    if not isinstance(message, UserMessage | AssistantMessage):
-        return None
-    text = _message_text(message)
-    if (
-        isinstance(message, AssistantMessage)
-        and message.stop_reason not in {"error", "aborted"}
-        and not text
-        and any(isinstance(part, ToolCall) for part in message.content)
-    ):
-        return None
-    return TranscriptRecordV1(
-        TranscriptRecordKindV1.USER
-        if isinstance(message, UserMessage)
-        else TranscriptRecordKindV1.ASSISTANT,
-        _bounded(text),
-        record_id,
-        resource_ids,
-        submission,
-    )
-
-
-def _message_text(message: object) -> str:
-    if not isinstance(message, UserMessage | AssistantMessage):
-        return ""
-    if isinstance(message.content, str):
-        return message.content
-    return "".join(
-        getattr(part, "text", "")
-        for part in message.content
-        if getattr(part, "type", None) == "text"
-    )
 
 
 __all__ = [

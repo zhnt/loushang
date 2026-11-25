@@ -20,6 +20,9 @@ from loushang.harness.package_product._worker_windows_attempt import is_windows_
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    has_worker_candidate_binding,
+)
 from loushang.hosting.windows_backend_material import (
     WindowsBackendMaterialExpectationV1,
 )
@@ -101,10 +104,7 @@ __all__ = [
 
 
 def _require_candidate_product(product: WindowsLocalWheelProductSessionOwner) -> None:
-    if not is_windows_product(product, "coding", os.name) or not any(
-        binding.source_trust_class == "local-worker-candidate"
-        for binding in product.policy.bindings
-    ):
+    if not is_windows_product(product, "coding", os.name) or not has_worker_candidate_binding(product.policy):
         raise ValueError("Windows Worker candidate Product owner is required")
 
 

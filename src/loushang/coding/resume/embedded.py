@@ -17,11 +17,11 @@ from loushang.coding.composition.capability_plugins import (
 )
 from loushang.coding.resume.activation_attempt import (
     CodingActivationAttemptV1,
-    CodingResumeRecoveryRequired,
 )
 from loushang.coding.resume.first_input import (
     prepare_first_input_effects,
     require_first_input_attempt,
+    require_first_input_plan,
 )
 from loushang.coding.resume.history import (
     CodingResumeHistoryPreview,
@@ -154,8 +154,7 @@ class EmbeddedResumeInputCoordinator:
         observe_input_identity: Callable[[CodingResumeInputLookupQueryV1], None],
     ) -> CodingRuntimePreparedResume:
         plan = await self.runtime.prepare_configured_resume_plan(history)
-        if plan.status != "needs_final_validation" or plan.ancestry_digest is None:
-            raise CodingResumeRecoveryRequired("input.plan_unavailable")
+        require_first_input_plan(plan)
         workspace = Path(plan.workspace_root)
         subject_digest = self.runtime.embedded_resume_subject_digest()
         approval_owner = self.runtime.embedded_resume_approval_owner()

@@ -28,7 +28,7 @@ def test_windows_worker_candidate_cli_requires_native_platform(
     if windows_candidate:
         args.append("--windows-candidate")
     args.extend(("recover-crash", "--attempt-id", "a" * 32))
-    with patch.object(cli, "open_coding_fenced_product_application_owner") as opened:
+    with patch.object(cli, "_open_installed_product") as opened:
         assert cli.main(args) == 1
     opened.assert_not_called()
     assert "windows_worker_candidate_platform_closed" in capsys.readouterr().err

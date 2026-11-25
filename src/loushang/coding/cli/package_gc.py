@@ -7,12 +7,10 @@ import os
 import sys
 from collections.abc import Sequence
 from contextlib import closing
-from importlib.metadata import version
 from pathlib import Path
 
 from loushang.coding.package.product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-    open_coding_fenced_product_application_owner,
+    _open_installed_product,
 )
 from loushang.coding.package.product_worker_posix_gc_history import (
     CodingPosixWorkerGcHistoryAuthority,
@@ -93,11 +91,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     def execute(workspace: Path) -> dict[str, object]:
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-        application = open_coding_fenced_product_application_owner(
+        application = _open_installed_product(
             lifecycle,
             workspace=workspace,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             windows_candidate=args.windows_candidate,
             worker_candidates=args.worker_candidates,
         )

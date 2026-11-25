@@ -166,9 +166,9 @@ class _WindowsInstallationRootLineage(Generic[G]):
     maximum_receipt_bytes: int
     maximum_write_bytes: int
     receipt_io: Callable[[], WindowsPrivateReceiptIO]
-    receipt_error_type: Callable[[], type[RuntimeError]]
+    receipt_error_type: type[RuntimeError]
     deletion_type: Callable[[], type[_DeletionRecords]]
-    generation_type: Callable[[], type[G]]
+    generation_type: type[G]
 
     def bind(
         self,
@@ -568,7 +568,7 @@ class _WindowsInstallationRootLineage(Generic[G]):
                 predecessor_receipt_id,
             ):
                 raise ValueError(f"{self.label} private-data root receipt changed")
-        return self.generation_type()(
+        return self.generation_type(
             number,
             predecessor_receipt_id,
             intent_path,
@@ -671,7 +671,7 @@ class _WindowsInstallationRootLineage(Generic[G]):
             self.receipt_io().write_private_receipt(
                 path, payload, maximum_bytes=self.maximum_write_bytes
             )
-        except (self.receipt_error_type(), FileExistsError):
+        except (self.receipt_error_type, FileExistsError):
             if (
                 self.receipt_io().read_private_receipt(
                     path, maximum_bytes=self.maximum_receipt_bytes

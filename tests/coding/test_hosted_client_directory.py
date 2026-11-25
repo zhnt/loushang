@@ -3,10 +3,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.apphost.integrations import (
+    _resource_client_reference as client_references,
+)
 from loushang.appserver.execution.model import ResourceRefV1
 from loushang.appserver.execution.resources import SessionResourceQueryV1
 from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
-from loushang.coding.hosted import client_references
 from loushang.coding.hosted.resources import HostedResourceAccess
 
 

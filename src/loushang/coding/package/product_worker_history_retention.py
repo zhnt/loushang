@@ -19,7 +19,6 @@ from loushang.harness.package_product._linux_worker_history import (
 from loushang.harness.package_product._linux_worker_history import (
     HistoryProofBindings,
     review_history,
-    review_history_under_guard,
 )
 from loushang.harness.package_product._linux_worker_history import (
     known_worker_state_name as _known_worker_state_name,
@@ -27,14 +26,10 @@ from loushang.harness.package_product._linux_worker_history import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.plugin_management.package_gc_reservation import (
-    PluginPackageGcReservationSnapshotV1,
-)
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.worker.history._retention import (
     RetentionReviewMethods,
     matching_attempt_gc_refs,
-    receipt_gate_reference_issue,
 )
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
@@ -78,20 +73,6 @@ class CodingWorkerAttemptReferenceV1:
 
 
 _matching_gc_revision_refs = matching_attempt_gc_refs
-
-
-def _receipt_gate_reference_issue(
-    gate: CodingWorkerStartGateRecordV1,
-    receipt: CodingWorkerReceiptRecordV1 | None,
-    supervisor: WorkerAttemptRecordV1 | None,
-    group_status: GatedGroupStatus,
-    activation: CodingProductWorkerRetainedAttemptV1 | None = None,
-) -> str | None:
-    """Require every attempt naming a receipt to have settled native custody."""
-
-    return receipt_gate_reference_issue(
-        gate, receipt, supervisor, group_status, activation, product_id="coding"
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,24 +130,6 @@ def review_coding_product_worker_history_retention(
 ) -> CodingWorkerHistoryRetentionReviewV1:
     """Join fresh Product facts while runtime and GC owner locks are held."""
     return review_history(_history_proof_bindings(), product, attempt_id=attempt_id)
-
-
-def _review_coding_product_worker_history_under_guard(
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    active_runtime_lease_ids: tuple[str, ...],
-    gc_snapshot: PluginPackageGcReservationSnapshotV1,
-) -> CodingWorkerHistoryRetentionReviewV1:
-    """Read exact history while the caller owns runtime and GC locks."""
-
-    return review_history_under_guard(
-        _history_proof_bindings(),
-        product,
-        attempt_id=attempt_id,
-        active_runtime_lease_ids=active_runtime_lease_ids,
-        gc_snapshot=gc_snapshot,
-    )
 
 
 __all__ = [

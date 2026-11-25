@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Literal, Protocol, cast
 
+from loushang.harness.host.rpc.arguments import request_exact_string
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.routing import LegacyRpcHandler
 from loushang.harness.plugin_management.application import (
@@ -75,11 +76,11 @@ class RpcPluginDesiredCommands:
     def submit_plugin_desired(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        correlation = _request_string(payload.get("correlationId", command_id))
-        product_id = _request_string(payload.get("productId"))
-        scope_id = _request_string(payload.get("scopeId"))
-        plugin_id = _request_string(payload.get("pluginId"))
-        operation_id = _request_string(payload.get("operationId"))
+        correlation = request_exact_string(payload.get("correlationId", command_id))
+        product_id = request_exact_string(payload.get("productId"))
+        scope_id = request_exact_string(payload.get("scopeId"))
+        plugin_id = request_exact_string(payload.get("pluginId"))
+        operation_id = request_exact_string(payload.get("operationId"))
         action = payload.get("action")
         revision = payload.get("expectedInventoryRevision")
         if (
@@ -128,10 +129,10 @@ class RpcPluginDesiredCommands:
     def plugin_desired_operation(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        correlation = _request_string(payload.get("correlationId", command_id))
-        product_id = _request_string(payload.get("productId"))
-        scope_id = _request_string(payload.get("scopeId"))
-        operation_id = _request_string(payload.get("operationId"))
+        correlation = request_exact_string(payload.get("correlationId", command_id))
+        product_id = request_exact_string(payload.get("productId"))
+        scope_id = request_exact_string(payload.get("scopeId"))
+        operation_id = request_exact_string(payload.get("operationId"))
         if (
             correlation is None
             or product_id is None
@@ -168,10 +169,10 @@ class RpcPluginDesiredCommands:
     def repair_plugin_desired(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        correlation = _request_string(payload.get("correlationId", command_id))
-        product_id = _request_string(payload.get("productId"))
-        scope_id = _request_string(payload.get("scopeId"))
-        operation_id = _request_string(payload.get("operationId"))
+        correlation = request_exact_string(payload.get("correlationId", command_id))
+        product_id = request_exact_string(payload.get("productId"))
+        scope_id = request_exact_string(payload.get("scopeId"))
+        operation_id = request_exact_string(payload.get("operationId"))
         if (
             correlation is None
             or product_id is None
@@ -263,14 +264,6 @@ def _validate_result(
         )
     ):
         raise ValueError("Plugin management owner result changed identity")
-
-
-def _request_string(value: object) -> str | None:
-    return (
-        value
-        if isinstance(value, str) and value and value == value.strip()
-        else None
-    )
 
 
 __all__ = ["PluginDesiredRpcClientPort", "RpcPluginDesiredCommands"]
