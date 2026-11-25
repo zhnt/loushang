@@ -56,14 +56,15 @@ function Invoke-Web([hashtable]$Body) {
 
 $config = Join-Path $env:LOUSHANG_HOME 'host.json'
 $configHash = (Get-FileHash $config).Hash
-$workspace = (New-Item -ItemType Directory (Join-Path $root 'workspace')).FullName
+$workspace = 'default'
 $expectedSession = $null
 try {
     foreach ($phase in @('clean', 'reinstall')) {
+        "Checking $phase installation"
         $setup = Start-Process $Installer -ArgumentList "/S /D=$install" -Wait -PassThru
         if ($setup.ExitCode) { throw "Installer exited with $($setup.ExitCode)" }
         foreach ($file in @('loushang-gui.exe','loushang.exe','loushang-web.exe','loushang-mux.exe',
-                'runtime/python.exe','web/index.html','VCRUNTIME140.dll','LICENSE','NOTICE')) {
+                'runtime/python.exe','web/index.html','VCRUNTIME140.dll','LICENSE','NOTICE','uninstall.exe')) {
             if (-not (Test-Path (Join-Path $install $file))) { throw "Missing installed file $file" }
         }
         foreach ($file in @('.git','.venv','.loushang','node_modules','src')) {
@@ -110,7 +111,8 @@ try {
 
         $hostStarted = $true
         $hostStatus = Invoke-Mux start
-        if ($hostStatus.state -ne 'running') { throw 'AppHost did not start' }
+        if ($hostStatus.state -ne 'running') { throw "AppHost did not start: $($hostStatus | ConvertTo-Json -Compress)" }
+        'PASS AppHost start'
         Remove-Item $endpoint -ErrorAction SilentlyContinue
         $url = $null
         $logRoot = if ($Evidence) { $Evidence } else { $root }
@@ -128,9 +130,11 @@ try {
         if ($connected.state -ne 'running' -or $connected.instanceId -ne $hostStatus.instanceId) {
             throw "Web failed to connect: $($connected | ConvertTo-Json -Compress)"
         }
+        'PASS Web served HTML and connected to AppHost'
         if ($phase -eq 'clean') {
-            Invoke-Web @{operation='workspace';action='register';path=$workspace} | Out-Null
-            Invoke-Web @{operation='workspace';action='open';path=$workspace} | Out-Null
+            $created = (Invoke-Web @{operation='workspace';action='create-chat';path=$workspace;
+                title='Installer acceptance Session'}).result
+            if (-not $created.sessionId) { throw 'Installed AppHost failed to create a Session' }
         }
         $viewId = [guid]::NewGuid().ToString()
         $snapshot = (Invoke-Web @{operation='live';action='snapshot';viewId=$viewId;workspace=$workspace}).result
@@ -141,6 +145,7 @@ try {
         elseif ($session -cne $expectedSession) { throw 'Session identity changed after reinstall' }
         Invoke-Web @{operation='shutdown-adapter'} | Out-Null
         if (-not $web.WaitForExit(15000) -or $web.ExitCode) { throw 'Web did not stop cleanly' }
+        'PASS Web shutdown'
         $stopped = Invoke-Mux stop
         if ($stopped.state -ne 'not_running' -or -not $stopped.cleanlyStopped) {
             throw 'AppHost did not stop cleanly'
@@ -149,6 +154,9 @@ try {
         "PASS $phase install, AppHost connection, Session and clean stop"
         if ($phase -eq 'clean') { Remove-Item (Join-Path $install 'web/index.html') }
     }
+} catch {
+    Write-Warning "Installation verification failed: $_"
+    throw
 } finally {
     if ($gui -and -not $gui.HasExited) { Stop-Process -Id $gui.Id }
     if ($web -and -not $web.HasExited) {
@@ -158,9 +166,17 @@ try {
         if (-not $web.WaitForExit(5000)) { Stop-Process -Id $web.Id }
     }
     if ($hostStarted) {
-        $stopped = Invoke-Mux stop
-        if (-not $stopped.cleanlyStopped) { throw 'AppHost did not stop cleanly' }
-        'PASS AppHost stop'
+        try {
+            $stopped = Invoke-Mux stop
+            if (-not $stopped.cleanlyStopped) { throw 'AppHost did not stop cleanly' }
+            'PASS AppHost stop during cleanup'
+        } catch {
+            Write-Warning "AppHost cleanup failed: $_"
+        }
+    }
+    if ($Evidence) {
+        Get-ChildItem -LiteralPath $env:LOUSHANG_HOME -Recurse -File -Filter 'lifecycle-*.jsonl' |
+            Copy-Item -Destination $Evidence
     }
     $uninstaller = Join-Path $install 'uninstall.exe'
     if (Test-Path $uninstaller) {

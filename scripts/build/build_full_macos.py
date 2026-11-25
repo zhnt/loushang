@@ -179,7 +179,7 @@ def main() -> None:
         shutil.copytree(ROOT / "gui/dist", resources / "web")
         shutil.copy2(ROOT / f"gui/web/target/{target}/release/loushang-web", binaries)
         launcher(binaries / "loushang-mux", "loushang.coding.cli.mux")
-        launcher(binaries / "loushang-host", "loushang.coding.foreground_host")
+        launcher(binaries / "loushang-host", "loushang.coding.hosted.foreground")
         # Freeze the existing terminal application, not the GUI bridge.
         venv = work / "tui-venv"
         run("uv", "venv", "--managed-python", "--python", PYTHON, str(venv))

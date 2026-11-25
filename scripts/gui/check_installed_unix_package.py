@@ -7,12 +7,14 @@ import hashlib
 import json
 import os
 import plistlib
+import shutil
 import subprocess
 import sys
 import tempfile
 import tomllib
 from pathlib import Path
 from time import monotonic, sleep
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -70,7 +72,7 @@ def verify_gui(binary: Path, cwd: Path, env: dict, evidence: Path, linux: bool) 
             stop_process(gui)
 
 
-def session_round_trip(web: Path, state: Path, workspace: Path, cwd: Path, env: dict,
+def session_round_trip(web: Path, state: Path, cwd: Path, env: dict,
                        evidence: Path, phase: str, register: bool) -> dict:
     endpoint = state / "state/web/endpoint.json"
     endpoint.unlink(missing_ok=True)
@@ -89,15 +91,23 @@ def session_round_trip(web: Path, state: Path, workspace: Path, cwd: Path, env: 
                     data=json.dumps({"operation": operation, **fields}).encode(),
                     headers={"X-Loushang-Client": "1", "Content-Type": "application/json"},
                 )
-                with urlopen(request, timeout=45) as response:
-                    return json.load(response)["result"]
+                try:
+                    with urlopen(request, timeout=45) as response:
+                        return json.load(response)["result"]
+                except HTTPError as error:
+                    raise RuntimeError(
+                        f"{operation}/{fields.get('action')}: HTTP {error.code} "
+                        f"{error.read().decode(errors='replace')}"
+                    ) from error
 
             with urlopen(url, timeout=10) as page:
                 assert "text/html" in page.headers["Content-Type"] and b"<html" in page.read()
             assert call("manage", action="connect")["state"] == "running"
+            workspace = "default"
             if register:
-                call("workspace", action="register", path=str(workspace))
-                call("workspace", action="open", path=str(workspace))
+                created = call("workspace", action="create-chat", path=workspace,
+                               title="Installer acceptance Session")
+                assert created["sessionId"], created
             view = str(uuid4())
             snap = call("live", action="snapshot", workspace=str(workspace), viewId=view)
             identity = snap["sessions"][0]["executions"]["identity"]
@@ -149,8 +159,6 @@ def verify(args: argparse.Namespace) -> None:
         cwd = Path(temporary).resolve()
         state = cwd / "product-home"
         state.mkdir(mode=0o700)
-        workspace = cwd / "workspace"
-        workspace.mkdir()
         env = {name: os.environ[name] for name in (
             "HOME", "USER", "TMPDIR", "DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR",
             "DBUS_SESSION_BUS_ADDRESS",
@@ -194,6 +202,8 @@ def verify(args: argparse.Namespace) -> None:
                         "print(m.version('loushang'))"
                     ), version, cwd=cwd, env=env)
                     run(tui, "--help" if linux else "--version", cwd=cwd, env=env)
+                    if not linux:
+                        run(entries / "loushang-host", "--help", cwd=cwd, env=env)
                     if phase == "clean":
                         config.write_text(config_text)
                     else:
@@ -202,7 +212,7 @@ def verify(args: argparse.Namespace) -> None:
                     assert before["state"] == "not_running", before
                     host = json.loads(run(mux, "service", "start", "--json", cwd=cwd, env=env))
                     assert host["state"] == "running", host
-                    identity = session_round_trip(web, state, workspace, cwd, env, evidence, phase,
+                    identity = session_round_trip(web, state, cwd, env, evidence, phase,
                                                   register=phase == "clean")
                     if phase == "clean":
                         expected_identity = identity
@@ -222,6 +232,9 @@ def verify(args: argparse.Namespace) -> None:
                 run("systemctl", "--user", "unset-environment", "LOUSHANG_HOME", env=env)
                 run("systemctl", "--user", "daemon-reload", env=env)
             elif APP.exists():
+                host_log = state / "state/macos-host/host.log"
+                if host_log.is_file():
+                    shutil.copyfile(host_log, evidence / "host.log")
                 # Apple Installer has no uninstall command. Remove this PKG's
                 # exact installed paths, then remove its receipt.
                 run("sudo", "-n", "/bin/rm", "-rf", APP)

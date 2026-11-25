@@ -100,6 +100,7 @@ jobs:
             gui/src-tauri -> target
             gui/web -> target
           key: ${{ matrix.target }}
+          cache-on-failure: true
       - name: Build Full installer
         shell: bash
         run: |
