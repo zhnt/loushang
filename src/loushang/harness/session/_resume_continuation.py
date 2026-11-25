@@ -335,6 +335,7 @@ class _ResumeTranscript(Protocol[IntentCo]):
     @property
     def resume_runtime_publication_pending(self) -> bool: ...
     def require_no_unsettled_resume_activation(self) -> None: ...
+    async def prepare_resume_activation_guard(self) -> None: ...
     def _require_resume_runtime_preparation(self, attempt_id: str) -> IntentCo: ...
     def _require_resume_staged_input(
         self, attempt_id: str, message: UserMessage
@@ -380,6 +381,22 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
             self._require_current_resume_publication(publication)
         return True
 
+    async def prepare_model_call_runtime(self) -> None:
+        await self._resume_transcript.prepare_resume_activation_guard()
+        publication = self._resume_publication
+        if publication is not None:
+            self._require_current_resume_publication(publication)
+            await super().prepare_model_call_runtime()
+            self._require_current_resume_publication(publication)
+            return
+        self._require_current_runtime_selection()
+        self._claim_runtime_owners()
+        await super().prepare_model_call_runtime()
+        self._activate_prepared_runtime_tools()
+        self._require_session_owner_generation_evidence()
+        await self._record_ordinary_runtime_startup()
+        self._mark_runtime_preflight_complete()
+
     def _init_resume_runtime_state(self) -> None:
         # Called at the Product's original construction point, before graph IO.
         self._resume_runtime_preparation_lock = asyncio.Lock()
@@ -399,22 +416,22 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
     def _resume_user_input_digest(message: UserMessage) -> str:
         raise NotImplementedError
 
-    def _require_current_resume_selection(self) -> None:
+    def _require_current_runtime_selection(self) -> None:
         raise NotImplementedError
 
-    def _claim_resume_runtime_owners(self) -> None:
+    def _claim_runtime_owners(self) -> None:
         raise NotImplementedError
 
-    def _resume_graph_prepared(self) -> None:
+    async def _record_ordinary_runtime_startup(self) -> None:
         raise NotImplementedError
 
     def _require_resume_worker_effect_settlement(self, attempt: IntentT) -> None:
         raise NotImplementedError
 
-    def _activate_resume_runtime_tools(self) -> None:
+    def _activate_prepared_runtime_tools(self) -> None:
         raise NotImplementedError
 
-    def _resume_runtime_published(self) -> None:
+    def _mark_runtime_preflight_complete(self) -> None:
         raise NotImplementedError
 
     def _build_resume_composition_receipt(self) -> dict[str, object]:
@@ -444,17 +461,17 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
                 self._require_candidate_preparation_admission(
                     lambda: require_current_admission(attempt)
                 )
-                self._require_current_resume_selection()
+                self._require_current_runtime_selection()
 
         async with self._resume_runtime_preparation_lock:
             self._require_candidate_preparation_admission(require_current)
             self._resume_graph_attempt_id = attempt_id
             try:
-                self._claim_resume_runtime_owners()
+                self._claim_runtime_owners()
                 await self._prepare_candidate_session_graph(
                     require_current_admission=require_current
                 )
-                self._resume_graph_prepared()
+                self._require_session_owner_generation_evidence()
                 require_current()
                 receipt = self._build_resume_composition_receipt()
                 self._resume_candidate = _ResumeRuntimeCandidate(
@@ -612,7 +629,7 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
             or self._capability_graph_runtime.generation != candidate.graph_generation
         ):
             raise self._resume_recovery_error("runtime.candidate_changed")
-        self._require_current_resume_selection()
+        self._require_current_runtime_selection()
         self.require_current_capability_component_activations()
         receipt = self._build_resume_composition_receipt()
         if fingerprint_catalog_value(
@@ -696,11 +713,11 @@ class _ResumeContinuationSession(AgentProductSession, Generic[IntentT]):
             self._require_current_resume_publication(publication)
             with manager._lifecycle_session.sync_operation_scope():
                 try:
-                    self._activate_resume_runtime_tools()
+                    self._activate_prepared_runtime_tools()
                     self._require_current_resume_publication(publication)
                     manager._publish_resume_runtime(attempt_id, input_record_id)
                     self._resume_publication = publication
-                    self._resume_runtime_published()
+                    self._mark_runtime_preflight_complete()
                 except BaseException:
                     self._execution_preparation_failed = True
                     raise

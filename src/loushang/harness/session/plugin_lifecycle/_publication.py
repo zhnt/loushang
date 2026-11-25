@@ -20,9 +20,8 @@ OwnerGenerations = tuple[StagedSessionCapabilityOwnerGeneration, ...]
 OwnerContributions = tuple[tuple[str, tuple[str, ...]], ...]
 ReceiptT = TypeVar("ReceiptT")
 ReceiptContraT = TypeVar("ReceiptContraT", contravariant=True)
-OwnerCapture = Callable[
-    [OwnerGenerations, StagedResourceCompositionCandidate | None, bool], ReceiptT
-]
+MountedResource = Callable[[], StagedResourceCompositionCandidate | None]
+OwnerCapture = Callable[[OwnerGenerations, MountedResource, bool], ReceiptT]
 
 
 class _OwnerEvidenceTarget(Protocol[ReceiptContraT]):
@@ -41,6 +40,12 @@ class _OwnerPublicationHooks(Protocol):
     ) -> None: ...
 
     def commit_after_graph(self) -> None: ...
+
+    def require_published(
+        self,
+        read_generations: Callable[[], OwnerGenerations],
+        read_resource: MountedResource,
+    ) -> None: ...
 
 
 class _OwnerLeaseSet:
@@ -117,7 +122,7 @@ class _OwnerPublication(Generic[ReceiptT]):
     ) -> None:
         # A present empty lease set still captures and becomes prepared.
         # Repeated stage does not reset previously successful flags.
-        self._receipts = self._capture(generations, candidate, True)
+        self._receipts = self._capture(generations, lambda: candidate, True)
         self._target.prepare_owner_generations(self._receipts)
         self._prepared = True
 
@@ -132,9 +137,8 @@ class _OwnerPublication(Generic[ReceiptT]):
 
     def require_published(
         self,
-        inputs: Callable[
-            [], tuple[OwnerGenerations, StagedResourceCompositionCandidate | None]
-        ],
+        read_generations: Callable[[], OwnerGenerations],
+        read_resource: MountedResource,
     ) -> None:
         if self._has_targets is not None and not self._has_targets():
             return
@@ -143,8 +147,7 @@ class _OwnerPublication(Generic[ReceiptT]):
             self._error = None
             raise error
         if not self._receipts:
-            generations, candidate = inputs()
-            self._receipts = self._capture(generations, candidate, False)
+            self._receipts = self._capture(read_generations(), read_resource, False)
         if not self._prepared:
             self._target.prepare_owner_generations(self._receipts)
             self._prepared = True
@@ -173,9 +176,10 @@ def _single_owner_publication(
 ) -> _OwnerPublication[OwnerReceipts]:
     def capture(
         generations: OwnerGenerations,
-        candidate: StagedResourceCompositionCandidate | None,
+        read_resource: MountedResource,
         prepared: bool,
     ) -> OwnerReceipts:
+        candidate = read_resource()
         receipts = capture_owner_generation_receipts(
             generations, plugin_id, prepared=prepared
         )
@@ -211,7 +215,7 @@ def _owner_set_publication(
 ) -> _OwnerPublication[OwnerReceiptGroups]:
     def capture(
         generations: OwnerGenerations,
-        _candidate: StagedResourceCompositionCandidate | None,
+        _read_resource: MountedResource,
         prepared: bool,
     ) -> OwnerReceiptGroups:
         return {
