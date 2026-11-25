@@ -229,7 +229,7 @@ def main() -> None:
         run("/usr/bin/productbuild", "--product", str(requirements_plist),
             "--package", str(component), str(destination))
         expanded = work / "expanded"
-        run("/usr/bin/pkgutil", "--expand", str(destination), str(expanded))
+        run("/usr/sbin/pkgutil", "--expand", str(destination), str(expanded))
         if not (expanded / "Distribution").is_file():
             raise RuntimeError("Missing PKG Distribution metadata")
         report = work / (destination.stem + ".manifest.json")
