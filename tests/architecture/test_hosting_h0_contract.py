@@ -45,12 +45,13 @@ H6_PRIVATE_MODULES = {
     HOSTING_ROOT / "gated_identity.py",
 }
 OPTIONAL_MANAGED_SERVICE_MODULES = {
-    # Linux lookup/observation only; still subject to the standard-library and
-    # product-neutral import checks below, not added to the public surface.
+    # Managed service internals use the same standard-library import boundary.
+    HOSTING_ROOT / "foreground_service.py",
     HOSTING_ROOT / "machine_identity.py",
     HOSTING_ROOT / "service_group.py",
     HOSTING_ROOT / "service.py",
     HOSTING_ROOT / "service_handoff.py",
+    HOSTING_ROOT / "service_launchd.py",
     HOSTING_ROOT / "service_process.py",
 }
 FORBIDDEN_PUBLIC_TERMS = {
