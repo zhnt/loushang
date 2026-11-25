@@ -1,5 +1,11 @@
 # Coding剩余职责实施优先级
 
+## Worker 历史读写入口的 Product 校验
+
+检查点读取、发布和修复，V2 预检、暂存、提交、轮换和退休，以及只读 GC 证明复用 Package Product 对原生 owner 类型、产品标识和 Linux 限制的检查。Coding 保持原入口、错误和记录类型。历史审阅直接绑定已加载的 owner，V2 读取器、暂存、按需检查点和注册修复继续在使用时加载。锁、回放、读写权限和实际变更由原来的执行体管理。
+
+相对 `69e8c2a93`，Coding 减少 46 行，Harness 增加 12 行，Hosting、其他生产 Python 和测试均变化 0 行，系统生产 Python 减少 34 行。Coding 为 77,880 行。67 项 Linux 既有用例通过，包含回收拒绝、中断后重放和保留历史复核。Ruff 与 mypy 通过，读取型绑定生成时未新增加载模块。
+
 ## Worker 原生操作入口和历史识别
 
 Harness Worker CLI 先核实原生平台，再解析工作区并持有相应的 Product。Linux 续用只读候选状态入口，Windows 续用精确的原生 owner 类型检查。Linux 发布的审阅、批准、安装和修复由共享命令实现调用原有 Package Product 权限。Windows 共用 Wheel 读取、审阅身份校验与批准回执投影，平台自身的后端安装与恢复保留各自的合同。

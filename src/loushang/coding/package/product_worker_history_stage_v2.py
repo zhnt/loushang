@@ -14,6 +14,9 @@ from loushang.harness.package_product._linux_worker_history import (
     rollback_product_history_preparation,
     stage_product_history_preparation,
 )
+from loushang.harness.package_product._worker_history_access import (
+    is_exact_posix_worker_history_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -82,10 +85,7 @@ def stage_coding_product_worker_v2_preparation(
 ) -> CodingWorkerV2PreparationIntent:
     """Prepare and stage under the same Product runtime and GC custody."""
 
-    if (
-        type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_exact_posix_worker_history_product(product, product_id="coding"):
         raise ValueError("Coding Worker V2 staging requires its Product")
     return cast(
         CodingWorkerV2PreparationIntent,
@@ -104,10 +104,7 @@ def rollback_coding_product_worker_v2_preparation(
 ) -> bool:
     """Remove only matching staged bytes while V1 still owns all history."""
 
-    if (
-        type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_exact_posix_worker_history_product(product, product_id="coding"):
         raise ValueError("Coding Worker V2 rollback requires its Product")
     return rollback_product_history_preparation(_history_proof_bindings(), product)
 

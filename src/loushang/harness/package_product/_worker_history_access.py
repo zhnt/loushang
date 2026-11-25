@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
@@ -44,6 +45,17 @@ def is_posix_worker_candidate_product(
         isinstance(product, PosixLocalWheelProductSessionOwner)
         and product.policy.product_id == product_id
         and has_worker_candidate_binding(product.policy)
+    )
+
+
+def is_exact_posix_worker_history_product(
+    product: object, *, product_id: str, linux_only: bool = False
+) -> bool:
+    """Check the native Product at the original history operation boundary."""
+    return (
+        (not linux_only or sys.platform.startswith("linux"))
+        and type(product) is PosixLocalWheelProductSessionOwner
+        and product.policy.product_id == product_id
     )
 
 

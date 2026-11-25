@@ -13,6 +13,9 @@ from loushang.harness.package_product._linux_worker_history import (
     repair_product_worker_history_checkpoint_append,
     rollback_product_worker_history_checkpoint_tail,
 )
+from loushang.harness.package_product._worker_history_access import (
+    is_exact_posix_worker_history_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -74,10 +77,7 @@ def read_coding_product_worker_history_checkpoints_under_gc_guard(
     product: PosixLocalWheelProductSessionOwner,
 ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
     """Strictly replay Product checkpoints; this grants no pruning authority."""
-    if (
-        type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_exact_posix_worker_history_product(product, product_id="coding"):
         raise ValueError("Coding Worker checkpoint requires its Product")
     return read_product_worker_history_checkpoints(
         product, commands=lambda: _checkpoint_commands()
@@ -117,8 +117,7 @@ def _write_checkpoint(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str, repair: bool
 ) -> CodingWorkerHistoryCheckpointV1:
     if (
-        type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+        not is_exact_posix_worker_history_product(product, product_id="coding")
         or type(attempt_id) is not str
         or (_ATTEMPT.fullmatch(attempt_id) is None)
     ):
@@ -146,10 +145,7 @@ def rollback_coding_product_worker_history_checkpoint_tail(
     product: PosixLocalWheelProductSessionOwner,
 ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
     """Discard only bytes after the last committed checkpoint head."""
-    if (
-        type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_exact_posix_worker_history_product(product, product_id="coding"):
         raise ValueError("Coding Worker checkpoint rollback requires its Product")
     return cast(
         "tuple[CodingWorkerHistoryCheckpointV1, ...]",

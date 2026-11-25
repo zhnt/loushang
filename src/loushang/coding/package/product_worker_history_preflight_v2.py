@@ -9,6 +9,9 @@ from __future__ import annotations
 from loushang.harness.package_product._linux_worker_history import (
     prepare_product_history_cutover,
 )
+from loushang.harness.package_product._worker_history_access import (
+    is_exact_posix_worker_history_product,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -30,10 +33,7 @@ def prepare_coding_product_worker_history_cutover_v2(
 ) -> CodingWorkerPreparedProductCutoverV2:
     """Reopen all Product references and V1 bytes under one custody period."""
 
-    if (
-        type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
-    ):
+    if not is_exact_posix_worker_history_product(product, product_id="coding"):
         raise ValueError("Coding Worker V2 preflight requires its Product and cutoffs")
     return prepare_product_history_cutover(
         _history_proof_bindings(),

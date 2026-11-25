@@ -134,21 +134,14 @@ def _history_proof_bindings() -> HistoryProofBindings[
     CodingWorkerHistoryRetentionReviewV1
 ]:
     """Bind actual existing owners and pure Product data without reading history."""
-
-    def receipts(product):
-        from .product_worker_receipt import _receipt_history_for_product
-
-        return _receipt_history_for_product(product)
-
-    def snapshots():
-        from .product_worker_history_stream_snapshot import _snapshot_source
-
-        return _snapshot_source()
-
-    def access(product):
-        from loushang.coding.package.worker_history_access import _CodingHistoryAccess
-
-        return _CodingHistoryAccess(product)
+    from . import (
+        product_worker_history_stream_snapshot,
+        product_worker_installed_native,
+        product_worker_payload,
+        product_worker_receipt,
+        product_worker_start_gate_recovery,
+        worker_history_access,
+    )
 
     def reader():
         from .product_worker_history_read_v2 import _HISTORY_READER
@@ -170,33 +163,6 @@ def _history_proof_bindings() -> HistoryProofBindings[
 
         return _repair_journal()
 
-    def payload():
-        from .product_worker_payload import _STORAGE
-
-        return _STORAGE
-
-    def native_custody():
-        from .product_worker_installed_native import _product_native_release_custody
-
-        return _product_native_release_custody()
-
-    def native_error():
-        from .product_worker_start_gate_recovery import CodingWorkerNativeReleaseError
-
-        return CodingWorkerNativeReleaseError
-
-    def gated_error():
-        from .product_worker_start_gate_recovery import CodingWorkerGatedRecoveryError
-
-        return CodingWorkerGatedRecoveryError
-
-    def gated_review():
-        from .product_worker_start_gate_recovery import (
-            CodingWorkerGatedRecoveryReviewV1,
-        )
-
-        return CodingWorkerGatedRecoveryReviewV1
-
     return HistoryProofBindings(
         product_id="coding",
         product_label="Coding",
@@ -204,21 +170,21 @@ def _history_proof_bindings() -> HistoryProofBindings[
         supervisor=lambda product: open_coding_product_worker_supervisor_journal(
             product
         ),
-        receipts=receipts,
+        receipts=lambda product: product_worker_receipt._receipt_history_for_product(product),
         opt_in_type=lambda: CodingWorkerOptInJournal,
         admitted_opt_in=lambda product: CodingWorkerProductOptInOwner(product),
         activation_type=lambda: CodingProductWorkerActivationStateJournal,
-        snapshots=snapshots,
-        access=access,
+        snapshots=lambda: product_worker_history_stream_snapshot._snapshot_source(),
+        access=lambda product: worker_history_access._CodingHistoryAccess(product),
         reader=reader,
         preparation=preparation,
         checkpoints=checkpoints,
         registered=registered,
-        payload=payload,
-        native_custody=native_custody,
-        native_error=native_error,
-        gated_error=gated_error,
-        gated_review=gated_review,
+        payload=lambda: product_worker_payload._STORAGE,
+        native_custody=lambda: product_worker_installed_native._product_native_release_custody(),
+        native_error=lambda: product_worker_start_gate_recovery.CodingWorkerNativeReleaseError,
+        gated_error=lambda: product_worker_start_gate_recovery.CodingWorkerGatedRecoveryError,
+        gated_review=lambda: product_worker_start_gate_recovery.CodingWorkerGatedRecoveryReviewV1,
         review=lambda: CodingWorkerHistoryRetentionReviewV1,
         reference=lambda: CodingWorkerAttemptReferenceV1,
         backup_attestation=lambda product, *, attempt_id: (

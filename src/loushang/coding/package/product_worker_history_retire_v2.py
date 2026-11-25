@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import sys
-
 from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.package_product._linux_worker_history import (
     retire_product_history,
+)
+from loushang.harness.package_product._worker_history_access import (
+    is_exact_posix_worker_history_product,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -33,10 +34,8 @@ def retire_coding_product_worker_v2_history(
 ) -> bool:
     """Retire owner-authorized bytes under Product runtime and GC custody."""
 
-    if (
-        not sys.platform.startswith("linux")
-        or type(product) is not PosixLocalWheelProductSessionOwner
-        or product.policy.product_id != "coding"
+    if not is_exact_posix_worker_history_product(
+        product, product_id="coding", linux_only=True
     ):
         raise ValueError("Coding Worker V2 retirement requires its Linux Product")
     return retire_product_history(
