@@ -330,7 +330,8 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
         key: PluginInstallationKeyV1,
         parent_path: Path,
         *,
-        source_is_current: Callable[[], bool],
+        expected_source_root: tuple[int, int],
+        source_binding_is_current: Callable[[], bool],
     ) -> R:
         parent_identity = inspect_windows_product_private_directory_identity(
             parent_path
@@ -406,7 +407,10 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
                     windows_flush_directory(stage_fd)
                 finally:
                     os.close(stage_fd)
-                if not source_is_current():
+                if (
+                    self.capture(source_root, expected_source_root) != source
+                    or not source_binding_is_current()
+                ):
                     raise ValueError(f"{self.io.backup_label} backup source changed")
                 try:
                     self.verify_archive(

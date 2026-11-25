@@ -84,9 +84,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
             )
             if expected_root is None:
                 raise ValueError("Coding Arch private-data source is absent")
-            source = _capture_windows_target_snapshot(
-                source_root, expected_root=expected_root
-            )
+            source = _archive_io.capture(source_root, expected_root)
             receipt = make_backup_receipt(key, source)
             parent_path = backup_parent(self.layout, key)
             prepare_windows_product_private_directory_chain(
@@ -98,15 +96,11 @@ class CodingWindowsArchPrivateDataBackupOwner:
                 receipt,
                 key,
                 parent_path,
-                source_is_current=lambda: (
-                    _capture_windows_target_snapshot(
-                        source_root, expected_root=expected_root
-                    )
-                    == source
-                    and inspect_coding_windows_arch_installation_root(
+                expected_source_root=expected_root,
+                source_binding_is_current=lambda: (
+                    inspect_coding_windows_arch_installation_root(
                         self.layout, key, state_root=state_root
-                    )
-                    == expected_root
+                    ) == expected_root
                 ),
             )
 
