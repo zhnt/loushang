@@ -8,6 +8,7 @@ from typing import Literal
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_local_migration import (
     read_settled_legacy_local_adoption,
+    require_legacy_local_resource_kind,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner as PackageProductPosixFencedRuntimeOwner,
@@ -68,13 +69,7 @@ def coding_legacy_local_data_adoption_settled(
 ) -> bool:
     """Check one typed old local adoption without mutating Product state."""
 
-    if resource_kind not in {
-        "skill",
-        "prompt",
-        "theme",
-    }:
-        raise ValueError("Unsupported legacy Resource type")
-
+    require_legacy_local_resource_kind(resource_kind)
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     runtime = PackageProductPosixFencedRuntimeOwner.open(
         **epoch.fenced_runtime_open_kwargs(), read_only=True

@@ -262,6 +262,11 @@ _LegacyResourceKind = Literal["skill", "prompt", "theme"]
 _RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
 
 
+def require_legacy_local_resource_kind(kind: _LegacyResourceKind) -> None:
+    if kind not in _RESOURCE_KIND_VERSION:
+        raise ValueError("Unsupported legacy Resource type")
+
+
 def _legacy_resource_kind(
     document: Mapping[str, object],
     version: object,
@@ -1504,14 +1509,21 @@ def adopt_legacy_local_data(
     *,
     open_epoch: Callable[[], PackageProductPosixFencedRuntimeOwner],
     open_application: Callable[[], FencedOrdinaryProductApplication],
-    accept_and_consume: Callable[
-        [PackageProductPosixFencedRuntimeOwner], tuple[_AcceptedT, bool]
+    open_settings: Callable[[], SettingsManager],
+    read_acceptance: Callable[[PackageProductPosixFencedRuntimeOwner], _AcceptedT | None],
+    accept_review: Callable[[PackageProductPosixFencedRuntimeOwner], _AcceptedT],
+    require_live_source: Callable[[PackageProductPosixFencedRuntimeOwner], None],
+    require_frozen_source: Callable[[PackageProductPosixFencedRuntimeOwner], None],
+    consume_source: Callable[
+        [PackageProductPosixFencedRuntimeOwner, _AcceptedT, SettingsManager], None
     ],
-    bind_source: Callable[[PackageProductPosixFencedRuntimeOwner, bool], None],
+    bind_source: Callable[[PackageProductPosixFencedRuntimeOwner], object],
     plugin_id: str,
+    accepted_review_id: str,
+    resource_kind: _LegacyResourceKind,
     trust_classes: Collection[str],
     expected_trust: Callable[[], str],
-    changed_message: str,
+    product_label: str,
     install: Callable[[], _InstallationReceiptT],
     enable: Callable[[], _EnablementReceiptT],
     reviewed_choices: Callable[[_AcceptedT], ReviewedPluginChoices],
@@ -1519,11 +1531,31 @@ def adopt_legacy_local_data(
     removal_label: str,
 ) -> tuple[_AcceptedT, _InstallationReceiptT, _EnablementReceiptT | None]:
     """Complete the replayable Source, installation and builtin adoption chain."""
+
+    def accept_and_consume(
+        epoch: PackageProductPosixFencedRuntimeOwner,
+    ) -> tuple[_AcceptedT, bool]:
+        accepted = read_acceptance(epoch)
+        first_acceptance = accepted is None
+        if accepted is None:
+            require_live_source(epoch)
+            accepted = accept_review(epoch)
+        else:
+            if accepted.review.review_id != accepted_review_id:
+                raise ValueError(f"{product_label} legacy local review ID changed")
+            require_frozen_source(epoch)
+        if accepted.resource_kind != resource_kind:
+            raise ValueError(
+                f"{product_label} legacy data adoption requires a matching Resource receipt"
+            )
+        consume_source(epoch, accepted, open_settings())
+        return accepted, first_acceptance
+
     with hold_accepted_product_adoption(
         open_epoch=open_epoch,
         accept_review=accept_and_consume,
         open_application=open_application,
-    ) as ((acceptance, admission_checked), application):
+    ) as ((acceptance, first_acceptance), application):
         matches, bound = match_legacy_replay_source(
             application.runtime_owner.product_owner.policy.bindings,
             acceptance,
@@ -1532,10 +1564,14 @@ def adopt_legacy_local_data(
             expected_trust=expected_trust(),
         )
         if not matches:
-            raise RuntimeError(changed_message)
+            raise RuntimeError(
+                f"{product_label} legacy local Product Source binding changed"
+            )
     if bound is None:
         with closing(open_epoch()) as epoch:
-            bind_source(epoch, admission_checked)
+            if not first_acceptance:
+                require_live_source(epoch)
+            bind_source(epoch)
     installation = install()
     enablement = enable() if acceptance.review.desired_state == "installed_enabled" else None
     with closing(open_application()) as application:

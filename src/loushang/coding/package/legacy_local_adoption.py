@@ -13,6 +13,7 @@ from loushang.harness.config.agent import SettingsManager as SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
     adopt_legacy_local_data,
     replay_posix_legacy_product_cutover,
+    require_legacy_local_resource_kind,
 )
 from loushang.harness.package_product._legacy_runtime import FencedRuntimeOpenKwargs
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -140,17 +141,12 @@ def adopt_coding_legacy_local_data_review(
 ) -> CodingLegacyLocalDataAdoptionV1:
     """Finish one type-selected, reviewed local data Resource adoption."""
 
-    if resource_kind not in {
-        "skill",
-        "prompt",
-        "theme",
-    }:
-        raise ValueError("Unsupported legacy Resource type")
-
+    require_legacy_local_resource_kind(resource_kind)
+    open_settings = partial(open_coding_workspace_settings, workspace)
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     replay_coding_posix_legacy_product_cutover(
         lifecycle,
-        partial(open_coding_workspace_settings, workspace),
+        open_settings,
         roots=epoch.fenced_runtime_open_kwargs(),
         workspace=workspace,
         runtime_version=runtime_version,
@@ -166,79 +162,51 @@ def adopt_coding_legacy_local_data_review(
         runtime_protocol_epoch=runtime_protocol_epoch,
     )
 
-    def accept_and_consume(
-        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-    ) -> tuple[CodingLegacyLocalAcceptanceV1, bool]:
-        admission_checked = False
-        acceptance = reopen_coding_legacy_installed_local_acceptance(
-            lifecycle,
-            epoch_runtime,
-            plugin_id=plugin_id,
-            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-        )
-        if acceptance is None:
-            require_coding_fenced_single_legacy_data(
-                lifecycle,
-                epoch_runtime,
-                plugin_id=plugin_id,
-                resource_kind=resource_kind,
-            )
-            admission_checked = True
-            acceptance = accept_coding_legacy_installed_local_review(
-                lifecycle,
-                epoch_runtime,
-                plugin_id=plugin_id,
-                policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-                accepted_review_id=accepted_review_id,
-                resource_kind=resource_kind,
-            )
-        elif acceptance.review.review_id != accepted_review_id:
-            raise ValueError("Coding legacy local review ID changed")
-        else:
-            require_coding_fenced_single_legacy_skill_snapshot(
-                lifecycle, epoch_runtime, plugin_id=plugin_id
-            )
-        if acceptance.resource_kind != resource_kind:
-            raise ValueError(
-                "Coding legacy data adoption requires a matching Resource receipt"
-            )
-        consume_coding_accepted_legacy_local_source(
-            lifecycle,
-            epoch_runtime,
-            acceptance,
-            open_coding_workspace_settings(workspace),
-        )
-        return acceptance, admission_checked
-
-    def bind_source(
-        epoch_runtime: PackageProductPosixFencedRuntimeOwner, admission_checked: bool
-    ) -> None:
-        if not admission_checked:
-            require_coding_fenced_single_legacy_data(
-                lifecycle,
-                epoch_runtime,
-                plugin_id=plugin_id,
-                resource_kind=resource_kind,
-            )
-        bind_coding_accepted_legacy_local_source(
-            lifecycle,
-            epoch_runtime,
-            plugin_id=plugin_id,
-            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
-        )
-
     acceptance, installation, enablement = adopt_legacy_local_data(
         open_epoch=partial(
             PackageProductPosixFencedRuntimeOwner.open,
             **epoch.fenced_runtime_open_kwargs(),
         ),
         open_application=open_application,
-        accept_and_consume=accept_and_consume,
-        bind_source=bind_source,
+        open_settings=open_settings,
+        read_acceptance=partial(
+            reopen_coding_legacy_installed_local_acceptance,
+            lifecycle,
+            plugin_id=plugin_id,
+            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+        ),
+        accept_review=partial(
+            accept_coding_legacy_installed_local_review,
+            lifecycle,
+            plugin_id=plugin_id,
+            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+            accepted_review_id=accepted_review_id,
+            resource_kind=resource_kind,
+        ),
+        require_live_source=partial(
+            require_coding_fenced_single_legacy_data,
+            lifecycle,
+            plugin_id=plugin_id,
+            resource_kind=resource_kind,
+        ),
+        require_frozen_source=partial(
+            require_coding_fenced_single_legacy_skill_snapshot,
+            lifecycle,
+            plugin_id=plugin_id,
+        ),
+        consume_source=partial(consume_coding_accepted_legacy_local_source, lifecycle),
+        bind_source=partial(
+            bind_coding_accepted_legacy_local_source,
+            lifecycle,
+            plugin_id=plugin_id,
+            policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
+        ),
         plugin_id=plugin_id,
+        accepted_review_id=accepted_review_id,
+        resource_kind=resource_kind,
         trust_classes=LEGACY_LOCAL_DATA_TRUST_CLASSES,
         expected_trust=partial(trust_class_for_legacy_data_resource, resource_kind),
-        changed_message="Coding legacy local Product Source binding changed",
+        product_label="Coding",
         install=lambda: install_coding_accepted_legacy_local_plugin(
             lifecycle,
             workspace=workspace,
@@ -254,7 +222,9 @@ def adopt_coding_legacy_local_data_review(
             runtime_protocol_epoch=runtime_protocol_epoch,
             resource_kind=resource_kind,
         ),
-        reviewed_choices=lambda accepted: _reviewed_local_builtin_choices(accepted.review),
+        reviewed_choices=lambda accepted: _reviewed_local_builtin_choices(
+            accepted.review
+        ),
         bootstrap_policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
         removal_label=_REMOVAL_LABEL,
     )
