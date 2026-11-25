@@ -385,9 +385,8 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
                 "loushang.apphost.integrations.resource_access",
                 "loushang.apphost.integrations.resource_access.HostedResourceAccess",
                 "loushang.apphost.integrations.resource_tools",
-                "loushang.apphost.integrations.resource_tools.SESSION_FILES",
                 "loushang.apphost.integrations.resource_tools.HostReferencePolicy",
-                "loushang.apphost.integrations.resource_tools.hosted_resource_tools",
+                "loushang.apphost.integrations.resource_tools.bind_hosted_session_tools",
             }
             if path == Path('src/loushang/coding/hosted/resume.py') else set()
         )
@@ -410,6 +409,11 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/session.py'),
+        Path('src/loushang/coding/hosted/_session_commands.py'),
+        Path('src/loushang/coding/hosted/resource_tools.py'),
+        Path('src/loushang/coding/hosted/resources.py'),
+        Path('src/loushang/coding/hosted/session_goal.py'),
+        Path('src/loushang/coding/hosted/user_choice.py'),
         # Stage 1A: validate the original managed lease binding key.
         Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),
