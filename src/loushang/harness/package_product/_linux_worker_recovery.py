@@ -1869,6 +1869,7 @@ class PosixProductWorkerPayloadCustody(
             return operation(self.storage, root_fd, **arguments)
 
 
+_GatedReviewT = TypeVar("_GatedReviewT", bound=GatedRecoveryReviewMethods)
 _GatedOrphanT = TypeVar("_GatedOrphanT", bound=OrphanGatedRecoveryReviewMethods)
 
 
@@ -1884,170 +1885,189 @@ def read_gated_review_under_guard(
     )
 
 
-def _read_gated_receipt(
-    history: Callable[[], HistoryProofBindings[HistoryT]],
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    receipt_fingerprint: str,
-    product_required_message: str,
-    receipt_invalid_message: str,
-) -> _ReceiptRecordMethods | None:
-    _require_receipt_lookup_input(
-        product,
-        receipt_fingerprint,
-        product_required_message=product_required_message,
-        receipt_invalid_message=receipt_invalid_message,
-    )
-    return history().receipts(product).find_retained_record(receipt_fingerprint)
+@dataclass(frozen=True, slots=True)
+class PosixWorkerGatedRecovery(Generic[HistoryT, _GatedReviewT, _GatedOrphanT]):
+    """Join the start gate, retained receipt, orphan lease and staged payload."""
 
+    history: Callable[[], HistoryProofBindings[HistoryT]]
+    custody: PosixProductWorkerPayloadCustody
+    gated_review_type: type[_GatedReviewT]
+    orphan_type: type[_GatedOrphanT]
+    payload_plan_type: type[PayloadPlan]
+    error_type: type[RuntimeError]
+    error_prefix: str
+    abandoned_failure_code: str
+    receipt_invalid_message: str
 
-def review_gated_orphan_runtime(
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    history: Callable[[], HistoryProofBindings[HistoryT]],
-    storage: PayloadStorage,
-    record_type: Callable[..., _GatedOrphanT],
-    product_required_message: str,
-    receipt_invalid_message: str,
-) -> _GatedOrphanT:
-    if not isinstance(product, PosixLocalWheelProductSessionOwner):
-        raise TypeError(product_required_message)
-    registry = product.epoch_runtime.registry
-    orphans = registry.review_orphans(store_id=registry.store_id)
-    with product.gc_gate.guard():
-        product.assert_root_gc_authority_current()
-        gated = read_gated_review_under_guard(history, product, attempt_id=attempt_id)
-        gate = gated.gate_record
-        receipt = (
-            None
-            if gate is None
-            else _read_gated_receipt(
-                history,
-                product,
-                receipt_fingerprint=gate.receipt_fingerprint,
-                product_required_message=product_required_message,
-                receipt_invalid_message=receipt_invalid_message,
-            )
+    def failure(self, code: str) -> RuntimeError:
+        return self.error_type(f"{self.error_prefix}_{code}")
+
+    def _read_review(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _GatedReviewT:
+        return cast(
+            _GatedReviewT,
+            read_gated_review_under_guard(self.history, product, attempt_id=attempt_id),
         )
-        matching = (
-            ()
-            if receipt is None
-            else tuple(
-                (
-                    lease
-                    for lease in orphans
-                    if lease.runtime_id == receipt.receipt.policy.product_runtime_id
+
+    def _read_receipt(
+        self, product: PosixLocalWheelProductSessionOwner, *, receipt_fingerprint: str
+    ) -> _ReceiptRecordMethods | None:
+        _require_receipt_lookup_input(
+            product,
+            receipt_fingerprint,
+            product_required_message=self.custody.product_required_message,
+            receipt_invalid_message=self.receipt_invalid_message,
+        )
+        return (
+            self.history().receipts(product).find_retained_record(receipt_fingerprint)
+        )
+
+    def review_orphan(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _GatedOrphanT:
+        """Join orphan facts without repairing the lease or settling the attempt."""
+        if not isinstance(product, PosixLocalWheelProductSessionOwner):
+            raise TypeError(self.custody.product_required_message)
+        registry = product.epoch_runtime.registry
+        orphans = registry.review_orphans(store_id=registry.store_id)
+        with product.gc_gate.guard():
+            product.assert_root_gc_authority_current()
+            gated = self._read_review(product, attempt_id=attempt_id)
+            gate = gated.gate_record
+            receipt = (
+                None
+                if gate is None
+                else self._read_receipt(
+                    product,
+                    receipt_fingerprint=gate.receipt_fingerprint,
                 )
             )
-        )
-        plan = None
-        if gate is not None:
-            with storage.open_root(lambda: product.state_root) as root_fd:
-                plan = storage._verify_debt(root_fd, gate.attempt_id)
-        fence = product.epoch_runtime.cutover_result.fence
-        assert fence is not None
-        return record_type(
-            gated_review=gated,
-            receipt_record=receipt,
-            orphan_lease=matching[0] if len(matching) == 1 else None,
-            payload_plan=plan,
-            current_runtime_epoch=fence.epoch,
-            current_store_root_identity=fence.fenced_root_identity,
-        )
+            matching = (
+                ()
+                if receipt is None
+                else tuple(
+                    (
+                        lease
+                        for lease in orphans
+                        if lease.runtime_id == receipt.receipt.policy.product_runtime_id
+                    )
+                )
+            )
+            plan = None
+            if gate is not None:
+                with self.custody.storage.open_root(
+                    lambda: product.state_root
+                ) as root_fd:
+                    plan = self.custody.storage._verify_debt(root_fd, gate.attempt_id)
+            fence = product.epoch_runtime.cutover_result.fence
+            assert fence is not None
+            make_review = cast("Callable[..., _GatedOrphanT]", self.orphan_type)
+            return make_review(
+                gated_review=gated,
+                receipt_record=receipt,
+                orphan_lease=matching[0] if len(matching) == 1 else None,
+                payload_plan=plan,
+                current_runtime_epoch=fence.epoch,
+                current_store_root_identity=fence.fenced_root_identity,
+            )
 
-
-def repair_gated_orphan_runtime(
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    expected_review: OrphanGatedRecoveryReviewMethods,
-    history: Callable[[], HistoryProofBindings[HistoryT]],
-    storage: PayloadStorage,
-    record_type: Callable[..., _GatedOrphanT],
-    product_required_message: str,
-    receipt_invalid_message: str,
-    error_type: type[RuntimeError],
-    error_prefix: str,
-) -> PackageEpochRuntimeLeaseV1:
-    current = review_gated_orphan_runtime(
-        product,
-        attempt_id=expected_review.gated_review.attempt_id,
-        history=history,
-        storage=storage,
-        record_type=record_type,
-        product_required_message=product_required_message,
-        receipt_invalid_message=receipt_invalid_message,
-    )
-    if current != expected_review:
-        raise error_type(error_prefix + "_orphan_runtime_review_stale")
-    if not current.repair_candidate or current.orphan_lease is None:
-        raise error_type(error_prefix + "_orphan_runtime_unproven")
-    product.epoch_runtime.registry.repair_orphan(current.orphan_lease.lease_id)
-    return current.orphan_lease
-
-
-def review_gated_recovery(
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    attempt_id: str,
-    history: Callable[[], HistoryProofBindings[HistoryT]],
-    custody: PosixProductWorkerPayloadCustody,
-) -> GatedRecoveryReviewMethods:
-    """Reopen exact histories while Product runtimes are quiescent."""
-    with custody.offline(product):
-        return read_gated_review_under_guard(history, product, attempt_id=attempt_id)
-
-
-def settle_gated_attempt(
-    product: PosixLocalWheelProductSessionOwner,
-    *,
-    expected_review: GatedRecoveryReviewMethods,
-    expected_plan: PayloadPlan,
-    history: Callable[[], HistoryProofBindings[HistoryT]],
-    custody: PosixProductWorkerPayloadCustody,
-    storage: PayloadStorage,
-    error_type: type[RuntimeError],
-    error_prefix: str,
-    failure_code: str,
-) -> WorkerAttemptRecordV1:
-    with custody.offline(product):
-        current = read_gated_review_under_guard(
-            history, product, attempt_id=expected_review.attempt_id
+    def repair_orphan(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        expected_review: _GatedOrphanT,
+    ) -> PackageEpochRuntimeLeaseV1:
+        """Repair only the dead lease after a fresh review of the exact evidence."""
+        if type(expected_review) is not self.orphan_type:
+            raise TypeError("Worker orphan runtime repair requires an exact review")
+        current = self.review_orphan(
+            product, attempt_id=expected_review.gated_review.attempt_id
         )
         if current != expected_review:
-            raise error_type(error_prefix + "_gated_recovery_review_stale")
-        if not current.settlement_candidate:
-            raise error_type(error_prefix + "_gated_recovery_unproven")
-        gate = current.gate_record
-        attempt = current.attempt_record
-        assert gate is not None and attempt is not None
-        if expected_plan.attempt_id != gate.attempt_id:
-            raise error_type(error_prefix + "_gated_recovery_attempt_mismatch")
-        with storage.open_root(lambda: product.state_root) as root_fd:
-            plan = storage._verify_debt(root_fd, gate.attempt_id)
-            if (
-                plan != expected_plan
-                or plan.receipt_fingerprint != gate.receipt_fingerprint
-            ):
-                raise error_type(error_prefix + "_gated_recovery_payload_mismatch")
-            journal = custody.supervisor(product)
-            if attempt.phase in _GATED_ACTIVE_PHASES:
-                attempt = journal.transition(
+            raise self.failure("orphan_runtime_review_stale")
+        if not current.repair_candidate or current.orphan_lease is None:
+            raise self.failure("orphan_runtime_unproven")
+        product.epoch_runtime.registry.repair_orphan(current.orphan_lease.lease_id)
+        return current.orphan_lease
+
+    def review(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> _GatedReviewT:
+        """Reopen exact histories while Product runtimes are quiescent."""
+        with self.custody.offline(product):
+            return self._read_review(product, attempt_id=attempt_id)
+
+    def review_payload(
+        self, product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+    ) -> tuple[_GatedReviewT, PayloadPlan, str]:
+        """Make the operator review identity over the existing read-only facts."""
+        review = self.review(product, attempt_id=attempt_id)
+        plan = self.custody.preview_complete(product, attempt_id=attempt_id)
+        fence = product.epoch_runtime.cutover_result.fence
+        if fence is None:
+            raise ValueError(
+                f"{self.custody._entry_label} Worker Product fence is unavailable"
+            )
+        return (
+            review,
+            plan,
+            review.payload_settlement_review_id(
+                product_scope_id=product.policy.project_scope_id,
+                store_root_identity=fence.fenced_root_identity,
+                plan=plan,
+            ),
+        )
+
+    def settle(
+        self,
+        product: PosixLocalWheelProductSessionOwner,
+        *,
+        expected_review: _GatedReviewT,
+        expected_plan: PayloadPlan,
+    ) -> WorkerAttemptRecordV1:
+        """Settle proven process exit without deleting the payload."""
+        if (
+            type(expected_review) is not self.gated_review_type
+            or type(expected_plan) is not self.payload_plan_type
+        ):
+            raise TypeError("Worker gated recovery requires exact review and debt plan")
+        with self.custody.offline(product):
+            current = self._read_review(product, attempt_id=expected_review.attempt_id)
+            if current != expected_review:
+                raise self.failure("gated_recovery_review_stale")
+            if not current.settlement_candidate:
+                raise self.failure("gated_recovery_unproven")
+            gate = current.gate_record
+            attempt = current.attempt_record
+            assert gate is not None and attempt is not None
+            if expected_plan.attempt_id != gate.attempt_id:
+                raise self.failure("gated_recovery_attempt_mismatch")
+            with self.custody.storage.open_root(lambda: product.state_root) as root_fd:
+                plan = self.custody.storage._verify_debt(root_fd, gate.attempt_id)
+                if (
+                    plan != expected_plan
+                    or plan.receipt_fingerprint != gate.receipt_fingerprint
+                ):
+                    raise self.failure("gated_recovery_payload_mismatch")
+                journal = self.custody.supervisor(product)
+                if attempt.phase in _GATED_ACTIVE_PHASES:
+                    attempt = journal.transition(
+                        gate.attempt_id,
+                        expected_phase=attempt.phase,
+                        next_phase="failed",
+                        expected_record_revision=attempt.record_revision,
+                        expected_supervisor_epoch=attempt.supervisor_epoch,
+                        failure_code=self.abandoned_failure_code,
+                    )
+                return journal.transition(
                     gate.attempt_id,
                     expected_phase=attempt.phase,
-                    next_phase="failed",
+                    next_phase="process_settled",
                     expected_record_revision=attempt.record_revision,
                     expected_supervisor_epoch=attempt.supervisor_epoch,
-                    failure_code=failure_code,
+                    failure_code=attempt.failure_code,
                 )
-            return journal.transition(
-                gate.attempt_id,
-                expected_phase=attempt.phase,
-                next_phase="process_settled",
-                expected_record_revision=attempt.record_revision,
-                expected_supervisor_epoch=attempt.supervisor_epoch,
-                failure_code=attempt.failure_code,
-            )
 
 
 def _require_receipt_lookup_input(

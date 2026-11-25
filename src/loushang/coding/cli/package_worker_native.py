@@ -11,7 +11,6 @@ from contextlib import closing
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
-from typing import Literal
 
 from loushang.coding.package.product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
@@ -20,9 +19,6 @@ from loushang.coding.package.product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     admit_coding_external_worker_wheel,
     open_coding_fenced_product_application_owner,
-)
-from loushang.coding.package.product_worker_crash_c5_settlement import (
-    settle_coding_product_worker_crash_c5,
 )
 from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalJournal,
@@ -38,26 +34,11 @@ from loushang.coding.package.product_worker_operator_query import (
 from loushang.coding.package.product_worker_opt_in_owner import (
     CodingWorkerProductOptInOwner,
 )
-from loushang.coding.package.product_worker_payload import (
-    CodingWorkerPayloadDebtPlanV1,
-    preview_coding_product_worker_empty_payload_debt,
-    preview_coding_product_worker_payload_debt,
-    repair_reviewed_coding_product_worker_payload,
-    review_coding_product_worker_unmarked_payload_debt,
-)
 from loushang.coding.package.product_worker_registered_recovery import (
-    recover_coding_product_worker_registered_no_effect,
-)
-from loushang.coding.package.product_worker_start_gate_journal import (
-    CodingWorkerStartGateJournal,
+    _recovery_bindings,
 )
 from loushang.coding.package.product_worker_start_gate_recovery import (
-    CodingWorkerGatedRecoveryError,
-    CodingWorkerGatedRecoveryReviewV1,
-    repair_coding_product_worker_orphan_runtime,
-    review_coding_product_worker_gated_recovery,
-    review_coding_product_worker_orphan_runtime,
-    settle_coding_product_worker_gated_attempt,
+    _GATED_RECOVERY,
 )
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -70,6 +51,10 @@ from loushang.harness.cli.worker_candidate import (
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
     read_worker_candidate_status,
+)
+from loushang.harness.cli.worker_recovery import (
+    add_posix_worker_recovery_commands,
+    execute_posix_worker_recovery_action,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -98,6 +83,7 @@ _CANDIDATE_OPERATOR = NativeWorkerCandidateOperator(
     ordinary_session_routing="python_sdk_explicit_linux",
     compact=True,
 )
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-worker-native")
@@ -141,63 +127,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     install = actions.add_parser("install", help="install the approved native Wheel")
     install.add_argument("--wheel", required=True)
     actions.add_parser("repair-install", help="finish one complete staged install")
-    actions.add_parser(
-        "list-gated-attempts", help="list retained Product Worker start-gate attempts"
-    )
-    orphan_review = actions.add_parser(
-        "review-orphan-runtime", help="review one crashed Product Worker runtime"
-    )
-    orphan_review.add_argument("--attempt-id", required=True)
-    orphan_repair = actions.add_parser(
-        "repair-orphan-runtime", help="repair an exactly reviewed orphan lease"
-    )
-    orphan_repair.add_argument("--attempt-id", required=True)
-    orphan_repair.add_argument("--review-id", required=True)
-    gated_review = actions.add_parser(
-        "review-gated-attempt", help="review an offline Worker attempt and payload"
-    )
-    gated_review.add_argument("--attempt-id", required=True)
-    gated_settle = actions.add_parser(
-        "settle-gated-attempt", help="record exact abandoned Worker process exit"
-    )
-    gated_settle.add_argument("--attempt-id", required=True)
-    gated_settle.add_argument("--review-id", required=True)
-    gated_settle.add_argument("--plan-id", required=True)
-    payload_repair = actions.add_parser(
-        "repair-payload-debt", help="remove one settled Worker payload stage"
-    )
-    payload_repair.add_argument("--attempt-id", required=True)
-    payload_repair.add_argument("--plan-id", required=True)
-    crash_c5 = actions.add_parser(
-        "settle-crashed-c5",
-        help="settle C5 after exact orphan, process, and payload recovery",
-    )
-    crash_c5.add_argument("--attempt-id", required=True)
-    registered_c5 = actions.add_parser(
-        "recover-registered-no-effect",
-        help="recover one prior-boot Worker registered before native effect",
-    )
-    registered_c5.add_argument("--attempt-id", required=True)
-    empty_review = actions.add_parser(
-        "review-empty-payload-debt", help="review one empty pre-marker Worker stage"
-    )
-    empty_review.add_argument("--attempt-id", required=True)
-    empty_repair = actions.add_parser(
-        "repair-empty-payload-debt", help="remove one reviewed empty Worker stage"
-    )
-    empty_repair.add_argument("--attempt-id", required=True)
-    empty_repair.add_argument("--plan-id", required=True)
-    unmarked_review = actions.add_parser(
-        "review-unmarked-payload-debt",
-        help="review one bounded nonempty pre-marker Worker stage",
-    )
-    unmarked_review.add_argument("--attempt-id", required=True)
-    unmarked_repair = actions.add_parser(
-        "repair-unmarked-payload-debt",
-        help="remove one exactly reviewed nonempty Worker stage",
-    )
-    unmarked_repair.add_argument("--attempt-id", required=True)
-    unmarked_repair.add_argument("--review-id", required=True)
+    add_posix_worker_recovery_commands(actions)
     args = parser.parse_args(argv)
 
     if os.name != "posix" or not sys.platform.startswith("linux"):
@@ -246,19 +176,6 @@ def _read_candidate_status_document(
     )
 
 
-_PAYLOAD_REPAIRS: dict[
-    str, tuple[Literal["complete", "empty", "unmarked"], str, str]
-] = {
-    "repair-payload-debt": ("complete", "payloadDebtRepair", "planId"),
-    "repair-empty-payload-debt": ("empty", "emptyPayloadDebtRepair", "planId"),
-    "repair-unmarked-payload-debt": (
-        "unmarked",
-        "unmarkedPayloadDebtRepair",
-        "reviewId",
-    ),
-}
-
-
 def _execute(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
@@ -268,13 +185,6 @@ def _execute(
     )
     if candidate_result is not None:
         return candidate_result
-    if args.action == "list-gated-attempts":
-        return {
-            "gatedAttempts": [
-                {"attemptId": record.attempt_id, "phase": record.phase}
-                for record in CodingWorkerStartGateJournal(product).attempts()
-            ]
-        }
     if args.action == "query":
         answer = asyncio.run(
             query_coding_product_worker(
@@ -286,135 +196,14 @@ def _execute(
             )
         )
         return {"workerQuery": {"text": answer}}
-    if args.action in {"review-orphan-runtime", "repair-orphan-runtime"}:
-        orphan_review = review_coding_product_worker_orphan_runtime(
-            product, attempt_id=args.attempt_id
-        )
-        if args.action == "review-orphan-runtime":
-            return {
-                "orphanRuntimeReview": {
-                    "attemptId": args.attempt_id,
-                    "reviewId": orphan_review.review_id,
-                    "repairCandidate": orphan_review.repair_candidate,
-                    "groupStatus": orphan_review.gated_review.group_status,
-                    "supervisorPhase": (
-                        None
-                        if orphan_review.gated_review.attempt_record is None
-                        else orphan_review.gated_review.attempt_record.phase
-                    ),
-                    "leaseId": (
-                        None
-                        if orphan_review.orphan_lease is None
-                        else orphan_review.orphan_lease.lease_id
-                    ),
-                }
-            }
-        if args.review_id != orphan_review.review_id:
-            raise CodingWorkerGatedRecoveryError(
-                "coding_worker_orphan_runtime_review_stale"
-            )
-        repaired = repair_coding_product_worker_orphan_runtime(
-            product, expected_review=orphan_review
-        )
-        return {
-            "orphanRuntimeRepair": {
-                "attemptId": args.attempt_id,
-                "leaseId": repaired.lease_id,
-                "reviewId": orphan_review.review_id,
-            }
-        }
-    if args.action in {"review-gated-attempt", "settle-gated-attempt"}:
-        gated = review_coding_product_worker_gated_recovery(
-            product, attempt_id=args.attempt_id
-        )
-        plan = preview_coding_product_worker_payload_debt(
-            product, attempt_id=args.attempt_id
-        )
-        review_id = _gated_review_id(product, gated, plan)
-        if args.action == "review-gated-attempt":
-            return {
-                "gatedRecoveryReview": {
-                    "attemptId": args.attempt_id,
-                    "reviewId": review_id,
-                    "planId": plan.fingerprint,
-                    "settlementCandidate": gated.settlement_candidate,
-                    "groupStatus": gated.group_status,
-                    "supervisorPhase": (
-                        None
-                        if gated.attempt_record is None
-                        else gated.attempt_record.phase
-                    ),
-                }
-            }
-        if args.review_id != review_id or args.plan_id != plan.fingerprint:
-            raise CodingWorkerGatedRecoveryError(
-                "coding_worker_gated_recovery_review_stale"
-            )
-        settled = settle_coding_product_worker_gated_attempt(
-            product, expected_review=gated, expected_plan=plan
-        )
-        return {"gatedAttemptSettlement": settled.to_dict()}
-    if args.action in _PAYLOAD_REPAIRS:
-        stage, response, identifier = _PAYLOAD_REPAIRS[args.action]
-        repaired_payload = repair_reviewed_coding_product_worker_payload(
-            product,
-            stage=stage,
-            attempt_id=args.attempt_id,
-            expected_fingerprint=(
-                args.review_id if stage == "unmarked" else args.plan_id
-            ),
-            stale_error=CodingWorkerGatedRecoveryError,
-        )
-        return {
-            response: {
-                "attemptId": repaired_payload.attempt_id,
-                identifier: repaired_payload.fingerprint,
-            }
-        }
-    if args.action == "settle-crashed-c5":
-        c5_settled = settle_coding_product_worker_crash_c5(
-            product, attempt_id=args.attempt_id
-        )
-        return {
-            "crashedC5Settlement": {
-                "attemptId": c5_settled.attempt_id,
-                "ownerGeneration": c5_settled.owner_generation,
-                "phase": c5_settled.phase,
-            }
-        }
-    if args.action == "recover-registered-no-effect":
-        registered_settled = recover_coding_product_worker_registered_no_effect(
-            product, attempt_id=args.attempt_id
-        )
-        return {
-            "registeredNoEffectRecovery": {
-                "attemptId": registered_settled.attempt_id,
-                "ownerGeneration": registered_settled.owner_generation,
-                "phase": registered_settled.phase,
-                "noEffect": registered_settled.no_effect,
-            }
-        }
-    if args.action == "review-unmarked-payload-debt":
-        unmarked_review = review_coding_product_worker_unmarked_payload_debt(
-            product, attempt_id=args.attempt_id
-        )
-        return {
-            "unmarkedPayloadDebtReview": {
-                "attemptId": unmarked_review.attempt_id,
-                "reviewId": unmarked_review.fingerprint,
-                "members": [member.to_dict() for member in unmarked_review.members],
-            }
-        }
-    if args.action == "review-empty-payload-debt":
-        empty_plan = preview_coding_product_worker_empty_payload_debt(
-            product, attempt_id=args.attempt_id
-        )
-        return {
-            "emptyPayloadDebtReview": {
-                "attemptId": empty_plan.attempt_id,
-                "planId": empty_plan.fingerprint,
-            }
-        }
+    recovered = execute_posix_worker_recovery_action(
+        product,
+        args,
+        gated_recovery=_GATED_RECOVERY,
+        recovery_bindings=_recovery_bindings,
+    )
+    if recovered is not None:
+        return recovered
     owner = CodingWorkerNativeApprovalJournal(product)
     if args.action == "status":
         decision = owner.current()
@@ -469,21 +258,6 @@ def _execute(
         )
         return {"nativeClosure": reader.current_closure().to_dict()}
     raise ValueError("Coding Worker native command is unsupported")
-
-
-def _gated_review_id(
-    product: PosixLocalWheelProductSessionOwner,
-    gated: CodingWorkerGatedRecoveryReviewV1,
-    plan: CodingWorkerPayloadDebtPlanV1,
-) -> str:
-    fence = product.epoch_runtime.cutover_result.fence
-    if fence is None:
-        raise ValueError("Coding Worker Product fence is unavailable")
-    return gated.payload_settlement_review_id(
-        product_scope_id=product.policy.project_scope_id,
-        store_root_identity=fence.fenced_root_identity,
-        plan=plan,
-    )
 
 
 if __name__ == "__main__":

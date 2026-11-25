@@ -12,10 +12,7 @@ from typing import Literal, cast
 
 from loushang.harness.package_product._linux_worker_history import HistoryProofBindings
 from loushang.harness.package_product._linux_worker_recovery import (
-    repair_gated_orphan_runtime,
-    review_gated_orphan_runtime,
-    review_gated_recovery,
-    settle_gated_attempt,
+    PosixWorkerGatedRecovery,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -34,7 +31,6 @@ from .product_worker_native_release import (
 )
 from .product_worker_payload import (
     _PAYLOAD_CUSTODY,
-    _STORAGE,
     CodingWorkerPayloadDebtPlanV1,
 )
 from .product_worker_receipt import CodingWorkerReceiptRecordV1
@@ -79,18 +75,7 @@ class CodingWorkerOrphanRuntimeReviewV1(OrphanGatedRecoveryReviewMethods):
 def review_coding_product_worker_orphan_runtime(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerOrphanRuntimeReviewV1:
-    """Join an orphan epoch lease to a bound Worker without repairing either."""
-    if not isinstance(product, PosixLocalWheelProductSessionOwner):
-        raise TypeError("Coding Worker Product owner is required")
-    return review_gated_orphan_runtime(
-        product,
-        attempt_id=attempt_id,
-        history=_history_bindings,
-        storage=_STORAGE,
-        record_type=CodingWorkerOrphanRuntimeReviewV1,
-        product_required_message="Coding Worker Product owner is required",
-        receipt_invalid_message="Coding Worker receipt fingerprint is invalid",
-    )
+    return _GATED_RECOVERY.review_orphan(product, attempt_id=attempt_id)
 
 
 def repair_coding_product_worker_orphan_runtime(
@@ -98,39 +83,13 @@ def repair_coding_product_worker_orphan_runtime(
     *,
     expected_review: CodingWorkerOrphanRuntimeReviewV1,
 ) -> PackageEpochRuntimeLeaseV1:
-    """Repair only the exact orphan lease after current Worker absence proof.
-
-    This does not settle the Supervisor attempt or delete its payload. Both
-    effects still require the separate offline Product reviews and CAS checks.
-    """
-    if type(expected_review) is not CodingWorkerOrphanRuntimeReviewV1:
-        raise TypeError("Worker orphan runtime repair requires an exact review")
-    return repair_gated_orphan_runtime(
-        product,
-        expected_review=expected_review,
-        history=_history_bindings,
-        storage=_STORAGE,
-        record_type=CodingWorkerOrphanRuntimeReviewV1,
-        product_required_message="Coding Worker Product owner is required",
-        receipt_invalid_message="Coding Worker receipt fingerprint is invalid",
-        error_type=CodingWorkerGatedRecoveryError,
-        error_prefix="coding_worker",
-    )
+    return _GATED_RECOVERY.repair_orphan(product, expected_review=expected_review)
 
 
 def review_coding_product_worker_gated_recovery(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerGatedRecoveryReviewV1:
-    """Reopen exact histories while Product runtimes are quiescent."""
-    return cast(
-        CodingWorkerGatedRecoveryReviewV1,
-        review_gated_recovery(
-            product,
-            attempt_id=attempt_id,
-            history=_history_bindings,
-            custody=_PAYLOAD_CUSTODY,
-        ),
-    )
+    return _GATED_RECOVERY.review(product, attempt_id=attempt_id)
 
 
 def settle_coding_product_worker_gated_attempt(
@@ -139,26 +98,8 @@ def settle_coding_product_worker_gated_attempt(
     expected_review: CodingWorkerGatedRecoveryReviewV1,
     expected_plan: CodingWorkerPayloadDebtPlanV1,
 ) -> WorkerAttemptRecordV1:
-    """Record proven local process settlement for one exact abandoned payload.
-
-    This never deletes the payload. The separate debt repair must recheck its
-    own plan and the newly settled Supervisor record before removing bytes.
-    """
-    if (
-        type(expected_review) is not CodingWorkerGatedRecoveryReviewV1
-        or type(expected_plan) is not CodingWorkerPayloadDebtPlanV1
-    ):
-        raise TypeError("Worker gated recovery requires exact review and debt plan")
-    return settle_gated_attempt(
-        product,
-        expected_review=expected_review,
-        expected_plan=expected_plan,
-        history=_history_bindings,
-        custody=_PAYLOAD_CUSTODY,
-        storage=_STORAGE,
-        error_type=CodingWorkerGatedRecoveryError,
-        error_prefix="coding_worker",
-        failure_code=_ABANDONED_FAILURE_CODE,
+    return _GATED_RECOVERY.settle(
+        product, expected_review=expected_review, expected_plan=expected_plan
     )
 
 
@@ -177,3 +118,18 @@ def _history_bindings() -> HistoryProofBindings[object]:
     from .product_worker_history_retention import _history_proof_bindings
 
     return cast(HistoryProofBindings[object], _history_proof_bindings())
+
+
+_GATED_RECOVERY: PosixWorkerGatedRecovery[
+    object, CodingWorkerGatedRecoveryReviewV1, CodingWorkerOrphanRuntimeReviewV1
+] = PosixWorkerGatedRecovery(
+    history=_history_bindings,
+    custody=_PAYLOAD_CUSTODY,
+    gated_review_type=CodingWorkerGatedRecoveryReviewV1,
+    orphan_type=CodingWorkerOrphanRuntimeReviewV1,
+    payload_plan_type=CodingWorkerPayloadDebtPlanV1,
+    error_type=CodingWorkerGatedRecoveryError,
+    error_prefix="coding_worker",
+    abandoned_failure_code=_ABANDONED_FAILURE_CODE,
+    receipt_invalid_message="Coding Worker receipt fingerprint is invalid",
+)
