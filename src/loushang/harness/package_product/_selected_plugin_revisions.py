@@ -33,6 +33,9 @@ from loushang.harness.resources.packages.plugin_lifecycle._exact_product_source 
     InstalledProductWheelSpec,
     resolve_installed_product_root,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
@@ -386,6 +389,24 @@ def _validate_builtin_selection(
         raise ValueError(
             f"{policy.product_label} Product Capability selection is not first-party"
         )
+
+
+def fingerprint_external_data_selection(
+    external: tuple[PackageProductSelectedPluginManifestV1, ...],
+) -> str:
+    """Fingerprint the exact installed source revisions in their admitted order."""
+    return sha256(
+        canonical_json_bytes(
+            [
+                {
+                    "pluginId": item.manifest.name,
+                    "committedSetId": item.snapshot.committed_record.committed_set.set_id,
+                    "instanceRevision": item.snapshot.instance_revision_ref.to_dict(),
+                }
+                for item in external
+            ]
+        )
+    ).hexdigest()
 
 
 def capture_external_data_declaration(

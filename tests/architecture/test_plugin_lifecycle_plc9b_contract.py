@@ -820,7 +820,7 @@ def test_plc9b_canonical_entrypoint_inventory_exactly_matches_source_ast() -> No
     actual = _package_entrypoint_scope_counts()
 
     assert len(documented) == 119
-    assert sum(documented.values()) == 174
+    assert sum(documented.values()) == 173
     assert actual == documented
     assert "test_plc9_freezes_named_package_lifecycle_sites_and_occurrences" in (
         _source(BASELINE_TEST)
@@ -833,9 +833,9 @@ def test_plc9b_effect_inventory_freezes_owner_and_bypass_capabilities() -> None:
     actual = _package_effect_scope_counts()
 
     assert len(documented) == 153
-    assert sum(documented.values()) == 170
+    assert sum(documented.values()) == 171
     assert actual == documented
-    assert "153 effect/capability rows\nwith 170 occurrences" in inventory
+    assert "153 effect/capability rows\nwith 171 occurrences" in inventory
     for required in (
         (
             PACKAGE_OPERATIONS,
