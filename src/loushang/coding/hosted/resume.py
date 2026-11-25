@@ -16,7 +16,6 @@ from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection, normalize_model_selection
 from loushang.ai.model.reasoning import available_thinking_levels
 from loushang.ai.types import ImagePart
-from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.apphost.integrations.resource_access import HostedResourceAccess
 from loushang.apphost.integrations.session_control import (
     _DeferredSessionControl,
@@ -76,6 +75,7 @@ from loushang.coding.runtime.resume_planning import (
     ResumePlanningSlot,
 )
 from loushang.coding.session.agent_session import AgentSession
+from loushang.coding.session.manager import SessionManager
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import (
     ApprovalOutcome,
@@ -97,6 +97,7 @@ from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
 from loushang.harness.transcript._resume_continuation import (
     lookup_detached_resume_input,
+    update_detached_resume_selection,
 )
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
@@ -282,36 +283,24 @@ class CodingDeferredHostedSessionV1(_HostedApprovalPresentation):
                 )
                 self._source.require_current_source()
 
-            require_current()
-            context = self._source.history_binding.context
-            if isinstance(value, str):
-                model = self.current_model
-                if model is None or value not in available_thinking_levels(model):
-                    raise ValueError("Thinking level is unavailable for the saved session model")
-                if value == context.thinking_level:
-                    return
-            else:
-                model = self._services.model_registry.build_model(value)
-                if context.provider_window is not None and not context.provider_window.matches(model):
-                    raise ValueError("Selected model is incompatible with the active provider compaction checkpoint")
-                validate_image_input_compatibility(model, context.messages)
-            plan = await self._current_plan()
-            require_current()
-            manager = await self._source.manager_type._load_resume_writer(
-                self._source.record.path, plan=plan, current_owner_inputs=plan.owner_inputs,
-                _factory=self._source.writer_factory,
-            )
-            try:
+            async def open_writer() -> SessionManager:
+                plan = await self._current_plan()
                 require_current()
-                if isinstance(value, str):
-                    await manager.append_thinking_level_change(value)
-                else:
-                    await manager.append_model_change(
-                        value.provider, value.model_id, endpoint_id=value.endpoint_id,
-                    )
-                await self._source.refresh_after_model_change(manager)
-            finally:
-                await manager.dispose_runtime_profile()
+                return await self._source.manager_type._load_resume_writer(
+                    self._source.record.path, plan=plan, current_owner_inputs=plan.owner_inputs,
+                    _factory=self._source.writer_factory,
+                )
+
+            require_current()
+            await update_detached_resume_selection(
+                value,
+                context=self._source.history_binding.context,
+                current_model=lambda: self.current_model,
+                build_model=self._services.model_registry.build_model,
+                open_writer=open_writer,
+                require_current=require_current,
+                refresh_history=self._source.refresh_after_model_change,
+            )
 
     def _plan_subject_digest(self) -> str:
         return hashlib.sha256(

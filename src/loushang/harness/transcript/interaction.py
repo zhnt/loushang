@@ -9,7 +9,7 @@ and presentation.
 from __future__ import annotations
 
 import inspect
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, cast
 
@@ -21,11 +21,13 @@ from loushang.ai.model import (
 )
 from loushang.ai.types import (
     AssistantMessage,
+    ProviderCompactionWindow,
     TextPart,
     ToolCall,
     ToolResultMessage,
     UserMessage,
 )
+from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.events import (
@@ -220,6 +222,19 @@ class AgentTranscriptInspector:
             return sum(count(child) for child in children)
 
         return sum(count(node) for node in self.session.get_tree())
+
+
+def require_model_history_compatibility(
+    model: Model,
+    *,
+    messages: Iterable[object],
+    provider_window: ProviderCompactionWindow | None,
+) -> None:
+    if provider_window is not None and not provider_window.matches(model):
+        raise ValueError(
+            "Selected model is incompatible with the active provider compaction checkpoint"
+        )
+    validate_image_input_compatibility(model, messages)
 
 
 @dataclass
