@@ -6,12 +6,13 @@ import json
 import os
 import stat
 import subprocess
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypeVar
+from zipfile import BadZipFile, ZipFile
 
 from loushang.harness.resources.packages._file_consumption import (
     borrowed_binary_stream,
@@ -19,6 +20,8 @@ from loushang.harness.resources.packages._file_consumption import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harness.resources.types import ResourceBundle
+    from loushang.harness.session.agent_product import AgentProductSession
     from loushang.harness.transcript.product_session import ProductTranscriptSession
 
 
@@ -28,6 +31,81 @@ class _SelectionRefusal(RuntimeError):
 
 class _UseRefusal(RuntimeError):
     pass
+
+
+_TranscriptT = TypeVar("_TranscriptT", bound="ProductTranscriptSession")
+_SessionT = TypeVar("_SessionT", bound="AgentProductSession")
+
+
+@asynccontextmanager
+async def hold_authoring_session(
+    registration: AbstractContextManager[None],
+    transcript_type: type[_TranscriptT],
+    build_session: Callable[[_TranscriptT], _SessionT],
+    *,
+    workspace: Path,
+    session_dir: Path,
+) -> AsyncIterator[tuple[_TranscriptT, _SessionT]]:
+    """Keep the offline transport registered through Session disposal."""
+    with registration:
+        manager = await transcript_type.new(
+            session_dir=session_dir, cwd=str(workspace), persist=True
+        )
+        session = build_session(manager)
+        try:
+            yield manager, session
+        finally:
+            await session.dispose()
+
+
+def read_authoring_wheel_document(wheel: Path, member: str) -> str:
+    """Read the bounded original UTF-8 document selected by the author check."""
+    try:
+        with ZipFile(wheel) as archive:
+            info = archive.getinfo(member)
+            if not 0 < info.file_size <= 1024 * 1024:
+                raise _SelectionRefusal("selected Resource document is empty or oversized")
+            return archive.read(info).decode("utf-8")
+    except (BadZipFile, KeyError, UnicodeDecodeError) as exc:
+        raise _SelectionRefusal("Wheel lacks the requested Resource document") from exc
+
+
+def require_authoring_resource_selection(
+    bundle: ResourceBundle | None,
+    *,
+    kind: Literal["skill", "prompt", "theme"],
+    name: str,
+) -> ResourceBundle:
+    """Check the selected Resource identity before exercising its body."""
+    if bundle is None:
+        raise _SelectionRefusal("new Session has no Resource bundle")
+    selected = (
+        bundle.skills if kind == "skill" else bundle.prompts if kind == "prompt" else bundle.themes
+    )
+    if not any(
+        item.name == name and item.source_kind == "external_package" for item in selected
+    ):
+        raise _SelectionRefusal("requested external Resource is absent from new Session")
+    return bundle
+
+
+def require_authoring_tool_result(
+    messages: Sequence[object], *, tool_name: str, expected_text: str | None
+) -> None:
+    results = [
+        message
+        for message in messages
+        if getattr(message, "role", None) == "toolResult"
+        and getattr(message, "tool_name", None) == tool_name
+    ]
+    if len(results) != 1 or getattr(results[0], "is_error"):
+        raise RuntimeError("The requested tool did not return one successful result")
+    result_text = "\n".join(
+        part.text for part in getattr(results[0], "content")
+        if getattr(part, "type", None) == "text"
+    )
+    if expected_text is not None and expected_text not in result_text:
+        raise RuntimeError("Tool result did not contain the expected text")
 
 
 def capture_authoring_input(

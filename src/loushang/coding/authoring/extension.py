@@ -27,6 +27,8 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_authoring._offline_smoke import (
     capture_authoring_input,
     hold_authoring_home,
+    hold_authoring_session,
+    require_authoring_tool_result,
 )
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*\Z")
@@ -221,58 +223,43 @@ async def _prove_tool_use(
             type="toolCall", id="extension-smoke-call", name=tool_name, arguments=arguments
         ),
     )
-    with adapter.registered():
-        manager = await SessionManager.new(
-            session_dir=workspace / ".loushang-sessions", cwd=str(workspace), persist=True
+    async with hold_authoring_session(
+        adapter.registered(),
+        SessionManager,
+        lambda manager: create_agent_session(
+            session_manager=manager,
+            model=adapter.model(
+                model_id="offline-extension-smoke",
+                name="Offline Extension Smoke",
+                endpoint="extension-smoke-offline",
+            ),
+            system_prompt="Run the author Extension tool.",
+            tools=[],
+            services=create_services(
+                settings_manager=settings,
+                resource_loader=CodingResourceLoader(
+                    workspace_root=workspace, project_resource_mode="standard"
+                ),
+            ),
+        ),
+        workspace=workspace,
+        session_dir=workspace / ".loushang-sessions",
+    ) as (_, session):
+        extensions_result = await session.execute_command_async("/extensions", "")
+        extension_listing = getattr(extensions_result, "result", None)
+        if extension_name not in str(extension_listing):
+            raise RuntimeError("Extension was not listed by the Coding Session")
+        report["sourceLoad"] = "passed"
+        if tool_name not in session.get_active_tool_names():
+            raise RuntimeError(f"Tool {tool_name} is not active in the Coding Session")
+        report["sessionSelection"] = "passed"
+        await session.prompt(f"Call {tool_name} with the supplied arguments.")
+        require_authoring_tool_result(
+            session.get_session_context().messages,
+            tool_name=tool_name,
+            expected_text=expected_text,
         )
-        session = None
-        try:
-            session = create_agent_session(
-                session_manager=manager,
-                model=adapter.model(
-                    model_id="offline-extension-smoke",
-                    name="Offline Extension Smoke",
-                    endpoint="extension-smoke-offline",
-                ),
-                system_prompt="Run the author Extension tool.",
-                tools=[],
-                services=create_services(
-                    settings_manager=settings,
-                    resource_loader=CodingResourceLoader(
-                        workspace_root=workspace, project_resource_mode="standard"
-                    ),
-                ),
-            )
-            extensions_result = await session.execute_command_async("/extensions", "")
-            extension_listing = getattr(extensions_result, "result", None)
-            if extension_name not in str(extension_listing):
-                raise RuntimeError("Extension was not listed by the Coding Session")
-            report["sourceLoad"] = "passed"
-            if tool_name not in session.get_active_tool_names():
-                raise RuntimeError(f"Tool {tool_name} is not active in the Coding Session")
-            report["sessionSelection"] = "passed"
-            await session.prompt(f"Call {tool_name} with the supplied arguments.")
-            results = [
-                message
-                for message in session.get_session_context().messages
-                if getattr(message, "role", None) == "toolResult"
-                and getattr(message, "tool_name", None) == tool_name
-            ]
-            if len(results) != 1 or results[0].is_error:
-                raise RuntimeError(
-                    "The requested tool did not return one successful result"
-                )
-            result_text = "\n".join(
-                part.text
-                for part in results[0].content
-                if getattr(part, "type", None) == "text"
-            )
-            if expected_text is not None and expected_text not in result_text:
-                raise RuntimeError("Tool result did not contain the expected text")
-            report["toolUse"] = "passed"
-        finally:
-            if session is not None:
-                await session.dispose()
+        report["toolUse"] = "passed"
 
 
 def _failure(

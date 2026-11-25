@@ -17,7 +17,6 @@ from pathlib import Path
 from secrets import token_hex
 from types import SimpleNamespace
 from typing import Literal
-from zipfile import BadZipFile, ZipFile
 
 from loushang.ai.provider._offline_adapter import OfflineModelAdapter
 from loushang.coding.cli.application import run_cli
@@ -38,8 +37,11 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_authoring._offline_smoke import (
     _SelectionRefusal,
     _UseRefusal,
+    hold_authoring_session,
     hold_authoring_wheel,
     prove_prepared_authoring_resource_use,
+    read_authoring_wheel_document,
+    require_authoring_resource_selection,
     smoke_data_plugin_use,
     smoke_worker_candidate_selection,
 )
@@ -187,13 +189,15 @@ def smoke_coding_data_wheel(
             expected_body = _document_body(
                 captured, kind=kind, plugin_id=plugin_id, resource_name=resource_name,
             )
-            _prove_new_session_use(
-                workspace=workspace,
-                settings=settings,
-                session_root=root / "sessions",
-                kind=kind,
-                resource_name=resource_name,
-                expected_body=expected_body,
+            asyncio.run(
+                _prove_new_session_use(
+                    workspace=workspace,
+                    settings=settings,
+                    session_root=root / "sessions",
+                    kind=kind,
+                    resource_name=resource_name,
+                    expected_body=expected_body,
+                )
             )
 
         return smoke_data_plugin_use(
@@ -277,16 +281,7 @@ def _document_body(
         if kind == "prompt"
         else f"{plugin_id}/themes/{resource_name}.json"
     )
-    try:
-        with ZipFile(wheel) as archive:
-            info = archive.getinfo(member)
-            if not 0 < info.file_size <= 1024 * 1024:
-                raise _SelectionRefusal(
-                    "selected Resource document is empty or oversized"
-                )
-            body = archive.read(info).decode("utf-8")
-    except (BadZipFile, KeyError, UnicodeDecodeError) as exc:
-        raise _SelectionRefusal("Wheel lacks the requested Resource document") from exc
+    body = read_authoring_wheel_document(wheel, member)
     try:
         if kind != "theme":
             body = strip_frontmatter(body).strip()
@@ -301,7 +296,7 @@ def _document_body(
     return body
 
 
-def _prove_new_session_use(
+async def _prove_new_session_use(
     *,
     workspace: Path,
     settings: SettingsManager,
@@ -315,76 +310,54 @@ def _prove_new_session_use(
         response_id="author-smoke",
         text="author smoke complete",
     )
-    with adapter.registered():
-        session = None
-        try:
-            manager = asyncio.run(
-                SessionManager.new(
-                    session_dir=session_root, cwd=str(workspace), persist=True
-                )
-            )
-            session = create_agent_session(
-                session_manager=manager,
-                model=adapter.model(
-                    model_id="author-smoke-model",
-                    name="Author Smoke Model",
-                    endpoint="author-smoke-offline",
-                ),
-                services=create_services(settings_manager=settings),
-                composition_set="coding-standard",
-            )
-            bundle = session.resource_bundle
-            if bundle is None:
-                raise _SelectionRefusal("new Session has no Resource bundle")
-            selected = (
-                bundle.skills
-                if kind == "skill"
-                else bundle.prompts
-                if kind == "prompt"
-                else bundle.themes
-            )
-            if not any(
-                item.name == resource_name and item.source_kind == "external_package"
-                for item in selected
-            ):
-                raise _SelectionRefusal(
-                    "requested external Resource is absent from new Session"
-                )
-            if kind == "theme":
-                try:
-                    expected_tokens = parse_coding_plugin_theme_document(expected_body)
-                    app = SimpleNamespace(transcript_theme=None, welcome_theme=None)
-                    current = SimpleNamespace(
-                        settings_manager=settings, resource_bundle=bundle
-                    )
-                    apply_coding_plugin_theme_to_screen(app, current)
-                    for token, style in expected_tokens.items():
-                        resolver = (
-                            app.welcome_theme
-                            if token.startswith("welcome.")
-                            else app.transcript_theme
-                        )
-                        applied = resolver.resolve(token)
-                        if any(applied.get(key) != value for key, value in style.items()):
-                            raise RuntimeError(f"Screen did not apply Theme token {token}")
-                except Exception as exc:
-                    raise _UseRefusal(str(exc)) from exc
-                return
-            invocation = (
-                f"/skill:{resource_name} {_SMOKE_ARGUMENTS}"
-                if kind == "skill"
-                else f"/{resource_name} {_SMOKE_ARGUMENTS}"
-            )
+    async with hold_authoring_session(
+        adapter.registered(),
+        SessionManager,
+        lambda manager: create_agent_session(
+            session_manager=manager,
+            model=adapter.model(
+                model_id="author-smoke-model",
+                name="Author Smoke Model",
+                endpoint="author-smoke-offline",
+            ),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-standard",
+        ),
+        workspace=workspace,
+        session_dir=session_root,
+    ) as (manager, session):
+        bundle = require_authoring_resource_selection(
+            session.resource_bundle, kind=kind, name=resource_name
+        )
+        if kind == "theme":
             try:
-                asyncio.run(session.prompt(invocation))
-                prove_prepared_authoring_resource_use(
-                    manager, invocation=invocation, expected_body=expected_body,
+                expected_tokens = parse_coding_plugin_theme_document(expected_body)
+                app = SimpleNamespace(transcript_theme=None, welcome_theme=None)
+                current = SimpleNamespace(
+                    settings_manager=settings, resource_bundle=bundle
                 )
+                apply_coding_plugin_theme_to_screen(app, current)
+                for token, style in expected_tokens.items():
+                    resolver = (
+                        app.welcome_theme
+                        if token.startswith("welcome.")
+                        else app.transcript_theme
+                    )
+                    applied = resolver.resolve(token)
+                    if any(applied.get(key) != value for key, value in style.items()):
+                        raise RuntimeError(f"Screen did not apply Theme token {token}")
             except Exception as exc:
                 raise _UseRefusal(str(exc)) from exc
-        finally:
-            if session is not None:
-                asyncio.run(session.dispose())
+            return
+        command = f"/skill:{resource_name}" if kind == "skill" else f"/{resource_name}"
+        invocation = f"{command} {_SMOKE_ARGUMENTS}"
+        try:
+            await session.prompt(invocation)
+            prove_prepared_authoring_resource_use(
+                manager, invocation=invocation, expected_body=expected_body,
+            )
+        except Exception as exc:
+            raise _UseRefusal(str(exc)) from exc
 
 
 __all__ = ["main", "smoke_coding_data_wheel", "smoke_coding_worker_candidate_wheel"]
