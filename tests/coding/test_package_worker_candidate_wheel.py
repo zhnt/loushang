@@ -39,12 +39,12 @@ import loushang.coding.package.product_worker_opt_in as opt_in_journal_module
 import loushang.coding.package.product_worker_payload as worker_payload_module
 import loushang.coding.package.product_worker_receipt as receipt_journal_module
 import loushang.coding.package.product_worker_start_gate_journal as gate_journal_module
-import loushang.coding.session.agent_session as coding_agent_session_module
 import loushang.harness.package_product._linux_worker_history as history_proof_module
 import loushang.harness.package_product._linux_worker_native_release as native_release_custody_module
 import loushang.harness.package_product._linux_worker_recovery as gated_recovery_core
 import loushang.harness.package_product.product_local_wheel_runtime as local_wheel_runtime_module
 import loushang.harness.package_product.product_root_gc_runtime as root_gc_module
+import loushang.harness.session.composition_evidence as composition_evidence_module
 import loushang.harness.worker.history._checkpoint_commands as checkpoint_commands_module
 import loushang.harness.worker.history._checkpoint_history as checkpoint_history_module
 import loushang.harness.worker.history._retention as retention_owner
@@ -4292,7 +4292,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             async def verify_resume_drift_before_native() -> None:
                                 try:
                                     original_fingerprint = (
-                                        coding_agent_session_module.fingerprint_catalog_value
+                                        composition_evidence_module.fingerprint_catalog_value
                                     )
                                     original_prepare_component = (
                                         SessionCapabilityWorkerComponentRequest.prepare_component
@@ -4315,7 +4315,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
 
                                     with monkeypatch.context() as drift:
                                         drift.setattr(
-                                            coding_agent_session_module,
+                                            composition_evidence_module,
                                             "fingerprint_catalog_value",
                                             drift_catalog_fingerprint,
                                         )
@@ -5844,8 +5844,8 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 )
                 with monkeypatch.context() as patch:
                     patch.setattr(
-                        gated_recovery_core,
-                        "_read_gated_receipt",
+                        gated_recovery_core.PosixWorkerGatedRecovery,
+                        "_read_receipt",
                         lambda *_args, **_kwargs: None,
                     )
                     missing_receipt = review_coding_product_worker_orphan_runtime(
