@@ -36,6 +36,9 @@ from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._private_receipts_windows import (
     WindowsPrivateReceiptIO,
 )
+from loushang.harness.resources.packages._private_tree_windows import (
+    PrivateWindowsTreeIO,
+)
 from loushang.harness.resources.packages.product_windows_epoch_guard import (
     inspect_windows_product_private_directory_identity,
 )
@@ -111,12 +114,19 @@ class CodingWindowsArchPrivateDataDeletionTransaction(
     _max_event_bytes: ClassVar[int] = _MAX_EVENT_BYTES
     _max_events: ClassVar[int] = _MAX_EVENTS
     _receipt_io: ClassVar[WindowsPrivateReceiptIO] = _receipt_io
+    _tree_io: ClassVar[PrivateWindowsTreeIO] = _native_io
+    _tombstone_name = staticmethod(_tombstone_name)
     _event_type: ClassVar[type[CodingArchPrivateDataDeletionEventV1]] = (
         CodingArchPrivateDataDeletionEventV1
     )
     _target_type: ClassVar[type[CodingArchPrivateDataTargetSnapshotV1]] = (
         CodingArchPrivateDataTargetSnapshotV1
     )
+
+    def _capture_tree(
+        self, root: Path, *, expected_root: tuple[int, int]
+    ) -> CodingArchPrivateDataTargetSnapshotV1:
+        return _capture_windows_target_snapshot(root, expected_root=expected_root)
 
     def _domain(self) -> _CodingWindowsDeletionDomain:
         owner = self.confirmations

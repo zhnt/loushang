@@ -7,7 +7,6 @@ durable phase. It accepts only the currently observed Arch cache shape.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -17,28 +16,20 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionPlanV1,
     PluginPrivateDataDeletionReceiptV1,
-    PrivateDataDeletionDisposition,
-    execute_windows_private_deletion,
-    remove_started_windows_private_tree,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages._tree_observation import require_tree_subset
 
 from .installation_private_data import coding_arch_installation_private_data_root
-from .private_data_deletion_journal import CodingArchPrivateDataDeletionEventV1
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .private_data_windows_confirmation import (
     CodingWindowsArchPrivateDataConfirmationOwner,
 )
 from .private_data_windows_deletion_journal import (
     CodingWindowsArchPrivateDataDeletionJournal,
-    CodingWindowsArchPrivateDataDeletionTransaction,
-    _capture_current_target,
-    _tombstone_name,
 )
 from .private_data_windows_preview import (
     CodingWindowsArchPrivateDataReadPreview,
-    _capture_windows_target_snapshot,
     _native_io,
 )
 
@@ -78,21 +69,10 @@ class CodingWindowsArchPrivateDataDeletionOwner:
         root = coding_arch_installation_private_data_root(
             self.layout, plan.installation_key
         )
-        confirmations = CodingWindowsArchPrivateDataConfirmationOwner(
-            self.layout, self.product
-        )
+        # Preserve confirmation admission before acquiring the mutation fence.
+        CodingWindowsArchPrivateDataConfirmationOwner(self.layout, self.product)
         with self._journal.transaction() as transaction:
-            return execute_windows_private_deletion(
-                transaction,
-                plan,
-                confirmation,
-                capture_target=lambda: _capture_current_target(
-                    confirmations, plan.installation_key
-                ),
-                remove_started=lambda started: _delete_started(
-                    root, started, transaction, confirmations
-                ),
-            )
+            return transaction.execute(root, plan, confirmation)
 
     @property
     def _journal(self) -> CodingWindowsArchPrivateDataDeletionJournal:
@@ -110,28 +90,6 @@ class CodingWindowsArchPrivateDataDeletionOwner:
             or confirmation.plan_fingerprint != plan.fingerprint
         ):
             raise ValueError("Windows Coding Arch deletion command is invalid")
-
-
-def _delete_started(
-    root: Path,
-    started: CodingArchPrivateDataDeletionEventV1,
-    transaction: CodingWindowsArchPrivateDataDeletionTransaction,
-    confirmations: CodingWindowsArchPrivateDataConfirmationOwner,
-) -> PrivateDataDeletionDisposition:
-    return remove_started_windows_private_tree(
-        root,
-        started,
-        io=_native_io,
-        capture_current=lambda: _capture_current_target(
-            confirmations, started.plan.installation_key, allow_pending=True
-        ),
-        capture=lambda path, *, expected_root: _capture_windows_target_snapshot(
-            path, expected_root=expected_root
-        ),
-        make_tombstone_name=lambda: _tombstone_name(started),
-        current_start=lambda: transaction.current_start(),
-        record_renamed=lambda value: transaction.record_renamed(value),
-    )
 
 
 def _require_remaining_subset(
