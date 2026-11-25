@@ -9,9 +9,6 @@ from loushang.harness.worker.history._activation_base import (
     _ActivationBaseMethods,
     _ActivationReplayFields,
 )
-from loushang.harness.worker.history._activation_base import (
-    _parse_c5_segment as _parse_c5_segment,
-)
 
 
 @dataclass(frozen=True, slots=True)

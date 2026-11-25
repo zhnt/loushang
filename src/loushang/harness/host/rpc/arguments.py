@@ -23,6 +23,11 @@ def require_string(payload: dict[str, Any], *keys: str) -> str:
     raise ValueError(f"missing required string field: {keys[0]}")
 
 
+def request_exact_string(value: object) -> str | None:
+    """Read a nonempty wire identifier without trimming the caller's value."""
+    return value if isinstance(value, str) and value and value == value.strip() else None
+
+
 def optional_string(payload: dict[str, Any], *keys: str) -> str | None:
     for key in keys:
         value = payload.get(key)
@@ -97,6 +102,7 @@ __all__ = [
     "optional_int",
     "optional_number",
     "optional_string",
+    "request_exact_string",
     "require_mode",
     "require_string",
 ]

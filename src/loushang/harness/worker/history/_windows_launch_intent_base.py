@@ -28,6 +28,10 @@ from loushang.harness.worker.history._windows_semantic_contracts import (
     _SourceFacts,
     launch_matches_intent,
 )
+from loushang.harness.worker.history._windows_sources import (
+    WINDOWS_WORKER_LAUNCH_INTENT_PREFIX,
+    windows_worker_launch_intent_name,
+)
 
 
 @dataclass(frozen=True, init=False, repr=False, eq=False)
@@ -104,15 +108,15 @@ class _WindowsLaunchIntentBaseMethods(_WindowsPreparedSourceMethods):
         files = {
             item.name: item
             for item in source.files
-            if item.name.startswith("worker-launch-intent-")
+            if item.name.startswith(WINDOWS_WORKER_LAUNCH_INTENT_PREFIX)
         }
         expected_names = {
-            f"worker-launch-intent-{item.attempt_id}.json" for item in intents
+            windows_worker_launch_intent_name(item.attempt_id) for item in intents
         }
         if set(files) != expected_names:
             raise ValueError("Windows Worker launch-intent source is absent")
         for intent in intents:
-            source_file = files[f"worker-launch-intent-{intent.attempt_id}.json"]
+            source_file = files[windows_worker_launch_intent_name(intent.attempt_id)]
             raw = intent.to_bytes()
             if (
                 source_file.size != len(raw)

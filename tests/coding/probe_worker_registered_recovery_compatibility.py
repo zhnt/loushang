@@ -739,7 +739,13 @@ def observe(name, base, patch):
             CodingWorkerV2DeletionLedger,
         )
         from loushang.coding.package.product_worker_history_preflight_v2 import (
-            _prepare_coding_product_worker_history_cutover_under_guard,
+            CodingWorkerCutoverPreflightError,
+        )
+        from loushang.coding.package.product_worker_history_prepared_v2 import (
+            CodingWorkerPreparedProductCutoverV2,
+        )
+        from loushang.coding.package.product_worker_history_retention import (
+            _history_proof_bindings,
         )
         from loushang.coding.package.product_worker_history_segments import (
             CodingWorkerSegmentManifestV1,
@@ -805,8 +811,11 @@ def observe(name, base, patch):
             )
         publish_coding_product_worker_history_checkpoint(product, attempt_id=ATTEMPT)
         with gate.guard(require_write=True):
-            prepared = _prepare_coding_product_worker_history_cutover_under_guard(
+            prepared = history.prepare_history_cutover_under_guard(
+                _history_proof_bindings(),
                 product,
+                prepared_type=CodingWorkerPreparedProductCutoverV2,
+                error_type=CodingWorkerCutoverPreflightError,
                 first_retained_generations=(1, 1, 1, 1, 0),
                 active_runtime_lease_ids=(),
                 gc_snapshot=gate.snapshot(),

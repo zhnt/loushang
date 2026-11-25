@@ -641,11 +641,11 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         WORKER_ROOT / "payload/_selected_payload.py",
     }
     relocated_consumers = {
-        Path('src/loushang/coding/package/worker_preparation_inputs.py'),
         Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
         Path("src/loushang/harness/session/_worker_operator_query.py"),
         Path("src/loushang/harness/session/_worker_provider.py"),
         Path("src/loushang/harness/session/composition_evidence.py"),
+        Path("src/loushang/harness/session/product_composition_assembly.py"),
         *lifecycle_consumers,
     }
     consumers: set[Path] = set()
@@ -678,7 +678,6 @@ def test_c51_has_only_the_accepted_product_consumers() -> None:
         Path("src/loushang/coding/package/product_worker_receipt.py"),
         Path("src/loushang/coding/package/product_worker_windows_provisioning.py"),
         Path("src/loushang/coding/package/product_worker_windows_launch_intent.py"),
-        Path("src/loushang/coding/package/product_worker_windows_payload.py"),
         CODING_PRODUCT_START_GATE,
         Path("src/loushang/harness/package_product/_linux_worker_recovery.py"),
         Path("src/loushang/harness/package_product/_windows_worker_recovery.py"),

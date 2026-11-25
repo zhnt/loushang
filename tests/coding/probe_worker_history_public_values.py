@@ -333,7 +333,11 @@ def test_v2_parsers_preserve_import_time_capacity(stream, observations, monkeypa
     if stream == "opt_in":
         assert base._parse_opt_in_segment(raw)
     else:
-        assert base._parse_start_gate_segment(raw, first_revision=4)
+        from loushang.harness.worker.history._start_gate import parse_start_gate_segment
+
+        assert parse_start_gate_segment(
+            raw, first_revision=4, record_type=module.CodingWorkerStartGateRecordV1
+        )
 
 
 def _base_wire_cases(wire):

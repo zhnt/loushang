@@ -46,6 +46,7 @@ from loushang.harness.plugin_management.support_evidence import (
     recheck_plugin_support_evidence,
 )
 from loushang.harness.workspace.paths import (
+    WorkspaceOperationGuard,
     assert_workspace_directory_identity,
     capture_workspace_directory_identity,
     is_workspace_directory_identity,
@@ -91,12 +92,10 @@ class CodingPluginManagementReadClientV1:
             or query.scope_id != self.layout.scope_id
         ):
             raise ValueError("Plugin management read changed workspace scope")
-        self._assert_workspace_identity()
-        projection = build_coding_fenced_product_management_cli_ports(
-            self.layout, workspace_guard=self._assert_workspace_identity
-        ).queries.snapshot(query)
-        self._assert_workspace_identity()
-        return projection
+        with WorkspaceOperationGuard(self._assert_workspace_identity):
+            return build_coding_fenced_product_management_cli_ports(
+                self.layout, workspace_guard=self._assert_workspace_identity
+            ).queries.snapshot(query)
 
     def management_snapshot(
         self,
@@ -107,20 +106,18 @@ class CodingPluginManagementReadClientV1:
     ) -> dict[str, object]:
         """Read the management owner projection without startup or repair."""
 
-        self._assert_workspace_identity()
-        binding = build_coding_plugin_management_cli_read_binding(
-            self.workspace,
-            settings_manager,
-            workspace_identity=self.workspace_identity,
-        )
-        if binding.scope_id != self.layout.scope_id:
-            raise ValueError("Plugin management read changed workspace scope")
-        projection = binding.query(
-            correlation_id=correlation_id,
-            plugin_ids=plugin_ids,
-        ).to_dict()
-        self._assert_workspace_identity()
-        return projection
+        with WorkspaceOperationGuard(self._assert_workspace_identity):
+            binding = build_coding_plugin_management_cli_read_binding(
+                self.workspace,
+                settings_manager,
+                workspace_identity=self.workspace_identity,
+            )
+            if binding.scope_id != self.layout.scope_id:
+                raise ValueError("Plugin management read changed workspace scope")
+            return binding.query(
+                correlation_id=correlation_id,
+                plugin_ids=plugin_ids,
+            ).to_dict()
 
     def preview_current(
         self,
@@ -128,20 +125,18 @@ class CodingPluginManagementReadClientV1:
         correlation_id: str,
         composition_set_id: str = "coding-standard",
     ) -> dict[str, object]:
-        self._assert_workspace_identity()
-        preview = project_plugin_current_preview(
-            bind_coding_current_preview_query(
-                self.workspace, workspace_guard=self._assert_workspace_identity
-            ),
-            PluginCurrentPreviewRequestV1(
-                correlation_id=correlation_id,
-                product_id=CODING_PRODUCT_ID,
-                scope_id=self.layout.scope_id,
-                composition_set_id=composition_set_id,
-            ),
-        )
-        self._assert_workspace_identity()
-        return preview
+        with WorkspaceOperationGuard(self._assert_workspace_identity):
+            return project_plugin_current_preview(
+                bind_coding_current_preview_query(
+                    self.workspace, workspace_guard=self._assert_workspace_identity
+                ),
+                PluginCurrentPreviewRequestV1(
+                    correlation_id=correlation_id,
+                    product_id=CODING_PRODUCT_ID,
+                    scope_id=self.layout.scope_id,
+                    composition_set_id=composition_set_id,
+                ),
+            )
 
     def support_status(
         self,
@@ -183,20 +178,18 @@ class CodingPluginManagementReadClientV1:
         *,
         correlation_id: str,
     ) -> dict[str, object]:
-        self._assert_workspace_identity()
-        explanation = project_plugin_operation_explanation(
-            bind_coding_plugin_operation_explanation_query(
-                self.workspace, workspace_guard=self._assert_workspace_identity
-            ),
-            PluginOperationExplanationRequestV1(
-                correlation_id=correlation_id,
-                product_id=CODING_PRODUCT_ID,
-                scope_id=self.layout.scope_id,
-                operation_id=operation_id,
-            ),
-        )
-        self._assert_workspace_identity()
-        return explanation
+        with WorkspaceOperationGuard(self._assert_workspace_identity):
+            return project_plugin_operation_explanation(
+                bind_coding_plugin_operation_explanation_query(
+                    self.workspace, workspace_guard=self._assert_workspace_identity
+                ),
+                PluginOperationExplanationRequestV1(
+                    correlation_id=correlation_id,
+                    product_id=CODING_PRODUCT_ID,
+                    scope_id=self.layout.scope_id,
+                    operation_id=operation_id,
+                ),
+            )
 
     def _assert_workspace_identity(self) -> None:
         assert_workspace_directory_identity(

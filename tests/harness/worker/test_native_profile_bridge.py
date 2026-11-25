@@ -20,7 +20,6 @@ from loushang.coding.package.product_worker_windows_payload_inventory import (
 from loushang.coding.package.product_worker_windows_provisioning_journal import (
     WindowsWorkerProvisioningStateJournal,
     WindowsWorkerProvisioningStateJournalError,
-    _inventory_identity,
     inspect_windows_worker_provisioning_attempts,
 )
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -56,6 +55,7 @@ from loushang.harness.worker._native_profile_bridge import (
     _WindowsLpacRuntimeBindings,
     _WindowsNativeContainmentSettlementWitness,
 )
+from loushang.harness.worker._windows_provisioning_journal import _inventory_identity
 from loushang.harness.worker.hosting_adapter import (
     _map_worker_request,
     _worker_launch_preparation_port,

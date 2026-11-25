@@ -136,7 +136,7 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path('src/loushang/coding/hosted/resume.py'),
         Path('src/loushang/coding/hosted/session.py'),
         Path('src/loushang/coding/hosted/_execution_work.py'),
-        Path("src/loushang/coding/hosted/_session_commands.py"),
+        Path("src/loushang/apphost/integrations/_session_commands.py"),
         Path("src/loushang/coding/hosted/workspace_catalog.py"),
         # Exact current-subject guard extracted from that same execution owner.
         Path("src/loushang/coding/resume/subject.py"),
@@ -163,10 +163,10 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         "loushang.appservice.discovery_ports",
     }
     for filename, ports in {
-        "_session_commands.py": {"execution_guard", "execution_contract"},
-        "workspace_catalog.py": {"managed_mux"},
+        "apphost/integrations/_session_commands.py": {"execution_guard", "execution_contract"},
+        "coding/hosted/workspace_catalog.py": {"managed_mux"},
     }.items():
-        path = Path("src/loushang/coding/hosted") / filename
+        path = Path("src/loushang") / filename
         assert {name for name in _imports(path) if name.startswith("loushang.appservice")} == {
             f"loushang.appservice.{port}" for port in ports
         }

@@ -8,6 +8,10 @@ from secrets import token_hex
 from typing import Generic, Protocol, TypeVar, cast
 
 from loushang.ai.types import AssistantMessage, ToolCall, UserMessage
+from loushang.apphost.integrations.resource_access import (
+    SUBMISSION_ID,
+    record_resource_ids,
+)
 from loushang.appserver.protocol import (
     SessionEventKindV1,
     TranscriptRecordKindV1,
@@ -15,6 +19,7 @@ from loushang.appserver.protocol import (
 )
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.runtime_projection import project_session_runtime_event
+from loushang.harness.transcript.types import AgentTranscriptRecord
 
 _TEXT_LIMIT = 16_384
 _MAX_INTERACTIONS = 16
@@ -85,11 +90,30 @@ class _HostedConversationProjection(Generic[EventT]):
 def _hosted_transcript_window(
     newest_first: Iterable[object], *, flag_clipped_rows: bool = True,
 ) -> tuple[tuple[TranscriptRecordV1, ...], bool]:
+    return _project_transcript_window(
+        (_transcript_record(message) for message in newest_first),
+        flag_clipped_rows=flag_clipped_rows,
+    )
+
+
+def _hosted_committed_transcript_window(
+    newest_first: Iterable[AgentTranscriptRecord], *, flag_clipped_rows: bool = True,
+) -> tuple[tuple[TranscriptRecordV1, ...], bool]:
+    return _project_transcript_window(
+        (_committed_transcript_record(entry) for entry in newest_first),
+        flag_clipped_rows=flag_clipped_rows,
+    )
+
+
+def _project_transcript_window(
+    projections: Iterable[tuple[TranscriptRecordV1, bool] | None],
+    *,
+    flag_clipped_rows: bool,
+) -> tuple[tuple[TranscriptRecordV1, ...], bool]:
     records: list[TranscriptRecordV1] = []
     remaining = _TEXT_LIMIT
     clipped = False
-    for message in newest_first:
-        projected = _transcript_record(message)
+    for projected in projections:
         if projected is None:
             continue
         record, row_clipped = projected
@@ -129,7 +153,25 @@ def _hosted_session_title(name: str | None, messages: Iterable[object]) -> str:
     return f"{prefix}…"
 
 
-def _transcript_record(message: object) -> tuple[TranscriptRecordV1, bool] | None:
+def _committed_transcript_record(
+    entry: AgentTranscriptRecord,
+) -> tuple[TranscriptRecordV1, bool] | None:
+    submission = entry.metadata.get(SUBMISSION_ID)
+    return _transcript_record(
+        entry.payload,
+        record_id=entry.record_id,
+        resource_ids=record_resource_ids(entry)[:16],
+        submission_id=submission if isinstance(submission, str) else None,
+    )
+
+
+def _transcript_record(
+    message: object,
+    *,
+    record_id: str | None = None,
+    resource_ids: tuple[str, ...] = (),
+    submission_id: str | None = None,
+) -> tuple[TranscriptRecordV1, bool] | None:
     if not isinstance(message, UserMessage | AssistantMessage):
         return None
     text = _message_text(message)
@@ -144,7 +186,8 @@ def _transcript_record(message: object) -> tuple[TranscriptRecordV1, bool] | Non
         TranscriptRecordKindV1.USER if isinstance(message, UserMessage)
         else TranscriptRecordKindV1.ASSISTANT
     )
-    return TranscriptRecordV1(kind, _bounded(text)), len(text) > _TEXT_LIMIT
+    record = TranscriptRecordV1(kind, _bounded(text), record_id, resource_ids, submission_id)
+    return record, len(text) > _TEXT_LIMIT
 
 
 def _message_text(message: UserMessage | AssistantMessage) -> str:

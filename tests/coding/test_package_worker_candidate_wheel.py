@@ -47,6 +47,7 @@ import loushang.harness.package_product.product_local_wheel_runtime as local_whe
 import loushang.harness.package_product.product_root_gc_runtime as root_gc_module
 import loushang.harness.worker.history._checkpoint_commands as checkpoint_commands_module
 import loushang.harness.worker.history._checkpoint_history as checkpoint_history_module
+import loushang.harness.worker.history._retention as retention_owner
 import loushang.hosting.service_group as service_group_module
 from loushang.agent import Agent, synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
@@ -4464,11 +4465,12 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             hidden_topology_path.rename(backup_topology_path)
                         assert direct_retention.unverified_receipt_gate_references == ()
                         assert direct_retention.attempt_record is not None
-                        assert history_retention_module._receipt_gate_reference_issue(
+                        assert retention_owner.receipt_gate_reference_issue(
                             direct_gate_attempts[0],
                             direct_retention.receipt_record,
                             direct_retention.attempt_record,
                             "present",
+                            product_id="coding",
                         ) == "receipt_reference_native_absence_unverified"
                         mismatched_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
                             journal_revision=direct_gate_attempts[0].journal_revision,
@@ -4485,11 +4487,12 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             ),
                             identity=direct_gate_attempts[0].identity,
                         )
-                        assert history_retention_module._receipt_gate_reference_issue(
+                        assert retention_owner.receipt_gate_reference_issue(
                             mismatched_gate,
                             direct_retention.receipt_record,
                             direct_retention.attempt_record,
                             "absent",
+                            product_id="coding",
                         ) == "receipt_reference_binding_changed"
                         assert (
                             replace(
@@ -6258,7 +6261,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         ) as quiescence:
             with product.gc_gate.guard(require_write=True):
                 writer_review = (
-                    history_retention_module._review_coding_product_worker_history_under_guard(
+                    history_proof_module.review_history_under_guard(
+                        history_retention_module._history_proof_bindings(),
                         product,
                         attempt_id=attempt_id,
                         active_runtime_lease_ids=(

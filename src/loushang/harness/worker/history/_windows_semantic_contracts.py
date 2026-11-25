@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Protocol
 
 from loushang.harness.worker._windows_provisioning_journal import (
@@ -112,6 +113,44 @@ class _RecoveryFacts(Protocol):
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
+
+
+def native_attempts_for(
+    attempts: tuple[WindowsWorkerProvisioningAttemptV1, ...], attempt_id: str
+) -> tuple[WindowsWorkerProvisioningAttemptV1, ...]:
+    return tuple(item for item in attempts if item.attempt_id == attempt_id)
+
+
+def native_attempt_history_matches(
+    provisioned: WindowsWorkerProvisioningAttemptV1,
+    attempt: WindowsRecoveryAttemptV1,
+    *,
+    phase: str | None,
+    revision: int | None,
+) -> bool:
+    return (
+        provisioned.phase == phase
+        and provisioned.state_revision == revision
+        and provisioned.phase_history == attempt.native_phase_history
+        and provisioned.witness_present_history == attempt.native_witness_present_history
+    )
+
+
+def native_attempt_identity_matches(
+    identity: Mapping[str, object],
+    attempt: WindowsRecoveryAttemptV1,
+    receipt: _ReceiptRecordMethods,
+    *,
+    request_fingerprint: str | None,
+) -> bool:
+    policy = receipt.receipt.policy
+    return (
+        identity["workerRequestFingerprint"] == request_fingerprint
+        and identity["receiptFingerprint"] == receipt.receipt.fingerprint
+        and identity["jobObjectName"] == attempt.native_job_name
+        and identity["nativeProfileId"] == policy.native_profile_id
+        and identity["nativeProfileCatalogRevision"] == policy.native_profile_catalog_revision
+    )
 
 
 def native_matches_intent(

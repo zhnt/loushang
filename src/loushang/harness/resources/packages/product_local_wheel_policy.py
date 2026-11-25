@@ -713,6 +713,13 @@ class PackageProductLocalWheelPolicy:
         )
 
 
+def has_worker_candidate_binding(policy: PackageProductLocalWheelPolicy) -> bool:
+    """Report whether the Product admits any local Worker candidate Source."""
+    return any(
+        binding.source_trust_class == "local-worker-candidate" for binding in policy.bindings
+    )
+
+
 def _require_local_wheel_source(source: str) -> None:
     if (
         not isinstance(source, str)

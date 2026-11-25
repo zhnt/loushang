@@ -7,6 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+from loushang.harness.cli.package_lifecycle import package_operator_error_code
+from loushang.harness.cli.plugin_management import valid_plugin_terminal_identifier
 from loushang.harness.host.types import HostActionResult
 
 from .product_repair import (
@@ -35,9 +37,7 @@ def execute_coding_package_repair_ui_command(
         len(tokens) != 4
         or tokens[0:2] != ["/plugins", "repair-package"]
         or tokens[2] not in CODING_PACKAGE_REPAIR_ACTIONS_V1
-        or not 0 < len(tokens[3]) <= 256
-        or not tokens[3].isascii()
-        or not tokens[3].isprintable()
+        or not valid_plugin_terminal_identifier(tokens[3])
     ):
         return HostActionResult(error_message=_USAGE)
     action, operation_id = tokens[2:]
@@ -77,9 +77,7 @@ def execute_coding_package_repair_ui_command(
             error_message=f"Package repair refused: {code}; operation {operation_id}"
         )
     except Exception as exc:
-        code = getattr(exc, "code", None)
-        if not isinstance(code, str) or _SAFE_CODE.fullmatch(code) is None:
-            code = "package_repair_unavailable"
+        code = package_operator_error_code(exc, fallback="package_repair_unavailable")
         return HostActionResult(error_message=f"Package repair refused: {code}")
 
 

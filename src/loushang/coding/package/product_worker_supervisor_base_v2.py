@@ -5,9 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.harness.worker.history._supervisor import (
-    _parse_supervisor_segment as _parse_supervisor_segment,
-)
-from loushang.harness.worker.history._supervisor import (
     _SupervisorBaseMethods,
     _SupervisorKeyMethods,
     _SupervisorReplayFields,
