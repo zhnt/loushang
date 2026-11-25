@@ -382,6 +382,8 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
             {
                 "loushang.apphost.integrations.session_control._DeferredSessionControl",
                 "loushang.apphost.integrations.session_control._HostedApprovalPresentation",
+                "loushang.apphost.integrations.resource_access",
+                "loushang.apphost.integrations.resource_access.HostedResourceAccess",
             }
             if path == Path('src/loushang/coding/hosted/resume.py') else set()
         )
@@ -403,6 +405,9 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/session.py'),
+        Path('src/loushang/coding/hosted/_session_commands.py'),
+        Path('src/loushang/coding/hosted/resources.py'),
+        Path('src/loushang/coding/hosted/resource_tools.py'),
         # Stage 1A: validate the original managed lease binding key.
         Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),

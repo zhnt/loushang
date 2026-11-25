@@ -138,8 +138,10 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
         },
     }
     hosted_contract_values = {
-        "resource_tools": {"protocol": {"AppServiceError"}},
-        "resources": {
+        Path("src/loushang/coding/hosted/resource_tools.py"): {
+            "protocol": {"AppServiceError"},
+        },
+        APPHOST / "integrations/resource_access.py": {
             "execution.model": {"ResourceRefV1"},
             "execution.resources": {
                 "RESOURCE_CHUNK_BYTES", "ResourceV1", "SessionResourceQueryV1",
@@ -147,15 +149,15 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             },
             "protocol": {"AppErrorCodeV1", "AppServiceError"},
         },
-        "client_references": {
+        APPHOST / "integrations/_resource_client_reference.py": {
             "execution.resources": {"ClientResourceRequestV1", "ResourceV1"},
             "protocol": {"AppErrorCodeV1", "AppServiceError"},
         },
-        "host_references": {
+        APPHOST / "integrations/_resource_host_reference.py": {
             "execution.resources": {"ResourceV1"},
             "protocol": {"AppErrorCodeV1", "AppServiceError"},
         },
-        "_session_commands": {
+        APPHOST / "integrations/_session_commands.py": {
             "execution.session_commands": {
                 "SessionCommandCatalogV1", "SessionCommandChoiceV1",
                 "SessionCommandInvocationV1", "SessionCommandResultV1",
@@ -164,12 +166,12 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
         },
     }
     hosted_contract_imports = {
-        Path(f"src/loushang/coding/hosted/{filename}.py"): {
+        path: {
             f"loushang.appserver.{item}"
             for module, values in modules.items()
             for item in (module, *(f"{module}.{value}" for value in values))
         }
-        for filename, modules in hosted_contract_values.items()
+        for path, modules in hosted_contract_values.items()
     }
     appserver_consumers = {
         path
