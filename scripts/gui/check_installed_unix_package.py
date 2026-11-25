@@ -284,7 +284,10 @@ def verify(args: argparse.Namespace) -> None:
         finally:
             if linux:
                 if control.exists():
-                    run("sudo", "-n", "dnf" if rpm else "apt-get", "remove", "-y", "loushang")
+                    if rpm:
+                        run("sudo", "-n", "dnf", "remove", "--no-autoremove", "-y", "loushang")
+                    else:
+                        run("sudo", "-n", "apt-get", "remove", "-y", "loushang")
                 run("systemctl", "--user", "unset-environment", "LOUSHANG_HOME", env=env)
                 run("systemctl", "--user", "daemon-reload", env=env)
             elif APP.exists():

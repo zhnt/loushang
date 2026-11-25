@@ -53,16 +53,20 @@ try {
 }
 
 if ($python) {
+    $venv = Join-Path $env:RUNNER_TEMP 'loushang-arm64-probe'
+    uv venv --python $python $venv
+    if ($LASTEXITCODE) { throw 'Could not create an isolated ARM64 probe environment' }
+    $probePython = Join-Path $venv 'Scripts/python.exe'
     $requirements = Join-Path $env:RUNNER_TEMP 'loushang-requirements-arm64.txt'
     Confirm-NativeCommand 'Locked product wheels' {
-        uv export --locked --no-dev --no-emit-project --output-file $requirements
+        uv --quiet export --locked --no-dev --no-emit-project --output-file $requirements
         if ($LASTEXITCODE) { throw 'Could not export the locked dependencies' }
-        uv pip install --dry-run --no-deps --python $python --python-platform $target `
+        uv pip install --dry-run --no-deps --python $probePython --python-platform $target `
             --only-binary :all: --require-hashes -r $requirements
     }
     $pyinstaller = (Select-String -Path scripts/build/internal/common.py -Pattern '^PYINSTALLER = "([^"]+)"').Matches[0].Groups[1].Value
     Confirm-NativeCommand 'PyInstaller wheels' {
-        uv pip install --dry-run --python $python --python-platform $target --only-binary :all: $pyinstaller
+        uv pip install --dry-run --python $probePython --python-platform $target --only-binary :all: $pyinstaller
     }
 } else {
     'NOT VERIFIED: target interpreter unavailable for native wheel checks'

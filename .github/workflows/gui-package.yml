@@ -8,7 +8,7 @@ on:
         description: Branch, tag, or commit to package
         type: string
         required: true
-        default: main
+        default: lane/gui
       target:
         description: Full package target
         type: choice

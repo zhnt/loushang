@@ -4,13 +4,15 @@
 
 | 目标 | 原生构建环境 | 目标系统与验证边界 | Actions |
 | --- | --- | --- | --- |
-| Linux x86_64 DEB | Ubuntu 24.04+ | 已验收 Ubuntu 26.04.1 x86_64。更早版本的可安装性取决于构建机产生的 ABI 和包依赖 | `ubuntu-24.04` |
-| Linux aarch64 DEB | Ubuntu 24.04+ ARM64 | 有构建入口，待原生构建及安装验收 | `ubuntu-24.04-arm` |
-| Linux x86_64 / aarch64 RPM | Fedora 43+，原生架构 | 有构建入口，待同版本 Fedora 原生构建及安装验收。尚未证明兼容 RHEL | 无标准 Fedora runner |
-| Windows x86_64 NSIS | Windows x64，MSVC | 旧入口已通过 Windows 11 x64 安装验收。新入口待原生构建与验收。Windows 10 未验收为支持下限 | `windows-2022` |
-| Windows x86_64 MSI | Windows x64，MSVC、WiX | 有构建入口，待原生构建及安装验收 | `windows-2022` |
-| Windows aarch64 NSIS / MSI | Windows ARM64 | 锁定的 `cryptography==48.0.1` 缺少原生可用轮子，构建前拒绝 | 未启用 |
-| macOS x86_64 / aarch64 PKG | 原生 Intel / Apple Silicon Mac，Xcode | PKG 与 Mach-O 审计目标为 macOS 12。此前 Intel 包已构建；新入口和 Apple Silicon 安装待验收 | `macos-15-intel` / `macos-15` |
+| Linux x86_64 DEB | Ubuntu 24.04+ | Ubuntu 24.04 Runner 安装、运行及卸载验收 | `ubuntu-24.04` |
+| Linux aarch64 DEB | Ubuntu 24.04+ ARM64 | Ubuntu 24.04 ARM64 Runner 安装、运行及卸载验收，DEB 架构名为 `arm64` | `ubuntu-24.04-arm` |
+| Linux x86_64 RPM | Fedora 43+ x86_64 | Fedora 43 容器，使用实际 systemd 用户服务及 Xvfb | `ubuntu-24.04` |
+| Linux aarch64 RPM | Fedora 43+ ARM64 | Fedora 43 ARM64 容器，使用实际 systemd 用户服务及 Xvfb | `ubuntu-24.04-arm` |
+| Windows x86_64 NSIS | Windows x64，MSVC | Windows Server 2022 静默安装、运行及卸载验收 | `windows-2022` |
+| Windows x86_64 MSI | Windows x64，MSVC、WiX | Windows Server 2022 静默安装、同版本修复、运行及卸载验收 | `windows-2022` |
+| Windows aarch64 NSIS / MSI | Windows ARM64 | 原生依赖预检，锁定的 `cryptography==48.0.1` 缺少 Windows ARM64 wheel | `windows-11-arm` |
+| macOS x86_64 PKG | 原生 Intel Mac，Xcode | macOS 15 Intel 安装、运行及卸载验收，Mach-O 审计目标为 macOS 12 | `macos-15-intel` |
+| macOS aarch64 PKG | 原生 Apple Silicon Mac，Xcode | macOS 15 Apple Silicon 安装、运行及卸载验收，Mach-O 审计目标为 macOS 12 | `macos-15` |
 
 ### 准备构建环境
 
@@ -28,6 +30,7 @@ uv run --no-project --python 3.11 python scripts/build/build_full_linux.py
 uv run --no-project --python 3.11 python scripts/build/build_full_linux.py --format rpm
 uv run --no-project --python 3.11 python scripts/build/build_full_windows.py
 uv run --no-project --python 3.11 python scripts/build/build_full_windows.py --format msi
+uv run --no-project --python 3.11 python scripts/build/build_full_windows.py --format all
 uv run --no-project --python 3.11 python scripts/build/build_full_macos.py
 ```
 
@@ -38,25 +41,27 @@ uv run --no-project --python 3.11 python scripts/build/build_full_macos.py
 先退出 GUI、TUI 和 Web，再执行 `loushang-mux service stop`。更换文件前应确认这些进程已退出。用户配置、认证和会话放在独立用户目录，升级或卸载时保留。
 
 - **DEB** 用 `sudo apt install ./loushang_0.1.0_amd64.deb` 安装，用 `sudo apt install --reinstall ./loushang_0.1.0_amd64.deb` 同版本重装。卸载用 `sudo apt remove loushang`。缺失的 WebKitGTK 等由 APT 安装。更新 unit 后可执行 `systemctl --user daemon-reload`。此前的 `0.1.0+gui.<commit>` 预览包在 APT 中高于 `0.1.0`。如需覆盖旧预览包，先停服务，再显式使用 `apt install --allow-downgrades ./loushang_0.1.0_amd64.deb`。
-- **RPM** 用 `sudo dnf install ./loushang-0.1.0-1*.rpm` 安装，用 `sudo rpm -U --replacepkgs ./loushang-0.1.0-1*.rpm` 同版本重装。卸载用 `sudo dnf remove loushang`。
+- **RPM** 用 `sudo dnf install ./loushang-0.1.0-1*.rpm` 安装，用 `sudo rpm -U --replacepkgs ./loushang-0.1.0-1*.rpm` 同版本重装。卸载用 `sudo dnf remove --no-autoremove loushang`。
 - **Windows** 同一格式重复运行安装器，MSI 可在提升权限的终端用 `msiexec /i loushang-0.1.0-x64.msi REINSTALL=ALL REINSTALLMODE=amus` 强制刷新同版本文件。NSIS 默认当前用户目录，MSI 默认 Program Files。更换格式前先卸载现有版本，保持同一套程序文件只由一个安装器管理，勿把两种格式指向同一安装目录。缺少 WebView2 时安装器会从微软下载。离线机器可先安装[微软 Evergreen Standalone Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section)。未签名的 Loushang 安装器可能触发 SmartScreen。
 - **macOS** 用安装器打开 PKG，或执行 `sudo installer -pkg ./loushang-0.1.0-x64.pkg -target /`。同版本重装重复此步骤。应用使用 ad-hoc 签名，PKG 未签名及公证，受 Gatekeeper 与管理策略限制。卸载时先停进程，再删除 `/Applications/loushang-gui.app` 及指向其 `Contents/MacOS` 的 `/usr/local/bin/loushang{,-gui,-web,-mux,-host}` 链接，最后执行 `sudo pkgutil --forget ai.loushang.full`。参见[安装验收](../gui/macos-package.md)。
 
 ### GitHub Actions
 
-手动工作流沿用 GitHub 已注册的 `gui-package.yml`。使用 `--ref` 选择包含新版
-工作流的分支，用 `source_ref` 指定待构建的 Branch、Tag 或 Commit。默认分支上的
-旧版定义仍接受旧参数。
+使用 `--ref` 选择包含当前工作流定义的分支，用 `source_ref` 指定待构建的 Branch、Tag 或 Commit。一次工作流只解析一次源码 Commit，所有 Runner 构建同一 SHA。
 
 ```sh
-gh workflow run gui-package.yml --repo zhnt/loushang --ref feature/gui-package-verification \
-  -f source_ref=feature/gui-package-verification -f target=all
+gh workflow run gui-package.yml --repo zhnt/loushang --ref lane/gui \
+  -f source_ref=lane/gui -f target=linux-aarch64-deb
+
+gh workflow run gui-package.yml --repo zhnt/loushang --ref lane/gui \
+  -f source_ref=lane/gui -f target=all
 ```
 
-`target` 可选 `linux-x86_64-deb`、`windows-x86_64-nsis`、`macos-x86_64-pkg`
-及 `all`。三个任务使用同一解析后的 Commit，分别安装、覆盖安装、使用安装后的
-程序验证并卸载。每个 Artifact 含对应安装包、校验文件和验收日志，保留 14 天。
-其他平台入口仍可在原生机器上使用，远程验收留到下一阶段。
+`target` 接受表中各个目标，例如 `linux-x86_64-rpm`、`windows-x86_64-msi`、`macos-aarch64-pkg`，也可选 `all`。Windows x64 的两个安装器在 `all` 模式共享组件编译与运行时准备，各自验收并上传产物。每份安装器 Artifact 含安装包、校验文件和验收日志，保留 14 天。
+
+Fedora 的构建容器和验收容器均运行在与目标相同架构的 Runner 上。验收环境运行 systemd 用户服务，Xvfb 用于检查 GUI 启动。RPM 的验证范围为 Fedora 43，真实桌面交互以及其他 RPM 发行版待验证。
+
+两种 Windows ARM64 格式会执行同一套原生依赖预检。依赖不可用时，该任务报告失败并上传预检日志，其他矩阵任务继续执行。已经通过安装验收的产物可按各自的 Artifact 下载。
 
 [GitHub 托管 Runner 列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) · [Tauri Windows 安装选项](https://v2.tauri.app/distribute/windows-installer/#webview2-installation-options)
 
