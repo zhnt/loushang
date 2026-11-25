@@ -44,7 +44,7 @@ from loushang.harness.worker.history._native_approval import (
     RootedNativeApprovalRecords,
     _NativeApprovalMethods,
     _NativeDecisionMethods,
-    _valid_opaque,
+    _require_native_approval_command,
 )
 from loushang.harness.worker.native_executable_format import (
     WorkerNativeExecutableFormatError,
@@ -739,14 +739,10 @@ class _ProductRootedNativeApprovalRecords(
         action: Literal["approve", "revoke"],
         approval: A | None,
     ) -> _ApprovalDecisionT:
-        if (
-            not _valid_opaque(operation_id)
-            or type(expected_generation) is not int
-            or expected_generation < 0
-            or (action not in {"approve", "revoke"})
-            or ((action == "approve") != isinstance(approval, self._approval_type))
-        ):
-            raise ValueError("Worker native approval command is invalid")
+        _require_native_approval_command(
+            operation_id, expected_generation, action, approval, self._approval_type,
+            invalid="Worker native approval command is invalid",
+        )
         with (
             self._product_owner.gc_gate.guard(require_write=True),
             self._bound_journal() as rooted,
