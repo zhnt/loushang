@@ -19,13 +19,15 @@ PYINSTALLER = "pyinstaller==6.22.3"
 ARCHITECTURES = {"amd64": "x86_64", "x86_64": "x86_64", "arm64": "aarch64", "aarch64": "aarch64"}
 
 
-def arguments(description, system, formats, supported=("x86_64", "aarch64")):
+def arguments(description, system, formats, supported=("x86_64", "aarch64"), *, unsupported_message=None):
     native = ARCHITECTURES.get(platform.machine().lower())
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--arch", choices=("x86_64", "aarch64"), default=native)
     parser.add_argument("--format", choices=formats, default=formats[0])
     parser.add_argument("--output", type=Path, default=ROOT / "dist/packages")
     args = parser.parse_args()
+    if unsupported_message and args.arch is not None and args.arch not in supported:
+        parser.error(unsupported_message)
     if platform.system() != system or args.arch != native or native not in supported:
         parser.error(f"requires a native {system} build machine ({', '.join(supported)})")
     args.output = args.output.resolve()

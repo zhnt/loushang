@@ -129,9 +129,13 @@ def bundle_installer(
 
 
 def main() -> None:
-    args = arguments(__doc__, "Windows", ("nsis", "msi", "all"))
-    if args.arch == "aarch64":
-        raise SystemExit("Windows ARM64 requires a native wheel for locked cryptography==48.0.1")
+    args = arguments(
+        __doc__, "Windows", ("nsis", "msi", "all"), supported=("x86_64",),
+        unsupported_message=(
+            "Windows ARM64 Full installers are deferred. Locked cryptography==48.0.1 "
+            "has no official Windows ARM64 wheel. See zhnt/loushang issue #939."
+        ),
+    )
     formats = ("nsis", "msi") if args.format == "all" else (args.format,)
     machine = 0x8664
     target = "x86_64-pc-windows-msvc"
