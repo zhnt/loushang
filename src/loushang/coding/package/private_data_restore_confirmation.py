@@ -10,8 +10,7 @@ from loushang.harness.journal import (
     FunctionalJournalRecordCodec,
 )
 from loushang.harness.plugin_management._private_data_records import (
-    PRIVATE_DATA_INSTALLATION_KEY_FIELD,
-    PrivateDataRecordWire,
+    PrivateDataRestoreRecordWire,
 )
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -31,10 +30,18 @@ from .private_data_restore_journal import (
 _JOURNAL_NAME = "private-data-restore-confirmations.jsonl"
 _MAX_RECORDS = 4096
 _MAX_BYTES = 32 * 1024 * 1024
+_CONFIRMATION_FIELDS = (
+    "backupId",
+    "deletionReceiptId",
+    "installationKey",
+    "restoreCompletionDigest",
+    "restoredTargetId",
+    "restoreId",
+)
 
 
 @dataclass(frozen=True, slots=True)
-class CodingArchPrivateDataRestoreConfirmationV1(PrivateDataRecordWire):
+class CodingArchPrivateDataRestoreConfirmationV1(PrivateDataRestoreRecordWire):
     revision: int
     installation_key: PluginInstallationKeyV1
     backup_id: str
@@ -45,6 +52,14 @@ class CodingArchPrivateDataRestoreConfirmationV1(PrivateDataRecordWire):
     confirmation_id: str
     record_digest: str
     record_version: int = 1
+
+    _unsigned_order = (
+        *_CONFIRMATION_FIELDS,
+        "confirmationId",
+        "recordVersion",
+        "revision",
+    )
+    _invalid_fields = "Coding Arch restore confirmation fields are invalid"
 
     def __post_init__(self) -> None:
         if (
@@ -65,8 +80,7 @@ class CodingArchPrivateDataRestoreConfirmationV1(PrivateDataRecordWire):
             or not self.restored_target_id.startswith("present:")
             or self.record_version != 1
             or self.confirmation_id != self._expected_id()
-            or self.record_digest
-            != sha256(canonical_json_bytes(self._unsigned())).hexdigest()
+            or self.record_digest != self._digest_document(self._unsigned())
         ):
             raise ValueError("Coding Arch restore confirmation is invalid")
 
@@ -82,48 +96,27 @@ class CodingArchPrivateDataRestoreConfirmationV1(PrivateDataRecordWire):
         restore_completion_digest: str,
         restored_target_id: str,
     ) -> CodingArchPrivateDataRestoreConfirmationV1:
-        facts = _confirmation_facts(
-            installation_key,
-            backup_id,
-            deletion_receipt_id,
-            restore_id,
-            restore_completion_digest,
-            restored_target_id,
-        )
-        confirmation_id = _confirmation_id(facts)
-        unsigned = _confirmation_fields(facts, confirmation_id, revision, 1)
-        return cls(
+        values: dict[str, object] = {
+            "installation_key": installation_key,
+            "backup_id": backup_id,
+            "deletion_receipt_id": deletion_receipt_id,
+            "restore_id": restore_id,
+            "restore_completion_digest": restore_completion_digest,
+            "restored_target_id": restored_target_id,
+        }
+        return cls._seal(
+            **values,
             revision=revision,
-            installation_key=installation_key,
-            backup_id=backup_id,
-            deletion_receipt_id=deletion_receipt_id,
-            restore_id=restore_id,
-            restore_completion_digest=restore_completion_digest,
-            restored_target_id=restored_target_id,
-            confirmation_id=confirmation_id,
-            record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
+            record_version=1,
+            confirmation_id=_confirmation_id(cls._encode_values(values)),
         )
 
     def _facts(self) -> dict[str, object]:
-        return _confirmation_facts(
-            self.installation_key,
-            self.backup_id,
-            self.deletion_receipt_id,
-            self.restore_id,
-            self.restore_completion_digest,
-            self.restored_target_id,
-        )
+        document = self._unsigned()
+        return {key: document[key] for key in _CONFIRMATION_FIELDS}
 
     def _expected_id(self) -> str:
         return _confirmation_id(self._facts())
-
-    def _unsigned(self) -> dict[str, object]:
-        return _confirmation_fields(
-            self._facts(), self.confirmation_id, self.revision, self.record_version
-        )
-
-    def to_dict(self) -> dict[str, object]:
-        return {**self._unsigned(), "recordDigest": self.record_digest}
 
     def matches_restore_result(
         self, other: CodingArchPrivateDataRestoreConfirmationV1
@@ -138,27 +131,6 @@ class CodingArchPrivateDataRestoreConfirmationV1(PrivateDataRecordWire):
             and self.confirmation_id == other.confirmation_id
         )
 
-    _invalid_fields = "Coding Arch restore confirmation fields are invalid"
-
-
-def _confirmation_facts(
-    installation_key: PluginInstallationKeyV1,
-    backup_id: str,
-    deletion_receipt_id: str,
-    restore_id: str,
-    restore_completion_digest: str,
-    restored_target_id: str,
-) -> dict[str, object]:
-    return {
-        "backupId": backup_id,
-        "deletionReceiptId": deletion_receipt_id,
-        "installationKey": installation_key.to_dict(),
-        "restoreCompletionDigest": restore_completion_digest,
-        "restoredTargetId": restored_target_id,
-        "restoreId": restore_id,
-    }
-
-
 def _confirmation_id(facts: dict[str, object]) -> str:
     return (
         "arch-restore-confirm:"
@@ -167,17 +139,6 @@ def _confirmation_id(facts: dict[str, object]) -> str:
             + canonical_json_bytes(facts)
         ).hexdigest()
     )
-
-
-def _confirmation_fields(
-    facts: dict[str, object], confirmation_id: str, revision: int, record_version: int
-) -> dict[str, object]:
-    return {
-        **facts,
-        "confirmationId": confirmation_id,
-        "recordVersion": record_version,
-        "revision": revision,
-    }
 
 
 _CODEC = FunctionalJournalRecordCodec.with_decode_error(
@@ -208,11 +169,7 @@ class CodingArchPrivateDataRestoreConfirmationJournal(
         )
 
 
-_SCHEMA_RESTORE_CONFIRMATION_V1 = (
-    CodingArchPrivateDataRestoreConfirmationV1._bind_wire_schema(
-        PRIVATE_DATA_INSTALLATION_KEY_FIELD,
-    )
-)
+_SCHEMA_RESTORE_CONFIRMATION_V1 = CodingArchPrivateDataRestoreConfirmationV1._bind_restore_wire_schema()
 
 __all__ = [
     "CodingArchPrivateDataRestoreConfirmationJournal",

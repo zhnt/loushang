@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import ClassVar, Generic, Literal, Self, TypeVar, cast
@@ -81,6 +82,52 @@ class PrivateDataRecordWire:
     @classmethod
     def from_dict(cls, value: object) -> Self:
         return cls._wire_schema.decode(cls, cls._wire_document(value))
+
+
+class PrivateDataRestoreRecordWire(PrivateDataRecordWire):
+    """Seal restore evidence with the same fields used to decode its history."""
+
+    __slots__ = ()
+    _unsigned_order: ClassVar[tuple[str, ...]]
+    record_digest: str
+
+    @classmethod
+    def _bind_restore_wire_schema(cls) -> RecordSchema:
+        return cls._bind_wire_schema(
+            RecordField(
+                "installation_key",
+                decoder=PluginInstallationKeyV1.from_dict,
+                encoder=lambda key: key.to_dict(),
+            )
+        )
+
+    @classmethod
+    def _encode_values(cls, values: Mapping[str, object]) -> dict[str, object]:
+        document = {}
+        for field in cls._wire_schema.fields:
+            if field.attribute in values:
+                value = values[field.attribute]
+                document[field.wire_key] = (
+                    value if field.encoder is None else field.encoder(value)
+                )
+        return document
+
+    @staticmethod
+    def _digest_document(document: dict[str, object]) -> str:
+        return sha256(canonical_json_bytes(document)).hexdigest()
+
+    @classmethod
+    def _seal(cls, **values: object) -> Self:
+        create: Callable[..., Self] = cls
+        digest = cls._digest_document(cls._encode_values(values))
+        return create(record_digest=digest, **values)
+
+    def _unsigned(self) -> dict[str, object]:
+        document = self._wire_schema.encode(self)
+        return {key: document[key] for key in self._unsigned_order}
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._unsigned(), "recordDigest": self.record_digest}
 
 
 @dataclass(frozen=True, slots=True)
