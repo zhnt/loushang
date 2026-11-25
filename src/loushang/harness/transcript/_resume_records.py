@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from datetime import datetime
 from hashlib import sha256
-from typing import TYPE_CHECKING, Generic, Literal, NamedTuple, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, Literal, NamedTuple, Protocol, TypeVar
 
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
@@ -185,6 +185,60 @@ class _LegacyBindingObservation(Protocol[_LegacyBindingCo]):
     def binding(self) -> _LegacyBindingCo | None: ...
 
 
+_BINDING_ID_FIELDS = (
+    ("attemptId", "attempt_id"),
+    ("inputId", "input_id"),
+    ("recordId", "record_id"),
+    ("sessionId", "session_id"),
+    ("originalLeafId", "original_leaf_id"),
+    ("ancestryDigest", "ancestry_digest"),
+    ("subjectDigest", "subject_digest"),
+)
+_BINDING_DIGEST_FIELDS = (
+    ("plannedFingerprint", "planned_fingerprint"),
+    ("actualFingerprint", "actual_fingerprint"),
+    ("payloadDigest", "payload_digest"),
+)
+RESUME_BINDING_FIELDS = frozenset({
+    "version", "originEvidence", "differenceCodes",
+    *(wire for wire, _ in _BINDING_ID_FIELDS + _BINDING_DIGEST_FIELDS),
+})
+
+_ATTEMPT_FIELDS = (
+    ("attemptId", "attempt_id"),
+    ("requestId", "request_id"),
+    ("sessionId", "session_id"),
+    ("originalLeafId", "original_leaf_id"),
+    ("ancestryDigest", "ancestry_digest"),
+    ("planFingerprint", "plan_fingerprint"),
+    ("epochFingerprint", "epoch_fingerprint"),
+    ("subjectDigest", "subject_digest"),
+)
+ACTIVATION_ATTEMPT_FIELDS = frozenset({
+    "version", "effectClasses", *(wire for wire, _ in _ATTEMPT_FIELDS),
+})
+
+
+def encode_resume_binding_document(
+    binding: object, *, version: int, origin: dict[str, JSONValue]
+) -> dict[str, JSONValue]:
+    return {
+        "version": version,
+        **{wire: getattr(binding, attr) for wire, attr in _BINDING_ID_FIELDS},
+        "originEvidence": origin,
+        **{wire: getattr(binding, attr) for wire, attr in _BINDING_DIGEST_FIELDS},
+        "differenceCodes": list(getattr(binding, "difference_codes")),
+    }
+
+
+def encode_attempt_document(attempt: object) -> dict[str, JSONValue]:
+    return {
+        "version": 1,
+        **{wire: getattr(attempt, attr) for wire, attr in _ATTEMPT_FIELDS},
+        "effectClasses": list(getattr(attempt, "effect_classes")),
+    }
+
+
 def _binding_text(document: Mapping[str, object], key: str) -> str:
     value = document[key]
     if type(value) is not str:
@@ -217,19 +271,13 @@ def decode_resume_binding_document(
     ):
         raise ValueError("RuntimeBinding difference codes are invalid")
     return construct(
-        attempt_id=_binding_text(document, "attemptId"),
-        input_id=_binding_text(document, "inputId"),
-        record_id=_binding_text(document, "recordId"),
-        session_id=_binding_text(document, "sessionId"),
-        original_leaf_id=(
-            None if document["originalLeafId"] is None else _binding_text(document, "originalLeafId")
-        ),
-        ancestry_digest=_binding_text(document, "ancestryDigest"),
-        subject_digest=_binding_text(document, "subjectDigest"),
+        **{
+            attr: None if wire == "originalLeafId" and document[wire] is None
+            else _binding_text(document, wire)
+            for wire, attr in _BINDING_ID_FIELDS
+        },
         origin_composition=provenance,
-        planned_fingerprint=_binding_text(document, "plannedFingerprint"),
-        actual_fingerprint=_binding_text(document, "actualFingerprint"),
-        payload_digest=_binding_text(document, "payloadDigest"),
+        **{attr: _binding_text(document, wire) for wire, attr in _BINDING_DIGEST_FIELDS},
         difference_codes=tuple(differences),
     )
 
@@ -323,15 +371,8 @@ def decode_attempt_record_fields(
 ) -> _IntentT:
     """Decode the shared intent fields after the Product checks its wire version."""
     attempt = construct(
-        attempt_id=cast(str, document["attemptId"]),
-        request_id=cast(str, document["requestId"]),
-        session_id=cast(str, document["sessionId"]),
-        original_leaf_id=cast(str | None, document["originalLeafId"]),
-        ancestry_digest=cast(str, document["ancestryDigest"]),
-        plan_fingerprint=cast(str, document["planFingerprint"]),
-        epoch_fingerprint=cast(str, document["epochFingerprint"]),
-        subject_digest=cast(str, document["subjectDigest"]),
-        effect_classes=cast(tuple[str, ...], effect_classes),
+        **{attr: document[wire] for wire, attr in _ATTEMPT_FIELDS},
+        effect_classes=effect_classes,
     )
     if (
         record.record_id != attempt.attempt_id

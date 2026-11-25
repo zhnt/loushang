@@ -32,11 +32,7 @@ CODING_ACTIVATION_ATTEMPT_MAX_BYTES = 4096
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_FIELDS = frozenset({
-    "version", "attemptId", "requestId", "sessionId", "originalLeafId",
-    "ancestryDigest", "planFingerprint", "epochFingerprint", "subjectDigest",
-    "effectClasses",
-})
+_FIELDS = _records.ACTIVATION_ATTEMPT_FIELDS
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,18 +74,7 @@ class CodingActivationAttemptV1:
             raise ValueError("activation attempt effect classes are invalid")
 
     def to_data(self) -> dict[str, JSONValue]:
-        return {
-            "version": 1,
-            "attemptId": self.attempt_id,
-            "requestId": self.request_id,
-            "sessionId": self.session_id,
-            "originalLeafId": self.original_leaf_id,
-            "ancestryDigest": self.ancestry_digest,
-            "planFingerprint": self.plan_fingerprint,
-            "epochFingerprint": self.epoch_fingerprint,
-            "subjectDigest": self.subject_digest,
-            "effectClasses": list(self.effect_classes),
-        }
+        return _records.encode_attempt_document(self)
 
 
 @dataclass(frozen=True, slots=True)

@@ -32,12 +32,7 @@ _ANCESTRY_DOMAIN = b"loushang.coding.resume-ancestry/v1\0"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _DIFFERENCE_CODE = re.compile(r"[a-z][a-z0-9._-]{0,63}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_FIELDS = frozenset({
-    "version", "attemptId", "inputId", "recordId", "sessionId",
-    "originalLeafId", "ancestryDigest", "subjectDigest", "originEvidence",
-    "plannedFingerprint", "actualFingerprint", "payloadDigest",
-    "differenceCodes",
-})
+_FIELDS = _records.RESUME_BINDING_FIELDS
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,21 +95,9 @@ class CodingRuntimeBindingV1:
                 "setId": self.origin_composition.set_id,
                 "planFingerprint": self.origin_composition.plan_fingerprint,
             }
-        return {
-            "version": CODING_RUNTIME_BINDING_VERSION,
-            "attemptId": self.attempt_id,
-            "inputId": self.input_id,
-            "recordId": self.record_id,
-            "sessionId": self.session_id,
-            "originalLeafId": self.original_leaf_id,
-            "ancestryDigest": self.ancestry_digest,
-            "subjectDigest": self.subject_digest,
-            "originEvidence": origin,
-            "plannedFingerprint": self.planned_fingerprint,
-            "actualFingerprint": self.actual_fingerprint,
-            "payloadDigest": self.payload_digest,
-            "differenceCodes": list(self.difference_codes),
-        }
+        return _records.encode_resume_binding_document(
+            self, version=CODING_RUNTIME_BINDING_VERSION, origin=origin
+        )
 
 
 @dataclass(frozen=True, slots=True)
