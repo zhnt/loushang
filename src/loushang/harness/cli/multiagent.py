@@ -1,24 +1,35 @@
-"""CLI contracts and projections for immediate collaboration recipes."""
+"""CLI execution and presentation for immediate collaboration recipes."""
 
 from __future__ import annotations
 
 import json
 from argparse import SUPPRESS, Namespace
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TextIO
+from typing import Literal, Protocol, TextIO, TypeVar
 
+from loushang.ai.model import (
+    ModelSelection,
+    model_selection_ref,
+    parse_model_selection_reference,
+)
+from loushang.ai.model.registry import ModelRegistry
 from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.cli.parser import (
     CliCommandUsageError,
     RaisingArgumentParser,
     extract_root_command,
+    write_usage_error,
 )
 from loushang.harness.multiagent import (
     CollaborationRecipe,
+    ImmediateRecipeExecutor,
     RecipeExecutionResult,
+    RecipeRunRequest,
+    core_recipe_catalog,
 )
+from loushang.harness.multiagent.executor import RecipeContextBuilder
 
 MultiAgentOutputFormat = Literal["plain", "json"]
 
@@ -57,6 +68,164 @@ class MultiAgentRunCommand:
 
 
 MultiAgentCliCommand = MultiAgentRecipesCommand | MultiAgentRunCommand
+
+
+_ServicesT = TypeVar("_ServicesT")
+
+
+class _RecipeSessionRuntime(Protocol):
+    async def create_session(self, *, cwd: str) -> object: ...
+
+    async def dispose_session_runtime(self, *, metadata: dict[str, object]) -> None: ...
+
+
+async def run_multiagent_command(
+    argv: Sequence[str],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    cwd: str | Path | None,
+    services: _ServicesT | None,
+    build_services: Callable[[Path], _ServicesT],
+    resolve_default_model: Callable[
+        [MultiAgentRunCommand, ModelRegistry | None], ModelSelection | None
+    ],
+    prepare_runtime: Callable[
+        [MultiAgentRunCommand, _ServicesT, ModelSelection | None],
+        Callable[[], _RecipeSessionRuntime],
+    ],
+    bind_context: Callable[[], RecipeContextBuilder],
+    product_label: str,
+) -> int:
+    """Run a recipe in one ephemeral Product session and release its ownership."""
+
+    try:
+        command = parse_multiagent_command(argv)
+    except MultiAgentCliUsageError as error:
+        return write_usage_error(stderr, error)
+
+    if isinstance(command, MultiAgentRecipesCommand):
+        if command.help:
+            stdout.write(multiagent_recipes_help())
+        else:
+            write_multiagent_recipe_catalog(
+                stdout,
+                core_recipe_catalog().values(),
+                output_format=command.output_format,
+            )
+        return 0
+    if command.help:
+        stdout.write(multiagent_run_help())
+        return 0
+
+    project_root = Path(command.cwd or cwd or Path.cwd()).expanduser().resolve()
+    if not project_root.is_dir():
+        stderr.write(f"Error: not a directory: {project_root}\n")
+        return 2
+    try:
+        resolved_services = services or build_services(project_root)
+    except Exception as error:
+        stderr.write(f"Error: failed to prepare collaboration runtime: {error}\n")
+        return 1
+
+    selection_registry = getattr(
+        getattr(resolved_services, "model_registry", None), "ai_registry", None
+    )
+    try:
+        prompt = resolve_multiagent_prompt(
+            command.prompt, command.attachments, cwd=project_root
+        )
+        catalog = core_recipe_catalog()
+        recipe = catalog.resolve(command.recipe_id)
+        if recipe is None:
+            available = ", ".join(item.recipe_id for item in catalog.values())
+            raise ValueError(
+                f"unknown collaboration recipe {command.recipe_id!r}; available: {available}"
+            )
+        replicas = resolve_multiagent_replicas(
+            command.replicas, command.count, recipe=recipe
+        )
+        role_models = _resolve_role_models(command, registry=selection_registry)
+        default_model = resolve_default_model(command, selection_registry)
+    except (KeyError, OSError, UnicodeError, ValueError) as error:
+        stderr.write(f"Error: {error}\n")
+        return 2
+
+    try:
+        create_runtime = prepare_runtime(command, resolved_services, default_model)
+    except Exception as error:
+        stderr.write(f"Error: failed to prepare collaboration runtime: {error}\n")
+        return 1
+
+    runtime = None
+    exit_code = 1
+    try:
+        runtime = create_runtime()
+        session = await runtime.create_session(cwd=str(project_root))
+        collaboration = getattr(session, "multiagent_runtime", None)
+        if collaboration is None:
+            raise RuntimeError(f"{product_label} multi-agent runtime was not installed")
+        result = await ImmediateRecipeExecutor(
+            collaboration, build_context=bind_context()
+        ).run(
+            recipe,
+            RecipeRunRequest(
+                prompt=prompt,
+                replicas=replicas,
+                agent_models=role_models,
+                max_parallel=command.max_parallel,
+                timeout=command.timeout,
+            ),
+        )
+        write_multiagent_recipe_result(
+            stdout, result, output_format=command.output_format
+        )
+        exit_code = 0 if result.status == "completed" else 1
+    except TimeoutError as error:
+        _write_execution_error(
+            stderr,
+            f"collaboration recipe timed out after {command.timeout:g}s",
+            error,
+        )
+    except Exception as error:
+        _write_execution_error(stderr, str(error), error)
+    finally:
+        if runtime is not None:
+            try:
+                await runtime.dispose_session_runtime(
+                    metadata={"source": "multiagent_recipe"}
+                )
+            except Exception as error:
+                _write_execution_error(
+                    stderr, f"failed to release recipe runtime: {error}", error
+                )
+                exit_code = 1
+    return exit_code
+
+
+def _write_execution_error(stderr: TextIO, message: str, error: BaseException) -> None:
+    stderr.write(f"Error: {message}\n")
+    for note in getattr(error, "__notes__", ()):
+        stderr.write(f"{note}\n")
+
+
+def _resolve_role_models(
+    command: MultiAgentRunCommand,
+    *,
+    registry: ModelRegistry | None,
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for role, value in command.agent_models.items():
+        selection = parse_model_selection_reference(
+            value,
+            provider=command.provider
+            if "/" not in value and ":" not in value
+            else None,
+            registry=registry,
+        )
+        assert selection is not None
+        result[role] = model_selection_ref(selection)
+    return result
 
 
 def extract_multiagent_argv(argv: Sequence[str]) -> tuple[str, ...] | None:
@@ -450,6 +619,7 @@ __all__ = [
     "parse_multiagent_command",
     "resolve_multiagent_prompt",
     "resolve_multiagent_replicas",
+    "run_multiagent_command",
     "write_multiagent_recipe_catalog",
     "write_multiagent_recipe_result",
 ]

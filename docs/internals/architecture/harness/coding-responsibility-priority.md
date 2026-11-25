@@ -1,5 +1,15 @@
 # Coding剩余职责实施优先级
 
+## 前台与协作命令交付候选
+
+以 `5c60d3a9a` 为基线。AppHost 管理本地 Mux 的连接、附着范围与资源关闭，以及受管 Mux 的工作区证据复核、创建恢复与停止交接。Mux 和 Hosted stdio 共用进程退出及错误输出处理。两个 Mux 入口共用 Coding 的产品接线，直接构造原 HarnessTUI Shell。Harness CLI 执行协作配方、处理失败并释放临时 Session。Coding 保留命令选择、输出合同、批准、默认模型与工具策略。合并时沿用当前 systemd 启动入口。
+
+本批 Coding 减少 527 行，Harness 增加 182 行，Hosting 变化 0 行，其他生产 Python 增加 576 行，增量均在 AppHost。系统生产 Python 增加 231 行。以 `546b209f6` 为对照，八批候选合计 Coding 减少 8,257 行，系统生产 Python 减少 12 行。统计范围为 Git 跟踪的 `src/loushang` Python 文件，按物理行计数。测试源码增加 24 行。
+
+Linux 共 155 项不同用例通过，覆盖真实 Mux 冷启动、停止后重启、创建与关闭恢复、协作命令、Hosted stdio 和精确架构约束。最后用本工作树的锁定依赖复验 17 项，覆盖 Arch 子会话的源信任以及两条 Mux 接线。原生 Windows 与 macOS 验证待完成。
+
+下一轮沿普通 Session 的旧管理态和已围栏 Product Store 核对插件准备、Catalog 发布与失败回收。优先查找可删的第二套实现，复用 `SessionStartupCustody` 和 `AgentProductConstructionBinding`。两条路径已经共用能力计划编译，贡献选择也已合并，这些成果在本轮基线内。后续保留各自的信任证明、历史恢复和产品准入。
+
 ## Package 制品与作者验证交付候选
 
 以 `9c5d21ec1` 为基线。Package Product 持有只读预览的已安装清单、围栏复核与句柄交接，统一外部 Wheel 捕获和依赖 Wheel 归档校验。现有 Worker 批准事务共用原生发行记录的读取与结算机制。Harness Plugin Authoring 承接一次性 Product 生命周期与离线会话取证。Coding 保留批准政策、产品来源选项和公开记录类型。基线已有的 Worker 候选离线证明直接复用。

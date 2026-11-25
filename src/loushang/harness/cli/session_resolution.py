@@ -24,14 +24,19 @@ _COMPATIBILITY_SESSION_PRIORITIES = {
 }
 
 
+def prepare_platform_session_directory(path: Path) -> None:
+    """Prepare the selected platform directory before opening a Session writer."""
+    from loushang.harness.machine_resources import prepare_private_directory_chain
+
+    prepare_private_directory_chain(path)
+    path.chmod(0o700)
+
+
 def configure_agent_cli_session_discovery(
     runtime: object, *, cwd: Path, session_dir: Path
 ) -> None:
     """Bind the platform Session writer and its read-only compatibility sources."""
-    from loushang.harness.machine_resources import (
-        prepare_private_directory_chain,
-        resolve_machine_resource_layout,
-    )
+    from loushang.harness.machine_resources import resolve_machine_resource_layout
     from loushang.harness.transcript import (
         SessionDiscoverySource,
         session_origin_from_resource_id,
@@ -41,8 +46,7 @@ def configure_agent_cli_session_discovery(
     platform_sessions = layout.sessions
     if session_dir.expanduser().resolve(strict=False) != platform_sessions:
         return
-    prepare_private_directory_chain(platform_sessions)
-    platform_sessions.chmod(0o700)
+    prepare_platform_session_directory(platform_sessions)
     set_authority = getattr(runtime, "set_session_authority_source", None)
     if callable(set_authority):
         set_authority(
