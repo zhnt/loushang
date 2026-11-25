@@ -215,12 +215,11 @@ def _preview_expiry(
     completed_restore: Callable[[], tuple[CodingArchPrivateDataRestoreEventV1, str]],
     desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
 ) -> CodingArchPrivateDataBackupExpiryPlanV1:
-    return _archive_restore(layout).preview_expiry(
+    return _archive_restore(layout, state_root, desired_snapshot).preview_expiry(
         key,
         backup_id,
         confirmation_id,
         completed_restore=completed_restore,
-        desired_snapshot=desired_snapshot,
         confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
             state_root
         ),

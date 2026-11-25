@@ -19,7 +19,10 @@ from loushang.harness.package_product._private_data_custody import (
     prepare_posix_private_data_reader,
     private_data_read_fence,
 )
-from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.ledger import (
+    PluginDesiredStateLedger,
+    PluginDesiredStateSnapshotV1,
+)
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
@@ -56,7 +59,11 @@ from .private_data_deletion_preview import _OWNER_ID as _OWNER_ID
 from .private_data_deletion_preview import (
     _capture_target_snapshot as _capture_target_snapshot,
 )
-from .private_data_restore import _current_completed_restore, _preview_restore
+from .private_data_restore import (
+    _archive_restore,
+    _CodingArchiveRestore,
+    _preview_restore,
+)
 from .private_data_restore_confirmation import (
     CodingArchPrivateDataRestoreConfirmationJournal,
     CodingArchPrivateDataRestoreConfirmationV1,
@@ -142,33 +149,21 @@ class CodingArchPrivateDataReadOwner:
     def restore_preview(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> CodingArchPrivateDataRestorePlanV1:
-        root = coding_arch_installation_private_data_root(self.layout, key)
-        if not _digest(backup_id):
-            raise ValueError("Coding Arch restore backup ID is invalid")
-        with self.offline():
-            return _preview_restore(
-                self.layout,
-                self.state_root,
-                root,
-                key,
-                backup_id,
-                desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
-            )
+        return _preview_restore(
+            self.layout, key, backup_id, archive=self._restore_archive, offline=self.offline
+        )
 
     def verify_restore_confirmation(
         self, key: PluginInstallationKeyV1, backup_id: str, confirmation_id: str
     ) -> CodingArchPrivateDataRestoreConfirmationV1:
         with self.offline():
-            completion, target_id = self._current_completed_restore(key, backup_id)
-            return CodingArchPrivateDataRestoreConfirmationJournal(
-                self.state_root
-            ).require_current(
-                confirmation_id,
+            return self._restore_archive().verify_confirmation(
                 key,
                 backup_id,
-                completion,
-                target_id,
-                message="Coding Arch restore confirmation is stale",
+                confirmation_id,
+                confirmation_journal=lambda: CodingArchPrivateDataRestoreConfirmationJournal(
+                    self.state_root
+                ),
             )
 
     def expiry_preview(
@@ -186,19 +181,19 @@ class CodingArchPrivateDataReadOwner:
                 completed_restore=lambda: self._current_completed_restore(
                     key, backup_id
                 ),
-                desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
+                desired_snapshot=self._read_desired_snapshot,
             )
 
     def _current_completed_restore(
         self, key: PluginInstallationKeyV1, backup_id: str
     ) -> tuple[CodingArchPrivateDataRestoreEventV1, str]:
-        return _current_completed_restore(
-            self.layout,
-            self.state_root,
-            key,
-            backup_id,
-            desired_snapshot=lambda: self.desired_state.capture_read_only()[0],
-        )
+        return self._restore_archive().completed(backup_id, key)
+
+    def _read_desired_snapshot(self) -> PluginDesiredStateSnapshotV1:
+        return self.desired_state.capture_read_only()[0]
+
+    def _restore_archive(self) -> _CodingArchiveRestore:
+        return _archive_restore(self.layout, self.state_root, self._read_desired_snapshot)
 
     def assert_current(self) -> None:
         assert_private_read_current(

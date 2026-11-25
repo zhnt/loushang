@@ -36,6 +36,7 @@ from ._private_data_expiry import (
     ExpiryPlan,
     plan_verified_backup_expiry,
 )
+from ._private_data_records import _valid_digest
 from .ledger import PluginDesiredStateSnapshotV1
 from .private_data_deletion import (
     PluginPrivateDataDeletionEventV1,
@@ -44,6 +45,7 @@ from .private_data_deletion import (
     latest_deleted_target_receipt,
 )
 from .private_data_restore_journal import (
+    PrivateDataRestoreConfirmation,
     PrivateDataRestoreConfirmationJournal,
     PrivateDataRestoreEvent,
     PrivateDataRestoreJournal,
@@ -636,6 +638,25 @@ def enumerate_private_archives(
         os.close(parent_fd)
 
 
+class PrivateDataRestorePlan(Protocol):
+    @property
+    def deletion_receipt_id(self) -> str: ...
+    @property
+    def source_target_id(self) -> str: ...
+    @property
+    def desired_inventory_revision(self) -> int: ...
+    @property
+    def target_state(self) -> Literal["absent", "same_bytes"]: ...
+
+
+class _RestoreDeletionHistory(Protocol):
+    def current_start(self) -> object | None: ...
+
+    def events(self) -> Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]: ...
+
+
+_RestorePlanT = TypeVar("_RestorePlanT")
+_RestoreConfirmationT = TypeVar("_RestoreConfirmationT", bound=PrivateDataRestoreConfirmation)
 _RestoreEventT = TypeVar("_RestoreEventT", bound=PrivateDataRestoreEvent)
 _RestoreResultT = TypeVar("_RestoreResultT")
 _RestoreSourceT = TypeVar("_RestoreSourceT", bound=PrivateDataDeletionTarget)
@@ -645,7 +666,7 @@ _ExpiryPlanT = TypeVar("_ExpiryPlanT", bound=ExpiryPlan)
 
 
 @dataclass(frozen=True, slots=True)
-class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
+class PosixPrivateDataRestore(Generic[_RestoreSourceT, R, _RestoreEventT]):
     """Verify and restore a Product-admitted archive under its offline fence."""
 
     private_base: Path
@@ -655,6 +676,32 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
     capture_target: Callable[[Path], _RestoreSourceT]
     stage_prefix: str
     stage_suffix: str
+
+    desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1]
+    deletion_journal: Callable[[], _RestoreDeletionHistory]
+    restore_journal: Callable[[], PrivateDataRestoreJournal[_RestoreEventT]]
+    identity_for: Callable[[PluginInstallationKeyV1, str, str], str]
+    resolve_target: Callable[[PluginInstallationKeyV1], Path]
+
+    def _admit(
+        self,
+        key: PluginInstallationKeyV1,
+        *,
+        removal_error: str,
+        expected_plan: PrivateDataRestorePlan | None = None,
+    ) -> tuple[PluginDesiredStateSnapshotV1, _RestoreDeletionHistory]:
+        desired = self.desired_snapshot()
+        if desired.installation(key).selection.desired_state != "absent":
+            raise ValueError(removal_error)
+        if (
+            expected_plan is not None
+            and desired.inventory_revision != expected_plan.desired_inventory_revision
+        ):
+            raise ValueError(f"{self.io.label} restore Desired revision changed")
+        deletion = self.deletion_journal()
+        if deletion.current_start() is not None:
+            raise ValueError(f"{self.io.label} deletion is unfinished")
+        return desired, deletion
 
     def _source(
         self,
@@ -692,15 +739,16 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
         name: str,
         key: PluginInstallationKeyV1,
         *,
-        deletion_events: Callable[
-            [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
-        ],
-    ) -> tuple[str, str, Literal["absent", "same_bytes"]]:
+        create_plan: Callable[..., _RestorePlanT],
+    ) -> _RestorePlanT:
         label = self.io.label
+        desired, deletion = self._admit(
+            key, removal_error=f"{label} restore requires a removed Installation"
+        )
         source, receipt = self._source(
             name,
             key,
-            deletion_events,
+            deletion.events,
             installation_error=f"{label} restore Installation changed",
             deletion_error=f"{label} restore lacks completed deletion",
         )
@@ -715,10 +763,13 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
             stage_suffix=self.stage_suffix,
             target_present=target_present,
         )
-        return (
-            source.target_id,
-            receipt.receipt_id,
-            "same_bytes" if target_present else "absent",
+        return create_plan(
+            installation_key=key,
+            backup_id=name,
+            deletion_receipt_id=receipt.receipt_id,
+            source_target_id=source.target_id,
+            desired_inventory_revision=desired.inventory_revision,
+            target_state="same_bytes" if target_present else "absent",
         )
 
     def preview_expiry(
@@ -728,7 +779,6 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
         confirmation_id: str,
         *,
         completed_restore: Callable[[], tuple[PrivateDataRestoreEvent, str]],
-        desired_snapshot: Callable[[], PluginDesiredStateSnapshotV1],
         confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal],
         create_plan: Callable[..., _ExpiryPlanT],
     ) -> _ExpiryPlanT:
@@ -743,7 +793,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
             target_id,
             message=f"{label} backup expiry confirmation is stale",
         )
-        desired = desired_snapshot()
+        desired = self.desired_snapshot()
         if desired.installation(key).selection.desired_state != "absent":
             raise ValueError(f"{label} backup expiry requires removal")
         receipt, source, _identity, archive = inspect_private_expiry_archive(
@@ -774,28 +824,68 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
         self,
         name: str,
         key: PluginInstallationKeyV1,
-        *,
-        deletion_events: Callable[
-            [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
-        ],
-        find_completion: Callable[[str], _RestoreEventT],
-        resolve_target: Callable[[], Path],
     ) -> tuple[_RestoreEventT, str]:
         label = self.io.label
+        if not _valid_digest(name):
+            raise ValueError(f"{label} restore backup ID is invalid")
+        _, deletion = self._admit(
+            key, removal_error=f"{label} restore confirmation requires removal"
+        )
         source, receipt = self._source(
             name,
             key,
-            deletion_events,
+            deletion.events,
             installation_error=f"{label} restore backup Installation changed",
             deletion_error=f"{label} restore confirmation lacks deletion",
         )
-        completion = find_completion(receipt.receipt_id)
-        target = resolve_target()
+        restore_id = self.identity_for(key, name, receipt.receipt_id)
+        completion = self.restore_journal().completed_for(restore_id)
+        target = self.resolve_target(key)
         verify_posix_restored_target(self.private_base, target, source, io=self.io)
         current = self.capture_target(target)
         if current.root_identity is None:
             raise ValueError(f"{label} restored target is absent")
         return completion, current.target_id
+
+    def confirm(
+        self,
+        key: PluginInstallationKeyV1,
+        backup_id: str,
+        *,
+        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal[_RestoreConfirmationT]],
+        create_confirmation: Callable[..., _RestoreConfirmationT],
+    ) -> _RestoreConfirmationT:
+        completion, target_id = self.completed(backup_id, key)
+        journal = confirmation_journal()
+        return journal.record(
+            create_confirmation(
+                revision=journal.revision_for(completion.restore_id),
+                installation_key=key,
+                backup_id=backup_id,
+                deletion_receipt_id=completion.deletion_receipt_id,
+                restore_id=completion.restore_id,
+                restore_completion_digest=completion.record_digest,
+                restored_target_id=target_id,
+            )
+        )
+
+    def verify_confirmation(
+        self,
+        key: PluginInstallationKeyV1,
+        backup_id: str,
+        confirmation_id: str,
+        *,
+        confirmation_journal: Callable[[], PrivateDataRestoreConfirmationJournal[_RestoreConfirmationT]],
+    ) -> _RestoreConfirmationT:
+        completion, target_id = self.completed(backup_id, key)
+        return confirmation_journal().require_current(
+            confirmation_id,
+            key,
+            backup_id,
+            completion,
+            target_id,
+            message=f"{self.io.label} restore confirmation is stale",
+        )
 
     def restore(
         self,
@@ -803,19 +893,24 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
         name: str,
         key: PluginInstallationKeyV1,
         *,
-        deletion_events: Callable[
-            [], Sequence[PluginPrivateDataDeletionEventV1[PrivateDataDeletionTarget]]
-        ],
-        expected_archive: tuple[str, str] | None,
-        expected_target_state: Literal["absent", "same_bytes"] | None,
+        expected_plan: PrivateDataRestorePlan | None,
         prepare: PrivateTreePreparePort,
         verify_files: Callable[[int, _RestoreSourceT], None],
         write_file_factory: Callable[[], Callable[[int, str, bytes], None]],
-        journal_factory: Callable[[], PrivateDataRestoreJournal[_RestoreEventT]],
-        identity_for: Callable[[PluginInstallationKeyV1, str, str], str],
         result_factory: Callable[[str, str, str], _RestoreResultT],
     ) -> _RestoreResultT:
         """Verify and restore the exact archive under the caller's offline fence."""
+        _, deletion = self._admit(
+            key,
+            removal_error=f"{self.io.label} restore requires a removed Installation",
+            expected_plan=expected_plan,
+        )
+        expected_archive = (
+            None if expected_plan is None else (
+                expected_plan.source_target_id, expected_plan.deletion_receipt_id
+            )
+        )
+        expected_target_state = None if expected_plan is None else expected_plan.target_state
         parent = self.backup_parent(key)
         private_base, io, codec = self.private_base, self.io, self.codec
         stage_prefix, stage_suffix = self.stage_prefix, self.stage_suffix
@@ -827,7 +922,7 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
                 key,
                 io=io,
                 codec=codec,
-                deletion_events=deletion_events,
+                deletion_events=deletion.events,
                 installation_error=f"{io.label} restore Installation changed",
                 deletion_error=f"{io.label} restore lacks completed deletion",
             )
@@ -860,8 +955,8 @@ class PosixPrivateDataRestore(Generic[_RestoreSourceT, R]):
                     )
                     if expected_target_state == "same_bytes" and not existing_target:
                         raise ValueError(f"{io.label} restore target changed")
-                    journal = journal_factory()
-                    restore_id = identity_for(key, name, deletion_receipt.receipt_id)
+                    journal = self.restore_journal()
+                    restore_id = self.identity_for(key, name, deletion_receipt.receipt_id)
                     if existing_target:
                         journal.require_started(
                             restore_id,
