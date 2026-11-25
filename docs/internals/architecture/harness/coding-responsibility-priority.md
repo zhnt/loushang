@@ -1,5 +1,15 @@
 # Coding剩余职责实施优先级
 
+## 下一批会话启动装配
+
+以本地 Worker 交付候选 `c4ef1b7b2` 为库存基线。优先核对普通会话的旧管理态与已围栏 Product 两条启动路径。`composition/bootstrap.py`、`base_plugin.py`、`capability_plugins.py`、`product_capability_plugins.py`、`package_catalog.py` 与 `package/product_runtime.py` 共 6,441 行。沿 `create_agent_session` 的实际入口一起核对选择、插件准备、Catalog 投影、所有者发布和失败回收。
+
+Harness Session 已负责 Catalog 投影以及启动准备和失败交接。Package Product 已负责已围栏来源与运行时持有。下一批应从两条路线仍各自承担的准备和所有权交接中，找到可以接入同一现有实现的完整操作。保留 Coding 的默认组合、批准、历史来源校验和工作区策略，保留旧管理态与已围栏来源各自的锁、重试及故障顺序。
+
+同一基线上，`product_worker_*.py` 为 110 文件、9,949 行，其中函数与方法的定义和实现占 2,920 行。Windows 与 POSIX Worker 的原生操作已由 Harness 对应组件承接，剩余优先核对 Session 接入和明确重复的实际操作。`private_data_*.py` 为 28 文件、4,594 行。备份、恢复和过期执行已共用现有 Harness 事务，继续检查 CLI 与 SDK 是否在原生读写权限之外仍重复获取和复核资源。
+
+上面的行数用于界定审查范围。实际收益按同批替换的实现和 Git 跟踪的生产 Python 净变化复核。对启动路线沿实际入口复验成功、关闭与异常回收。架构职责复核参考本地方法修订 `0f9bd3f`。
+
 ## Worker 历史读写入口的 Product 校验
 
 检查点读取、发布和修复，V2 预检、暂存、提交、轮换和退休，以及只读 GC 证明复用 Package Product 对原生 owner 类型、产品标识和 Linux 限制的检查。Coding 保持原入口、错误和记录类型。历史审阅直接绑定已加载的 owner，V2 读取器、暂存、按需检查点和注册修复继续在使用时加载。锁、回放、读写权限和实际变更由原来的执行体管理。
