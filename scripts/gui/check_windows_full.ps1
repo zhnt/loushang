@@ -245,7 +245,8 @@ try {
                 Where-Object { $_.DisplayName -eq 'loushang-gui' })) {
             throw "$format uninstall left installed product files or registration"
         }
-        if ((Get-FileHash $config).Hash -ne $configHash -or -not (Test-Path (Join-Path $env:LOUSHANG_HOME 'data'))) {
+        if ((Get-FileHash $config).Hash -ne $configHash -or
+            ($expectedSession -and -not (Test-Path (Join-Path $env:LOUSHANG_HOME 'data')))) {
             throw 'Uninstaller removed user data'
         }
         'PASS uninstall retained user data'
