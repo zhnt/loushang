@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <Property Id="LOUSHANG_NSIS_INSTALLED">
+            <RegistrySearch Id="LoushangNsisRegistration" Root="HKCU"
+                            Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\loushang-gui"
+                            Name="UninstallString" Type="raw" Win64="yes" />
+        </Property>
+        <Condition Message="Uninstall the Loushang NSIS installation before installing this MSI.">
+            Installed OR NOT LOUSHANG_NSIS_INSTALLED
+        </Condition>
+        <!-- Tauri's AppSearch also reads NSIS's remembered folder. Keep the
+             explicit path or a previous MSI path, and clear any NSIS-only result. -->
+        <Property Id="LOUSHANG_MSI_PREVIOUS_DIR">
+            <RegistrySearch Id="LoushangMsiPreviousDir" Root="HKCU"
+                            Key="Software\loushang\loushang-gui"
+                            Name="InstallDir" Type="raw" Win64="yes" />
+        </Property>
+        <Property Id="LOUSHANG_MSI_REQUESTED_DIR" Secure="yes" />
+        <SetProperty Id="LOUSHANG_MSI_REQUESTED_DIR" Value="[INSTALLDIR]" Before="AppSearch">
+            INSTALLDIR
+        </SetProperty>
+        <SetProperty Id="INSTALLDIR" Value="[LOUSHANG_MSI_REQUESTED_DIR]" After="AppSearch">
+            LOUSHANG_MSI_REQUESTED_DIR OR NOT LOUSHANG_MSI_PREVIOUS_DIR
+        </SetProperty>
+        <ComponentGroup Id="LoushangInstallChecks" />
+    </Fragment>
+</Wix>

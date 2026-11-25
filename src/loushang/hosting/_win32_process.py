@@ -50,6 +50,7 @@ _WAIT_TIMEOUT = 0x00000102
 _WAIT_FAILED = 0xFFFFFFFF
 _INFINITE = 0xFFFFFFFF
 _STILL_ACTIVE = 259
+_ERROR_ACCESS_DENIED = 5
 _ERROR_BROKEN_PIPE = 109
 _ERROR_INVALID_PARAMETER = 87
 _ERROR_INSUFFICIENT_BUFFER = 122
@@ -1503,14 +1504,23 @@ class _CtypesWin32Api:
             startup.StartupInfo.hStdInput, startup.StartupInfo.hStdOutput, startup.StartupInfo.hStdError = stdio
             startup.lpAttributeList = attributes.pointer
             information = _PROCESS_INFORMATION()
-            command_line = ctypes.create_unicode_buffer(subprocess.list2cmdline(request.argv))
+            command_line = subprocess.list2cmdline(request.argv)
             environment = ctypes.create_unicode_buffer(_environment_block(request.effective_environment))
-            if not self._CreateProcessW(
-                request.argv[0], command_line, None, None, True,
-                _EXTENDED_STARTUPINFO_PRESENT | _CREATE_UNICODE_ENVIRONMENT | _CREATE_NO_WINDOW | flags,
-                ctypes.cast(environment, ctypes.c_void_p), request.cwd,
-                ctypes.byref(startup.StartupInfo), ctypes.byref(information),
-            ):
+            base_flags = _EXTENDED_STARTUPINFO_PRESENT | _CREATE_UNICODE_ENVIRONMENT | _CREATE_NO_WINDOW
+
+            def create(extra_flags: int) -> bool:
+                return bool(self._CreateProcessW(
+                    request.argv[0], ctypes.create_unicode_buffer(command_line), None, None, True,
+                    base_flags | extra_flags, ctypes.cast(environment, ctypes.c_void_p), request.cwd,
+                    ctypes.byref(startup.StartupInfo), ctypes.byref(information),
+                ))
+
+            created = create(flags)
+            if not created and flags & _CREATE_BREAKAWAY_FROM_JOB and _last_error() == _ERROR_ACCESS_DENIED:
+                # Keep the enclosing job's restrictions and assign the child
+                # to our own nested job with the same atomic job-list attribute.
+                created = create(flags & ~_CREATE_BREAKAWAY_FROM_JOB)
+            if not created:
                 self._raise_last_error("CreateProcessW")
             return information
         finally:

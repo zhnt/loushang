@@ -55,9 +55,9 @@ exec "$directory/bin/harness-gui" "$@"
 )
 
 
-def stage_runtime(package: Path, wheel: Path) -> None:
+def stage_runtime(package: Path, wheel: Path, *, python_version: str = "3.11") -> None:
     python = subprocess.check_output(
-        ["uv", "python", "find", "--system", "--managed-python", "3.11"],
+        ["uv", "python", "find", "--system", "--managed-python", python_version],
         cwd=ROOT,
         text=True,
     ).strip()
@@ -68,7 +68,7 @@ def stage_runtime(package: Path, wheel: Path) -> None:
         ).strip()
     )
     runtime = package / "runtime"
-    shutil.copytree(prefix, runtime, symlinks=True)
+    shutil.copytree(prefix, runtime, symlinks=True, ignore=shutil.ignore_patterns("__pycache__"))
     python_lib = runtime / "lib/python3.11"
     (python_lib / "EXTERNALLY-MANAGED").unlink(missing_ok=True)
     sites = python_lib / "site-packages"

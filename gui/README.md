@@ -417,76 +417,13 @@ from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a
 window that expects a running localhost development server.
 
-## Build a package on demand
+## Full product installers
 
-Use the [manual packaging workflow](../scripts/gui/gui-package.md) to select a
-source revision and build a Linux DEB, Windows NSIS installer, or macOS Intel
-installer. Download the resulting package and checksum from the Actions run.
-
-## Ubuntu complete deb test package
-
-Build the current GUI, then package it with CPython, AppHost/AppService, the
-installed Loushang wheel, locked Python dependencies and local Web assets:
-
-```text
-npm --prefix gui ci
-npm --prefix gui run build
-uv run python scripts/gui/build_linux_deb.py
-uv run python scripts/gui/check_deb_package.py dist/deb/loushang_<version>_amd64.deb
-```
-
-Install the generated file with `sudo apt install /absolute/path/to/package.deb`.
-The application menu and `/usr/bin/loushang` use the bundled runtime under
-`/opt/loushang`. Use the Host controls to start, stop, or restart the bundled
-AppHost. Closing the desktop leaves it running. Stop the Host before replacing
-or removing the package. Settings and Session data remain in user storage.
-
-This Ubuntu 26.10 amd64 candidate declares native system-library dependencies.
-It does not require a system Python/uv/Node installation. The package also
-installs `loushang-mux`, `loushang-tui` and the `loushang-host.service` systemd
-user unit. The service uses the user's home directory as its workspace.
-Installation does not start or enable the unit. The TUI exposes the same lifecycle commands. From a terminal you can start
-AppHost and attach to a named Mux:
-
-```sh
-loushang-tui service start
-records="$XDG_RUNTIME_DIR/loushang-host/connections"
-loushang-mux --connection-root "$records" --endpoint workspace create main
-loushang-tui main
-```
-
-Use `systemctl --user enable loushang-host.service` to start the Host with the
-user manager. GUI, Web and `loushang-tui service` use the same user service. Provider credentials and
-optional external tools/Plugin worker runtimes are not included. The opt-in
-checker extracts the actual deb and verifies the binaries, CLI entries, Web
-assets and systemd unit. The portable package checker exercises the packaged
-AppHost lifecycle and Rust Web server.
-
-## Linux portable package candidate
-
-To bundle the real GUI with its own CPython, AppHost and locked Python runtime
-dependencies (Linux x86_64 build host):
-
-```text
-npm --prefix gui ci
-npm --prefix gui run build
-uv run python scripts/gui/build_linux_portable.py
-```
-
-Extract `dist/desktop/loushang-linux-x86_64.tar.gz` outside the checkout and
-double-click the native `loushang` executable. Use **Start and connect** to
-start the local Host and choose a Workspace.
-No Python/uv/Node/Rust installation is needed at runtime. Compatible Linux
-GTK/WebKit system libraries are still required. See the included `README.txt`
-for the tested distribution and state locations.
-Closing a GUI window detaches it and leaves its shared AppHost running.
-Credentials and optional external worker/tool runtimes are not bundled.
-
-For opt-in real packaged lifecycle checks, run
-`uv run python scripts/gui/check_portable_package.py /path/to/extracted/package`.
-The checker serves the bundled Web UI and opens a real Workspace against the
-packaged AppHost. Run native window and provider acceptance separately against
-the extracted package.
+See [Full build and installation instructions](../scripts/build/README.md) for native
+build commands, supported targets and the manual Actions workflow.
+`scripts/gui/check_deb_package.py` checks a Debian installer. The opt-in
+`scripts/gui/check_portable_package.py` still exercises the extracted or installed
+Linux payload's Web and AppHost lifecycle.
 
 ## Browser layout playback
 
@@ -698,17 +635,7 @@ The standalone GUI package includes `bin/loushang-web` and `web/` assets. Invoke
 both programs, verify their independent startup and connection with
 `uv run python scripts/gui/check_split_linux_programs.py /path/to/host /path/to/gui`.
 
-### macOS Intel full installer
+### macOS installed acceptance
 
-Build the full macOS 12+ Intel test installer on an Intel Mac:
-
-```sh
-uv run --no-project --python 3.11 python scripts/gui/build_macos_full.py
-```
-
-It includes GUI, Web, the frozen TUI and a backend Python runtime. The macOS
-service adapter uses launchd; the Host continues running after GUI exit.
-The manual Actions job uses `macos-15-intel` and audits the Intel slice and
-minimum OS versions of packaged native code, including the frozen TUI's libraries.
-See [macOS packaging instructions](../scripts/gui/macos-package.md) for manual
-dispatch, installation, artifacts and the remaining macOS 12 acceptance boundary.
+See [macOS installed acceptance](../scripts/gui/macos-package.md) for the packaged
+command entry points and the opt-in native acceptance script.

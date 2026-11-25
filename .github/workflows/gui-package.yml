@@ -1,42 +1,96 @@
-name: Package GUI
-run-name: Package ${{ inputs.platform }} from ${{ inputs.source_ref }}
+name: Build Full Package
+run-name: Build ${{ inputs.target }} from ${{ inputs.source_ref }}
 
 on:
   workflow_dispatch:
     inputs:
-      platform:
-        description: Package target
-        type: choice
-        required: true
-        options:
-          - linux-amd64-deb
-          - windows-x64-nsis
-          - macos-x64-pkg
       source_ref:
         description: Branch, tag, or commit to package
         type: string
         required: true
         default: main
+      target:
+        description: Full package target
+        type: choice
+        required: true
+        options:
+          - linux-x86_64-deb
+          - linux-aarch64-deb
+          - linux-x86_64-rpm
+          - linux-aarch64-rpm
+          - windows-x86_64-nsis
+          - windows-x86_64-msi
+          - macos-x86_64-pkg
+          - macos-aarch64-pkg
+          - all
 
 permissions:
   contents: read
 
 jobs:
-  package:
-    runs-on: >-
-      ${{ fromJSON('{"linux-amd64-deb":"ubuntu-24.04","windows-x64-nsis":"windows-2022","macos-x64-pkg":"macos-15-intel"}')[inputs.platform] }}
-    timeout-minutes: 60
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.matrix.outputs.sha }}
+      include: ${{ steps.matrix.outputs.include }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_ref }}
           persist-credentials: false
-      - name: Record source commit
-        id: source
-        shell: bash
+      - name: Resolve source and native build targets
+        id: matrix
+        env:
+          PACKAGE_TARGET: ${{ inputs.target }}
         run: |
-          sha=$(git rev-parse HEAD)
-          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+          test -f scripts/build/build_full_linux.py || {
+            echo "::error::Select a source revision that contains scripts/build."
+            exit 1
+          }
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          import json
+          import os
+
+          runners = {
+              "linux-x86_64-deb": "ubuntu-24.04",
+              "linux-aarch64-deb": "ubuntu-24.04-arm",
+              "linux-x86_64-rpm": "ubuntu-24.04",
+              "linux-aarch64-rpm": "ubuntu-24.04-arm",
+              "windows-x86_64-nsis": "windows-2022",
+              "windows-x86_64-msi": "windows-2022",
+              "macos-x86_64-pkg": "macos-15-intel",
+              "macos-aarch64-pkg": "macos-15",
+          }
+          selected = os.environ["PACKAGE_TARGET"]
+          targets = runners if selected == "all" else [selected]
+          if selected == "all":
+              targets = [target for target in targets if not target.startswith("windows-")]
+              targets.append("windows-x86_64-all")
+              runners["windows-x86_64-all"] = runners["windows-x86_64-nsis"]
+          entries = []
+          for target in targets:
+              system, arch, format = target.split("-")
+              entries.append(dict(target=target, runner=runners[target], system=system,
+                                  arch=arch, format=format))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print("include=" + json.dumps(entries), file=output)
+          PY
+
+  package:
+    needs: resolve
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.resolve.outputs.include) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: gui/.node-version
@@ -46,48 +100,113 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Prepare Python and Rust
-        run: |
-          uv python install 3.11.15
-          rustup toolchain install 1.98.1 --profile minimal
-
+      - run: rustup toolchain install 1.98.1 --profile minimal
       - name: Install Ubuntu build dependencies
-        if: inputs.platform == 'linux-amd64-deb'
+        if: matrix.format == 'deb'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential dpkg-dev file libayatana-appindicator3-dev \
-            libssl-dev librsvg2-dev libwebkit2gtk-4.1-dev libxdo-dev xdg-utils
-      - name: Build and verify Debian package
-        if: inputs.platform == 'linux-amd64-deb'
-        shell: bash
-        run: |
-          npm --prefix gui ci
-          npm --prefix gui run build
-          uv run --no-project --python 3.11 python scripts/gui/build_linux_deb.py --output dist/gui-package
-          uv run --no-project --python 3.11 python scripts/gui/check_deb_package.py dist/gui-package/*.deb
-
-      - name: Build Windows NSIS installer
-        if: inputs.platform == 'windows-x64-nsis'
-        shell: pwsh
-        run: |
-          uv run --no-project --python 3.11 python scripts/gui/build_windows_full.py --output dist/gui-package
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $packages = @(Get-ChildItem dist/gui-package -File -Filter '*.exe')
-          if ($packages.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
-          $package = $packages[0]
-          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $package.FullName).Hash.ToLowerInvariant()
-          "$digest  $($package.Name)" | Set-Content -LiteralPath "$($package.FullName).sha256" -Encoding ascii
-
-      - name: Build macOS Intel installer
-        if: inputs.platform == 'macos-x64-pkg'
-        shell: bash
-        run: |
-          rustup target add --toolchain 1.98.1 x86_64-apple-darwin
-          uv run --no-project --python 3.11 python scripts/gui/build_macos_full.py --output dist/gui-package
-
-      - uses: actions/upload-artifact@v4
+          sudo apt-get install -y build-essential desktop-file-utils dpkg-dev file \
+            libayatana-appindicator3-dev libssl-dev librsvg2-dev libwebkit2gtk-4.1-dev \
+            libxdo-dev pkg-config xdg-utils xauth xdotool xvfb
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: loushang-${{ inputs.platform }}-${{ steps.source.outputs.sha }}
-          path: dist/gui-package/
+          workspaces: |
+            gui/src-tauri -> target
+            gui/web -> target
+          key: ${{ matrix.system }}-${{ matrix.arch }}${{ matrix.format == 'rpm' && '-fedora43' || '' }}
+          cache-on-failure: true
+      - name: Build and test RPM on Fedora 43
+        if: matrix.format == 'rpm'
+        run: bash scripts/build/internal/check_fedora_full.sh ${{ matrix.arch }} "${{ needs.resolve.outputs.sha }}"
+      - name: Build Full installer
+        if: matrix.format != 'rpm'
+        shell: bash
+        run: |
+          mkdir -p dist/package-evidence
+          uv run --no-project --python 3.11 python scripts/build/build_full_${{ matrix.system }}.py \
+            --arch ${{ matrix.arch }} --format ${{ matrix.format }} 2>&1 | tee dist/package-evidence/build.log
+      - name: Install and test DEB
+        if: matrix.format == 'deb'
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          sudo loginctl enable-linger "$(id -un)"
+          for attempt in {1..30}; do
+            if systemctl --user show-environment >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          systemctl --user show-environment >/dev/null
+          xvfb-run -a uv run --no-project --python 3.11 python scripts/gui/check_installed_unix_package.py \
+            dist/packages/*.deb --arch ${{ matrix.arch }} --evidence dist/package-evidence --commit "${{ needs.resolve.outputs.sha }}" \
+            2>&1 | tee dist/package-evidence/install.log
+      - name: Install and test Windows installers
+        if: ${{ !cancelled() && matrix.system == 'windows' }}
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $formats = if ('${{ matrix.format }}' -eq 'all') { @('nsis', 'msi') } else { @('${{ matrix.format }}') }
+          $version = uv run --no-project --python 3.11 python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $packages = @{}
+          foreach ($format in $formats) {
+            $pattern = if ($format -eq 'msi') { '*.msi' } else { '*-setup.exe' }
+            $files = @(Get-ChildItem dist/packages -Filter $pattern -File)
+            if ($files.Count -eq 1) { $packages[$format] = $files[0].FullName }
+          }
+          $failed = @()
+          foreach ($format in $formats) {
+            $evidence = (New-Item -ItemType Directory -Force "dist/package-evidence/$format").FullName
+            if (-not $packages[$format]) {
+              'Expected exactly one installer' | Tee-Object "$evidence/install.log"
+              $failed += $format
+              continue
+            }
+            $other = if ($format -eq 'msi') { $packages['nsis'] } else { $packages['msi'] }
+            $arguments = @('-Installer', $packages[$format], '-Version', $version,
+              '-Commit', '${{ needs.resolve.outputs.sha }}', '-Evidence', $evidence)
+            if ($other) { $arguments += @('-OtherInstaller', $other) }
+            & pwsh -NoProfile -File ./scripts/gui/check_windows_full.ps1 @arguments *>&1 |
+              Tee-Object "$evidence/install.log"
+            if ($LASTEXITCODE) { $failed += $format }
+          }
+          if ($failed.Count) { throw "Windows installer acceptance failed: $failed" }
+
+      - name: Install and test PKG
+        if: matrix.system == 'macos'
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          uv run --no-project --python 3.11 python scripts/gui/check_installed_unix_package.py \
+            dist/packages/*.pkg --arch ${{ matrix.arch }} --evidence dist/package-evidence --commit "${{ needs.resolve.outputs.sha }}" \
+            2>&1 | tee dist/package-evidence/install.log
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.system != 'windows'
+        with:
+          name: loushang-${{ matrix.target }}-${{ needs.resolve.outputs.sha }}
+          path: |
+            dist/packages/
+            dist/package-evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.system == 'windows' && (matrix.format == 'nsis' || matrix.format == 'all')
+        with:
+          name: loushang-windows-${{ matrix.arch }}-nsis-${{ needs.resolve.outputs.sha }}
+          path: |
+            dist/packages/*-setup.exe*
+            dist/package-evidence/nsis/
+            dist/package-evidence/build.log
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.system == 'windows' && (matrix.format == 'msi' || matrix.format == 'all')
+        with:
+          name: loushang-windows-${{ matrix.arch }}-msi-${{ needs.resolve.outputs.sha }}
+          path: |
+            dist/packages/*.msi*
+            dist/package-evidence/msi/
+            dist/package-evidence/build.log
           if-no-files-found: error
           retention-days: 14

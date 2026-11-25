@@ -322,3 +322,34 @@ def test_win32_pipe_allowlist_failure_closes_both_pipe_ends() -> None:
         api._pipe(child_reads=True)
 
     assert closed == [51, 52]
+
+
+def test_service_spawn_retains_owned_job_when_parent_disallows_breakaway(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FaultingRawApi(None)
+    creation_flags = []
+    job_attributes = []
+
+    def create(*arguments: object) -> int:
+        flags = arguments[5]
+        assert isinstance(flags, int)
+        creation_flags.append(flags)
+        startup = ctypes.cast(arguments[-2], ctypes.POINTER(win32_process._STARTUPINFOEXW))
+        job_attributes.append(startup.contents.lpAttributeList)
+        if flags & win32_process._CREATE_BREAKAWAY_FROM_JOB:
+            return 0
+        return api._create_process(*arguments)
+
+    monkeypatch.setattr(win32_process, "_last_error", lambda: win32_process._ERROR_ACCESS_DENIED)
+    monkeypatch.setattr(api, "_CreateProcessW", create)
+    info = api._spawn_with_job(
+        _request(tmp_path), 1, (2, 4, 6), flags=win32_process._CREATE_BREAKAWAY_FROM_JOB,
+    )
+
+    assert info.hProcess == 8
+    assert len(creation_flags) == 2
+    assert creation_flags[0] ^ creation_flags[1] == win32_process._CREATE_BREAKAWAY_FROM_JOB
+    assert job_attributes[0] and job_attributes[0] == job_attributes[1]
+    assert api.inherited_handles == (2, 4, 6)
+    assert api.deleted_attributes == 1

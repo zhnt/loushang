@@ -1,7 +1,7 @@
 # Windows 安装包拆分方向
 
-当前 Windows x64 交付使用一个完整的 NSIS 安装包。沿用现有
-[构建脚本](../../../scripts/gui/build_windows_full.py)和
+当前 Windows x64 交付提供 NSIS 和 MSI 两种 Full 安装包。参见
+[构建与安装指南](../../../scripts/build/README.md)和
 [部署验收流程](../../../scripts/gui/check_windows_full.ps1)。
 本页记录后续拆包方向，现阶段继续交付完整包。
 
