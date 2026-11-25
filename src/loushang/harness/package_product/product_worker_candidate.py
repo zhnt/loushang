@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
 from re import Pattern
 from typing import Literal, Protocol
@@ -20,6 +23,10 @@ from loushang.harness.plugin_management.records import (
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.plugin_management.updates import PluginUpdateOperationEventV2
+from loushang.harness.resources.packages._file_consumption import (
+    closing_descriptor,
+    read_exact_bounded_file,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
     PackageCommittedSetJournal,
 )
@@ -28,6 +35,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.journal import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleRequestV2,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    open_windows_regular_file_at,
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductEntrypoint,
@@ -65,6 +76,34 @@ from .product_local_wheel_runtime import (
     _LocalWheelSelectedManifestReader,
 )
 from .product_runtime import hold_local_wheel_product_runtime
+
+
+@dataclass(frozen=True, slots=True)
+class NativeWorkerReleaseInput:
+    """Freeze the bytes presented to the Product's review and approval owners."""
+
+    label: str
+    maximum_bytes: int
+    native_platform: Literal["linux-x86_64", "windows-amd64"]
+
+    def read(self, value: str) -> bytes:
+        path = Path(value).expanduser().absolute()
+        windows = self.native_platform == "windows-amd64"
+        with ExitStack() as custody:
+            if windows:
+                parent = open_windows_directory(path.parent, writable=False)
+                custody.enter_context(closing_descriptor(parent))
+                descriptor = open_windows_regular_file_at(
+                    parent, path.name, create_new=False, write=False
+                )
+            else:
+                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            return read_exact_bounded_file(
+                custody.enter_context(closing_descriptor(descriptor)),
+                self.maximum_bytes,
+                label=self.label,
+                check_regular=not windows,
+            )
 
 
 class ProductWorkerOptInFacts:

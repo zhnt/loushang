@@ -44,7 +44,6 @@ from loushang.coding.plugin_manager.lifecycle import (
 )
 from loushang.harness.cli.worker_candidate import (
     NativeWorkerCandidateOperator,
-    NativeWorkerReleaseInput,
     add_native_worker_review_commands,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
@@ -56,6 +55,9 @@ from loushang.harness.cli.worker_recovery import (
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
+)
+from loushang.harness.package_product.product_worker_candidate import (
+    NativeWorkerReleaseInput,
 )
 
 _RELEASE_INPUT = NativeWorkerReleaseInput(
