@@ -3,7 +3,8 @@ param(
     [string]$TestParent = $env:TEMP,
     [string]$Version,
     [string]$Commit,
-    [string]$Evidence
+    [string]$Evidence,
+    [string]$OtherInstaller
 )
 
 $ErrorActionPreference = 'Stop'
@@ -188,6 +189,28 @@ try {
         $hostStarted = $false
         "PASS $phase install, AppHost connection, Session and clean stop"
         if ($phase -eq 'clean') { Remove-Item (Join-Path $install 'web/index.html') }
+    }
+    if ($OtherInstaller) {
+        $manifestFile = Join-Path $install 'manifest.json'
+        $before = (Get-FileHash $manifestFile).Hash
+        if ($msi) {
+            $conflict = Start-Process $OtherInstaller -ArgumentList "/S /D=$install" -Wait -PassThru
+            if ($conflict.ExitCode -eq 0) { throw 'NSIS accepted the existing MSI installation directory' }
+        } else {
+            $log = Join-Path $logRoot 'msiexec-conflict.log'
+            $arguments = "/i `"$OtherInstaller`" /qn /norestart /l*v `"$log`" INSTALLDIR=`"$install`""
+            $conflict = Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru
+            if ($conflict.ExitCode -ne 1603 -or
+                -not (Select-String -LiteralPath $log -SimpleMatch 'Uninstall the Loushang NSIS installation')) {
+                throw "MSI did not reject the existing NSIS install: $($conflict.ExitCode)"
+            }
+        }
+        $registered = @(Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -eq 'loushang-gui' })
+        if ((Get-FileHash $manifestFile).Hash -ne $before -or $registered.Count -ne 1) {
+            throw 'The other installer changed the active installation'
+        }
+        "PASS $format installation protected from the other installer"
     }
 } catch {
     Write-Warning "Installation verification failed: $_"

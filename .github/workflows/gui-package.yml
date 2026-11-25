@@ -60,6 +60,10 @@ jobs:
           }
           selected = os.environ["PACKAGE_TARGET"]
           targets = runners if selected == "all" else [selected]
+          if selected == "all":
+              targets = [target for target in targets if target not in ("windows-x86_64-nsis", "windows-x86_64-msi")]
+              targets.append("windows-x86_64-all")
+              runners["windows-x86_64-all"] = runners["windows-x86_64-nsis"]
           entries = []
           for target in targets:
               system, arch, format = target.split("-")
@@ -129,19 +133,38 @@ jobs:
           xvfb-run -a uv run --no-project --python 3.11 python scripts/gui/check_installed_unix_package.py \
             dist/packages/*.deb --arch ${{ matrix.arch }} --evidence dist/package-evidence --commit "${{ needs.resolve.outputs.sha }}" \
             2>&1 | tee dist/package-evidence/install.log
-      - name: Install and test Windows installer
-        if: matrix.system == 'windows'
+      - name: Install and test Windows installers
+        if: ${{ !cancelled() && matrix.system == 'windows' }}
         shell: pwsh
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
-          $pattern = if ('${{ matrix.format }}' -eq 'msi') { '*.msi' } else { '*-setup.exe' }
-          $installer = @(Get-ChildItem dist/packages -Filter $pattern -File)
-          if ($installer.Count -ne 1) { throw 'Expected exactly one Windows installer' }
+          $formats = if ('${{ matrix.format }}' -eq 'all') { @('nsis', 'msi') } else { @('${{ matrix.format }}') }
           $version = uv run --no-project --python 3.11 python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          & ./scripts/gui/check_windows_full.ps1 -Installer $installer[0].FullName `
-            -Version $version -Commit "${{ needs.resolve.outputs.sha }}" `
-            -Evidence (Resolve-Path dist/package-evidence).Path *>&1 | Tee-Object dist/package-evidence/install.log
+          $packages = @{}
+          foreach ($format in $formats) {
+            $pattern = if ($format -eq 'msi') { '*.msi' } else { '*-setup.exe' }
+            $files = @(Get-ChildItem dist/packages -Filter $pattern -File)
+            if ($files.Count -eq 1) { $packages[$format] = $files[0].FullName }
+          }
+          $failed = @()
+          foreach ($format in $formats) {
+            $evidence = (New-Item -ItemType Directory -Force "dist/package-evidence/$format").FullName
+            if (-not $packages[$format]) {
+              'Expected exactly one installer' | Tee-Object "$evidence/install.log"
+              $failed += $format
+              continue
+            }
+            $other = if ($format -eq 'msi') { $packages['nsis'] } else { $packages['msi'] }
+            $arguments = @('-Installer', $packages[$format], '-Version', $version,
+              '-Commit', '${{ needs.resolve.outputs.sha }}', '-Evidence', $evidence)
+            if ($other) { $arguments += @('-OtherInstaller', $other) }
+            & pwsh -NoProfile -File ./scripts/gui/check_windows_full.ps1 @arguments *>&1 |
+              Tee-Object "$evidence/install.log"
+            if ($LASTEXITCODE) { $failed += $format }
+          }
+          if ($failed.Count) { throw "Windows installer acceptance failed: $failed" }
+
       - name: Install and test PKG
         if: matrix.system == 'macos'
         shell: bash
@@ -151,11 +174,31 @@ jobs:
             dist/packages/*.pkg --arch ${{ matrix.arch }} --evidence dist/package-evidence --commit "${{ needs.resolve.outputs.sha }}" \
             2>&1 | tee dist/package-evidence/install.log
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && matrix.system != 'windows'
         with:
           name: loushang-${{ matrix.target }}-${{ needs.resolve.outputs.sha }}
           path: |
             dist/packages/
             dist/package-evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.system == 'windows' && (matrix.format == 'nsis' || matrix.format == 'all')
+        with:
+          name: loushang-windows-${{ matrix.arch }}-nsis-${{ needs.resolve.outputs.sha }}
+          path: |
+            dist/packages/*-setup.exe*
+            dist/package-evidence/nsis/
+            dist/package-evidence/build.log
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.system == 'windows' && (matrix.format == 'msi' || matrix.format == 'all')
+        with:
+          name: loushang-windows-${{ matrix.arch }}-msi-${{ needs.resolve.outputs.sha }}
+          path: |
+            dist/packages/*.msi*
+            dist/package-evidence/msi/
+            dist/package-evidence/build.log
           if-no-files-found: error
           retention-days: 14

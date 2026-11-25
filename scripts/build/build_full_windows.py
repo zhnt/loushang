@@ -65,16 +65,80 @@ def require_machine(path: Path, expected: int) -> None:
             raise ValueError(f"Unexpected PE architecture: {path}")
 
 
+def bundle_installer(
+    tauri: str, work: Path, release: Path, env: dict[str, str], output: Path,
+    package_format: str, facts: dict, product_wheel: Path,
+) -> None:
+    version = facts["version"]
+    (work / "manifest.json").write_text(json.dumps({
+        **facts, "format": f"loushang-windows-{package_format}/v1", "architecture": "x86_64",
+        "wheelSha256": digest(product_wheel), "lockSha256": digest(ROOT / "uv.lock"),
+    }, indent=2) + "\n", encoding="utf-8")
+    config = {
+        "version": version,
+        "bundle": {
+            "windows": {
+                "bundleVCRuntime": True,
+                "webviewInstallMode": {"type": "downloadBootstrapper", "silent": True},
+                "nsis": {
+                    "installMode": "currentUser",
+                    "installerHooks": str(INSTALLER_CHECKS / "nsis-checks.nsh"),
+                },
+            },
+            "resources": {
+                f"{work.name}/runtime/": "runtime/",
+                f"{work.name}/loushang.exe": "loushang.exe",
+                f"{work.name}/loushang-mux.exe": "loushang-mux.exe",
+                f"{work.name}/loushang-web.exe": "loushang-web.exe",
+                "../dist/": "web/",
+                **{f"{work.name}/{name}": name for name in (
+                    "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "manifest.json",
+                )},
+            },
+        },
+    }
+    if package_format == "msi":
+        config["bundle"]["windows"].update(
+            allowDowngrades=False,
+            wix={
+                "upgradeCode": MSI_UPGRADE_CODE,
+                "fragmentPaths": [str(INSTALLER_CHECKS / "msi-checks.wxs")],
+                "componentGroupRefs": ["LoushangInstallChecks"],
+            },
+        )
+    config_path = work / "bundle.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    bundle = release / "bundle" / package_format
+    extension = ".exe" if package_format == "nsis" else ".msi"
+    pattern = f"loushang-gui_{version}_x64*{extension}"
+    for previous in bundle.glob(pattern):
+        previous.unlink()
+    run(tauri, "bundle", "--bundles", package_format, "--config", str(config_path),
+        cwd=GUI, env=env)
+    (source,) = bundle.glob(pattern)
+    magic = b"MZ" if package_format == "nsis" else bytes.fromhex("D0CF11E0A1B11AE1")
+    with source.open("rb") as installer:
+        if installer.read(len(magic)) != magic:
+            raise RuntimeError(f"Unexpected {package_format} installer signature")
+
+    suffix = "-setup.exe" if package_format == "nsis" else ".msi"
+    with tempfile.TemporaryDirectory(prefix=".loushang-windows-", dir=output) as staging:
+        package = Path(staging) / f"loushang-{version}-x64{suffix}"
+        shutil.copy2(source, package)
+        publish(package, output)
+
+
 def main() -> None:
-    args = arguments(__doc__, "Windows", ("nsis", "msi"))
+    args = arguments(__doc__, "Windows", ("nsis", "msi", "all"))
     if args.arch == "aarch64":
         raise SystemExit("Windows ARM64 requires a native wheel for locked cryptography==48.0.1")
-    arch, machine = "x64", 0x8664
+    formats = ("nsis", "msi") if args.format == "all" else (args.format,)
+    machine = 0x8664
     target = "x86_64-pc-windows-msvc"
     require_tools("git", "uv", "node", "npm.cmd", "rustc", "cargo")
     facts = provenance()
     version = facts["version"]
-    if args.format == "msi" and any(
+    if "msi" in formats and any(
         value > limit for value, limit in zip(map(int, version.split(".")), (255, 255, 65535))
     ):
         raise SystemExit("MSI version limits are 255.255.65535")
@@ -102,44 +166,6 @@ def main() -> None:
             require_machine(work / name, machine)
         for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, work)
-        (work / "manifest.json").write_text(json.dumps({
-            **facts, "format": f"loushang-windows-{args.format}/v1", "architecture": args.arch,
-            "wheelSha256": digest(product_wheel), "lockSha256": digest(ROOT / "uv.lock"),
-        }, indent=2) + "\n", encoding="utf-8")
-        config = {
-            "version": version,
-            "bundle": {
-                "windows": {
-                    "bundleVCRuntime": True,
-                    "webviewInstallMode": {"type": "downloadBootstrapper", "silent": True},
-                    "nsis": {
-                        "installMode": "currentUser",
-                        "installerHooks": str(INSTALLER_CHECKS / "nsis-checks.nsh"),
-                    },
-                },
-                "resources": {
-                    f"{work.name}/runtime/": "runtime/",
-                    f"{work.name}/loushang.exe": "loushang.exe",
-                    f"{work.name}/loushang-mux.exe": "loushang-mux.exe",
-                    f"{work.name}/loushang-web.exe": "loushang-web.exe",
-                    "../dist/": "web/",
-                    **{f"{work.name}/{name}": name for name in (
-                        "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "manifest.json",
-                    )},
-                },
-            },
-        }
-        if args.format == "msi":
-            config["bundle"]["windows"].update(
-                allowDowngrades=False,
-                wix={
-                    "upgradeCode": MSI_UPGRADE_CODE,
-                    "fragmentPaths": [str(INSTALLER_CHECKS / "msi-checks.wxs")],
-                    "componentGroupRefs": ["LoushangInstallChecks"],
-                },
-            )
-        config_path = work / "bundle.json"
-        config_path.write_text(json.dumps(config), encoding="utf-8")
         tauri = str(GUI / "node_modules/.bin/tauri.cmd")
         # The CLI supports bundleVCRuntime. The Rust-side config parser on
         # this branch predates it, so pass the setting only to the bundler.
@@ -149,24 +175,20 @@ def main() -> None:
             cwd=GUI, env=env)
         release = TAURI / "target/release"
         require_machine(release / "loushang-gui.exe", machine)
-        bundle = release / "bundle" / args.format
-        extension = ".exe" if args.format == "nsis" else ".msi"
-        pattern = f"loushang-gui_{version}_{arch}*{extension}"
-        for previous in bundle.glob(pattern):
-            previous.unlink()
-        run(tauri, "bundle", "--bundles", args.format, "--config", str(config_path),
-            cwd=GUI, env=env)
-        (source,) = bundle.glob(pattern)
-        magic = b"MZ" if args.format == "nsis" else bytes.fromhex("D0CF11E0A1B11AE1")
-        with source.open("rb") as installer:
-            if installer.read(len(magic)) != magic:
-                raise RuntimeError(f"Unexpected {args.format} installer signature")
 
-        suffix = "-setup.exe" if args.format == "nsis" else ".msi"
-        with tempfile.TemporaryDirectory(prefix=".loushang-windows-", dir=args.output) as staging:
-            package = Path(staging) / f"loushang-{version}-{arch}{suffix}"
-            shutil.copy2(source, package)
-            publish(package, args.output)
+        failures = []
+        for package_format in formats:
+            try:
+                bundle_installer(tauri, work, release, env, args.output,
+                                 package_format, facts, product_wheel)
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+                if args.format != "all":
+                    raise
+                failures.append(package_format)
+                print(f"{package_format} failed: {error}", flush=True)
+        if failures:
+            raise SystemExit(f"Failed to bundle: {', '.join(failures)}")
+
 
 
 if __name__ == "__main__":
