@@ -1,5 +1,11 @@
 # Coding剩余职责实施优先级
 
+## Hosted 执行与 Goal 交付候选
+
+以 `c3581c798` 为基线。AppHost 持有显式应用准入与失败交接、Hosted 工作区目录和资源权限、交互选择恢复、会话标题请求，以及 Goal 命令与断线后的任务寿命。HarnessWork 处理工作计划准备、验证证据投影、事务关闭与历史回放。Coding 保留仓库验证和批准规则、产品默认值、会话及工作区的具体绑定。合并时保留 Windows 与 macOS 原生存储的检查路径，执行提交和资源字节保管沿用基线已有实现。
+
+本批 Coding 减少 1,892 行，Harness 增加 140 行，AppHost 增加 1,437 行，HarnessWork 增加 790 行，系统生产 Python 增加 475 行。共享的命令、资源与工作记录机制在现有组件内实现。六批候选比 `546b209f6` 的 Coding 少 7,479 行，系统生产 Python 少 389 行。
+
 ## C01 启动装配与 Continuity 交付候选
 
 以旧版切换候选 `12fc10042` 为基线。Harness Session 接管已围栏、历史和初始工作区的 Catalog 准备、刷新与失败交接，并统一能力插件的已批准输入绑定。Harness Package Product 负责已安装来源的身份与工厂交接。Harness Continuity 接管已安装 Provider 的启动、发布、状态复原与关闭。Coding 保留 CompositionSet、产品默认值、批准和工作区执行上限。只读资源预览沿用基线的围栏复核和句柄寿命，并复用 Harness Plugin Management 的资源编译。
