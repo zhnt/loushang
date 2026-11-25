@@ -419,6 +419,29 @@ def reopen_legacy_product_cutover(
     return result
 
 
+@contextmanager
+def hold_legacy_product_cutover_review(
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    windows: bool,
+    first_cutover: tuple[str, Callable[[], PackagePosixEpochCutoverResultV1]] | None,
+    label: str,
+) -> Iterator[_FencedRuntime]:
+    """Prepare the requested first fence and hold the native review authority."""
+    if first_cutover is not None:
+        namespace, prepare = first_cutover
+        if legacy_product_fence_exists(roots["control_root"]):
+            reopen_legacy_product_cutover(
+                **roots, read_only=False, expected_namespace=namespace, label=label
+            )
+        elif prepare().disposition != "fenced":
+            raise RuntimeError(f"{label} fence was not committed")
+    with closing(
+        open_native_fenced_product_epoch(windows=windows, posix_read_only=True, **roots)
+    ) as runtime:
+        yield runtime
+
+
 class _LegacyStateRoots(Protocol):
     @property
     def root(self) -> Path: ...

@@ -6,10 +6,10 @@ import argparse
 import os
 import sys
 from collections.abc import Callable, Sequence
-from contextlib import closing
+from contextlib import AbstractContextManager
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
-from typing import Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, cast
 
 from loushang.coding.control.settings_store import open_coding_workspace_settings
 from loushang.coding.package.cutover_backup import inspect_coding_package_cutover_backup
@@ -47,6 +47,7 @@ from loushang.coding.package.legacy_skill_cutover_admission import (
     admit_coding_single_legacy_skill_snapshot,
     require_coding_fenced_single_legacy_data,
 )
+from loushang.coding.package.legacy_snapshot_member import CodingFencedEpochRuntime
 from loushang.coding.package.pre_b_snapshot import (
     CodingCutoverSnapshotAdmission,
     cutover_and_bootstrap_coding_package_product,
@@ -73,13 +74,22 @@ from loushang.harness.cli.package_lifecycle import (
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_runtime import (
+    hold_legacy_product_cutover_review,
     inspect_fresh_product_epoch,
     legacy_product_fence_exists,
-    open_native_fenced_product_epoch,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    PackagePosixEpochCutoverResultV1,
+)
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product._legacy_local_migration import (
+        _FirstAcceptanceRecord,
+        _FirstAcceptanceReview,
+    )
 
 _WINDOWS_CANDIDATE_ROUTE_ADMITTED = True
 
@@ -92,32 +102,18 @@ _LEGACY_DATA_ROUTES: tuple[tuple[_LegacyResourceKind, str], ...] = (
 )
 
 
-@overload
-def _selected_local_action(
-    args: argparse.Namespace, action: Literal["prepare"]
-) -> tuple[_LegacyResourceKind, str] | None: ...
-
-
-@overload
-def _selected_local_action(
-    args: argparse.Namespace, action: Literal["adopt"]
-) -> tuple[_LegacyResourceKind, list[str]] | None: ...
-
-
-def _selected_local_action(
-    args: argparse.Namespace, action: Literal["prepare", "adopt"]
-) -> tuple[_LegacyResourceKind, str | list[str]] | None:
-    for kind, _ in _LEGACY_DATA_ROUTES:
-        selection = getattr(args, f"{action}_legacy_local_{kind}_review")
-        if selection is not None:
-            return kind, selection
-    return None
+class _SelectCutoverAction(argparse.Action):
+    def __call__(
+        self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
+        values: str | Sequence[str] | None, option_string: str | None = None,
+    ) -> None:
+        action, kind = self.const
+        setattr(namespace, self.dest, (action, kind, values))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    review_routes = (
-        (
-            "disabled",
+    review_routes = {
+        "disabled": (
             (
                 "read the first-B snapshot's scoped disabled-only migration review",
                 "commit the offline first-B fence and return a disabled-only review",
@@ -127,8 +123,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             None,
             bootstrap_coding_accepted_disabled_only_product_plugins,
         ),
-        (
-            "builtin",
+        "builtin": (
             (
                 "read a fenced old builtin Desired State review",
                 "fence an eligible builtin-only old Desired State and return its review",
@@ -138,8 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             admit_coding_builtin_only_snapshot,
             adopt_coding_first_b_builtin_only,
         ),
-        (
-            "removed",
+        "removed": (
             (
                 "read a fenced old local Plugin removal review",
                 "fence an eligible old local removal set and return its review",
@@ -149,7 +143,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             admit_coding_removed_local_snapshot,
             adopt_coding_first_b_removed_local,
         ),
-    )
+    }
     parser = argparse.ArgumentParser(prog="loushang-package-cutover")
     parser.add_argument("--workspace", default=".", help="existing Coding workspace")
     parser.add_argument(
@@ -157,100 +151,87 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    read_actions = parser.add_mutually_exclusive_group()
-    read_actions.add_argument(
+    actions = parser.add_mutually_exclusive_group()
+    add_action = partial(actions.add_argument, dest="cutover_action", action=_SelectCutoverAction)
+    add_action(
         "--backup-status",
-        action="store_true",
+        nargs=0,
+        const=("backup", None),
         help="read the current cutover snapshot owner's verified status",
     )
-    for kind, (read_help, _, _), *_handlers in review_routes:
-        read_actions.add_argument(
-            f"--review-legacy-{kind}-only", action="store_true", help=read_help,
+    for kind, ((read_help, _, _), *_handlers) in review_routes.items():
+        add_action(
+            f"--review-legacy-{kind}-only", nargs=0, const=("review", kind), help=read_help,
         )
-    read_actions.add_argument(
+    add_action(
         "--review-legacy-local-plugin",
+        const=("review_local", None),
         metavar="PLUGIN_ID",
         help="read one installed local Plugin review under an existing first-B fence",
     )
-    for kind, (_, prepare_help, _), *_handlers in review_routes:
-        read_actions.add_argument(
-            f"--prepare-legacy-{kind}-review", action="store_true", help=prepare_help,
+    for kind, ((_, prepare_help, _), *_handlers) in review_routes.items():
+        add_action(
+            f"--prepare-legacy-{kind}-review", nargs=0, const=("prepare", kind), help=prepare_help,
         )
     for kind, label in _LEGACY_DATA_ROUTES:
-        read_actions.add_argument(
+        add_action(
             f"--prepare-legacy-local-{kind}-review",
+            const=("prepare_local", kind),
             metavar="PLUGIN_ID",
             help=f"fence eligible old local {label}s and review one Plugin",
         )
-    for kind, (_, _, adopt_help), *_handlers in review_routes:
-        read_actions.add_argument(
-            f"--adopt-legacy-{kind}-review", metavar="REVIEW_ID", help=adopt_help,
+    for kind, ((_, _, adopt_help), *_handlers) in review_routes.items():
+        add_action(
+            f"--adopt-legacy-{kind}-review", const=("adopt", kind), metavar="REVIEW_ID", help=adopt_help,
         )
     for kind, label in _LEGACY_DATA_ROUTES:
-        read_actions.add_argument(
+        add_action(
             f"--adopt-legacy-local-{kind}-review",
             nargs=2,
+            const=("adopt_local", kind),
             metavar=("PLUGIN_ID", "REVIEW_ID"),
             help=f"accept a reviewed old local {label} and complete its Product adoption",
         )
     args = parser.parse_args(argv)
+    action, selected_kind, value = cast(
+        "tuple[str, str | None, str | list[str] | None]",
+        args.cutover_action or ("fresh", None, None),
+    )
     try:
         workspace = package_operator_workspace(
             args.workspace, not_directory="Coding workspace must be a directory"
         )
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
         epoch = resolve_coding_package_epoch_layout(lifecycle)
-        if args.backup_status:
+        if action == "backup":
             document = inspect_coding_package_cutover_backup(lifecycle).to_dict()
             return write_package_operator_result(document)
         windows = os.name == "nt"
-        local_prepare = _selected_local_action(args, "prepare")
-        local_adopt = _selected_local_action(args, "adopt")
         if windows:
             if (
                 not args.windows_candidate
                 or not _WINDOWS_CANDIDATE_ROUTE_ADMITTED
-                or args.review_legacy_local_plugin is not None
-                or local_prepare is not None
-                or local_adopt is not None
-                or any(
-                    getattr(args, f"review_legacy_{kind}_only")
-                    or getattr(args, f"prepare_legacy_{kind}_review")
-                    or getattr(args, f"adopt_legacy_{kind}_review") is not None
-                    for kind, *_ in review_routes if kind != "builtin"
-                )
+                or (action != "fresh" and selected_kind != "builtin")
             ):
                 raise RuntimeError(
                     "Windows Coding Product write CLI requires an admitted candidate"
                 )
         elif args.windows_candidate:
             raise ValueError("Windows Product candidate requires Windows")
-        for kind, _, project_review, admit_snapshot, _adopt in reversed(review_routes):
-            read_review = getattr(args, f"review_legacy_{kind}_only")
-            prepare_review = getattr(args, f"prepare_legacy_{kind}_review")
-            if not (read_review or prepare_review):
-                continue
+        if action in {"review", "prepare"}:
+            _, project_review, admit_snapshot, _ = review_routes[cast(str, selected_kind)]
+            prepare_review = action == "prepare"
             settings = open_coding_workspace_settings(workspace)
-            if prepare_review:
-                _prepare_review_cutover(
-                    lifecycle,
-                    settings,
-                    epoch,
-                    _fresh_coding_product_namespace_id(epoch.store_id),
-                    snapshot_admission=(
-                        partial(admit_snapshot, lifecycle)
-                        if admit_snapshot is not None
-                        else None
-                    ),
-                    before_prepare=(
-                        partial(_require_disabled_only_preflight, lifecycle, settings)
-                        if admit_snapshot is None
-                        else None
-                    ),
-                )
-            with closing(open_native_fenced_product_epoch(
-                windows=windows, posix_read_only=True, **epoch.fenced_runtime_open_kwargs()
-            )) as owner:
+            with _hold_cutover_review(
+                lifecycle, epoch, windows=windows,
+                settings=settings if prepare_review else None,
+                snapshot_admission=(
+                    partial(admit_snapshot, lifecycle)
+                    if prepare_review and admit_snapshot is not None
+                    else None
+                ),
+                disabled_only=admit_snapshot is None,
+            ) as owner:
                 # The Windows gate admits only the cross-platform builtin reviewer.
                 review = project_review(
                     lifecycle, cast(PackageProductPosixFencedRuntimeOwner, owner),
@@ -260,52 +241,48 @@ def main(argv: Sequence[str] | None = None) -> int:
                     document = review.to_dict()
             return write_package_operator_result(document if windows else review.to_dict())
 
-        prepare_kind, review_plugin_id = (
-            local_prepare
-            if local_prepare is not None
-            else (None, args.review_legacy_local_plugin)
-        )
-        if review_plugin_id:
-            if prepare_kind is not None:
-                _prepare_review_cutover(
-                    lifecycle,
-                    open_coding_workspace_settings(workspace),
-                    epoch,
-                    _fresh_coding_product_namespace_id(epoch.store_id),
-                    snapshot_admission=partial(
+        if action in {"review_local", "prepare_local"} and value:
+            review_plugin_id = cast(str, value)
+            prepare_kind = cast("_LegacyResourceKind | None", selected_kind)
+            with _hold_cutover_review(
+                lifecycle, epoch,
+                settings=open_coding_workspace_settings(workspace) if prepare_kind is not None else None,
+                snapshot_admission=(
+                    partial(
                         admit_coding_single_legacy_skill_snapshot,
                         lifecycle,
                         plugin_id=review_plugin_id,
                         resource_kind=prepare_kind,
-                    ),
-                )
-            with PackageProductPosixFencedRuntimeOwner.open(
-                **epoch.fenced_runtime_open_kwargs(), read_only=True
+                    ) if prepare_kind is not None else None
+                ),
             ) as owner:
+                posix_owner = cast(PackageProductPosixFencedRuntimeOwner, owner)
                 if prepare_kind is not None:
                     require_coding_fenced_single_legacy_data(
-                        lifecycle, owner, plugin_id=review_plugin_id, resource_kind=prepare_kind
+                        lifecycle, posix_owner, plugin_id=review_plugin_id, resource_kind=prepare_kind
                     )
                 local_review = review_coding_legacy_installed_local_source(
                     lifecycle,
-                    owner,
+                    posix_owner,
                     plugin_id=review_plugin_id,
                     policy_revision=CODING_PACKAGE_PRODUCT_POLICY_REVISION,
                 )
             return write_package_operator_result(local_review.to_dict())
 
-        for kind, _, _review, _admission, adopt_review in review_routes:
-            accepted_review_id = getattr(args, f"adopt_legacy_{kind}_review")
-            if accepted_review_id is None or (not windows and not accepted_review_id):
-                continue
-            if windows:
-                # The Windows gate admits only builtin adoption.
-                adopt_review = partial(adopt_coding_first_b_builtin_only, windows_candidate=True)
+        if action == "adopt" and (windows or value):
+            # The Windows gate admits only builtin adoption.
+            adopt_review = (
+                partial(adopt_coding_first_b_builtin_only, windows_candidate=True)
+                if windows else cast(
+                    "Callable[..., _FirstAcceptanceRecord[_FirstAcceptanceReview]]",
+                    review_routes[cast(str, selected_kind)][3],
+                )
+            )
             receipt = adopt_review(
                 lifecycle,
                 open_coding_workspace_settings(workspace),
                 workspace=workspace,
-                accepted_review_id=accepted_review_id,
+                accepted_review_id=cast(str, value),
                 runtime_version=version("loushang"),
                 runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             )
@@ -316,9 +293,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "reviewId": receipt.review.review_id,
                 },
             )
-        if local_adopt is not None:
-            resource_kind, selected_ids = local_adopt
-            plugin_id, review_id = selected_ids
+        if action == "adopt_local":
+            plugin_id, review_id = cast("list[str]", value)
             adopted = adopt_coding_legacy_local_data_review(
                 lifecycle,
                 workspace=workspace,
@@ -326,7 +302,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 accepted_review_id=review_id,
                 runtime_version=version("loushang"),
                 runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                resource_kind=resource_kind,
+                resource_kind=cast(_LegacyResourceKind, selected_kind),
             )
             return write_package_operator_result(
                 {
@@ -407,35 +383,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
 
-def _prepare_review_cutover(
+def _hold_cutover_review(
     lifecycle: CodingPluginLifecycleStateLayout,
-    settings: SettingsManager,
     epoch: CodingPackageEpochLayoutV1,
-    namespace_id: str,
     *,
+    windows: bool = False,
+    settings: SettingsManager | None,
     snapshot_admission: CodingCutoverSnapshotAdmission | None = None,
-    before_prepare: Callable[[], None] | None = None,
-) -> None:
-    """Prepare a missing review fence or verify its existing namespace.
+    disabled_only: bool = False,
+) -> AbstractContextManager[CodingFencedEpochRuntime]:
+    namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
 
-    Admission remains the original cutover owner's Product callback. Existing
-    fences do not run admission or a new preparation.
-    """
-    if not legacy_product_fence_exists(epoch.control_root):
-        if before_prepare is not None:
-            before_prepare()
-        prepared = prepare_and_cutover_coding_package_store_from_legacy(
+    def prepare() -> PackagePosixEpochCutoverResultV1:
+        assert settings is not None
+        if disabled_only:
+            _require_disabled_only_preflight(lifecycle, settings)
+        return prepare_and_cutover_coding_package_store_from_legacy(
             lifecycle,
             settings,
             namespace_id=namespace_id,
             minimum_runtime_version=version("loushang"),
             minimum_runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
             snapshot_admission=snapshot_admission,
-        )
-        if prepared.attempt.result.disposition != "fenced":
-            raise RuntimeError("Coding Product fence was not committed")
-    else:
-        reopen_coding_package_cutover(lifecycle, expected_namespace=namespace_id)
+        ).attempt.result
+
+    return hold_legacy_product_cutover_review(
+        epoch.fenced_runtime_open_kwargs(),
+        windows=windows,
+        first_cutover=(namespace_id, prepare) if settings is not None else None,
+        label="Coding Product",
+    )
 
 
 def _require_disabled_only_preflight(
