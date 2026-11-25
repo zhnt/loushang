@@ -58,6 +58,10 @@ PRIVATE_DATA_INSTALLATION_KEY_FIELD = RecordField(
 )
 
 
+def private_data_identity_digest(domain: bytes, facts: Mapping[str, object]) -> str:
+    return sha256(domain + canonical_json_bytes(facts)).hexdigest()
+
+
 class PrivateDataRecordWire:
     """Encode and admit an exact conventional private-data record envelope."""
 
@@ -114,7 +118,7 @@ class PrivateDataRestoreRecordWire(PrivateDataRecordWire):
 
     @staticmethod
     def _digest_document(document: dict[str, object]) -> str:
-        return sha256(canonical_json_bytes(document)).hexdigest()
+        return private_data_identity_digest(b"", document)
 
     @classmethod
     def _seal(cls, **values: object) -> Self:

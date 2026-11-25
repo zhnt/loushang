@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,6 +10,7 @@ from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateL
 from loushang.harness.plugin_management._private_data_records import (
     PRIVATE_DATA_INSTALLATION_KEY_FIELD,
     PrivateDataRecordWire,
+    private_data_identity_digest,
 )
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -19,9 +19,6 @@ from loushang.harness.plugin_management.private_data_backup import (
     PrivateArchiveManifestCodec,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 
 from .installation_private_data import coding_arch_installation_private_data_root
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
@@ -76,12 +73,10 @@ def backup_parent(
 def backup_id(
     key: PluginInstallationKeyV1, target: CodingArchPrivateDataTargetSnapshotV1
 ) -> str:
-    return sha256(
-        b"loushang.coding-arch-private-data-backup/v1\0"
-        + canonical_json_bytes(
-            {"installationKey": key.to_dict(), "sourceTargetId": target.target_id}
-        )
-    ).hexdigest()
+    return private_data_identity_digest(
+        b"loushang.coding-arch-private-data-backup/v1\0",
+        {"installationKey": key.to_dict(), "sourceTargetId": target.target_id},
+    )
 
 
 def make_backup_receipt(
@@ -126,9 +121,9 @@ def _backup_retention_revision(
         "receipts": [item.to_dict() for item in receipts],
         "trust": trust,
     }
-    return sha256(
-        b"loushang.coding-arch-backup-retention/v1\0" + canonical_json_bytes(facts)
-    ).hexdigest()
+    return private_data_identity_digest(
+        b"loushang.coding-arch-backup-retention/v1\0", facts
+    )
 
 
 _SCHEMA_BACKUP_RECEIPT_V1 = CodingArchPrivateDataBackupReceiptV1._bind_wire_schema(

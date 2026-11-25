@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
@@ -12,6 +11,7 @@ from loushang.harness.journal import (
 )
 from loushang.harness.plugin_management._private_data_records import (
     PrivateDataRestoreRecordWire,
+    private_data_identity_digest,
 )
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -20,9 +20,6 @@ from loushang.harness.plugin_management.private_data_restore_journal import (
     PrivateDataRestoreJournal,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 
 _JOURNAL_NAME = "private-data-restores.jsonl"
 _MAX_EVENTS = 4096
@@ -101,18 +98,13 @@ def restore_id_for(
         or not deletion_receipt_id
     ):
         raise ValueError("Coding Arch restore identity is invalid")
-    return (
-        "arch-restore:"
-        + sha256(
-            b"loushang.coding-arch-private-data-restore/v1\0"
-            + canonical_json_bytes(
-                {
-                    "backupId": backup_id,
-                    "deletionReceiptId": deletion_receipt_id,
-                    "installationKey": key.to_dict(),
-                }
-            )
-        ).hexdigest()
+    return "arch-restore:" + private_data_identity_digest(
+        b"loushang.coding-arch-private-data-restore/v1\0",
+        {
+            "backupId": backup_id,
+            "deletionReceiptId": deletion_receipt_id,
+            "installationKey": key.to_dict(),
+        },
     )
 
 
@@ -145,7 +137,9 @@ class CodingArchPrivateDataRestoreJournal(
         )
 
 
-_SCHEMA_RESTORE_EVENT_V1 = CodingArchPrivateDataRestoreEventV1._bind_restore_wire_schema()
+_SCHEMA_RESTORE_EVENT_V1 = (
+    CodingArchPrivateDataRestoreEventV1._bind_restore_wire_schema()
+)
 
 __all__ = [
     "CodingArchPrivateDataRestoreEventV1",

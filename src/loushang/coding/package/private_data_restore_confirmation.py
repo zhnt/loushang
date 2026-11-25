@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.journal import (
@@ -11,6 +10,7 @@ from loushang.harness.journal import (
 )
 from loushang.harness.plugin_management._private_data_records import (
     PrivateDataRestoreRecordWire,
+    private_data_identity_digest,
 )
 from loushang.harness.plugin_management._private_data_records import (
     _valid_digest as _digest,
@@ -19,9 +19,6 @@ from loushang.harness.plugin_management.private_data_restore_journal import (
     PrivateDataRestoreConfirmationJournal,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
-)
 
 from .private_data_restore_journal import (
     restore_id_for as restore_id_for,
@@ -131,13 +128,10 @@ class CodingArchPrivateDataRestoreConfirmationV1(PrivateDataRestoreRecordWire):
             and self.confirmation_id == other.confirmation_id
         )
 
+
 def _confirmation_id(facts: dict[str, object]) -> str:
-    return (
-        "arch-restore-confirm:"
-        + sha256(
-            b"loushang.coding-arch-restore-confirmation/v1\0"
-            + canonical_json_bytes(facts)
-        ).hexdigest()
+    return "arch-restore-confirm:" + private_data_identity_digest(
+        b"loushang.coding-arch-restore-confirmation/v1\0", facts
     )
 
 
@@ -169,7 +163,9 @@ class CodingArchPrivateDataRestoreConfirmationJournal(
         )
 
 
-_SCHEMA_RESTORE_CONFIRMATION_V1 = CodingArchPrivateDataRestoreConfirmationV1._bind_restore_wire_schema()
+_SCHEMA_RESTORE_CONFIRMATION_V1 = (
+    CodingArchPrivateDataRestoreConfirmationV1._bind_restore_wire_schema()
+)
 
 __all__ = [
     "CodingArchPrivateDataRestoreConfirmationJournal",

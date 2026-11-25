@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
-from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
+from loushang.harness.plugin_management._private_data_records import (
+    private_data_identity_digest,
 )
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 from .private_data_backup_records import (
     CodingArchPrivateDataBackupReceiptV1,
@@ -54,12 +54,8 @@ class CodingWindowsArchBackupArchiveSnapshotV1:
 
     @property
     def target_id(self) -> str:
-        return (
-            "present:"
-            + sha256(
-                b"loushang.coding-arch-windows-backup-archive/v1\0"
-                + canonical_json_bytes(self.to_dict())
-            ).hexdigest()
+        return "present:" + private_data_identity_digest(
+            b"loushang.coding-arch-windows-backup-archive/v1\0", self.to_dict()
         )
 
     def to_dict(self) -> dict[str, object]:
