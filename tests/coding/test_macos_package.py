@@ -1,22 +1,27 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
 
 SPEC = importlib.util.spec_from_file_location(
-    "macos_packager", Path(__file__).resolve().parents[2] / "scripts/gui/build_macos_full.py",
+    "macos_packager", Path(__file__).resolve().parents[2] / "scripts/build/build_full_macos.py",
 )
 assert SPEC is not None and SPEC.loader is not None
 packager = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(packager)
+sys.path.insert(0, str(Path(SPEC.origin).parent))
+try:
+    SPEC.loader.exec_module(packager)
+finally:
+    sys.path.pop(0)
 
 
 @pytest.mark.parametrize(
     ("architectures", "minimum", "dependency", "error"),
     [
-        ("arm64", "12.0", "@rpath/libpython.dylib", "Intel slice missing"),
+        ("arm64", "12.0", "@rpath/libpython.dylib", "Required x86_64 slice missing"),
         ("x86_64", "13.0", "@rpath/libpython.dylib", "Requires newer macOS"),
         ("x86_64", "12.0", "/usr/local/opt/python/libpython.dylib", "Unbundled native dependency"),
         ("x86_64 arm64", "12.0", "/usr/lib/libSystem.B.dylib", None),
