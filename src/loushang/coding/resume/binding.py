@@ -6,7 +6,6 @@ authority, prove effect settlement, or admit a Model or Tool invocation.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,6 +15,11 @@ from typing import TYPE_CHECKING, Literal
 from loushang.ai.types import UserMessage
 from loushang.coding.composition.provenance import CodingCompositionProvenanceV1
 from loushang.foundation.json import JSONValue
+from loushang.harness.resume_effects import (
+    is_resume_digest,
+    is_resume_effect_code,
+    is_resume_identifier,
+)
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript._resume_records import SelectedAncestry
 from loushang.harness.transcript.types import AgentTranscriptRecord
@@ -29,9 +33,6 @@ CODING_RUNTIME_BINDING_VERSION = 1
 CODING_RUNTIME_BINDING_MAX_BYTES = 4096
 
 _ANCESTRY_DOMAIN = b"loushang.coding.resume-ancestry/v1\0"
-_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
-_DIFFERENCE_CODE = re.compile(r"[a-z][a-z0-9._-]{0,63}\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _FIELDS = _records.RESUME_BINDING_FIELDS
 
 
@@ -76,10 +77,7 @@ class CodingRuntimeBindingV1:
             raise ValueError("RuntimeBinding difference codes exceed the limit")
         if self.difference_codes != tuple(sorted(set(self.difference_codes))):
             raise ValueError("RuntimeBinding difference codes must be sorted and unique")
-        if any(
-            type(code) is not str or _DIFFERENCE_CODE.fullmatch(code) is None
-            for code in self.difference_codes
-        ):
+        if not all(is_resume_effect_code(code) for code in self.difference_codes):
             raise ValueError("RuntimeBinding difference codes must be redacted identifiers")
 
     def to_message_metadata(self) -> dict[str, JSONValue]:
@@ -275,12 +273,12 @@ def _require_v1_budget(document: object) -> None:
 
 
 def _require_identifier(value: object, *, name: str) -> None:
-    if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
+    if not is_resume_identifier(value):
         raise ValueError(f"RuntimeBinding {name} is invalid")
 
 
 def _require_digest(value: object, *, name: str) -> None:
-    if type(value) is not str or _DIGEST.fullmatch(value) is None:
+    if not is_resume_digest(value):
         raise ValueError(f"RuntimeBinding {name} is invalid")
 
 

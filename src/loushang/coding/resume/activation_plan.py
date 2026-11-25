@@ -29,6 +29,7 @@ from loushang.coding.resume.composition_comparison import (
 )
 from loushang.coding.resume.history import CodingResumeHistoryPreview
 from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resume_effects import is_resume_digest
 from loushang.harness.session._resume_continuation import (
     checked_activation_plan_owner_refs,
     project_activation_plan_identity,
@@ -36,7 +37,6 @@ from loushang.harness.session._resume_continuation import (
     resume_plan_matches_history,
 )
 
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _OWNER = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
 _GENERATION = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 
@@ -66,10 +66,7 @@ class ActivationOwnerSelectionRefV1:
     def __post_init__(self) -> None:
         if type(self.owner_id) is not str or _OWNER.fullmatch(self.owner_id) is None:
             raise ValueError("activation owner id is invalid")
-        if (
-            type(self.fingerprint) is not str
-            or _DIGEST.fullmatch(self.fingerprint) is None
-        ):
+        if not is_resume_digest(self.fingerprint):
             raise ValueError("activation owner fingerprint is invalid")
         if (
             type(self.generation) is not str
@@ -88,10 +85,7 @@ class ActivationOwnerInputRefV1:
     def __post_init__(self) -> None:
         if type(self.owner_id) is not str or _OWNER.fullmatch(self.owner_id) is None:
             raise ValueError("activation input owner id is invalid")
-        if (
-            type(self.fingerprint) is not str
-            or _DIGEST.fullmatch(self.fingerprint) is None
-        ):
+        if not is_resume_digest(self.fingerprint):
             raise ValueError("activation input fingerprint is invalid")
 
 

@@ -7,15 +7,13 @@ Current read authorization remains with the calling Hosted service owner.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Literal
 
+from loushang.harness.resume_effects import is_resume_digest, is_resume_identifier
 from loushang.harness.transcript._resume_records import input_record_digest
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
-_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _INPUT_RECORD_DIGEST_DOMAIN = b"loushang.coding.resume-input-record/v1\0"
 
 
@@ -25,9 +23,9 @@ class CodingResumeInputLookupQueryV1:
     record_digest: str
 
     def __post_init__(self) -> None:
-        if type(self.input_id) is not str or _IDENTIFIER.fullmatch(self.input_id) is None:
+        if not is_resume_identifier(self.input_id):
             raise ValueError("Resume lookup input id is invalid")
-        if type(self.record_digest) is not str or _DIGEST.fullmatch(self.record_digest) is None:
+        if not is_resume_digest(self.record_digest):
             raise ValueError("Resume lookup record digest is invalid")
 
 

@@ -6,7 +6,6 @@ current authority nor evidence that an effect or user input completed.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -21,7 +20,11 @@ from loushang.coding.resume.binding import (
     matches_intent,
 )
 from loushang.foundation.json import JSONValue, require_json_mapping
-from loushang.harness.resume_effects import valid_resume_effect_codes
+from loushang.harness.resume_effects import (
+    is_resume_digest,
+    is_resume_identifier,
+    valid_resume_effect_codes,
+)
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript._resume_records import SelectedAncestry
 from loushang.harness.transcript.kinds import EXTENSION_DATA_KIND
@@ -30,8 +33,6 @@ from loushang.harness.transcript.types import AgentTranscriptRecord, ExtensionDa
 CODING_ACTIVATION_ATTEMPT_EXTENSION_TYPE = "coding.activation-attempt/v1"
 CODING_ACTIVATION_ATTEMPT_MAX_BYTES = 4096
 
-_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
-_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _FIELDS = _records.ACTIVATION_ATTEMPT_FIELDS
 
 
@@ -56,19 +57,16 @@ class CodingActivationAttemptV1:
     def _validate_v1_fields(self) -> None:
         for name in ("attempt_id", "request_id", "session_id"):
             value = getattr(self, name)
-            if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
+            if not is_resume_identifier(value):
                 raise ValueError(f"activation attempt {name} is invalid")
-        if self.original_leaf_id is not None and (
-            type(self.original_leaf_id) is not str
-            or _IDENTIFIER.fullmatch(self.original_leaf_id) is None
-        ):
+        if self.original_leaf_id is not None and not is_resume_identifier(self.original_leaf_id):
             raise ValueError("activation attempt original leaf is invalid")
         for name in (
             "ancestry_digest", "plan_fingerprint", "epoch_fingerprint",
             "subject_digest",
         ):
             value = getattr(self, name)
-            if type(value) is not str or _DIGEST.fullmatch(value) is None:
+            if not is_resume_digest(value):
                 raise ValueError(f"activation attempt {name} is invalid")
         if not valid_resume_effect_codes(self.effect_classes):
             raise ValueError("activation attempt effect classes are invalid")
@@ -119,7 +117,7 @@ def project_coding_activation_attempt_path(
     Any unknown attempt version on the path conservatively blocks planning.
     """
 
-    if type(current_session_id) is not str or _IDENTIFIER.fullmatch(current_session_id) is None:
+    if not is_resume_identifier(current_session_id):
         raise ValueError("activation attempt current Session id is invalid")
     result = _records.finish_history_scan(_records.scan_activation_history(
         records,

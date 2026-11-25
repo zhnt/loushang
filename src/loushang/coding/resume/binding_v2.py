@@ -23,6 +23,7 @@ from loushang.coding.resume.binding import (
     matches_intent,
 )
 from loushang.foundation.json import JSONValue
+from loushang.harness.resume_effects import is_resume_digest
 from loushang.harness.transcript import _resume_records as _records
 from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.types import AgentTranscriptRecord
@@ -41,11 +42,7 @@ class CodingRuntimeBindingV2(CodingRuntimeBindingV1):
     def __post_init__(self) -> None:
         CodingRuntimeBindingV1._validate_v1_fields(self)
         _require_v1_budget(CodingRuntimeBindingV1._document(self))
-        if (
-            type(self.intent_digest) is not str
-            or len(self.intent_digest) != 64
-            or any(char not in "0123456789abcdef" for char in self.intent_digest)
-        ):
+        if not is_resume_digest(self.intent_digest):
             raise ValueError(
                 "RuntimeBinding v2 requires the exact stored intent digest"
             )

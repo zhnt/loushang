@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
-import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
@@ -37,6 +36,7 @@ from loushang.harness.authorization import (
     execution_profile_expansion_codes,
 )
 from loushang.harness.resources._catalog_records import fingerprint_catalog_value
+from loushang.harness.resume_effects import is_resume_digest, is_resume_identifier
 from loushang.harness.transcript._resume_continuation import (
     _ResumeContinuationTranscript,
     _ResumeIntentRead,
@@ -61,8 +61,6 @@ class _ActivationOwnerRef(Protocol):
 
 
 _RefT = TypeVar("_RefT", bound=_ActivationOwnerRef)
-_PLAN_IDENTIFIER = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
-_PLAN_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class _ActivationPlanSource(Protocol):
@@ -141,23 +139,18 @@ def require_activation_plan_source(
     history: _ActivationPlanSource, *, session_id: str
 ) -> None:
     """Check the typed file identity and ancestry facts before fingerprinting a Plan."""
-    if type(session_id) is not str or _PLAN_IDENTIFIER.fullmatch(session_id) is None:
+    if not is_resume_identifier(session_id):
         raise ValueError("activation Plan Session id is invalid")
-    if history.selected_leaf_id is not None and (
-        type(history.selected_leaf_id) is not str
-        or _PLAN_IDENTIFIER.fullmatch(history.selected_leaf_id) is None
+    if history.selected_leaf_id is not None and not is_resume_identifier(
+        history.selected_leaf_id
     ):
         raise ValueError("activation Plan selected leaf id is invalid")
     if not is_file_status_fingerprint(history.source_fingerprint):
         raise ValueError("activation Plan source fingerprint is invalid")
-    if (
-        type(history.source_content_digest) is not str
-        or _PLAN_DIGEST.fullmatch(history.source_content_digest) is None
-    ):
+    if not is_resume_digest(history.source_content_digest):
         raise ValueError("activation Plan source content digest is invalid")
-    if history.selected_ancestry_digest is not None and (
-        type(history.selected_ancestry_digest) is not str
-        or _PLAN_DIGEST.fullmatch(history.selected_ancestry_digest) is None
+    if history.selected_ancestry_digest is not None and not is_resume_digest(
+        history.selected_ancestry_digest
     ):
         raise ValueError("activation Plan ancestry digest is invalid")
 
@@ -902,7 +895,7 @@ async def prepare_resume_continuation(
 ) -> _ContinuationT:
     """Commit initial input on the original Writer and publish its prepared Session."""
 
-    if type(input_record_id) is not str or _PLAN_IDENTIFIER.fullmatch(input_record_id) is None:
+    if not is_resume_identifier(input_record_id):
         raise ValueError(f"{product_label} input record identity is invalid")
     if input_record_id == attempt.attempt_id:
         raise ValueError(f"{product_label} intent and input require distinct record identities")

@@ -37,12 +37,24 @@ _FIELDS = frozenset(
 )
 
 
+def is_resume_identifier(value: object) -> bool:
+    return type(value) is str and _IDENTIFIER.fullmatch(value) is not None
+
+
+def is_resume_digest(value: object) -> bool:
+    return type(value) is str and _DIGEST.fullmatch(value) is not None
+
+
+def is_resume_effect_code(value: object) -> bool:
+    return type(value) is str and _EFFECT_CODE.fullmatch(value) is not None
+
+
 def valid_resume_effect_codes(value: tuple[str, ...], *, required: bool = False) -> bool:
     return (
         type(value) is tuple
         and len(value) <= 16
         and (not required or bool(value))
-        and all(type(code) is str and _EFFECT_CODE.fullmatch(code) is not None for code in value)
+        and all(is_resume_effect_code(code) for code in value)
         and value == tuple(sorted(set(value)))
     )
 
@@ -60,10 +72,10 @@ class _ResumeEffectOwnerFields:
 
     def __post_init__(self) -> None:
         label = self._effect_owner_label
-        if type(self.owner_id) is not str or _IDENTIFIER.fullmatch(self.owner_id) is None:
+        if not is_resume_identifier(self.owner_id):
             raise ValueError(f"{label} effect owner id is invalid")
         for value in (self.scope_digest, self.contract_digest):
-            if type(value) is not str or _DIGEST.fullmatch(value) is None:
+            if not is_resume_digest(value):
                 raise ValueError(f"{label} owner digest is invalid")
         if not valid_resume_effect_codes(self.phases, required=True):
             raise ValueError(f"{label} owner phases must be bounded, sorted and unique")
@@ -130,11 +142,11 @@ class ResumeEffectParentContextV1:
             "owner_id",
         ):
             value = getattr(self, name)
-            if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
+            if not is_resume_identifier(value):
                 raise ValueError(f"Invalid Resume parent {name}")
         for name in ("intent_digest", "scope_digest", "contract_digest"):
             value = getattr(self, name)
-            if type(value) is not str or _DIGEST.fullmatch(value) is None:
+            if not is_resume_digest(value):
                 raise ValueError(f"Invalid Resume parent {name}")
         if len(self.canonical_bytes()) > RESUME_EFFECT_PARENT_CONTEXT_MAX_BYTES:
             raise ValueError("Resume parent context exceeds its encoded budget")
