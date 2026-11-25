@@ -1121,3 +1121,15 @@ following ownership boundaries.
 The review used the resource and command protocol round trips, managed
 Workspace continuity and approval regressions, Hosted command and recovery
 tests, and the import and size checks in the AppHost architecture suite.
+
+The implementing Codex agent rechecked the G16 integration budgets against
+`d718054aa`. The four-file Hosted TUI shell total grew from 1,123 to 1,171
+lines in `bb5ba7903` and `b74a99709`. The additions route Session commands
+and completions and present command details and model choices. Execution
+and authorization remain behind AppClient, and the same four files remain
+subject to dependency and native I/O checks. The aggregate now reflects
+1,171 lines. The picker and conversation binding keep their individual limits.
+
+Model reasoning selection added one line to the AppServer local adapter.
+Shutdown now reuses its existing listener fence after joining owned startup
+phases, preserving the 561-line cap and the two-phase shutdown boundary.
