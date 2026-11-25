@@ -17,6 +17,7 @@ on:
           - linux-x86_64-deb
           - linux-aarch64-deb
           - windows-x86_64-nsis
+          - windows-x86_64-msi
           - macos-x86_64-pkg
           - macos-aarch64-pkg
           - all
@@ -53,6 +54,7 @@ jobs:
               "linux-x86_64-deb": "ubuntu-24.04",
               "linux-aarch64-deb": "ubuntu-24.04-arm",
               "windows-x86_64-nsis": "windows-2022",
+              "windows-x86_64-msi": "windows-2022",
               "macos-x86_64-pkg": "macos-15-intel",
               "macos-aarch64-pkg": "macos-15",
           }
@@ -103,7 +105,7 @@ jobs:
           workspaces: |
             gui/src-tauri -> target
             gui/web -> target
-          key: ${{ matrix.target }}
+          key: ${{ matrix.system }}-${{ matrix.arch }}
           cache-on-failure: true
       - name: Build Full installer
         shell: bash
@@ -127,13 +129,14 @@ jobs:
           xvfb-run -a uv run --no-project --python 3.11 python scripts/gui/check_installed_unix_package.py \
             dist/packages/*.deb --arch ${{ matrix.arch }} --evidence dist/package-evidence --commit "${{ needs.resolve.outputs.sha }}" \
             2>&1 | tee dist/package-evidence/install.log
-      - name: Install and test NSIS
+      - name: Install and test Windows installer
         if: matrix.system == 'windows'
         shell: pwsh
         timeout-minutes: 15
         run: |
-          $installer = @(Get-ChildItem dist/packages -Filter '*-setup.exe' -File)
-          if ($installer.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          $pattern = if ('${{ matrix.format }}' -eq 'msi') { '*.msi' } else { '*-setup.exe' }
+          $installer = @(Get-ChildItem dist/packages -Filter $pattern -File)
+          if ($installer.Count -ne 1) { throw 'Expected exactly one Windows installer' }
           $version = uv run --no-project --python 3.11 python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & ./scripts/gui/check_windows_full.ps1 -Installer $installer[0].FullName `

@@ -25,6 +25,9 @@ from internal.common import (
 from internal.windows_tui import build_tui
 
 TAURI = GUI / "src-tauri"
+INSTALLER_CHECKS = Path(__file__).parent / "internal/windows"
+# Preserve Tauri's historical UpgradeCode for this product name.
+MSI_UPGRADE_CODE = "e70965de-1a4b-568b-b7f9-92f454bd1b4b"
 
 
 def run(*args: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
@@ -109,7 +112,10 @@ def main() -> None:
                 "windows": {
                     "bundleVCRuntime": True,
                     "webviewInstallMode": {"type": "downloadBootstrapper", "silent": True},
-                    "nsis": {"installMode": "currentUser"},
+                    "nsis": {
+                        "installMode": "currentUser",
+                        "installerHooks": str(INSTALLER_CHECKS / "nsis-checks.nsh"),
+                    },
                 },
                 "resources": {
                     f"{work.name}/runtime/": "runtime/",
@@ -123,6 +129,15 @@ def main() -> None:
                 },
             },
         }
+        if args.format == "msi":
+            config["bundle"]["windows"].update(
+                allowDowngrades=False,
+                wix={
+                    "upgradeCode": MSI_UPGRADE_CODE,
+                    "fragmentPaths": [str(INSTALLER_CHECKS / "msi-checks.wxs")],
+                    "componentGroupRefs": ["LoushangInstallChecks"],
+                },
+            )
         config_path = work / "bundle.json"
         config_path.write_text(json.dumps(config), encoding="utf-8")
         tauri = str(GUI / "node_modules/.bin/tauri.cmd")

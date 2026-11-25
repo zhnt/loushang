@@ -10,13 +10,15 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $desktop = (Get-Process -Id $PID).SessionId -ne 0 -and [Environment]::UserInteractive
 $Installer = (Resolve-Path $Installer).Path
+$msi = [IO.Path]::GetExtension($Installer) -eq '.msi'
+$format = if ($msi) { 'MSI' } else { 'NSIS' }
 if ($Evidence) { $Evidence = (Resolve-Path $Evidence).Path }
 $checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $Installer).Hash.ToLowerInvariant()
 $expected = "$checksum  $([IO.Path]::GetFileName($Installer))"
 if ((Get-Content -LiteralPath "$Installer.sha256" -Raw).Trim() -cne $expected) {
     throw 'Installer SHA-256 mismatch'
 }
-'PASS NSIS SHA-256'
+"PASS $format SHA-256"
 $uninstallKeys = @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
     'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -42,6 +44,35 @@ $gui = $null
 $web = $null
 $hostStarted = $false
 
+function Invoke-Installer([string]$Phase) {
+    if ($msi) {
+        $operation = if ($Phase -eq 'uninstall') { '/x' } else { '/i' }
+        $logRoot = if ($Evidence) { $Evidence } else { $root }
+        $log = Join-Path $logRoot "msiexec-$Phase.log"
+        $arguments = "$operation `"$Installer`" /qn /norestart /l*v `"$log`""
+        if ($Phase -ne 'uninstall') { $arguments += " INSTALLDIR=`"$install`"" }
+        if ($Phase -eq 'reinstall') { $arguments += ' REINSTALL=ALL REINSTALLMODE=amus' }
+        $process = Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru
+    } elseif ($Phase -eq 'uninstall') {
+        $process = Start-Process (Join-Path $install 'uninstall.exe') -ArgumentList '/S' -Wait -PassThru
+    } else {
+        $process = Start-Process $Installer -ArgumentList "/S /D=$install" -Wait -PassThru
+    }
+    if ($process.ExitCode) { throw "$format $Phase exited with $($process.ExitCode)" }
+}
+
+function Test-PeMachine([string]$Path) {
+    $reader = [IO.BinaryReader]::new([IO.File]::OpenRead($Path))
+    try {
+        if ($reader.ReadUInt16() -ne 0x5a4d) { throw "Missing PE DOS header: $Path" }
+        $reader.BaseStream.Position = 0x3c
+        $reader.BaseStream.Position = $reader.ReadUInt32()
+        if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne 0x8664) {
+            throw "Expected AMD64 PE image: $Path"
+        }
+    } finally { $reader.Dispose() }
+}
+
 function Invoke-Mux([string]$Action) {
     $result = & $mux service $Action --json
     if ($LASTEXITCODE) { throw "AppHost ${Action} failed: $result" }
@@ -61,10 +92,14 @@ $expectedSession = $null
 try {
     foreach ($phase in @('clean', 'reinstall')) {
         "Checking $phase installation"
-        $setup = Start-Process $Installer -ArgumentList "/S /D=$install" -Wait -PassThru
-        if ($setup.ExitCode) { throw "Installer exited with $($setup.ExitCode)" }
+        Invoke-Installer $phase
         foreach ($file in @('loushang-gui.exe','loushang.exe','loushang-web.exe','loushang-mux.exe',
-                'runtime/python.exe','web/index.html','VCRUNTIME140.dll','LICENSE','NOTICE','uninstall.exe')) {
+                'runtime/python.exe','VCRUNTIME140.dll')) {
+            Test-PeMachine (Join-Path $install $file)
+        }
+        $required = @('web/index.html','LICENSE','NOTICE')
+        if (-not $msi) { $required += 'uninstall.exe' }
+        foreach ($file in $required) {
             if (-not (Test-Path (Join-Path $install $file))) { throw "Missing installed file $file" }
         }
         foreach ($file in @('.git','.venv','.loushang','node_modules','src')) {
@@ -79,7 +114,7 @@ try {
             $registered = @(Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue |
                 Where-Object { $_.DisplayName -eq 'loushang-gui' })
             if ($registered.Count -ne 1 -or $registered[0].DisplayVersion -ne $Version) {
-                throw 'Unexpected NSIS registered product version'
+                throw "Unexpected $format registered product version"
             }
         }
         if ((Get-FileHash $config).Hash -ne $configHash) { throw 'Configuration changed during install' }
@@ -178,11 +213,14 @@ try {
         Get-ChildItem -LiteralPath $env:LOUSHANG_HOME -Recurse -File -Filter 'lifecycle-*.jsonl' |
             Copy-Item -Destination $Evidence
     }
-    $uninstaller = Join-Path $install 'uninstall.exe'
-    if (Test-Path $uninstaller) {
-        $result = Start-Process $uninstaller -ArgumentList '/S' -Wait -PassThru
-        if ($result.ExitCode -or (Test-Path (Join-Path $install 'loushang-gui.exe'))) {
-            throw "Uninstall failed: $($result.ExitCode)"
+    $installed = @(Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -eq 'loushang-gui' })
+    if ($installed.Count) {
+        Invoke-Installer uninstall
+        if ((Test-Path (Join-Path $install 'loushang-gui.exe')) -or
+            (Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -eq 'loushang-gui' })) {
+            throw "$format uninstall left installed product files or registration"
         }
         if ((Get-FileHash $config).Hash -ne $configHash -or -not (Test-Path (Join-Path $env:LOUSHANG_HOME 'data'))) {
             throw 'Uninstaller removed user data'

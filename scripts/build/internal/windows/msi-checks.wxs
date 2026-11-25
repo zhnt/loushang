@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <Property Id="LOUSHANG_NSIS_INSTALLED">
+            <RegistrySearch Id="LoushangNsisRegistration" Root="HKCU"
+                            Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\loushang-gui"
+                            Name="UninstallString" Type="raw" Win64="yes" />
+        </Property>
+        <Condition Message="Uninstall the Loushang NSIS installation before installing this MSI.">
+            Installed OR NOT LOUSHANG_NSIS_INSTALLED
+        </Condition>
+        <ComponentGroup Id="LoushangInstallChecks" />
+    </Fragment>
+</Wix>
