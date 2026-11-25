@@ -6,8 +6,10 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import plistlib
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -125,12 +127,31 @@ def session_round_trip(web: Path, state: Path, cwd: Path, env: dict,
             stop_process(process)
 
 
+def verify_elf_payload(resources: Path, arch: str, programs: tuple[Path, ...]) -> None:
+    machine = {"x86_64": 62, "aarch64": 183}[arch]
+    native = set()
+    for path in resources.rglob("*"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        with path.open("rb") as stream:
+            header = stream.read(20)
+        if header.startswith(b"\x7fELF"):
+            assert header[4:6] == b"\x02\x01" and struct.unpack_from("<H", header, 18)[0] == machine, path
+            native.add(path)
+    for program in programs:
+        assert program.resolve() in native, program
+
+
 def verify(args: argparse.Namespace) -> None:
     linux = sys.platform == "linux"
     assert linux or sys.platform == "darwin"
     assert os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get(
         "RUNNER_ENVIRONMENT",
     ) == "github-hosted", "This check modifies system installation paths on a disposable hosted runner"
+    native = {"arm64": "aarch64"}.get(platform.machine(), platform.machine())
+    assert args.arch == native, (args.arch, native)
+    deb_arch = {"x86_64": "amd64", "aarch64": "arm64"}[args.arch]
+    mac_arch = "arm64" if args.arch == "aarch64" else args.arch
     package = args.package.resolve(strict=True)
     evidence = args.evidence.resolve()
     evidence.mkdir(parents=True, exist_ok=True)
@@ -144,7 +165,7 @@ def verify(args: argparse.Namespace) -> None:
     assert package.with_name(package.name + ".sha256").read_text().strip() == f"{digest}  {package.name}"
     if linux:
         assert run("dpkg-deb", "-f", package, "Package", "Version", "Architecture").splitlines() == [
-            "Package: loushang", f"Version: {version}", "Architecture: amd64",
+            "Package: loushang", f"Version: {version}", f"Architecture: {deb_arch}",
         ]
         resources = control
         web = control / "bin/loushang-web"
@@ -187,10 +208,10 @@ def verify(args: argparse.Namespace) -> None:
                     info = plistlib.loads((APP / "Contents/Info.plist").read_bytes())
                     assert info["CFBundleShortVersionString"] == version, info
                     run("/usr/bin/codesign", "--verify", "--deep", "--strict", APP)
-                    assert "x86_64" in run("/usr/bin/lipo", "-archs", gui).split()
+
                 manifest = json.loads((resources / "manifest.json").read_text())
                 assert manifest["commit"] == args.commit and manifest["version"] == version
-                assert manifest["architecture"] == ("x86_64" if linux else "x86_64-apple-darwin")
+                assert manifest["architecture"] == (args.arch if linux else f"{args.arch}-apple-darwin")
                 assert not any((resources / name).exists() for name in (
                     ".git", ".venv", ".loushang", "node_modules", "src",
                 ))
@@ -198,6 +219,11 @@ def verify(args: argparse.Namespace) -> None:
                     assert (resources / name).is_file(), name
                 for path in (gui, tui, mux, web, python):
                     assert path.is_file() and os.access(path, os.X_OK), path
+                if linux:
+                    verify_elf_payload(resources, args.arch, (gui, resources / "bin/harness-gui", web, python))
+                else:
+                    for program in (gui, web, tui, python):
+                        assert mac_arch in run("/usr/bin/lipo", "-archs", program).split(), program
                 try:
                     run(python, "-I", "-c", (
                         "import importlib.metadata as m, loushang.coding, sys;"
@@ -254,6 +280,7 @@ def verify(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path)
+    parser.add_argument("--arch", choices=("x86_64", "aarch64"), required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--commit", required=True)
     verify(parser.parse_args())
