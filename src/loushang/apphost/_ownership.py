@@ -17,6 +17,8 @@ from typing import (
     cast,
 )
 
+from loushang.foundation._owned_tasks import _try_settle_owned_closes
+
 from .contracts import (
     AppHostSessionLeaseV1,
     SessionBindingKeyV1,
@@ -351,15 +353,7 @@ async def _settle_owned_closes(
     """Attempt every close in order, including when an earlier owner fails."""
 
     async def settle() -> None:
-        incomplete = False
-        for close in closes:
-            if close is None:
-                continue
-            try:
-                await close()
-            except BaseException:
-                incomplete = True
-        if incomplete:
+        if not await _try_settle_owned_closes(*closes):
             raise failure from None
 
     task = asyncio.create_task(settle())

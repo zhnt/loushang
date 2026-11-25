@@ -144,6 +144,13 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
             imports = _imports(path)
             accepted_hosting = {
                 Path("src/loushang/apphost/launcher.py"): {"loushang.hosting.contracts"},
+                Path("src/loushang/apphost/local_application.py"): {
+                    "loushang.hosting.foreground_service",
+                },
+                Path("src/loushang/apphost/managed/launchd.py"): {"loushang.hosting.service_launchd"},
+                Path("src/loushang/apphost/managed/systemd.py"): {
+                    "loushang.hosting.foreground_service",
+                },
                 Path("src/loushang/apphost/managed/handoff.py"): {
                     "loushang.hosting.errors", "loushang.hosting.service",
                     "loushang.hosting.service_handoff", "loushang.hosting.service_windows",
@@ -151,6 +158,9 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
                 Path("src/loushang/apphost/managed/lifecycle.py"): {
                     "loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_windows",
                     "loushang.hosting.service_group",
+                },
+                Path("src/loushang/apphost/managed/invocation.py"): {
+                    "loushang.hosting.contracts", "loushang.hosting.service_windows",
                 },
                 Path("src/loushang/apphost/managed/bootstrap.py"): {
                     "loushang.hosting.errors", "loushang.hosting.service",

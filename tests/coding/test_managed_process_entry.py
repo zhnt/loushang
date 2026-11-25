@@ -49,6 +49,12 @@ from tests.hosting._pidfd_signal import send_signal
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux managed process entry")
 
 
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    """Keep the imported AppHost storage fixtures under private ancestors."""
+    return standalone_workspace
+
+
 async def _same_control_operation(operation, *, deadline):
     """Retry only explicit short native lock contention, on the same intent."""
     while True:

@@ -144,6 +144,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         root = args.connection_root.expanduser().resolve()
         if args.action == "serve":
+            from loushang.apphost.managed.systemd import (
+                run_systemd_foreground_application,
+            )
+
             notify_socket = mux_service.foreground_notification_socket(parser, args)
             # Management/help paths do not import the real Product/model bootstrap.
             from ..hosted.bootstrap import CodingHostedLaunchV1
@@ -170,7 +174,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 emit_local_mux_value({"status": "ready", **launch.describe()}, output)
 
             return _execute(
-                lambda: mux_service.run_host(command, notify_socket, ready),
+                partial(run_systemd_foreground_application, command, notify_socket, ready),
                 lambda: command.cleanup_pending,
             )
         client: _LocalMuxClientCommand[HostedMuxShellV1] = _LocalMuxClientCommand(

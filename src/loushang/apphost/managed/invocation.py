@@ -7,8 +7,20 @@ No credentials, file descriptors, Product factories or environment are decoded.
 from __future__ import annotations
 
 import json
+import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+from loushang.hosting.contracts import (
+    ProcessLaunchRequest,
+    ProcessStderrMode,
+    ProcessStdinMode,
+    ProcessStdoutMode,
+    ProcessStreamSpec,
+)
+from loushang.hosting.service_windows import WindowsServiceLaunchRequestV1
 
 from .contracts import (
     _HEX32,
@@ -17,6 +29,7 @@ from .contracts import (
     ManagedNamespaceV1,
     ManagedServiceKeyV1,
     _match,
+    _path,
 )
 from .paths import resolve_managed_paths
 
@@ -135,4 +148,60 @@ def _constant(value: str) -> Any:
     raise ManagedContractError()
 
 
-__all__ = ["ManagedChildInvocationV1"]
+def build_managed_child_launch_request(
+    invocation: ManagedChildInvocationV1,
+    descriptor: int,
+    *,
+    product_id: str,
+    module: str,
+    executable: str,
+    environment: Mapping[str, str],
+    session_root: Path | None,
+    default_session_directory: str,
+) -> ProcessLaunchRequest | WindowsServiceLaunchRequestV1:
+    """Build pure launch material for a selected Product's managed child."""
+    if type(invocation) is not ManagedChildInvocationV1 or invocation.service.product_id != product_id:
+        raise ManagedContractError()
+    require_managed_descriptor(descriptor)
+    _path(executable)
+    selected = (
+        session_root if session_root is not None
+        else Path(invocation.namespace.platform_home) / default_session_directory
+    )
+    if not isinstance(selected, Path):
+        raise ManagedContractError()
+    _path(str(selected))
+    effective = {**environment, **managed_child_environment(invocation)}
+    executable_args = (executable, "-m", module)
+    invocation_json = invocation.to_json()
+    windows = sys.platform == "win32"
+    arguments = ("--inherited", str(descriptor)) if windows else (invocation_json, str(selected), str(descriptor))
+    request = ProcessLaunchRequest(
+        (*executable_args, *arguments), invocation.namespace.platform_home, tuple(effective.items()),
+        ProcessStreamSpec(ProcessStdinMode.CLOSED, ProcessStdoutMode.DISCARD, ProcessStderrMode.DISCARD),
+    )
+    if windows:
+        startup = json.dumps([invocation_json, str(selected)], ensure_ascii=False, separators=(",", ":"))
+        return WindowsServiceLaunchRequestV1(request, startup.encode("utf-8"))
+    return request
+
+
+def require_managed_descriptor(value: int) -> None:
+    maximum = 2**64 if sys.platform == "win32" else 2**31
+    if type(value) is not int or not 3 <= value < maximum:
+        raise ManagedContractError()
+
+
+def managed_child_environment(invocation: ManagedChildInvocationV1) -> dict[str, str]:
+    paths = resolve_managed_paths(
+        invocation.namespace, invocation.service, invocation.instance,
+        runtime_root=invocation.runtime_root, temporary_override=invocation.temporary_override,
+    )
+    return {
+        "LOUSHANG_HOME": invocation.namespace.platform_home,
+        "LOUSHANG_RUNTIME_DIR": invocation.runtime_root,
+        "LOUSHANG_TMPDIR": str(paths.temporary),
+    }
+
+
+__all__ = ["ManagedChildInvocationV1", "build_managed_child_launch_request"]

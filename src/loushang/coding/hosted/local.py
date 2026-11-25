@@ -10,10 +10,10 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.apphost.local import (
     _failed as _failed,
 )
-from loushang.apphost.local import (
+from loushang.apphost.local_application import (
     _LocalApplicationStartup,
 )
-from loushang.apphost.local import (
+from loushang.apphost.local_application import (
     _LocalLaunchFacts as _LocalLaunchFacts,
 )
 from loushang.appserver.framing import require_timeout
