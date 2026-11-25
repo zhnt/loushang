@@ -15,9 +15,6 @@ from loushang.coding.package import product_worker_history_stage_v2 as stage_mod
 from loushang.coding.package.product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
 )
-from loushang.coding.package.product_worker_history_retention import (
-    _known_worker_state_name,
-)
 from loushang.coding.package.product_worker_history_stage_v2 import (
     CodingWorkerV2PreparationError,
     CodingWorkerV2PreparationIntent,
@@ -279,8 +276,8 @@ def test_product_gc_blocks_staged_v2_artifacts(
     prepared = _prepared()
     with _rooted(tmp_path) as rooted:
         stage_coding_worker_v2_preparation(rooted, prepared=prepared)
-    assert all(_known_worker_state_name(name) for name in PREPARATION_STATE_NAMES)
-    assert _known_worker_state_name(PRODUCT_OWNER_INDEX_NAME)
+    assert all(history_owner.known_worker_state_name(name) for name in PREPARATION_STATE_NAMES)
+    assert history_owner.known_worker_state_name(PRODUCT_OWNER_INDEX_NAME)
     product = object.__new__(PosixLocalWheelProductSessionOwner)
     object.__setattr__(product, "state_root", tmp_path)
     object.__setattr__(product, "policy", SimpleNamespace(product_id="coding"))

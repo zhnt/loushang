@@ -1,5 +1,15 @@
 # Coding剩余职责实施优先级
 
+## Worker 原生操作入口和历史识别
+
+Harness Worker CLI 先核实原生平台，再解析工作区并持有相应的 Product。Linux 续用只读候选状态入口，Windows 续用精确的原生 owner 类型检查。Linux 发布的审阅、批准、安装和修复由共享命令实现调用原有 Package Product 权限。Windows 共用 Wheel 读取、审阅身份校验与批准回执投影，平台自身的后端安装与恢复保留各自的合同。
+
+Linux 历史审阅、准备、GC 检查和恢复直接使用 Harness 持有的已知文件名和暂存规则。故障注入仍作用于相应的实际读写 owner，Coding 保留产品授权、原记录类型和命令兼容。
+
+相对 `a06aec91e`，Coding 减少 79 行，Harness 增加 132 行，Hosting 与其他生产 Python 变化 0 行，系统生产 Python 增加 53 行，测试减少 3 行。共享入口和执行归属的变化以此成本计入，文件识别规则停用旧转发的收益计入本批。
+
+Linux 上 262 项既有用例通过，涵盖已安装原生 CLI、发布修复、准备与 GC 关联、固定历史和批准记录。Windows 平台关闭和错误优先级由既有测试在 Linux 验证，1 项原生 Windows 用例跳过。
+
 ## 能力 Provider 与工作区授权去重
 
 Arch 与 LSP 共用 Harness 对 Provider 配置字段、Facet 接口和运行时所有权的校验及释放。两个内置插件分别从各自的 Provider 定义生成声明。工作区路径由 Harness Workspace 核验。LSP 共用查询与提纲的服务选择、协议能力检查和文档打开。Coding 保留分析语义、协议请求与结果、Provider 错误及产品配置类型。

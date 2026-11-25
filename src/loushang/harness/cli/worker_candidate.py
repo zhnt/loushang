@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import platform
+import sys
 from argparse import ArgumentParser, Namespace, _SubParsersAction
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Literal, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -17,6 +21,7 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductSelectedManifestReadPort,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    NativeWorkerReleaseInput,
     ProductWorkerOptInFacts,
     _capture_worker_candidate_installations,
     _change_worker_candidate_lifecycle,
@@ -30,9 +35,24 @@ from loushang.harness.plugin_management.package_product import (
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWorkerAdmissionV1,
 )
+from loushang.harness.worker.history._native_approval import _NativeReviewMethods
 from loushang.harness.worker.package_candidate import WorkerPackageCandidateV1
 
 from .package_lifecycle import package_operator_error_code, run_package_operator_command
+
+if TYPE_CHECKING:
+    from loushang.harness.package_product._application_runtime import (
+        FencedOrdinaryProductApplication,
+    )
+    from loushang.harness.package_product._linux_worker_native_release import (
+        A,
+        C,
+        M,
+        R,
+        _ApprovalDecisionT,
+        _LinuxWorkerNativeReleaseCustody,
+        _ProductRootedNativeApprovalRecords,
+    )
 
 _CHANGE_ACTIONS = (
     "candidate-install",
@@ -107,8 +127,88 @@ def add_native_worker_review_commands(
     approve.add_argument("--expected-generation", type=int, required=True)
 
 
+_ReleaseReviewT = TypeVar("_ReleaseReviewT", bound=_NativeReviewMethods)
+
+
+def inspect_native_worker_release(
+    release_input: NativeWorkerReleaseInput,
+    args: Namespace,
+    inspect_release: Callable[[bytes], _ReleaseReviewT],
+    *,
+    require_review_id: bool,
+    changed_message: str,
+) -> tuple[bytes, _ReleaseReviewT]:
+    """Capture the Wheel once and validate an operator's exact review reference."""
+    wheel = release_input.read(args.wheel)
+    review = inspect_release(wheel)
+    if require_review_id and args.review_id != review.review_id:
+        raise ValueError(changed_message)
+    return wheel, review
+
+
+def execute_linux_worker_release_action(
+    product: PosixLocalWheelProductSessionOwner,
+    args: Namespace,
+    release_input: NativeWorkerReleaseInput,
+    custody: _LinuxWorkerNativeReleaseCustody[A, _ReleaseReviewT, C, M, R],
+    approval: _ProductRootedNativeApprovalRecords[A, _ApprovalDecisionT],
+    *,
+    label: str,
+) -> dict[str, object]:
+    """Drive operator actions through the original Linux Product approval and custody."""
+    action = args.action
+    if action == "status":
+        return native_worker_approval_document(approval.current())
+    if action == "repair-install":
+        decision = approval.current()
+        if decision is None or decision.action != "approve" or decision.approval is None:
+            raise ValueError(f"{label} native release approval is absent")
+        reader = custody.repair(product, approval_owner=approval, approved=decision.approval)
+        return {"nativeClosure": reader.current_closure().to_dict()}
+    approved = None
+    if action != "revoke":
+        wheel, review = inspect_native_worker_release(
+            release_input,
+            args,
+            lambda body: custody.review(product, wheel=body),
+            require_review_id=action == "approve",
+            changed_message=f"{label} native release review changed",
+        )
+        if action == "review":
+            return {"nativeReleaseReview": review.to_dict()}
+        approved = review.approval
+        if action == "install":
+            decision = approval.current()
+            if (
+                decision is None
+                or decision.action != "approve"
+                or decision.approval != approved
+            ):
+                raise ValueError(f"{label} native release approval is not current")
+            reader = custody.install(
+                product, approval_owner=approval, approved=approved, wheel=wheel
+            )
+            return {"nativeClosure": reader.current_closure().to_dict()}
+        if action != "approve":
+            raise ValueError(f"{label} native command is unsupported")
+    return native_worker_approval_document(
+        approval.change(
+            operation_id=args.operation_id,
+            expected_generation=args.expected_generation,
+            action=action,
+            approval=approved,
+        )
+    )
+
+
 class _WorkerCandidateRecord(Protocol):
     def to_dict(self) -> dict[str, object]: ...
+
+
+def native_worker_approval_document(
+    decision: _WorkerCandidateRecord | None,
+) -> dict[str, object]:
+    return {"approvalDecision": None if decision is None else decision.to_dict()}
 
 
 class _CaptureWorkerCandidate(Protocol):
@@ -135,6 +235,9 @@ class _OptInAuthority(Protocol):
 
 
 _LayoutT = TypeVar("_LayoutT")
+_ProductT = TypeVar(
+    "_ProductT", PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,8 +262,18 @@ class NativeWorkerCandidateOperator:
         resolve_layout: Callable[[Path], _LayoutT],
         admit: Callable[[_LayoutT], _CaptureWorkerCandidate],
         execute: Callable[[_LayoutT, Path, Namespace], dict[str, object]],
+        platform_unavailable: str | None = None,
     ) -> int:
         """Keep inert capture outside the native Product application lifetime."""
+        if platform_unavailable is not None:
+            admitted = (
+                os.name == "nt" and platform.machine().lower() in {"x86_64", "amd64"}
+                if self.native_platform == "windows-amd64"
+                else os.name == "posix" and sys.platform.startswith("linux")
+            )
+            if not admitted:
+                sys.stderr.write(f"{self.refused}: {platform_unavailable}\n")
+                return 1
 
         def dispatch(workspace: Path) -> dict[str, object]:
             layout = resolve_layout(workspace)
@@ -188,6 +301,26 @@ class NativeWorkerCandidateOperator:
             failure_reason=partial(package_operator_error_code, fallback=self.failure_code),
             compact=self.compact,
         )
+
+    @contextmanager
+    def hold_installed_product(
+        self,
+        application: FencedOrdinaryProductApplication,
+        product_type: type[_ProductT],
+        *,
+        unavailable: str,
+    ) -> Iterator[_ProductT]:
+        """Hold the native Product owner only for the requested operator action."""
+        with closing(application):
+            product = application.runtime_owner.product_owner
+            matches_type = (
+                type(product) is product_type
+                if self.native_platform == "windows-amd64"
+                else isinstance(product, product_type)
+            )
+            if not matches_type:
+                raise ValueError(unavailable)
+            yield cast(_ProductT, product)
 
     def execute_candidate_action(
         self,

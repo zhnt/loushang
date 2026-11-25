@@ -11,17 +11,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 from loushang.harness.package_product._linux_worker_history import (
-    _PAYLOAD_REPAIR as _PAYLOAD_REPAIR,
-)
-from loushang.harness.package_product._linux_worker_history import (
-    _REGISTERED_REPAIR_STAGING as _REGISTERED_REPAIR_STAGING,
-)
-from loushang.harness.package_product._linux_worker_history import (
     HistoryProofBindings,
     review_history,
-)
-from loushang.harness.package_product._linux_worker_history import (
-    known_worker_state_name as _known_worker_state_name,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -230,9 +221,6 @@ def _history_proof_bindings() -> HistoryProofBindings[
         gated_review=gated_review,
         review=lambda: CodingWorkerHistoryRetentionReviewV1,
         reference=lambda: CodingWorkerAttemptReferenceV1,
-        known_state_name=lambda name: _known_worker_state_name(name),
-        payload_repair=_PAYLOAD_REPAIR,
-        registered_staging=_REGISTERED_REPAIR_STAGING,
         backup_attestation=lambda product, *, attempt_id: (
             observe_coding_worker_backup_references_under_gc_guard(
                 product, attempt_id=attempt_id
