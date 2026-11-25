@@ -22,6 +22,7 @@ from loushang.coding.adapters.harnesswork import (
     project_coding_runtime_event,
 )
 from loushang.harness.artifacts import SessionBlobRef, SessionBlobStore
+from loushang.harness.session.bash import bash_verification_output_refs
 from loushang.harnesswork import WorkRunSpec
 from loushang.harnesswork.goal import (
     GoalAssessment,
@@ -461,19 +462,13 @@ class CalculatorPolicy:
             raise GoalError("verification report missing")
         report_ref = report_records[0].blob
         report = driver.strict_json(self.blobs.read_bytes(report_ref))
-        outputs = [SessionBlobRef.from_manifest_entry(v) for v in report["outputs"]]
-        if report["output_basis"] == "sdk-text-view":
-            output = self.blobs.read_bytes(outputs[0])
-        else:
+        outputs = bash_verification_output_refs(report)
+        if report["output_basis"] != "sdk-text-view":
             # Original retained references keep their stream logical names.
-            stdout = [
-                r
-                for r in outputs
-                if r.logical_name.endswith("stdout.txt") or "stdout" in r.logical_name
-            ]
-            if len(stdout) != 1:
+            outputs = tuple(ref for ref in outputs if "stdout" in ref.logical_name)
+            if len(outputs) != 1:
                 raise GoalError("verification stdout stream ambiguous")
-            output = self.blobs.read_bytes(stdout[0])
+        output = self.blobs.read_bytes(outputs[0])
         if len(output) > 64 * 1024:
             raise GoalError("verification result exceeds profile")
         result = driver.strict_json(output)

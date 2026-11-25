@@ -644,7 +644,6 @@ class CodingHostedResumeCatalogV1:
             raise ValueError("Coding Hosted Resume history budget is invalid")
         self._catalog = catalog
         self._max_bytes = max_bytes
-        self._closing = False
 
     @property
     def scopes(self) -> tuple[CodingHostedScopeV1, ...]:
@@ -688,11 +687,9 @@ class CodingHostedResumeCatalogV1:
         return await self._catalog.create_candidate(intent)
 
     def fence(self) -> None:
-        self._closing = True
         self._catalog.fence()
 
     async def close(self) -> None:
-        self._closing = True
         await self._catalog.close()
 
 

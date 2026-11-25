@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from loushang.foundation.platform_paths import resolve_platform_home
-from loushang.harness.artifacts import SessionBlobRef
+from loushang.harness.session.bash import bash_verification_output_refs
 from loushang.harness.transcript.source_reader import TranscriptSourceReader
 from loushang.harnesswork import WorkOperation, WorkRunSpec, WorkStepSpec
 from loushang.harnesswork.goal import (
@@ -615,11 +615,8 @@ class RepositoryDomain:
                 next(r.blob for r in evidence.records if r.role == "report")
             )
         )
-        outputs = [
-            self.blobs.read_bytes(SessionBlobRef.from_manifest_entry(ref)).decode()
-            for ref in report["outputs"]
-        ]
-        result = json.loads("".join(outputs))
+        outputs = bash_verification_output_refs(report)
+        result = json.loads("".join(self.blobs.read_bytes(ref).decode() for ref in outputs))
         validate_check_result(result, batch.source["check"])
         expected_identity = {
             "goal_id": batch.goal_id,
