@@ -515,8 +515,7 @@ class PluginEnablementMigrationJournal:
         if not isinstance(request, PluginEnablementMigrationRequestV1):
             raise TypeError("Plugin enablement migration request is required")
         with self._exclusive():
-            events = self._load_unlocked()
-            snapshots = _project_events(events)
+            events, snapshots = self._load_unlocked()
             existing = snapshots.get(request.installation_key)
             if existing is not None:
                 if existing.request != request:
@@ -536,7 +535,7 @@ class PluginEnablementMigrationJournal:
                 prior_desired_history_revision=prior_desired_history_revision,
             )
             self._append_unlocked(event)
-            return _snapshot_from_acceptance(event)
+            return _snapshot_from_event(event, accepted=event.journal_revision)
 
     def record_desired_commit(
         self,
@@ -547,8 +546,8 @@ class PluginEnablementMigrationJournal:
         operation_ids: tuple[str, ...],
     ) -> PluginEnablementMigrationSnapshotV1:
         with self._exclusive():
-            events = self._load_unlocked()
-            current = _snapshot_for_id(events, migration_id, path=self._path)
+            events, snapshots = self._load_unlocked()
+            current = _snapshot_for_id(snapshots, migration_id, path=self._path)
             if current.phase != "accepted":
                 if (
                     current.disposition != disposition
@@ -581,8 +580,8 @@ class PluginEnablementMigrationJournal:
         migration_id: str,
     ) -> PluginEnablementMigrationSnapshotV1:
         with self._exclusive():
-            events = self._load_unlocked()
-            current = _snapshot_for_id(events, migration_id, path=self._path)
+            events, snapshots = self._load_unlocked()
+            current = _snapshot_for_id(snapshots, migration_id, path=self._path)
             if current.phase in {"compatibility_window", "finalized"}:
                 return current
             if current.phase != "desired_committed":
@@ -610,8 +609,8 @@ class PluginEnablementMigrationJournal:
         if not isinstance(evidence, PluginEnablementFinalizationEvidenceV1):
             raise TypeError("Plugin enablement finalization evidence is required")
         with self._exclusive():
-            events = self._load_unlocked()
-            current = _snapshot_for_id(events, migration_id, path=self._path)
+            events, snapshots = self._load_unlocked()
+            current = _snapshot_for_id(snapshots, migration_id, path=self._path)
             if current.phase == "finalized":
                 if current.finalization_evidence != evidence:
                     raise self._error(
@@ -646,20 +645,18 @@ class PluginEnablementMigrationJournal:
         key: PluginInstallationKeyV1,
     ) -> PluginEnablementMigrationSnapshotV1 | None:
         with self._read_lock():
-            return _project_events(self._load_unlocked()).get(key)
+            _, snapshots = self._load_unlocked()
+            return snapshots.get(key)
 
     def snapshots(self) -> tuple[PluginEnablementMigrationSnapshotV1, ...]:
         with self._read_lock():
-            return tuple(
-                sorted(
-                    _project_events(self._load_unlocked()).values(),
-                    key=lambda item: item.request.installation_key,
-                )
-            )
+            _, snapshots = self._load_unlocked()
+            return _ordered_snapshots(snapshots)
 
     def records(self) -> tuple[PluginEnablementMigrationEventV1, ...]:
         with self._read_lock():
-            return self._load_unlocked()
+            events, _ = self._load_unlocked()
+            return events
 
     def management_snapshot(self) -> PluginManagementMigrationSnapshotV1:
         """Project receipt phases for the common read model."""
@@ -721,11 +718,7 @@ class PluginEnablementMigrationJournal:
                 )
 
     def assert_legacy_mutation_allowed(self, key: PluginInstallationKeyV1) -> None:
-        if self.snapshot(key) is not None:
-            raise self._error(
-                "Legacy Plugin enablement is read-only after migration acceptance",
-                code="plugin_enablement_legacy_mutation_rejected",
-            )
+        _require_legacy_mutation_allowed(self.snapshot(key) is not None, self._path)
 
     def _exclusive(self) -> AbstractContextManager[None]:
         return journal_file_lock(
@@ -751,27 +744,20 @@ class PluginEnablementMigrationJournal:
             durability=self._unlocked_durability,
         )
 
-    def _load_unlocked(self) -> tuple[PluginEnablementMigrationEventV1, ...]:
+    def _load_unlocked(
+        self,
+    ) -> tuple[tuple[PluginEnablementMigrationEventV1, ...], _MigrationProjection]:
         if not self._path.exists():
-            return ()
+            return (), {}
         try:
-            snapshot: JsonlSnapshot[None, PluginEnablementMigrationEventV1] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=PLUGIN_ENABLEMENT_MIGRATION_EVENT_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
-            )
-            events = snapshot.records
-            if any(
-                event.journal_revision != index
-                for index, event in enumerate(events, start=1)
-            ):
-                raise ValueError("Migration journal revisions are not contiguous")
-            _project_events(events)
-            return events
+            events = load_jsonl(
+                self._path,
+                record_codec=PLUGIN_ENABLEMENT_MIGRATION_EVENT_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=self._load_policy,
+            ).records
+            return events, _project_events(events)
         except (JournalCodecError, JournalFileError, TypeError, ValueError) as exc:
             raise self._error(
                 "Plugin enablement migration journal is corrupt",
@@ -1139,10 +1125,19 @@ def plugin_enablement_legacy_input_fingerprint(
     ).hexdigest()
 
 
+_MigrationProjection = dict[
+    PluginInstallationKeyV1, PluginEnablementMigrationSnapshotV1
+]
+
+
 def _project_events(
     events: tuple[PluginEnablementMigrationEventV1, ...],
-) -> dict[PluginInstallationKeyV1, PluginEnablementMigrationSnapshotV1]:
-    snapshots: dict[PluginInstallationKeyV1, PluginEnablementMigrationSnapshotV1] = {}
+) -> _MigrationProjection:
+    if any(
+        event.journal_revision != index for index, event in enumerate(events, start=1)
+    ):
+        raise ValueError("Migration journal revisions are not contiguous")
+    snapshots: _MigrationProjection = {}
     ids: set[str] = set()
     for event in events:
         key = event.request.installation_key
@@ -1151,7 +1146,9 @@ def _project_events(
             if current is not None or event.migration_id in ids:
                 raise ValueError("Migration acceptance is not unique")
             ids.add(event.migration_id)
-            snapshots[key] = _snapshot_from_acceptance(event)
+            snapshots[key] = _snapshot_from_event(
+                event, accepted=event.journal_revision
+            )
             continue
         if current is None:
             raise ValueError("Migration phase has no acceptance")
@@ -1183,12 +1180,6 @@ def _project_events(
             accepted=current.accepted_journal_revision,
         )
     return snapshots
-
-
-def _snapshot_from_acceptance(
-    event: PluginEnablementMigrationEventV1,
-) -> PluginEnablementMigrationSnapshotV1:
-    return _snapshot_from_event(event, accepted=event.journal_revision)
 
 
 def _snapshot_from_event(
@@ -1246,13 +1237,13 @@ def _event_from_snapshot(
 
 
 def _snapshot_for_id(
-    events: tuple[PluginEnablementMigrationEventV1, ...],
+    snapshots: _MigrationProjection,
     migration_id: str,
     *,
     path: Path,
 ) -> PluginEnablementMigrationSnapshotV1:
     _require_sha256(migration_id, name="migration id")
-    for snapshot in _project_events(events).values():
+    for snapshot in snapshots.values():
         if snapshot.migration_id == migration_id:
             return snapshot
     raise PluginEnablementMigrationError(
@@ -1421,14 +1412,38 @@ def _invalid_record(message: str) -> JournalCodecError:
     )
 
 
+def assert_captured_legacy_mutation_allowed(
+    raw: str, *, path: Path, key: PluginInstallationKeyV1
+) -> None:
+    """Guard a legacy write using migration history already captured under lock."""
+    _require_legacy_mutation_allowed(key in _decode_migration_history(raw, path), path)
+
+
+def _require_legacy_mutation_allowed(migrated: bool, path: Path) -> None:
+    if migrated:
+        raise PluginEnablementMigrationError(
+            "Legacy Plugin enablement is read-only after migration acceptance",
+            code="plugin_enablement_legacy_mutation_rejected",
+            path=path,
+        )
+
+
 def decode_plugin_enablement_migration_snapshots(
     raw: str,
     *,
     path: str | Path,
 ) -> tuple[PluginEnablementMigrationSnapshotV1, ...]:
     """Project an already-authorized migration journal snapshot."""
+    return _ordered_snapshots(_decode_migration_history(raw, Path(path)))
 
-    target = Path(path)
+
+def _ordered_snapshots(
+    snapshots: _MigrationProjection,
+) -> tuple[PluginEnablementMigrationSnapshotV1, ...]:
+    return tuple(snapshots[key] for key in sorted(snapshots))
+
+
+def _decode_migration_history(raw: str, target: Path) -> _MigrationProjection:
     try:
         decoded: JsonlSnapshot[None, PluginEnablementMigrationEventV1] = decode_jsonl(
             raw,
@@ -1439,16 +1454,7 @@ def decode_plugin_enablement_migration_snapshots(
             # its existing repair-on-load responsibility.
             load_policy=JournalLoadPolicy(partial_tail="skip"),
         )
-        events = decoded.records
-        if any(
-            event.journal_revision != index
-            for index, event in enumerate(events, start=1)
-        ):
-            raise ValueError("Migration journal revisions are not contiguous")
-        snapshots = _project_events(events)
-        return tuple(
-            sorted(snapshots.values(), key=lambda item: item.request.installation_key)
-        )
+        return _project_events(decoded.records)
     except (JournalCodecError, JournalFileError, TypeError, ValueError) as exc:
         raise PluginEnablementMigrationError(
             "Plugin enablement migration journal is corrupt",
