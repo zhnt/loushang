@@ -26,6 +26,7 @@ from typing import (
     cast,
 )
 
+from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from packaging.version import Version
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -99,6 +100,10 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 from ._legacy_runtime import _LegacyEpoch, matches_epoch_layout
 
 if TYPE_CHECKING:
+    from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
+        PackageInspectionBudgetV1,
+    )
+
     from ._application_runtime import FencedSourceCatalogRoots
     from ._legacy_inventory import LegacyInventoryEvidence, _BindingHead
     from ._legacy_local_migration import _AcceptedSource
@@ -999,6 +1004,58 @@ class _DataWheelSourceCatalog(_PluginWheelSourceCatalog[PluginRecordT]):
         )
 
 
+_DEPENDENCY_WHEEL_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.whl\Z")
+
+
+def dependency_wheel_identity(filename: str, *, maximum_length: int) -> tuple[str, str]:
+    """Validate a catalog filename before selecting a project and version."""
+    invalid_filename = "Dependency Wheel filename is invalid"
+    if (
+        not isinstance(filename, str)
+        or len(filename) > maximum_length
+        or _DEPENDENCY_WHEEL_FILENAME.fullmatch(filename) is None
+    ):
+        raise ValueError(invalid_filename)
+    try:
+        project_name, version, _, _ = parse_wheel_filename(filename)
+    except InvalidWheelFilename as exc:
+        raise ValueError(invalid_filename) from exc
+    return project_name, str(version)
+
+
+def verify_dependency_wheel_source(
+    filename: str,
+    body: bytes,
+    *,
+    maximum_filename_length: int,
+    maximum_artifact_bytes: int,
+    budgets: PackageInspectionBudgetV1,
+    error_factory: Callable[[str], Exception],
+) -> None:
+    """Bind inert source bytes to the same identity used by the catalog."""
+    from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
+        PackageWheelVerificationError,
+        inspect_package_wheel_bytes,
+    )
+
+    project_name, version = dependency_wheel_identity(
+        filename, maximum_length=maximum_filename_length
+    )
+    try:
+        inspected = inspect_package_wheel_bytes(
+            body,
+            wheel_filename=filename,
+            budgets=budgets,
+            max_artifact_bytes=maximum_artifact_bytes,
+        )
+    except PackageWheelVerificationError as exc:
+        raise error_factory("Dependency Wheel metadata is invalid") from exc
+    if inspected.distribution != project_name or Version(inspected.version) != Version(
+        version
+    ):
+        raise error_factory("Dependency Wheel metadata identity changed")
+
+
 class _DependencySourceRecord(_SourceRecord, Protocol):
     @property
     def project_name(self) -> str: ...
@@ -1016,10 +1073,13 @@ class _DependencyWheelBindingMethods(_ExternalWheelBindingMethods):
     project_name: str
     version: str
     _dependency_directory: ClassVar[str]
+    _max_wheel_filename: ClassVar[int]
 
-    @staticmethod
-    def _wheel_identity(wheel_filename: str) -> tuple[str, str]:
-        raise NotImplementedError
+    @classmethod
+    def _wheel_identity(cls, wheel_filename: str) -> tuple[str, str]:
+        return dependency_wheel_identity(
+            wheel_filename, maximum_length=cls._max_wheel_filename
+        )
 
     @classmethod
     def _wheel_identity_fields(cls, wheel_filename: str) -> dict[str, str]:
