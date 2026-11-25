@@ -1,12 +1,15 @@
-"""Disposable Product state for authoring checks."""
+"""Disposable Product state and evidence for offline authoring checks."""
 
 from __future__ import annotations
 
+import json
 import os
 import stat
+import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 from loushang.harness.resources.packages._file_consumption import (
     borrowed_binary_stream,
@@ -75,3 +78,128 @@ def hold_authoring_home(path: Path) -> Iterator[None]:
             os.environ.pop("LOUSHANG_HOME", None)
         else:
             os.environ["LOUSHANG_HOME"] = previous
+
+
+def record_product_smoke_failure(
+    report: dict[str, object],
+    stage: str,
+    code: str,
+    detail: str | None = None,
+    scratch_root: Path | None = None,
+) -> dict[str, object]:
+    report["failedStage"] = stage
+    report["errorCode"] = code
+    if stage in {"product_admission", "product_selection", "product_use"}:
+        key = {
+            "product_admission": "productAdmission",
+            "product_selection": "productSelection",
+            "product_use": "productUse",
+        }[stage]
+        report[key] = "failed"
+    if detail:
+        report["detail"] = (
+            detail.replace(str(scratch_root), "<disposable-workspace>")
+            if scratch_root is not None
+            else detail
+        )[:1000]
+    return report
+
+
+def smoke_worker_candidate_selection(
+    report: dict[str, object],
+    *,
+    root: Path,
+    command_prefix: tuple[str, ...],
+    wheel: Path,
+    plugin_id: str,
+    contribution_id: str,
+    owner_id: str,
+    native_platform: Literal["linux-x86_64", "windows-amd64"],
+) -> dict[str, object]:
+    """Exercise native candidate admission and read-back in an authoring workspace."""
+
+    def command(action: str, *arguments: str) -> dict[str, object]:
+        completed = subprocess.run(
+            (*command_prefix, action, *arguments),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip()[-1000:] or "Worker command refused")
+        result = json.loads(completed.stdout)
+        if not isinstance(result, dict):
+            raise ValueError("Worker command returned an invalid Product result")
+        return result
+
+    linux = native_platform == "linux-x86_64"
+    failure_stage = "product_admission"
+    try:
+        capture = command(
+            "candidate-capture",
+            "--wheel",
+            str(wheel),
+            "--contribution-id",
+            contribution_id,
+            "--owner-id",
+            owner_id,
+            *(("--native-platform", native_platform) if linux else ()),
+        )
+        binding = capture["workerCandidateBinding"]
+        if not isinstance(binding, dict) or binding.get("pluginId") != plugin_id:
+            raise ValueError("Captured Worker identity differs from request")
+        digest = binding["artifactDigest"]
+        if digest != report["artifactSha256"]:
+            raise ValueError("Captured Worker differs from the author Wheel")
+        candidate = ("--plugin-id", plugin_id, "--artifact-digest", digest)
+        installed = command(
+            "candidate-install", *candidate, "--operation-id", "author-smoke-install"
+        )
+        report["productAdmission"] = "passed"
+        failure_stage = "product_selection"
+        install_result = installed["candidateInstall"]
+        if not isinstance(install_result, dict):
+            raise ValueError("Product install result is unavailable")
+        revision = install_result["inventoryRevision"]
+        if type(revision) is not int:
+            raise ValueError("Product inventory revision is unavailable")
+        command(
+            "candidate-enable",
+            *candidate,
+            "--operation-id",
+            "author-smoke-enable",
+            "--expected-inventory-revision",
+            str(revision),
+        )
+        status = command(
+            "candidate-status" if linux else "candidate-selection", "--plugin-id", plugin_id
+        )
+        selection = status["candidateSelection"]
+        if not isinstance(selection, dict) or selection.get("stage") != "observed_in_read":
+            raise ValueError("Selected Worker was not observed in Product")
+        if linux:
+            selected = (
+                status.get("snapshotStatus") == "partial_evidence"
+                and status.get("candidateOptInAlignment") == "not_allowed"
+            )
+        else:
+            selected = (
+                selection.get("pluginId") == plugin_id
+                and selection.get("artifactDigest") == digest
+                and status.get("productUse") == "not_checked"
+            )
+        if not selected:
+            raise ValueError("Selected Worker was not observed in Product")
+    except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+        code = (
+            "worker_candidate_admission_refused"
+            if failure_stage == "product_admission"
+            else "worker_candidate_selection_refused"
+        )
+        return record_product_smoke_failure(report, failure_stage, code, str(exc), root)
+    report["productSelection"] = "passed"
+    report["selectedPluginVersion"] = selection["pluginVersion"]
+    report["status"] = "passed"
+    return report
