@@ -5,10 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 from collections.abc import Sequence
-from contextlib import redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,6 +14,7 @@ from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
 from loushang.apphost.continuity import HostedApplicationContinuityRuntimeV1
 from loushang.apphost.foreground import HostedForegroundRuntimeV1
+from loushang.apphost.integrations._foreground_process import run_foreground_process
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.protocol import AppServiceError
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
@@ -242,33 +241,16 @@ def _parse_options(
 
 
 def execute_hosted_command(command: CodingHostedCommandV1) -> int:
-    """Process-only runner; an incomplete cleanup is a fatal nonzero exit.
-
-    The outer parent retains terminate/reap authority. Avoid Runner.close's
-    unbounded cancellation join only when our retained cleanup is incomplete;
-    do not claim that an abrupt process exit completed application settlement.
-    """
+    """Run the explicit foreground stdio command and report its exit status."""
     input_fd, output_fd = sys.stdin.fileno(), sys.stdout.fileno()
-    runner = asyncio.Runner()
-    status = 0
-    with redirect_stdout(sys.stderr):
-        try:
-            runner.run(command.run(input_fd=input_fd, output_fd=output_fd))
-        except KeyboardInterrupt:
-            status = 130
-            print("hosted_interrupted", file=sys.stderr)
-        except AppServiceError as error:
-            status = 1
-            print(error.code.value, file=sys.stderr)
-        except Exception:
-            status = 1
-            print("hosted_application_failed", file=sys.stderr)
-        finally:
-            if command.cleanup_pending:
-                print("hosted_cleanup_incomplete", file=sys.stderr, flush=True)
-                os._exit(status or 1)
-            runner.close()
-    return status
+    return run_foreground_process(
+        lambda: command.run(input_fd=input_fd, output_fd=output_fd),
+        lambda: command.cleanup_pending,
+        reportable_errors=(AppServiceError,),
+        interrupted="hosted_interrupted",
+        failed="hosted_application_failed",
+        cleanup_incomplete="hosted_cleanup_incomplete",
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -412,6 +412,7 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),
         Path("src/loushang/coding/cli/hosted_client.py"),
+        Path("src/loushang/coding/cli/mux.py"),
         Path('src/loushang/coding/hosted/bootstrap.py'),
         Path('src/loushang/coding/hosted/local.py'),
         # Accepted optional lmux deployment composition; never a core edge.

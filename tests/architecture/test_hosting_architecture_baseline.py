@@ -701,6 +701,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
     } - {
         "integrations/_continuity_preparation.py",
         "integrations/_foreground_client_control.py",
+        "integrations/_foreground_process.py",
         "integrations/_managed_mux_command.py",
         "integrations/_session_projection.py",
     } == {
