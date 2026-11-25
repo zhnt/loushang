@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
@@ -97,12 +96,6 @@ def read_coding_first_b_removed_local_acceptance(
     return _acceptance_journal.read_acceptance(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
-
-
-def _write_private_acceptance(
-    path: Path, record: CodingLegacyRemovedAcceptanceV1
-) -> None:
-    _acceptance_journal.publish(path, record)
 
 
 __all__ = [

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from secrets import token_hex
 from typing import Literal, Protocol, cast
@@ -26,6 +26,9 @@ from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted._worker_canary import CodingProductWorkerCanaryStatusV1
 from loushang.harness.runtime._owned_tasks import _UnpublishedProductOwners
 from loushang.harness.worker import ProductWorkerActivationReceiptV1
+from loushang.harness.worker._product_attempt_lifecycle import (
+    _BoundProductWorkerAttempt,
+)
 
 CODING_APPHOST_PRODUCT_JOIN_VERSION = 1
 
@@ -115,103 +118,10 @@ class CodingAppHostProductBindingV1:
             raise ValueError("Coding AppHost Product join version is unsupported")
 
 
-class _WorkerAttemptOwner:
-    """Adopt the returned close capability before inspecting attempt state."""
-
-    __slots__ = (
-        "_close",
-        "_close_lock",
-        "_closed",
-        "_receipt",
-        "_recover",
-        "_start",
-        "_status_owner",
-    )
-
-    def __init__(self, raw: object) -> None:
-        close = getattr(raw, "close", None)
-        if not inspect.iscoroutinefunction(close):
-            raise CodingAppHostProductError(
-                code="coding_apphost_attempt_close_invalid"
-            )
-        self._close = cast(Callable[[], Awaitable[None]], close)
-        self._close_lock = asyncio.Lock()
-        self._closed = False
-        self._receipt: Callable[[str], object] | None = None
-        self._recover: Callable[[], Awaitable[object]] | None = None
-        self._start: Callable[..., Awaitable[object]] | None = None
-        self._status_owner: object | None = raw
-
-    def bind(self) -> None:
-        raw = self._status_owner
-        if raw is None:
-            raise CodingAppHostProductError(code="coding_apphost_attempt_invalid")
-        receipt = getattr(raw, "receipt_for_entrypoint", None)
-        recover = getattr(raw, "recover", None)
-        start = getattr(raw, "start", None)
-        if (
-            not callable(receipt)
-            or not inspect.iscoroutinefunction(recover)
-            or not inspect.iscoroutinefunction(start)
-        ):
-            raise CodingAppHostProductError(code="coding_apphost_attempt_invalid")
-        self._receipt = cast(Callable[[str], object], receipt)
-        self._recover = cast(Callable[[], Awaitable[object]], recover)
-        self._start = cast(Callable[..., Awaitable[object]], start)
-
-    def receipt(self) -> ProductWorkerActivationReceiptV1:
-        callback = self._receipt
-        if callback is None:
-            raise CodingAppHostProductError(code="coding_apphost_attempt_invalid")
-        value = callback("product")
-        if type(value) is not ProductWorkerActivationReceiptV1:
-            raise CodingAppHostProductError(code="coding_apphost_receipt_required")
-        return value
-
-    async def recover(self) -> tuple[str, ...]:
-        callback = self._recover
-        if callback is None:
-            raise CodingAppHostProductError(code="coding_apphost_attempt_invalid")
-        value = await callback()
-        if (
-            not isinstance(value, tuple)
-            or not value
-            or any(not isinstance(item, str) or not item for item in value)
-        ):
-            raise CodingAppHostProductError(code="coding_apphost_recovery_invalid")
-        return value
-
-    async def start(self, *, correlation_id: str) -> CodingProductWorkerCanaryStatusV1:
-        callback = self._start
-        if callback is None:
-            raise CodingAppHostProductError(code="coding_apphost_attempt_invalid")
-        value = await callback(correlation_id=correlation_id)
-        if type(value) is not CodingProductWorkerCanaryStatusV1:
-            raise CodingAppHostProductError(code="coding_apphost_status_invalid")
-        return value
-
-    @property
-    def status(self) -> CodingProductWorkerCanaryStatusV1:
-        raw = self._status_owner
-        if raw is None:
-            raise CodingAppHostProductError(code="coding_apphost_attempt_closed")
-        try:
-            value = getattr(raw, "status")
-        except BaseException:
-            raise CodingAppHostProductError(
-                code="coding_apphost_status_invalid"
-            ) from None
-        if type(value) is not CodingProductWorkerCanaryStatusV1:
-            raise CodingAppHostProductError(code="coding_apphost_status_invalid")
-        return value
-
-    async def close(self) -> None:
-        async with self._close_lock:
-            if self._closed:
-                return
-            await self._close()
-            self._closed = True
-            self._status_owner = None
+class _WorkerAttemptOwner(_BoundProductWorkerAttempt[CodingProductWorkerCanaryStatusV1]):
+    __slots__ = ()
+    _status_type = CodingProductWorkerCanaryStatusV1
+    _failure = staticmethod(lambda reason: CodingAppHostProductError(code=f"coding_apphost_{reason}"))
 
 
 class _CodingProductProfileBinding:

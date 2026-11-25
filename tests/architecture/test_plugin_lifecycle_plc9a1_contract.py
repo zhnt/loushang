@@ -284,9 +284,16 @@ def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
     assert "bind_coding_plugin_enablement_compatibility(" in binding
     assert "resolve_coding_plugin_lifecycle_state_layout(" in bootstrap
     assert "bind_coding_plugin_enablement_compatibility(" in bootstrap
-    assert "hold_installed_continuity_runtime(" in continuity
+    assert "await bind_installed_continuity(" in continuity
+    assert "hold_installed_continuity_runtime(" not in continuity
     installed = _source(INSTALLED_CONTINUITY)
-    assert "resolve_installed_continuity_sources(" in installed
+    startup = installed.split("async def bind_installed_continuity(", 1)[1].split(
+        "def _close_runtime_after_failure(", 1
+    )[0]
+    assert startup.index("resolve_installed_continuity_sources(") < startup.index(
+        "await bind_generation("
+    ) < startup.index("record_ready(")
+    assert "_close_runtime_after_failure(runtime, error, cleanup_note)" in startup
     assert continuity.count("bind_coding_plugin_enablement_compatibility(") == 1
     assert continuity.count("compatibility.reconcile()") == 1
     assert "compatibility.reconcile if compatibility is not None else None" in continuity

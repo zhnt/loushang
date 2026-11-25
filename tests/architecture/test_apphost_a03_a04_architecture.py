@@ -42,6 +42,7 @@ def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
         CONTINUITY,
         FOREGROUND,
         APPHOST / "local.py",
+        APPHOST / "local_application.py",
         APPHOST / "launcher.py",
         APPHOST / "workspace_registry.py",
     }
@@ -138,8 +139,16 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
         },
     }
     hosted_contract_values = {
-        Path("src/loushang/coding/hosted/resource_tools.py"): {
+        APPHOST / "integrations/resource_tools.py": {
             "protocol": {"AppServiceError"},
+        },
+        APPHOST / "integrations/user_choice.py": {
+            "protocol": {"UserChoiceOptionV1", "UserChoicePromptV1"},
+            "protocol.model": {
+                "USER_CHOICE_DESCRIPTION_CHARS", "USER_CHOICE_ID_CHARS",
+                "USER_CHOICE_LABEL_CHARS", "USER_CHOICE_MAX_OPTIONS",
+                "USER_CHOICE_QUESTION_CHARS",
+            },
         },
         APPHOST / "integrations/resource_access.py": {
             "execution.model": {"ResourceRefV1"},
@@ -167,6 +176,12 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
                 "SessionCommandInvocationV1", "SessionCommandResultV1",
             },
             "protocol": {"AppErrorCodeV1", "AppServiceError"},
+        },
+        APPHOST / "integrations/_goal_commands.py": {
+            "execution.goal_model": {
+                "InteractiveGoalCommandStatusV1", "InteractiveGoalCommandV1",
+                "InteractiveGoalCommandViewV1", "InteractiveGoalReviewSubmissionV1",
+            },
         },
     }
     hosted_contract_imports = {
@@ -237,12 +252,16 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == CONTINUITY
             or consumer == FOREGROUND
             or consumer == APPHOST / "local.py"
+            or consumer == APPHOST / "local_application.py"
             or consumer == APPHOST / "launcher.py"
             or consumer == APPHOST / "integrations/session_control.py"
             # A180: optional complete foreground control; no core facade edge.
             or consumer == APPHOST / "integrations/_foreground_client_control.py"
+            or consumer == APPHOST / "integrations/_foreground_process.py"
+            or consumer == APPHOST / "integrations/_foreground_stdio.py"
             or consumer == APPHOST / "integrations/_managed_mux_command.py"
             or consumer == APPHOST / "managed/connection.py"
+            or consumer == APPHOST / "managed/launchd.py"
             or consumer == APPHOST / "managed/coordinator.py"
             or consumer == APPHOST / "managed/mux_creation.py"
             or consumer == APPHOST / "managed/mux_management.py"

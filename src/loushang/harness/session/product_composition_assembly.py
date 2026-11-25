@@ -6,6 +6,7 @@ import secrets
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import chain
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from loushang.harness.capabilities import (
@@ -101,6 +102,7 @@ from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     PublishedPluginPackage,
 )
+from loushang.harness.session._cleanup import run_cleanup_steps
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
@@ -112,11 +114,18 @@ from loushang.harness.session.composition_evidence import (
     _capture_worker_startup_selection,
     read_composition_receipt,
 )
+from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
+    _PreparedCompositionCleanup,
+)
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 if TYPE_CHECKING:
+    from loushang.harness.approval._plugin_resume_parents import (
+        _PluginResumeParentMethods,
+    )
     from loushang.harness.config.agent import CapabilityMountMode
     from loushang.harness.package_product._selected_plugin_revisions import (
+        ProductBaseSelectionEvidence,
         ProductSessionSelection,
     )
     from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -127,6 +136,9 @@ if TYPE_CHECKING:
         PackageProductRuntimeBindingV1,
     )
     from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
+    from loushang.harness.resources.plugins.distribution_evidence import (
+        InstalledPythonDistributionEvidenceResolver,
+    )
     from loushang.harness.resume_effects import ResumeEffectParentContextV1
     from loushang.harness.transcript.product_session import ProductTranscriptSession
     from loushang.harness.worker.product_activation import (
@@ -142,33 +154,22 @@ ProductCapabilityProviderSelector = Callable[
     [tuple[CapabilityProviderAdmissionRecord, ...]],
     tuple[ProductCapabilityProviderChoice, ...],
 ]
+_ToolPackOwnerT = TypeVar("_ToolPackOwnerT")
 
 
 _AGENT_HOST_DEFINITIONS = (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+_AGENT_HOST_REQUIRED_ROOTS = (MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,)
 _AGENT_HOST_CAPABILITY_IDS = tuple(
     definition.capability_id for definition in _AGENT_HOST_DEFINITIONS
 )
 
 
-class _PreparedBaseCompilation(Protocol):
-    @property
-    def plan(self) -> PluginSelectionPlanV2: ...
-    @property
-    def product_composition(self) -> ProductCompositionCompilation: ...
-    @property
-    def selected_manifest(self) -> PackageProductSelectedPluginManifestV1: ...
-    @property
-    def selected_capability_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
-    @property
-    def selected_external_data_manifests(self) -> tuple[PackageProductSelectedPluginManifestV1, ...]: ...
-
-
 class _PreparedBaseSession(Protocol):
     @property
-    def compilation(self) -> _PreparedBaseCompilation: ...
+    def compilation(self) -> ProductBaseSelectionEvidence: ...
     @property
     def workspace_binding(self) -> CapabilityBundleProviderBinding: ...
     @property
@@ -396,7 +397,7 @@ def assemble_agent_data_composition(
         plan=plan,
         candidates=candidates,
         owner_bindings=owner_bindings,
-        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        mandatory_roots=_AGENT_HOST_REQUIRED_ROOTS,
         definitions=_AGENT_HOST_DEFINITIONS,
         select_optional_requirements=lambda _: (),
         evaluated_at=evaluated_at,
@@ -992,6 +993,23 @@ class ProductCompositionAssemblyRequest:
         compare=False,
     )
 
+    @classmethod
+    def for_agent_session(
+        cls,
+        seed: ProductPluginSelectionSeed,
+        *,
+        provider_definitions: tuple[CapabilityDefinition, ...] = (),
+        owner_candidates: tuple[OwnerContributionCandidateEnvelope, ...] | None = None,
+    ) -> ProductCompositionAssemblyRequest:
+        """Compile an exact selection against the standard Agent host."""
+        return cls(
+            selection=seed.selection,
+            owner_bindings=seed.owner_bindings,
+            owner_candidates=owner_candidates,
+            mandatory_roots=_AGENT_HOST_REQUIRED_ROOTS,
+            definitions=(*_AGENT_HOST_DEFINITIONS, *provider_definitions),
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.selection, PluginSelection):
             raise TypeError("Product composition assembly requires PluginSelection")
@@ -1036,6 +1054,57 @@ class ProductPluginPlanSeed:
     packages: tuple[PublishedPluginPackage, ...]
     bindings: tuple[PluginSourceBinding, ...]
     owner_bindings: tuple[ProductContributionOwnerBinding, ...]
+
+    @classmethod
+    def compile_capability_plan(
+        cls,
+        package_bindings: tuple[tuple[PublishedPluginPackage, PluginSourceBinding], ...],
+        *,
+        product_id: str,
+        scope_id: str,
+        policy_revision: str,
+        plugin_ids: tuple[str, ...],
+        instance_refs: tuple[PluginInstanceRevisionRef, ...],
+        source_trust: Iterable[PluginSourceTrustSnapshotV1],
+        configuration_packages: Iterable[PublishedPluginPackage],
+        configure_capability: Callable[[str], Mapping[str, object]],
+        allowed_authority_ceiling: tuple[str, ...],
+        tool_authority: OwnerContributionAuthority,
+        owner_bindings: tuple[ProductContributionOwnerBinding, ...] = (),
+        base: PluginSelectionPlanV2 | ProductPluginPlanSeed | None = None,
+    ) -> ProductPluginPlanSeed:
+        """Bind capability configuration, package evidence and Tool custody in one seed."""
+        extend_seed = base if isinstance(base, ProductPluginPlanSeed) else None
+        plan = build_product_plugin_selection_plan(
+            product_id=product_id,
+            scope_id=scope_id,
+            policy_revision=policy_revision,
+            plugin_ids=plugin_ids,
+            instance_refs=instance_refs,
+            source_trust=source_trust,
+            additions=(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=package.manifest.name,
+                    contribution_id=contribution.contribution_id,
+                    configuration=(
+                        configure_capability(package.manifest.name)
+                        if contribution.kind == "capability_provider"
+                        else {}
+                    ),
+                )
+                for package in configuration_packages
+                for contribution in package.contribution_index.items
+            ),
+            allowed_authority_ceiling=allowed_authority_ceiling,
+            base=base.plan if isinstance(base, ProductPluginPlanSeed) else base,
+            extend_base_selection=extend_seed is not None,
+        )
+        return cls.from_package_bindings(
+            plan,
+            package_bindings,
+            owner_bindings=(*owner_bindings, ProductContributionOwnerBinding(authority=tool_authority)),
+            extend_seed=extend_seed,
+        )
 
     @classmethod
     def from_package_bindings(
@@ -1333,12 +1402,10 @@ class ProductPluginCompositionAssemblyRequest:
         """Compile Plugin contributions against the standard Agent host capabilities."""
 
         return cls(
-            contribution_request=ProductCompositionAssemblyRequest(
-                selection=seed.selection,
-                owner_bindings=seed.owner_bindings,
+            contribution_request=ProductCompositionAssemblyRequest.for_agent_session(
+                seed,
+                provider_definitions=provider_definitions,
                 owner_candidates=owner_candidates,
-                mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-                definitions=(*_AGENT_HOST_DEFINITIONS, *provider_definitions),
             ),
             provider_owner_bindings=provider_owner_bindings,
             provider_roots=tuple(
@@ -1496,18 +1563,47 @@ class ProductPluginCompositionAssembly:
 
     def approve_and_bind_session_inputs(
         self,
+        selection: PluginSelection,
         *,
-        component_host: CapabilityComponentHost,
-        approval_owner: Callable[[], CapabilityActivationApprovalIssuer],
+        provider_authorities: Mapping[str, CapabilityProviderOwnerAuthority],
+        journal_path: Path,
+        scope_id: str,
+        host_boot_id: str,
+        clock: Callable[[], int],
+        expected_product_id: str,
         product_label: str,
+        approval_owner: Callable[[], CapabilityActivationApprovalIssuer],
         error_code_prefix: str,
         error_factory: Callable[[str, str], RuntimeError],
-    ) -> SessionCapabilityCompositionInputs:
-        """Ask the explicit issuer and bind only exact available recorded decisions."""
+        distribution_evidence_resolver: Callable[
+            [], InstalledPythonDistributionEvidenceResolver
+        ],
+        resume_parents: _PluginResumeParentMethods | None,
+    ) -> tuple[CapabilityComponentHost, SessionCapabilityCompositionInputs]:
+        """Open the activation journal and bind its exact session inputs."""
+        host = CapabilityComponentHost.from_product_selection(
+            selection,
+            provider_authorities=provider_authorities,
+            journal_path=journal_path,
+            scope_id=scope_id,
+            host_boot_id=host_boot_id,
+            clock=clock,
+            expected_product_id=expected_product_id,
+            product_label=product_label,
+            required_writer_capabilities=(
+                frozenset({"harness.plugin-activation.resume-context/v1"})
+                if resume_parents is not None
+                else frozenset()
+            ),
+            distribution_evidence_resolver=distribution_evidence_resolver,
+            resume_parent_context=lambda: (
+                resume_parents.activation if resume_parents is not None else None
+            ),
+        )
         decision_ids: dict[str, str] = {}
         for candidate in self.component_candidates:
             decision_ids[candidate.capability_id] = (
-                component_host.approve_selected_activation(
+                host.approve_selected_activation(
                     candidate.resolved,
                     owner_snapshot=candidate.owner_snapshot,
                     trust_snapshot=candidate.trust_snapshot,
@@ -1517,7 +1613,53 @@ class ProductPluginCompositionAssembly:
                     error_factory=error_factory,
                 )
             )
-        return self.bind_session_inputs(decision_ids)
+        return host, self.bind_session_inputs(decision_ids)
+
+    def bind_tool_pack_owners(
+        self,
+        selection: PluginSelection,
+        specs: Iterable[tuple[str, str, str, Callable[..., _ToolPackOwnerT]]],
+        *,
+        authority: OwnerContributionAuthority,
+        owner_id: str,
+        product_id: str,
+        scope_id: str,
+        clock: Callable[[], int],
+        tool_modes: Mapping[str, CapabilityMountMode],
+        label: str,
+    ) -> dict[str, _ToolPackOwnerT]:
+        """Construct the requested Tool owners from one exact compilation."""
+        gate = bind_selected_registration_authority(
+            selection,
+            self,
+            authority=authority,
+            product_id=product_id,
+            scope_id=scope_id,
+            clock=clock,
+            label=label,
+        )
+        selected = frozenset(selection.plan.selected_plugin_ids)
+        owners: dict[str, _ToolPackOwnerT] = {}
+        for plugin_id, contribution_id, capability_id, build_owner in specs:
+            if plugin_id not in selected:
+                continue
+            matches = tuple(
+                admission
+                for admission in self.product_composition.catalog_admissions
+                if admission.plugin_id == plugin_id
+                and admission.contribution_id == contribution_id
+                and admission.owner_id == owner_id
+                and admission.contribution_kind == "tool_pack"
+            )
+            if len(matches) != 1:
+                raise ValueError(f"{label} requires one exact admission for {plugin_id}")
+            owners[plugin_id] = build_owner(
+                admission=matches[0],
+                authority_gate=gate,
+                mode=tool_modes[capability_id],
+                scope_id=scope_id,
+            )
+        return owners
 
 
 @dataclass(frozen=True, slots=True)
@@ -1622,6 +1764,66 @@ class ProductPluginCompositionPreparation:
             ),
             contribution_request=contribution_request,
         )
+
+
+_WorkspaceBindingResultT = TypeVar("_WorkspaceBindingResultT")
+
+
+class _PreparedCapabilityComposition(_PreparedCompositionCleanup):
+    """Bind a prepared Capability closure and transfer its cleanup authority."""
+
+    __slots__ = ()
+    product: ProductPluginCompositionPreparation
+    provider_owner_authorities: Mapping[str, CapabilityProviderOwnerAuthority]
+    selection_recheck: Callable[[], None] | None
+
+    def _bind_workspace_provider(
+        self,
+        workspace_binding: CapabilityBundleProviderBinding,
+        *,
+        host_boot_id: str,
+        tool_modes: Mapping[str, CapabilityMountMode],
+        clock: Callable[[], int],
+        complete: Callable[[ProductPluginCompositionAssembly], _WorkspaceBindingResultT],
+    ) -> tuple[ProductPluginCompositionAssembly, _WorkspaceBindingResultT]:
+        if self._closed or self._transferred:
+            raise RuntimeError(
+                f"{self._cleanup_label} Plugin preparation is no longer available"
+            )
+        selected_capability_ids = frozenset(self.provider_owner_authorities.keys())
+        label = self._cleanup_label
+        if not isinstance(workspace_binding, CapabilityBundleProviderBinding):
+            raise TypeError(f"{label} Plugin workspace binding is invalid")
+        if (
+            workspace_binding.provider.capability_id
+            != WORKSPACE_CAPABILITY_DEFINITION.capability_id
+        ):
+            raise ValueError(f"{label} Plugins require harness.workspace")
+        if not isinstance(host_boot_id, str):
+            raise TypeError(f"{label} Plugin Host boot id is invalid")
+        if len(host_boot_id) != 32 or any(
+            item not in "0123456789abcdefABCDEF" for item in host_boot_id
+        ):
+            raise ValueError(f"{label} Plugin Host boot id must be 32 hex digits")
+        if frozenset(tool_modes) != selected_capability_ids or any(
+            mode not in {"on_demand", "always"} for mode in tool_modes.values()
+        ):
+            raise ValueError(f"{label} Plugins require enabled Tool modes")
+        if not callable(clock):
+            raise TypeError(f"{label} Plugin clock is invalid")
+        try:
+            if self.selection_recheck is not None:
+                self.selection_recheck()
+            assembly = self.product.bind_host_providers((workspace_binding.provider,))
+            result = complete(assembly)
+        except BaseException as error:
+            run_cleanup_steps(
+                error, ((f"{self._cleanup_label} Plugin preparation cleanup", self.close),)
+            )
+            raise
+        # The concrete preparation owns this slot.
+        setattr(self, "_transferred", True)
+        return assembly, result
 
 
 def project_product_owner_candidates(
@@ -1737,7 +1939,7 @@ def _assemble_product_contribution_candidates(
         for item in candidates
     )
     trust_by_id = {item.plugin_id: item for item in plan.source_trust_snapshots}
-    instance_by_id = {item.plugin_id: item for item in context.instance_revision_refs}
+    instance_by_id = context.instance_revisions_by_plugin()
     if len(candidate_refs) != len(set(candidate_refs)) or any(
         ref not in selected_refs
         or candidate.product_id != context.product_id
@@ -2170,7 +2372,7 @@ def _prepare_catalog_plugin_plan_seed(
         else f"session:{receipt.cwd}"
     )
     seed_instance_refs = (
-        {item.plugin_id: item for item in seed_plan.context.instance_revision_refs}
+        seed_plan.context.instance_revisions_by_plugin()
         if seed_plan is not None
         else {}
     )

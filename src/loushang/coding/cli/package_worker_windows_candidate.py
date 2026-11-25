@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import os
-import platform
-import sys
 from collections.abc import Sequence
-from contextlib import closing
 from functools import partial
 from pathlib import Path
 
@@ -49,10 +45,11 @@ from loushang.coding.plugin_manager.lifecycle import (
 )
 from loushang.harness.cli.worker_candidate import (
     NativeWorkerCandidateOperator,
-    NativeWorkerReleaseInput,
     add_native_worker_review_commands,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
+    inspect_native_worker_release,
+    native_worker_approval_document,
     worker_candidate_selection_document,
 )
 from loushang.harness.cli.worker_recovery import (
@@ -63,6 +60,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    NativeWorkerReleaseInput,
     _observe_installed_worker_candidate,
 )
 
@@ -138,17 +136,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
     )
     args = parser.parse_args(argv)
-    if os.name != "nt" or platform.machine().lower() not in {"x86_64", "amd64"}:
-        sys.stderr.write(
-            "Windows Worker candidate refused: windows_worker_candidate_platform_closed\n"
-        )
-        return 1
-
     return _CANDIDATE_OPERATOR.run(
         args,
         resolve_layout=resolve_coding_plugin_lifecycle_state_layout,
         admit=lambda layout: partial(admit_coding_external_worker_wheel, layout),
         execute=_run_product_action,
+        platform_unavailable="windows_worker_candidate_platform_closed",
     )
 
 
@@ -163,14 +156,10 @@ def _run_product_action(
         windows_candidate=True,
         worker_candidates=True,
     )
-    with closing(owner):
-        product = owner.runtime_owner.product_owner
-        if type(product) is not WindowsLocalWheelProductSessionOwner:
-            raise ValueError("Windows Worker candidate Product is unavailable")
-        if args.action in {"inspect", "recover-crash"}:
-            result = _RECOVERY_OPERATOR(product, args)
-            assert result is not None
-            return result
+    with _CANDIDATE_OPERATOR.hold_installed_product(
+        owner, WindowsLocalWheelProductSessionOwner,
+        unavailable="Windows Worker candidate Product is unavailable",
+    ) as product:
         return _execute(product, args)
 
 
@@ -198,28 +187,29 @@ def _execute(
     )
     if candidate_result is not None:
         return candidate_result
-    if args.action in {"list-attempts", "review-normal", "retire-normal"}:
-        recovery_result = _RECOVERY_OPERATOR(product, args)
-        assert recovery_result is not None
+    recovery_result = _RECOVERY_OPERATOR(product, args)
+    if recovery_result is not None:
         return recovery_result
     if args.action == "release-status":
-        decision = CodingWindowsWorkerNativeApprovalOwner(product).current()
-        return {"approvalDecision": None if decision is None else decision.to_dict()}
+        return native_worker_approval_document(CodingWindowsWorkerNativeApprovalOwner(product).current())
     if args.action == "release-revoke":
         decision = CodingWindowsWorkerNativeApprovalOwner(product).revoke(
             operation_id=args.operation_id,
             expected_generation=args.expected_generation,
         )
-        return {"approvalDecision": decision.to_dict()}
+        return native_worker_approval_document(decision)
     if args.action in {"release-review", "release-approve", "release-install"}:
-        wheel = _RELEASE_INPUT.read(args.wheel)
-        release_review = review_coding_windows_worker_backend_release(
-            product, loushang_wheel=wheel
+        wheel, release_review = inspect_native_worker_release(
+            _RELEASE_INPUT,
+            args,
+            lambda body: review_coding_windows_worker_backend_release(
+                product, loushang_wheel=body
+            ),
+            require_review_id=args.action != "release-review",
+            changed_message="Windows Worker backend review changed",
         )
         if args.action == "release-review":
             return {"nativeReleaseReview": release_review.to_dict()}
-        if args.review_id != release_review.review_id:
-            raise ValueError("Windows Worker backend review changed")
         if args.action == "release-approve":
             decision = CodingWindowsWorkerNativeApprovalOwner(product).approve(
                 loushang_wheel=wheel,
@@ -227,7 +217,7 @@ def _execute(
                 operation_id=args.operation_id,
                 expected_generation=args.expected_generation,
             )
-            return {"approvalDecision": decision.to_dict()}
+            return native_worker_approval_document(decision)
         native_installed = install_coding_windows_worker_backend_release(
             product, loushang_wheel=wheel, review_id=args.review_id
         )

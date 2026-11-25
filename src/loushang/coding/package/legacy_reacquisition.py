@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.package_product._legacy_inventory import (
+    LegacyInventoryEvidence,
     reacquire_legacy_inventory_source,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
@@ -54,9 +55,24 @@ def reacquire_coding_legacy_installed_local_source(
     the Wheel. An operator approval and Product transaction remain separate.
     """
 
+    evidence, position, wheel = _reacquire_source(
+        lifecycle, epoch_runtime, plugin_id=plugin_id
+    )
+    inventory = _project_inventory_evidence(evidence)
+    return CodingLegacyReacquiredInstallationV1(
+        inventory, inventory.inventory.active_local[position], wheel
+    )
+
+
+def _reacquire_source(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    *,
+    plugin_id: str,
+) -> tuple[LegacyInventoryEvidence, int, CodingLegacyLocalWheelCandidateV1]:
     if not isinstance(plugin_id, str) or not plugin_id:
         raise ValueError("Coding legacy Plugin identity is required")
-    evidence, position, wheel = reacquire_legacy_inventory_source(
+    return reacquire_legacy_inventory_source(
         _legacy_inventory_query(lifecycle, epoch_runtime),
         epoch_runtime,
         legacy_package_root=lifecycle.package_root,
@@ -65,10 +81,6 @@ def reacquire_coding_legacy_installed_local_source(
         error_type=CodingLegacyInventoryError,
         label="Coding",
         result_factory=_new_wheel_candidate,
-    )
-    inventory = _project_inventory_evidence(evidence)
-    return CodingLegacyReacquiredInstallationV1(
-        inventory, inventory.inventory.active_local[position], wheel
     )
 
 

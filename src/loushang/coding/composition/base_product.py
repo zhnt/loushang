@@ -25,9 +25,6 @@ from loushang.coding.composition.base_plugin import (
 from loushang.coding.composition.sets import CodingCompositionSetPlan
 from loushang.coding.package.legacy_data_trust import EXTERNAL_DATA_RESOURCE_OWNERS
 from loushang.coding.package.legacy_data_trust import (
-    EXTERNAL_DATA_TRUST_CLASSES as EXTERNAL_DATA_TRUST_CLASSES,
-)
-from loushang.coding.package.legacy_data_trust import (
     EXTERNAL_DATA_TRUST_CLASSES_ORDERED as EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
 )
 from loushang.coding.package.legacy_data_trust import (
@@ -40,13 +37,7 @@ from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.contribution_admission import (
-    OwnerContributionAuthority as OwnerContributionAuthority,
-)
-from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionCandidateEnvelope,
-)
-from loushang.harness.capabilities.contribution_admission import (
-    ResourceContributionSpec as ResourceContributionSpec,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
@@ -67,19 +58,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginContributionRef as PluginContributionRef,
 )
 from loushang.harness.resources.plugins.selection import (
-    PluginEffectiveConfigurationEntry as PluginEffectiveConfigurationEntry,
-)
-from loushang.harness.resources.plugins.selection import (
-    PluginEffectiveConfigurationSetV1 as PluginEffectiveConfigurationSetV1,
-)
-from loushang.harness.resources.plugins.selection import (
-    PluginPreflightContextV1 as PluginPreflightContextV1,
-)
-from loushang.harness.resources.plugins.selection import (
     PluginSelectionPlanV2,
-)
-from loushang.harness.resources.plugins.selection import (
-    PluginSourceTrustSnapshotV1 as PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
@@ -265,14 +244,7 @@ def compile_coding_base_product_selection(
             'Selected Coding base Product declarations are incomplete',
             code='coding_base_product_selection_mismatch',
         )
-    owners = {item.owner_id for item in candidates}
-    owner_bindings = _owner_bindings(
-        include_tools="tools.workspace" in owners,
-        include_prompt="resources.prompt" in owners,
-        include_skill="resources.skill" in owners,
-        include_theme="resources.theme" in owners,
-        include_command="commands.session" in owners,
-    )
+    owner_bindings = _owner_bindings({item.owner_id for item in candidates})
     product_composition = assemble_agent_data_composition(
         plan, candidates, owner_bindings, evaluated_at=evaluated_at
     )
@@ -329,13 +301,7 @@ def extend_coding_base_product_data_resources(
 def _make_external_resource_owners(
     missing: set[str],
 ) -> tuple[ProductContributionOwnerBinding, ...]:
-    return _owner_bindings(
-        include_tools=False,
-        include_prompt="resources.prompt" in missing,
-        include_skill="resources.skill" in missing,
-        include_theme="resources.theme" in missing,
-        include_command=False,
-    )
+    return _owner_bindings(missing & EXTERNAL_DATA_RESOURCE_OWNERS)
 
 
 def _resource_bodies(

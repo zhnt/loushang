@@ -53,20 +53,13 @@ def prepare_capability_provider_candidate(
     package = candidate.package
     declaration = candidate.declaration
     plugin_id = package.manifest.name
-    trust_by_plugin = {
-        item.plugin_id: item for item in selection.plan.source_trust_snapshots
-    }
-    instance_by_plugin = {
-        item.plugin_id: item
-        for item in selection.plan.context.instance_revision_refs
-    }
-    trust = trust_by_plugin.get(plugin_id)
-    instance = instance_by_plugin.get(plugin_id)
-    if trust is None or instance is None:
+    provenance = selection.plan.provenance_for(plugin_id)
+    if provenance is None:
         raise CapabilityProviderAdmissionError(
             "Capability Provider Product provenance is incomplete.",
             code="provider_selection_provenance_missing",
         )
+    instance, trust = provenance
 
     binding_spec = CapabilityProviderBindingSpec(
         plugin_id=plugin_id,

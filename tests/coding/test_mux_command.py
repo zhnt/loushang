@@ -102,8 +102,10 @@ def test_G16_COMMAND_attach_rejects_non_terminal_before_connection_io(tmp_path):
 def test_managed_attach_resolves_the_scope_of_an_empty_workspace_mux(tmp_path, monkeypatch):
     import asyncio
 
+    from loushang.apphost.integrations import (
+        _foreground_client_control as client_control,
+    )
     from loushang.appserver.protocol import MuxSelectorV1, SessionScopeV1
-    from loushang.coding.cli import mux
 
     class Connection:
         scopes = ()
@@ -124,9 +126,11 @@ def test_managed_attach_resolves_the_scope_of_an_empty_workspace_mux(tmp_path, m
                                 scope_fingerprint="b" * 64),
             ))
 
-    monkeypatch.setattr(mux, "LocalConnectionDirectoryV1", lambda root: object())
-    monkeypatch.setattr(mux, "LocalAppClientConnectionV1", Connection)
-    command = mux._ClientCommand(tmp_path, "workspace", "attach", "selected-mux", None)
+    monkeypatch.setattr(client_control, "LocalConnectionDirectoryV1", lambda root: object())
+    monkeypatch.setattr(client_control, "LocalAppClientConnectionV1", Connection)
+    command = client_control._LocalMuxClientCommand(
+        tmp_path, "workspace", "attach", "selected-mux", None, product_id="coding"
+    )
     scopes = asyncio.run(command._attachment_scopes(MuxSelectorV1(name="selected-mux")))
     assert scopes == ((SessionScopeV1.CWD, "b" * 64),)
 
@@ -134,6 +138,9 @@ def test_managed_attach_resolves_the_scope_of_an_empty_workspace_mux(tmp_path, m
 def test_G16_COMMAND_failed_shell_settlement_still_closes_connection(tmp_path, monkeypatch):
     import asyncio
 
+    from loushang.apphost.integrations import (
+        _foreground_client_control as client_control,
+    )
     from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
     from loushang.coding.cli import mux
     from loushang.harnesstui.mux import shell, terminal
@@ -172,13 +179,15 @@ def test_G16_COMMAND_failed_shell_settlement_still_closes_connection(tmp_path, m
         events.append("terminal.run")
         return 0
 
-    monkeypatch.setattr(mux, "LocalConnectionDirectoryV1", Directory)
-    monkeypatch.setattr(mux, "LocalAppClientConnectionV1", Connection)
+    monkeypatch.setattr(client_control, "LocalConnectionDirectoryV1", Directory)
+    monkeypatch.setattr(client_control, "LocalAppClientConnectionV1", Connection)
     monkeypatch.setattr(shell, "HostedMuxShellV1", Shell)
     monkeypatch.setattr(terminal, "run_hosted_mux_shell", run)
-    command = mux._ClientCommand(tmp_path, "workspace", "attach", "dev", None)
+    command = client_control._LocalMuxClientCommand(
+        tmp_path, "workspace", "attach", "dev", None, product_id="coding"
+    )
     with pytest.raises(AppServiceError) as error:
-        asyncio.run(command.run())
+        asyncio.run(command.run(mux._load_mux_presentation))
     assert error.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
     assert events == [
         "connection.start", "terminal.run", "shell.close",

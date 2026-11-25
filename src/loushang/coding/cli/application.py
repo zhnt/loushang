@@ -63,10 +63,7 @@ from loushang.coding.composition.invocation_profile import (
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.composition.sets import resolve_coding_composition_set
-from loushang.coding.control.settings_store import (
-    default_global_settings_path,
-    default_project_settings_path,
-)
+from loushang.coding.control.settings_store import open_coding_workspace_settings
 from loushang.coding.diagnostics.profile import (
     coding_diagnostic_source,
     coding_runtime_identity,
@@ -246,10 +243,7 @@ _WORK_LOG_INSPECT_LIMIT = 20
 
 
 def build_default_services(project_root: Path) -> BootstrapServices:
-    settings_manager = SettingsManager(
-        global_settings_path=default_global_settings_path(),
-        project_settings_path=default_project_settings_path(project_root),
-    )
+    settings_manager = open_coding_workspace_settings(project_root)
     return create_services(
         ai_model_registry=get_default_model_registry(),
         settings_manager=settings_manager,

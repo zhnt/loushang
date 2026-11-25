@@ -865,9 +865,12 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         <= {
             "loushang.harness.worker.history._native_approval",
             "loushang.harness.worker.history._native_approval._DIGEST",
+            "loushang.harness.worker.history._native_approval.NATIVE_APPROVAL_JOURNAL_NAME",
             "loushang.harness.worker.history._native_approval._NativeApprovalMethods",
             "loushang.harness.worker.history._native_approval._NativeDecision",
             "loushang.harness.worker.history._native_approval._NativeReviewMethods",
+            "loushang.harness.worker.history._windows_record_journals",
+            "loushang.harness.worker.history._windows_record_journals.WindowsNativeApprovalRecords",
         }
     }
     assert (
@@ -889,6 +892,7 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         Path("src/loushang/harness/package_product/_worker_windows_attempt.py"),
         HARNESS_ROOT / "session/_resume_continuation.py",
         Path("src/loushang/harness/session/_worker_operator_query.py"),
+        Path("src/loushang/harness/session/_resume_continuation.py"),
         Path("src/loushang/harness/session/_worker_provider.py"),
         Path("src/loushang/harness/session/composition_evidence.py"),
         HARNESS_ROOT / "session/product_composition_assembly.py",
@@ -1060,7 +1064,6 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package/product_worker_windows_checkpoint.py",
         Path("src/loushang/coding/package/product_worker_gc_references.py"),
         Path("src/loushang/coding/package/product_worker_native_approval.py"),
-        Path("src/loushang/coding/package/product_worker_windows_native_approval_owner.py"),
         Path("src/loushang/coding/package/product_worker_windows_payload_inventory.py"),
     }
     hosting_consumers = {
@@ -1084,20 +1087,38 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "cli/hosted_client.py",
         CODING_ROOT / "control/sandbox.py",
         APPHOST_ROOT / "launcher.py",
+        APPHOST_ROOT / "local_application.py",
         APPHOST_ROOT / "managed/handoff.py",
         APPHOST_ROOT / "managed/lifecycle.py",
         APPHOST_ROOT / "managed/bootstrap.py",
+        APPHOST_ROOT / "managed/invocation.py",
         APPHOST_ROOT / "managed/starter.py",
         APPHOST_ROOT / "managed/stopper.py",
         APPHOST_ROOT / "managed/defaults.py",
         APPHOST_ROOT / "managed/connection.py",
         APPHOST_ROOT / "managed/mux_management.py",
+        APPHOST_ROOT / "managed/launchd.py",
+        APPHOST_ROOT / "managed/systemd.py",
         CODING_ROOT / 'hosted/managed/process.py',
     } - optional_shared_receipt_owner
     # Managed AppHost composition consumes public Hosting contracts only. Keep the reviewed
     # module and symbol edges exact rather than exempting the managed package.
     managed_edges = {
         CODING_ROOT / 'hosted/managed/service.py': {"errors": {"HostingError"}},
+        APPHOST_ROOT / "local_application.py": {
+            "foreground_service": {"foreground_stop_signals"},
+        },
+        APPHOST_ROOT / "managed/launchd.py": {
+            "service_launchd": {"LaunchdJobError", "LaunchdUserJob"},
+        },
+        APPHOST_ROOT / "managed/systemd.py": {
+            "foreground_service": {
+                "in_current_systemd_scope",
+                "notify_systemd_ready",
+                "read_systemd_user_unit",
+                "run_systemd_user_action",
+            },
+        },
         APPHOST_ROOT / "managed/starter.py": {
             "contracts": {"ProcessLaunchRequest"},
             "service_process": {"LinuxServiceProcessV1"},
@@ -1137,9 +1158,9 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             "errors": {"HostingError"},
             "service": {"LinuxServiceObserverV1", "ServiceObserverV1"},
             "service_handoff": {"require_service_channel"},
-            "service_windows": {"WindowsServiceObserverV1"},
+            "service_windows": {"WindowsServiceObserverV1", "read_windows_service_startup"},
         },
-        CODING_ROOT / 'hosted/managed/process.py': {
+        APPHOST_ROOT / "managed/invocation.py": {
             "contracts": {
                 "ProcessLaunchRequest",
                 "ProcessStreamSpec",
@@ -1147,7 +1168,11 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
                 "ProcessStdoutMode",
                 "ProcessStderrMode",
             },
-            "service_windows": {"WindowsServiceLaunchRequestV1", "read_windows_service_startup"},
+            "service_windows": {"WindowsServiceLaunchRequestV1"},
+        },
+        CODING_ROOT / 'hosted/managed/process.py': {
+            "contracts": {"ProcessLaunchRequest"},
+            "service_windows": {"WindowsServiceLaunchRequestV1"},
         },
     }
     for path, modules in managed_edges.items():

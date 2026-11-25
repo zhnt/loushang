@@ -23,7 +23,7 @@ def test_windows_worker_candidate_cli_requires_native_platform(
     capsys: pytest.CaptureFixture[str],
     windows_candidate: bool,
 ) -> None:
-    monkeypatch.setattr(cli, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setattr(worker_candidate, "os", SimpleNamespace(name="posix"))
     args = ["--workspace", str(tmp_path)]
     if windows_candidate:
         args.append("--windows-candidate")
@@ -40,9 +40,9 @@ def test_windows_worker_explicit_operator_command_needs_no_candidate_switch(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(worker_candidate, "os", SimpleNamespace(name="nt"))
     with (
-        patch.object(cli.platform, "machine", return_value="AMD64"),
+        patch.object(worker_candidate.platform, "machine", return_value="AMD64"),
         patch.object(cli, "resolve_coding_plugin_lifecycle_state_layout") as layout,
         patch.object(
             cli, "_run_product_action", return_value={"workerSelection": "checked"}
@@ -70,7 +70,7 @@ def test_windows_worker_update_reports_required_opt_in_revocation(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(worker_candidate, "os", SimpleNamespace(name="nt"))
 
     def run_update(_layout, workspace, args):
         return cli._execute(SimpleNamespace(state_root=workspace), args)
@@ -83,7 +83,7 @@ def test_windows_worker_update_reports_required_opt_in_revocation(
     )
 
     with (
-        patch.object(cli.platform, "machine", return_value="AMD64"),
+        patch.object(worker_candidate.platform, "machine", return_value="AMD64"),
         patch.object(cli, "resolve_coding_plugin_lifecycle_state_layout"),
         patch.object(cli, "_run_product_action", side_effect=run_update),
         patch.object(cli, "CodingWindowsWorkerProductOptInOwner") as opt_in,

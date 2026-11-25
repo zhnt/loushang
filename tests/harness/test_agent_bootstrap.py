@@ -72,6 +72,7 @@ def test_agent_bootstrap_runtime_builds_agent_and_product_session() -> None:
         "tools": [],
     }
     assert calls[0][1]["max_retry_delay_ms"] == 50
+    assert "call_options" not in calls[0][1]
 
 
 def test_standard_agent_services_bind_research_resources_and_shared_defaults() -> None:

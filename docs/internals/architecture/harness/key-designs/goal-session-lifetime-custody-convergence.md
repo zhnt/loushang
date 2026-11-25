@@ -54,3 +54,21 @@ callable、163节点/326checks，只证父进程，不替child/wheel/全平台/n
 当前2059源659754（排GUI独立测试4524后655230），Code434源110470，Harness364378，
 HarnessWork8332，AppHost19717；C12为25源6929，距15K95470。只完成本寿命闭包，
 A117既有cold-source IO、原Scope Task/阶段不重计；完整P1–P4、KD003/KD011仍未完成。
+
+## Session Goal 装配与原 Work 后端
+
+以 `38ba5b4e9` 为基线，原 Session Goal 集成接管当前 Session 的装配预约、Work
+后端选择、Goal 日志准入及控制器绑定。独立 SDK、当前 Session 和 Hosted Goal
+都经过该入口。已绑定后端必须继续满足原 Session、Profile、记录版本、日志路径和取消
+合同。当前 Session 的装配在原预约内验证，失败由原作用域结清。Goal 先持有 Writer，
+再打开和验证，保留构造失败时关闭同一 Writer 的能力。
+
+Coding 提供日志路径、Work 产品 Profile、业务政策及构造新后端时的原 SDK 工厂。
+模型规划直接构造选定的政策，省去随后被覆盖的默认计算器政策。存量记录和公开入口
+沿用原格式和签名。
+
+本批生产 Python 为 Coding −32 行、HarnessWork +80 行、系统 +48 行。增长主要
+来自共享集成的类型边界及三个入口沿用同一装配步骤的接线。
+Linux 上 44 项 Session、SDK、Hosted 和 HarnessWork 回归通过，另外 6 项 Repository、
+Interactive 和批次政策回归通过。它们覆盖旧 Work 后端复用、不兼容后端拒绝、
+构造失败后的原 Session 归还，以及原日志与命令的重放。

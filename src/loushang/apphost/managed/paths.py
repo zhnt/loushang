@@ -7,7 +7,8 @@ check permissions, links, stable identity, capacity and Session-root isolation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+from typing import TYPE_CHECKING
 
 from .contracts import (
     ManagedContractError,
@@ -16,6 +17,9 @@ from .contracts import (
     ManagedServiceKeyV1,
     _path,
 )
+
+if TYPE_CHECKING:
+    from .invocation import ManagedChildInvocationV1
 
 ManagedPath = PurePosixPath | PureWindowsPath
 
@@ -156,8 +160,38 @@ def resolve_managed_paths(
     )
 
 
-def _overlaps(left: ManagedPath, right: ManagedPath) -> bool:
+def _overlaps(left: PurePath, right: PurePath) -> bool:
     return left.is_relative_to(right) or right.is_relative_to(left)
+
+
+def _session_storage_roots(session_root: Path) -> tuple[Path, ...]:
+    return (
+        session_root,
+        session_root.parent / "session-assets",
+        session_root.parent / ".session-blob-writers",
+    )
+
+
+def require_separate_managed_session_storage(
+    invocation: ManagedChildInvocationV1, *session_roots: Path
+) -> None:
+    """Keep transcript, Blob and Writer roots outside managed deployment control."""
+    home = Path(invocation.namespace.platform_home)
+    controls = (
+        home / "hosts",
+        Path(invocation.runtime_root) / "hosts",
+        Path(resolve_managed_admission_root(invocation.namespace)).parent,
+        home / "state/session-stores",
+        *(
+            (Path(invocation.temporary_override) / "hosts",)
+            if invocation.temporary_override is not None
+            else ()
+        ),
+    )
+    for session_root in session_roots:
+        for data in _session_storage_roots(session_root):
+            if any(_overlaps(data, control) for control in controls):
+                raise ManagedContractError()
 
 
 __all__ = ["ManagedDeploymentPathsV1", "ManagedServicePathsV1", "resolve_managed_paths", "resolve_managed_service_paths", "resolve_managed_registry_root", "resolve_managed_admission_root"]

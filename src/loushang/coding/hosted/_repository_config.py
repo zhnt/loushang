@@ -8,7 +8,10 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.adapters._goal_repository import RepositoryProfile
+from loushang.coding.adapters._goal_repository import (
+    RepositoryProfile,
+    _prepare_repository_repair_turn,
+)
 from loushang.coding.adapters._goal_repository_hosted_task import HostedRepositoryTask
 from loushang.coding.hosted._goal_config import CodingHostedGoalV1, _finite_positive
 
@@ -72,43 +75,8 @@ class CodingHostedRepositoryGoalV1(CodingHostedGoalV1):
             raise ValueError("task interpreter must be the trusted host interpreter")
         if not temporary.is_dir():
             raise ValueError("dedicated check temporary root required")
-        # Compile the protected Method using the original domain compiler.
-        import json
-        from types import SimpleNamespace
-
-        from loushang.method.runtime import (
-            MethodDomainProfile,
-            MethodDomainRequest,
-            MethodDomainRuntime,
-            MethodPolicy,
-        )
-        from loushang.method.types import MethodDescriptor
-
-        descriptor = MethodDescriptor(
-            **json.loads((task.path.parent / "method.json").read_bytes())
-        )
-        turns = MethodDomainRuntime(
-            profile=MethodDomainProfile(domain="coding"),
-            method_loader=SimpleNamespace(discover_methods=lambda cwd: [descriptor]),
-        ).prepare_turns(
-            MethodDomainRequest(
-                "Validate protected Method",
-                task.root,
-                method_policy=MethodPolicy.explicit(descriptor.id),
-            )
-        )
-        from loushang.harnesswork.integrations.session import (
-            project_prepared_session_work_turns,
-        )
-
-        prepared = project_prepared_session_work_turns(
-            turns, images=None, follow_up_messages=()
-        )
-        if (
-            len(prepared) != 1
-            or prepared[0].step_id != "repair"
-            or prepared[0].planned_constraint
-            or prepared[0].audit_policy
-        ):
+        if _prepare_repository_repair_turn(
+            task.path, task.root, lambda: "Validate protected Method"
+        ) is None:
             raise ValueError("hosted repository requires the single repair Method")
         return RepositoryProfile(task)

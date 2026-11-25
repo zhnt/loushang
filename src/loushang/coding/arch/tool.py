@@ -26,6 +26,7 @@ from loushang.harness.tools.authoring import (
 )
 from loushang.harness.tools.core import ToolDefinition, tool
 from loushang.harness.tools.workspace.runtime import raise_if_tool_aborted
+from loushang.harness.workspace.paths import resolve_path_inside_workspace
 
 INSPECT_IMPORT_GRAPH_TOOL_NAME = "inspect_import_graph"
 MAX_INSPECT_IMPORT_GRAPH_LIMIT = 200
@@ -226,13 +227,12 @@ def _resolve_workspace_root(workspace: str | Path, root: str) -> Path:
     if not isinstance(root, str) or not root.strip():
         raise ValueError("import graph root must be a non-empty path")
     workspace_root = Path(workspace).expanduser().resolve()
-    candidate = Path(root).expanduser()
-    if not candidate.is_absolute():
-        candidate = workspace_root / candidate
-    resolved = candidate.resolve()
-    if not resolved.is_relative_to(workspace_root):
-        raise PermissionError("import graph root must stay within the coding workspace")
-    return resolved
+    return resolve_path_inside_workspace(
+        root,
+        workspace_root,
+        error_type=PermissionError,
+        message="import graph root must stay within the coding workspace",
+    )
 
 
 def validate_import_graph_inspection_request(

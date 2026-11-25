@@ -578,6 +578,9 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     from loushang.harness.capabilities.component_runtime import (
         CapabilityOwnerComponentBinder,
     )
+    from loushang.harness.resource_catalog.product_inputs import (
+        InitialResourceCatalogProductAdapter,
+    )
     from loushang.harness.resource_catalog.session_bootstrap import (
         InitialSessionResourceCatalogBootstrap,
     )
@@ -645,11 +648,11 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
         timed_sync("agent-session-construction", hosted_module.create_agent_session),
     )
     monkeypatch.setattr(
-        package_catalog_module,
-        "prepare_coding_catalog_projection",
+        InitialResourceCatalogProductAdapter,
+        "prepare_bootstrap_projection",
         timed_sync(
             "product-catalog-projection",
-            package_catalog_module.prepare_coding_catalog_projection,
+            InitialResourceCatalogProductAdapter.prepare_bootstrap_projection,
         ),
     )
     monkeypatch.setattr(

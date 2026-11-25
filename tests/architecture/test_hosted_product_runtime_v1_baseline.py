@@ -511,8 +511,12 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "integrations/_continuity_preparation.py",
         "integrations/_foreground_client_control.py",
         "integrations/_foreground_process.py",
+        "integrations/_foreground_stdio.py",
+        "integrations/_goal_commands.py",
         "integrations/_managed_mux_command.py",
+        "integrations/user_choice.py",
         "integrations/_session_projection.py",
+        "integrations/resource_tools.py",
     } == {
         "__init__.py",
         "_ownership.py",
@@ -536,6 +540,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "foreground.py",
         "launcher.py",
         "local.py",
+        "local_application.py",
         "managed/__init__.py",
         "managed/contracts.py",
         "managed/paths.py",
@@ -556,6 +561,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "managed/handoff.py",
         "managed/child.py",
         "managed/bootstrap.py",
+        "managed/launchd.py",
+        "managed/systemd.py",
         "managed/_lifetime.py",
         "managed/_process.py",
         "managed/invocation.py",
@@ -697,6 +704,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     }
     execution_work = "loushang.apphost.integrations.session_control"
     session_projection = "loushang.apphost.integrations._session_projection"
+    resource_access = "loushang.apphost.integrations.resource_access"
+    resource_tools = "loushang.apphost.integrations.resource_tools"
     optional_execution_consumers = {
         path for path in reverse_apphost_consumers
         if path in {
@@ -712,6 +721,11 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
                 {
                     execution_work + "._DeferredSessionControl",
                     execution_work + "._HostedApprovalPresentation",
+                    resource_access,
+                    resource_access + ".HostedResourceAccess",
+                    resource_tools,
+                    resource_tools + ".HostReferencePolicy",
+                    resource_tools + ".bind_hosted_session_tools",
                     session_projection,
                     session_projection + "._HostedApprovalPresentation",
                     session_projection + "._project_hosted_approval",
@@ -744,18 +758,23 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path('src/loushang/coding/hosted/method_application.py'),
         # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
         Path('src/loushang/coding/hosted/goal_application.py'),
+        Path('src/loushang/coding/hosted/goal_commands.py'),
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/session.py'),
         Path('src/loushang/coding/hosted/_session_commands.py'),
-        Path('src/loushang/coding/hosted/resources.py'),
         Path('src/loushang/coding/hosted/resource_tools.py'),
+        Path('src/loushang/coding/hosted/resources.py'),
+        Path('src/loushang/coding/hosted/session_goal.py'),
+        Path('src/loushang/coding/hosted/user_choice.py'),
         # Stage 1A: validate the original managed lease binding key.
         Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),
         Path("src/loushang/coding/cli/hosted_client.py"),
         Path("src/loushang/coding/cli/mux.py"),
+        Path("src/loushang/coding/cli/mux_service.py"),
         Path('src/loushang/coding/hosted/bootstrap.py'),
+        Path('src/loushang/coding/hosted/foreground.py'),
         Path('src/loushang/coding/hosted/local.py'),
         Path('src/loushang/coding/hosted/managed/bootstrap.py'),
         Path('src/loushang/coding/hosted/managed/catalog.py'),

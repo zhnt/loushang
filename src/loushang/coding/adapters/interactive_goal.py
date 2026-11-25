@@ -48,7 +48,10 @@ from ._goal_planning_limits import PlanningCallAllowance, PlanningCallLimit
 from ._goal_planning_shared import BatchPlanningPolicy
 from ._goal_planning_work import PlanningToolPolicy, ScopedSessionWork, publish_report
 from ._goal_proposal import Action, ProposalRejected, parse_proposal
-from ._verification_work import inspect_verification
+from ._verification_work import (
+    inspect_verification,
+    prepare_coding_verification_command,
+)
 from .goal import CodingGoal, _ordinary_goal_transport, _validate_goal_session
 from .harnesswork import CODING_WORK_PROFILE, project_coding_runtime_event
 
@@ -298,16 +301,12 @@ class _Domain:
         if name == "verify":
             check = proposal.action.targets[0]
             command = self.contract(basis)["checks"][int(check.split("-")[1]) - 1]
-            operation = WorkOperation(
-                opid,
-                "VerifyCodingCommand",
-                basis.header.session_id,
-                "coding",
-                {"command": command, "execution": {"cwd": str(self.root)}},
-            )
-            spec = WorkRunSpec(
+            operation, spec = prepare_coding_verification_command(
+                operation_id=opid,
+                session_id=basis.header.session_id,
+                command=command,
+                execution={"cwd": str(self.root)},
                 plan_id=f"task:{opid}",
-                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
             )
             return WorkCandidate(
                 basis,

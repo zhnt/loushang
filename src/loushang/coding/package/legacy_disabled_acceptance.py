@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os as os
 from dataclasses import dataclass
-from pathlib import Path
 
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
@@ -106,16 +104,6 @@ def read_coding_first_b_disabled_only_acceptance(
     return _acceptance_journal.read_acceptance(
         lifecycle, epoch_runtime, settings_manager=settings_manager
     )
-
-
-def _read_private_acceptance(path: Path) -> str | None:
-    return _acceptance_journal.read_private(path)
-
-
-def _write_private_acceptance(
-    path: Path, record: CodingLegacyDisabledOnlyAcceptanceV1
-) -> None:
-    _acceptance_journal.publish(path, record)
 
 
 __all__ = [

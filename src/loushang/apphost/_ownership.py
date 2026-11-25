@@ -5,14 +5,33 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
+from contextlib import suppress
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    TypeVar,
+    cast,
+)
 
-from .contracts import SessionBindingKeyV1, SessionCandidateRefV1
+from .contracts import (
+    AppHostSessionLeaseV1,
+    SessionBindingKeyV1,
+    SessionCandidateRefV1,
+    SessionCreateRequestV1,
+)
 from .errors import CleanupIncompleteError
 
 if TYPE_CHECKING:
     from .catalog import AppHostCatalogV1
-    from .contracts import AppHostCatalogInputV1
+    from .contracts import (
+        AppHostCatalogInputV1,
+        AppHostShutdownBudgetV1,
+        AppHostShutdownReportV1,
+    )
     from .runtime import AppHostRuntimeV1
 
 AsyncClose = Callable[[], Awaitable[None]]
@@ -355,10 +374,208 @@ class _CompletionReport(Protocol):
 _ReportT = TypeVar("_ReportT", bound=_CompletionReport)
 
 
+def _observe_background_result(task: asyncio.Task[Any]) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
 def _report_task_needs_retry(task: asyncio.Task[_ReportT]) -> bool:
     return task.done() and (
         task.cancelled() or task.exception() is not None or not task.result().completed
     )
+
+
+_SettlementMode = Literal["close", "rollback"]
+_SettlementPhase = Literal["rollback_latch", "apphost_shutdown", "product_cleanup"]
+_LatchT = TypeVar("_LatchT")
+_LatchCo = TypeVar("_LatchCo", covariant=True)
+_EXPLICIT_PRODUCT_LIFECYCLE_SLOTS: tuple[str, ...] = ()
+
+
+class _ProductRollbackControl(Protocol[_LatchCo]):
+    async def latch_future_attempts(self) -> _LatchCo: ...
+
+
+class _ExplicitProductAppHostLifecycle(Generic[_LatchT, _ReportT]):
+    """Admission and ordered settlement for an explicitly composed Product."""
+
+    __slots__ = _EXPLICIT_PRODUCT_LIFECYCLE_SLOTS
+    _product_id: ClassVar[str]
+    _rollback_latch_type: type[_LatchT]
+    _settlement_report_type: Callable[..., _ReportT]
+
+    def _composition_error(self, code: str) -> RuntimeError:
+        raise NotImplementedError
+
+    def _initialize_lifecycle(
+        self,
+        runtime: AppHostRuntimeV1,
+        product_factory: _ConstructionCloseOwner,
+        rollback_control: _ProductRollbackControl[_LatchT],
+        shutdown_budget: AppHostShutdownBudgetV1,
+    ) -> None:
+        self._runtime = runtime
+        self._product_factory = product_factory
+        self._rollback_control = rollback_control
+        self._shutdown_budget = shutdown_budget
+        self._accepting = True
+        self._admission_lock = asyncio.Lock()
+        self._control_lock = asyncio.Lock()
+        self._control_mode: _SettlementMode | None = None
+        self._control_task: asyncio.Task[_ReportT] | None = None
+        self._rollback_latch: _LatchT | None = None
+
+    @property
+    def accepting(self) -> bool:
+        return self._accepting
+
+    async def attach_resume(
+        self,
+        *,
+        reference: SessionCandidateRefV1,
+        profile_id: str,
+    ) -> AppHostSessionLeaseV1:
+        await self._admit()
+        return await self._runtime.attach_resume(
+            product_id=self._product_id,
+            reference=reference,
+            profile_id=profile_id,
+        )
+
+    async def attach_create(
+        self,
+        request: SessionCreateRequestV1,
+        *,
+        profile_id: str,
+    ) -> AppHostSessionLeaseV1:
+        await self._admit()
+        if request.product_id != self._product_id:
+            raise self._composition_error("product_mismatch")
+        return await self._runtime.attach_create(request, profile_id=profile_id)
+
+    async def close_session(self, key: SessionBindingKeyV1) -> None:
+        await self._admit()
+        await self._runtime.close_session(key)
+
+    async def _rollback(self) -> _ReportT:
+        task = await self._settlement_task("rollback")
+        return await asyncio.shield(task)
+
+    async def close(self) -> None:
+        task = await self._settlement_task("close")
+        report = await asyncio.shield(task)
+        if not report.completed:
+            raise self._composition_error("cleanup_incomplete")
+
+    async def _admit(self) -> None:
+        async with self._admission_lock:
+            if not self._accepting:
+                raise self._composition_error("fenced")
+
+    async def _fence(self) -> None:
+        async with self._admission_lock:
+            self._accepting = False
+
+    async def _settlement_task(
+        self,
+        requested_mode: _SettlementMode,
+    ) -> asyncio.Task[_ReportT]:
+        async with self._control_lock:
+            task = self._control_task
+            mode = self._control_mode
+            if mode == "close" and requested_mode == "rollback":
+                assert task is not None
+                effective_mode: _SettlementMode = "rollback"
+                settle = self._upgrade_close_to_rollback(task)
+            elif task is None or _report_task_needs_retry(task):
+                effective_mode = "rollback" if mode == "rollback" else requested_mode
+                settle = self._settle_once(effective_mode)
+            else:
+                return task
+            task = asyncio.create_task(settle)
+            task.add_done_callback(_observe_background_result)
+            self._control_task = task
+            self._control_mode = effective_mode
+            return task
+
+    async def _settle_once(
+        self,
+        mode: _SettlementMode,
+        *,
+        attempt_rollback_latch: bool = True,
+    ) -> _ReportT:
+        await self._fence()
+        failed: list[_SettlementPhase] = []
+
+        if (
+            mode == "rollback"
+            and self._rollback_latch is None
+            and (not attempt_rollback_latch or not await self._latch_rollback())
+        ):
+            failed.append("rollback_latch")
+
+        shutdown: AppHostShutdownReportV1 | None = None
+        try:
+            shutdown = await self._runtime.shutdown(self._shutdown_budget)
+            if not shutdown.completed:
+                failed.append("apphost_shutdown")
+        except Exception:
+            failed.append("apphost_shutdown")
+
+        product_cleanup_complete = False
+        if shutdown is not None and shutdown.completed:
+            try:
+                await self._product_factory.close()
+                product_cleanup_complete = True
+            except Exception:
+                failed.append("product_cleanup")
+
+        failed_phases = tuple(dict.fromkeys(failed))
+        completed = (
+            (mode == "close" or self._rollback_latch is not None)
+            and shutdown is not None
+            and shutdown.completed
+            and product_cleanup_complete
+            and not failed_phases
+        )
+        return self._settlement_report_type(
+            mode=mode,
+            completed=completed,
+            admission_fenced=True,
+            rollback_latch=(self._rollback_latch if mode == "rollback" else None),
+            apphost_shutdown=shutdown,
+            product_cleanup_complete=product_cleanup_complete,
+            failed_phases=failed_phases,
+        )
+
+    async def _upgrade_close_to_rollback(
+        self,
+        close_task: asyncio.Task[_ReportT],
+    ) -> _ReportT:
+        """Make an emergency rollback dominate an earlier normal close."""
+
+        await self._fence()
+        await self._latch_rollback()
+        with suppress(asyncio.CancelledError, Exception):
+            await asyncio.shield(close_task)
+        # The retryable runtime/factory owners, rather than the prior task
+        # result, determine whether the upgraded settlement is complete.
+        return await self._settle_once(
+            "rollback",
+            attempt_rollback_latch=False,
+        )
+
+    async def _latch_rollback(self) -> bool:
+        if self._rollback_latch is not None:
+            return True
+        try:
+            raw_latch = await self._rollback_control.latch_future_attempts()
+            if type(raw_latch) is not self._rollback_latch_type:
+                raise TypeError("rollback control returned an invalid latch")
+        except Exception:
+            return False
+        self._rollback_latch = raw_latch
+        return True
 
 
 def _method_descriptor(value: object, name: str) -> object:
@@ -366,6 +583,16 @@ def _method_descriptor(value: object, name: str) -> object:
     if isinstance(descriptor, (classmethod, staticmethod)):
         return descriptor.__func__
     return descriptor
+
+
+def _require_async_method(value: object, name: str, *, label: str) -> None:
+    if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
+        raise TypeError(f"{label} {name} port is invalid")
+
+
+def _require_session_catalog_methods(value: object, *, label: str) -> None:
+    for name in ("list_identities", "open_candidate", "find_created_candidate", "create_candidate"):
+        _require_async_method(value, name, label=label)
 
 
 __all__: list[str] = []

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from loushang.harness.session.execution_admission import (
@@ -22,7 +23,8 @@ from loushang.harness.session.execution_scope import (
     ExecutionScopePorts,
     SessionExecutionScope,
 )
-from loushang.harnesswork.goal import GoalError
+from loushang.harnesswork.event_log import JsonlEventLogBackend
+from loushang.harnesswork.goal import GoalError, GoalHeader
 from loushang.harnesswork.goal.contracts import (
     GoalAcceptancePolicy,
     GoalAssessment,
@@ -33,7 +35,10 @@ from loushang.harnesswork.goal.contracts import (
     WorkCandidate,
 )
 from loushang.harnesswork.goal.controller import GoalController
-from loushang.harnesswork.integrations.session import SessionWorkRuntime
+from loushang.harnesswork.integrations.session import (
+    SessionWorkProfile,
+    SessionWorkRuntime,
+)
 from loushang.harnesswork.ports import WorkExecutionBinding
 from loushang.harnesswork.types import WorkRecordingPolicy
 
@@ -42,6 +47,7 @@ if TYPE_CHECKING:
     from loushang.harness.transcript.source_reader import TranscriptSourceReader
     from loushang.harnesswork.integrations.delegation import SessionGoalDelegation
     from loushang.harnesswork.integrations.goal_store import JsonlGoalRecordStore
+    from loushang.harnesswork.runtime import WorkRuntime
 
 
 class _AdmittedExecutor:
@@ -305,6 +311,9 @@ class SessionGoalPrompt:
 
 class _GoalScopeSession(Protocol):
     @property
+    def work_execution_backend(self) -> object | None: ...
+
+    @property
     def runtime(self) -> SessionRuntime: ...
 
     def attach_execution_scope(self, scope: SessionExecutionScope) -> None: ...
@@ -322,6 +331,8 @@ class _SessionGoalLifetime:
     _goal_close_task_name: ClassVar[str]
     _session: _GoalScopeSession
     _sdk: object | None
+    _work: WorkRuntime
+    _session_work: SessionWorkRuntime | None
 
     def __init__(self) -> None:
         self._store: JsonlGoalRecordStore | None = None
@@ -361,6 +372,75 @@ class _SessionGoalLifetime:
         )
         self._session.attach_execution_scope(scope)
         self._scope = scope
+
+    async def _initialize_attached_goal(self, initialize: Callable[[], Awaitable[None]]) -> None:
+        """Keep the borrowed Session current until its Goal assembly is ready."""
+        assert self._scope is not None
+
+        async def bind() -> None:
+            admission = self._session.runtime.execution_admission
+            reservation = admission.reserve_candidate()
+            try:
+                await initialize()
+                admission.validate_reservation(reservation, require_operation=False)
+            finally:
+                reservation.release()
+
+        await self._scope.invoke(bind)
+
+    def _prepare_goal_work(
+        self, path: Path, *, profile: SessionWorkProfile, ordinary_session: bool,
+        create: Callable[[JsonlEventLogBackend, float | None], SessionWorkRuntime],
+    ) -> JsonlEventLogBackend:
+        existing = self._session.work_execution_backend
+        if existing is None:
+            log = JsonlEventLogBackend(path)
+            self._session_work = create(log, 30.0 if ordinary_session else None)
+        else:
+            if (
+                not isinstance(existing, SessionWorkRuntime)
+                or existing.session is not self._session
+                or existing.profile != profile
+                or existing.recording_version != 1
+                or not isinstance(existing.event_log, JsonlEventLogBackend)
+                or existing.event_log.storage_path.resolve() != path.resolve()
+            ):
+                raise GoalError("existing Session Work backend is incompatible with this Goal history")
+            existing.require_goal_compatibility(require_unbounded_cancellation=not ordinary_session)
+            self._session_work, log = existing, existing.event_log
+        self._work = self._session_work.work_runtime
+        return log
+
+    def _open_goal_store(
+        self, store: JsonlGoalRecordStore, *, create: bool, require_empty: bool,
+    ) -> None:
+        # Retain it first so failed admission still closes the original Writer.
+        self._store = store
+        store.open(create=create)
+        if require_empty and store.load()[1]:
+            raise GoalError("current Session already has Goal history; retain its original execution owner")
+
+    def _bind_goal_controller(
+        self, header: GoalHeader, *, next_work: NextWorkPolicy,
+        acceptance: GoalAcceptancePolicy,
+        binding: Callable[[WorkCandidate, ExecutionReservation], WorkExecutionBinding],
+        allow_queued_input: Callable[[WorkCandidate], bool],
+    ) -> None:
+        assert self._scope is not None and self._session_work is not None and self._store is not None
+        runtime = self._session.runtime
+        coordinator = SessionGoalCoordinator(
+            admission=runtime.execution_admission, scope=self._scope,
+            work=self._session_work, next_work=next_work, acceptance=acceptance,
+            binding=binding,
+            release_configuration=runtime.execution_configuration.release_execution,
+            allow_queued_input=allow_queued_input,
+            recording_policy=WorkRecordingPolicy(require_persistence=True),
+        )
+        self._coordinator = coordinator
+        self._core = SessionGoalController(
+            coordinator=coordinator, header=header, store=self._store, work=self._work,
+            next_work=coordinator, acceptance=coordinator,
+        )
 
     def _begin_close(self) -> None:
         self._closing = True

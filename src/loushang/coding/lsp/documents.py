@@ -11,6 +11,7 @@ from pathlib import Path
 from loushang.coding.lsp.model import LspInvalidInputError
 from loushang.coding.lsp.ports import WorkspaceTextReader
 from loushang.coding.lsp.supervisor import LspRuntimeHandle
+from loushang.harness.workspace.paths import resolve_path_inside_workspace
 
 _DEFAULT_MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 
@@ -111,13 +112,12 @@ class LspDocumentManager:
             return snapshot
 
     def canonical_path(self, path: str | Path) -> Path:
-        candidate = Path(path).expanduser()
-        if not candidate.is_absolute():
-            candidate = self._workspace_root / candidate
-        resolved = candidate.resolve()
-        if not resolved.is_relative_to(self._workspace_root):
-            raise LspInvalidInputError("LSP document must stay within the workspace")
-        return resolved
+        return resolve_path_inside_workspace(
+            path,
+            self._workspace_root,
+            error_type=LspInvalidInputError,
+            message="LSP document must stay within the workspace",
+        )
 
     async def read_path(self, path: str | Path) -> str:
         canonical = self.canonical_path(path)

@@ -13,13 +13,16 @@ from typing import Any, cast
 from uuid import uuid4
 
 from loushang.coding.adapters import _goal_driver as driver
-from loushang.coding.adapters._verification_work import inspect_verification
+from loushang.coding.adapters._verification_work import (
+    inspect_verification,
+    prepare_coding_verification_command,
+)
 from loushang.coding.adapters.harnesswork import (
     CODING_WORK_PROFILE,
     project_coding_runtime_event,
 )
 from loushang.harness.artifacts import SessionBlobRef, SessionBlobStore
-from loushang.harnesswork import WorkRunSpec
+from loushang.harness.session.bash import bash_verification_output_refs
 from loushang.harnesswork.goal import (
     GoalAssessment,
     GoalBasis,
@@ -33,6 +36,7 @@ from loushang.harnesswork.goal.records import canonical, document, plain
 from loushang.harnesswork.integrations.session import (
     PreparedSessionWorkTurn,
     SessionTurnExecutor,
+    build_session_work_plan_spec,
     prepare_session_work_source,
     project_prepared_session_work_turns,
 )
@@ -41,7 +45,6 @@ from loushang.harnesswork.integrations.transcript import (
     WorkTranscriptSource,
 )
 from loushang.harnesswork.ports import WorkExecutionBinding
-from loushang.harnesswork.types import WorkOperation, WorkStepSpec
 from loushang.method.loader import MethodLoader
 from loushang.method.runtime import (
     MethodDomainProfile,
@@ -347,14 +350,7 @@ class CalculatorPolicy:
             session_id=basis.header.session_id,
             operation_id=op_id,
         )
-        initial = first.to_run_spec(profile=CODING_WORK_PROFILE, run_id=None)
-        spec = WorkRunSpec(
-            method_id=first.method_id,
-            plan_id=first.plan_id,
-            run_event_payload=initial.run_event_payload,
-            scope_event_payload=initial.scope_event_payload,
-            steps=tuple(t.to_step_spec(profile=CODING_WORK_PROFILE) for t in turns),
-        )
+        spec = build_session_work_plan_spec(turns, profile=CODING_WORK_PROFILE)
         operation, executor = self._bind_source(operation, spec, executor)
         self.prepared[op_id] = WorkExecutionBinding(executor, executor)
         return WorkCandidate(basis, operation, spec, {**common, "phase": "repair"})
@@ -392,27 +388,20 @@ class CalculatorPolicy:
                 str(Path(driver.__file__).resolve()),
             ]
         )
-        operation = WorkOperation(
-            op_id,
-            "VerifyCodingCommand",
-            basis.header.session_id,
-            "coding",
-            {
-                "command": command,
-                "execution": {
-                    "stdin": bundle.decode(),
-                    "cwd": str(self.root),
-                    "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
-                },
+        operation, spec = prepare_coding_verification_command(
+            operation_id=op_id,
+            session_id=basis.header.session_id,
+            command=command,
+            execution={
+                "stdin": bundle.decode(),
+                "cwd": str(self.root),
+                "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
             },
         )
         return WorkCandidate(
             basis,
             operation,
-            WorkRunSpec(
-                plan_id=f"verification:{op_id}",
-                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
-            ),
+            spec,
             {
                 **common,
                 "phase": "verification",
@@ -466,19 +455,13 @@ class CalculatorPolicy:
             raise GoalError("verification report missing")
         report_ref = report_records[0].blob
         report = driver.strict_json(self.blobs.read_bytes(report_ref))
-        outputs = [SessionBlobRef.from_manifest_entry(v) for v in report["outputs"]]
-        if report["output_basis"] == "sdk-text-view":
-            output = self.blobs.read_bytes(outputs[0])
-        else:
+        outputs = bash_verification_output_refs(report)
+        if report["output_basis"] != "sdk-text-view":
             # Original retained references keep their stream logical names.
-            stdout = [
-                r
-                for r in outputs
-                if r.logical_name.endswith("stdout.txt") or "stdout" in r.logical_name
-            ]
-            if len(stdout) != 1:
+            outputs = tuple(ref for ref in outputs if "stdout" in ref.logical_name)
+            if len(outputs) != 1:
                 raise GoalError("verification stdout stream ambiguous")
-            output = self.blobs.read_bytes(stdout[0])
+        output = self.blobs.read_bytes(outputs[0])
         if len(output) > 64 * 1024:
             raise GoalError("verification result exceeds profile")
         result = driver.strict_json(output)

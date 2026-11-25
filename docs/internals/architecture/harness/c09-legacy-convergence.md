@@ -167,3 +167,41 @@ Coding 的公开记录仍保自身声明字段、slots、模块路径和名义�
 职责边界复核由 Codex 实现 owner 在本任务授权范围内完成；以实际单一 owner、公开契约与无环依赖、兼容差分和完整本地检查作为接受证据，不声称用户另行批准架构或协议修订。macOS/Windows 原生、安装/真实 LSP、Host Runtime 等平台检查沿用既有 Actions 路线，本机结果不替代这些平台证据；交付检查及合并记录以关联 PR 为准。
 
 整体清单见 [Coding 职责清单](coding-responsibility-inventory.md)。
+
+## pre-B 准入复核
+
+实施 agent `/root` 在 `4f3a7899e` 上复核并接受 Package Product 与 Coding 的
+准入边界，采用本地架构方法 `0f9bd3f`。现有 Source 投影先检查内存设置，再按
+默认路径和显式路径的原顺序读取磁盘；旧状态检查先观察生命周期根，再观察
+Package 根。允许缺失目录的入口只跳过直接观察为不存在的根。Coding 绑定旧字段、
+路径和目录清单。中断启动复用已认证快照的 Source 分类结果，删除对同一设置的二次检查。
+
+本批 Coding −49 行、Harness +46 行，系统生产 Python −3 行。Linux 上与 cutover
+和普通会话相关的 161 项通过，4 个 Windows 原生用例跳过。旧字段库存检查通过。
+
+### Legacy 首 B 审阅证据与记录构造
+
+本批基线为 `05e78966a`，采用本地架构方法 `0f9bd3f`。实现 agent `/root`
+接受已认证库存到名义审阅记录的边界。Package Product 在 builtin-only 的
+pre-B 准入与首次 fence 后审阅时校验同一套库存条件。removed-local 在受管快照上
+证明最后安装或更新头及移除证据，以同一份版本校验构造审阅条目。local、removed
+和 builtin-only 审阅共用 builtin Intent 投影。Coding 保留可审阅的插件集合、
+Source 匹配政策和现有名义类型；审阅结果仍经既有批准与重放入口使用。
+
+生产 Python 为 Coding −71 行、Harness +139 行、系统 +68 行。本批将原中间
+Inventory DTO 与 Removal DTO 的构造退出审阅内部路径，接收端保留名义构造和类型约束。
+PLC9 仅同步两个旧禁用字段使用点的精确归属，原断言和 PR 路线沿用。
+四组受控记录与基线对照，覆盖 builtin-only 和 removed-local v1/v2，审阅 wire、
+字段、slots 和 pickle 字节相同。公开 `from_evidence` 的签名和解析后注解相同。
+最终源码上的切换、v1/v2 审阅、重放及 PLC9 组合为 30 项通过。
+
+### 旧配置 Source 消费
+
+Package Product 的既有消费事务直接编码 prepared 和 settled 回执。设置事务的
+只读复核由同一入口执行，读取和恢复使用同一份冻结证据。Coding 保留历史字段、
+允许消费的产品策略和现有错误类型。原有故障注入用例仍在写入 settled 回执前中断，
+注入点随实际编码职责移到 Harness。
+
+生产 Python 为 Coding −14、Harness −17、系统 −31 行。Hosting 和其他生产代码
+无变化。四组受控对照覆盖首次消费、重试、中断和损坏回执，持久化字节、结果、
+加锁与设置更新顺序一致。

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import re
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
@@ -33,8 +32,7 @@ from loushang.foundation._owned_tasks import (
     _task_failed_or_cancelled as _phase_task_failed,
 )
 
-from ._ownership import _method_descriptor as _method_descriptor
-from ._ownership import _report_task_needs_retry
+from ._ownership import _report_task_needs_retry, _require_async_method
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
 
 if TYPE_CHECKING:
@@ -122,9 +120,9 @@ class HostedApplicationRequestV1:
             raise ValueError("invalid hosted application Product identity")
         if _OPAQUE_TOKEN.fullmatch(self.generation_id) is None:
             raise ValueError("invalid hosted application generation identity")
-        _require_async_method(self.apphost, "shutdown")
-        _require_async_method(self.resolver, "open_session")
-        _require_async_method(self.product_owner, "close")
+        _require_async_method(self.apphost, "shutdown", label="hosted application")
+        _require_async_method(self.resolver, "open_session", label="hosted application")
+        _require_async_method(self.product_owner, "close", label="hosted application")
         if type(self.shutdown_budget) is not AppHostShutdownBudgetV1:
             raise TypeError("invalid hosted application shutdown budget")
         for value in (
@@ -294,6 +292,15 @@ class HostedApplicationRuntimeV1:
                 self._service, close_timeout=self._scope_close_timeout
             )
             self._client = None
+
+    async def _publish_client_scopes(self, prepare: Callable[[], None]) -> None:
+        """Settle an unpublished application if preparation or activation fails."""
+        try:
+            prepare()
+            self.enable_client_scopes()
+        except BaseException:
+            await self.close()
+            raise
 
     def open_client_scope(self) -> client_scope.ScopedAppServicePortV1:
         """Create one owned client through the explicitly selected mode."""
@@ -523,11 +530,6 @@ def _apphost_phase_needs_retry(task: asyncio.Task[object]) -> bool:
         return True
     result = task.result()
     return type(result) is not AppHostShutdownReportV1 or not result.completed
-
-
-def _require_async_method(value: object, name: str) -> None:
-    if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
-        raise TypeError(f"hosted application {name} port is invalid")
 
 
 __all__ = [

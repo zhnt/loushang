@@ -35,6 +35,7 @@ from ._native_approval import (
     NATIVE_APPROVAL_MAX_EVENTS,
     _NativeFactory,
     _next_native_approval_decision,
+    _require_native_approval_command,
 )
 from ._opt_in import (
     _MAX_EVENTS,
@@ -355,16 +356,10 @@ class WindowsNativeApprovalRecords(_WindowsRecords[_N], Generic[_A, _N]):
         action: Literal["approve", "revoke"],
         approval: _A | None,
     ) -> _N:
-        if (
-            not isinstance(operation_id, str)
-            or len(operation_id) > 128
-            or _OPAQUE.fullmatch(operation_id) is None
-            or (type(expected_generation) is not int)
-            or (expected_generation < 0)
-            or (action not in {"approve", "revoke"})
-            or ((action == "approve") != isinstance(approval, self._approval_type))
-        ):
-            raise ValueError("Windows Worker native approval command is invalid")
+        _require_native_approval_command(
+            operation_id, expected_generation, action, approval, self._approval_type,
+            invalid="Windows Worker native approval command is invalid",
+        )
         self._require_root(directory_fd)
         with ExitStack() as custody:
             bound = self._bind_record_append(directory_fd, custody)

@@ -100,8 +100,11 @@ def test_G14_BOUNDARIES_foreground_lifetime_is_an_exact_optional_apphost_edge() 
 def test_G14_BOUNDARIES_only_explicit_product_command_composes_native_stdio() -> None:
     command = Path("src/loushang/coding/cli/hosted.py")
     imports = _imports(command)
-    assert "loushang.apphost.foreground" in imports
-    assert "loushang.appserver.stdio" in imports
+    stdio_path = Path("src/loushang/apphost/integrations/_foreground_stdio.py")
+    assert "loushang.apphost.integrations._foreground_stdio" in imports
+    stdio_imports = _imports(stdio_path)
+    assert "loushang.apphost.foreground" in stdio_imports
+    assert "loushang.appserver.stdio" in stdio_imports
     assert 'loushang.coding.hosted.bootstrap' in imports
     bootstrap = _imports(Path('src/loushang/coding/hosted/bootstrap.py'))
     assert "loushang.appservice.continuity_file" in bootstrap

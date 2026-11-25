@@ -332,10 +332,16 @@ def test_plc9c1_through_c4_runtime_is_present_but_default_dark() -> None:
     }
     candidate_cli = HARNESS_ROOT / "cli/worker_candidate.py"
     candidate_module = "loushang.harness.worker.package_candidate"
+    review_module = "loushang.harness.worker.history._native_approval"
     if candidate_cli in worker_consumers and {
         name for name in _imports(candidate_cli)
         if name.startswith("loushang.harness.worker")
-    } == {candidate_module, f"{candidate_module}.WorkerPackageCandidateV1"}:
+    } == {
+        candidate_module,
+        f"{candidate_module}.WorkerPackageCandidateV1",
+        review_module,
+        f"{review_module}._NativeReviewMethods",
+    }:
         optional_consumers.add(candidate_cli)
     assert worker_consumers - optional_consumers == {
         SANDBOX_RUNTIME,

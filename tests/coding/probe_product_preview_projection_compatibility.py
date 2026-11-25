@@ -9,6 +9,7 @@ controlled. Exactly six observations; no capture or default CI route.
 import dataclasses
 import functools
 import gzip
+import importlib
 import inspect
 import json
 import sys
@@ -387,7 +388,13 @@ def observe(case, monkeypatch, tmp_path):
     monkeypatch.setattr(
         catalog_binding, "build_coding_initial_resource_catalog_adapter", build_adapter
     )
-    monkeypatch.setattr(preview_owner, "project_current_selection_evidence", evidence)
+    read_preview = getattr(code, "preview_fenced_product_resources", None)
+    evidence_owner = (
+        preview_owner
+        if read_preview is None
+        else importlib.import_module(read_preview.__module__)
+    )
+    monkeypatch.setattr(evidence_owner, "project_current_selection_evidence", evidence)
     monkeypatch.setattr(code, "time", SimpleNamespace(time=clock, time_ns=clock_ns))
     old_getattr = VerifiedPluginResourceOrigin.__getattribute__
 

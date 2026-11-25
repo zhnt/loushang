@@ -140,7 +140,9 @@ def test_G17_COMPAT_missing_port_keeps_command_cleanup_ownership(tmp_path, monke
             return Attempt()
 
         monkeypatch.setattr(hosted_bootstrap, "create_coding_hosted_attempt", bootstrap)
-        monkeypatch.setattr(hosted, "InheritedStdioTransportV1", Transport)
+        monkeypatch.setattr(
+            "loushang.apphost.integrations._foreground_stdio.InheritedStdioTransportV1", Transport
+        )
         launch, _ = hosted.parse_launch(_argv(tmp_path))
         command = hosted.CodingHostedCommandV1(
             launch, session_discovery=True, session_execution=True

@@ -8,9 +8,10 @@ resources or durable facts. Domain error/status projection stays at the caller.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from typing import Generic, Literal, NoReturn, Protocol, TypeVar, cast
+from typing import Generic, Literal, NamedTuple, NoReturn, Protocol, TypeVar, cast
 
 from loushang.hosting.contracts import ChildSessionHostingPort
 
@@ -54,6 +55,103 @@ class _LifecycleStatus(Protocol):
 
 
 _StatusT = TypeVar("_StatusT", bound=_LifecycleStatus)
+
+
+class _WorkerAttemptEffects(NamedTuple):
+    receipt: Callable[[str], object]
+    recover: Callable[[], Awaitable[object]]
+    start: Callable[..., Awaitable[object]]
+
+
+class _BoundProductWorkerAttempt(Generic[_StatusT]):
+    """Adopt the returned close capability before inspecting attempt state."""
+
+    __slots__ = (
+        "_close",
+        "_close_lock",
+        "_closed",
+        "_effects",
+        "_status_owner",
+    )
+
+    _status_type: type[_StatusT]
+    _failure: Callable[[str], Exception]
+
+    def __init__(self, raw: object) -> None:
+        close = getattr(raw, "close", None)
+        if not inspect.iscoroutinefunction(close):
+            raise self._failure("attempt_close_invalid")
+        self._close = cast(Callable[[], Awaitable[None]], close)
+        self._close_lock = asyncio.Lock()
+        self._closed = False
+        self._effects: _WorkerAttemptEffects | None = None
+        self._status_owner: object | None = raw
+
+    def bind(self) -> None:
+        raw = self._status_owner
+        if raw is None:
+            raise self._failure("attempt_invalid")
+        receipt = getattr(raw, "receipt_for_entrypoint", None)
+        recover = getattr(raw, "recover", None)
+        start = getattr(raw, "start", None)
+        if (
+            not callable(receipt)
+            or not inspect.iscoroutinefunction(recover)
+            or not inspect.iscoroutinefunction(start)
+        ):
+            raise self._failure("attempt_invalid")
+        self._effects = _WorkerAttemptEffects(receipt, recover, start)
+
+    def _require_effects(self) -> _WorkerAttemptEffects:
+        effects = self._effects
+        if effects is None:
+            raise self._failure("attempt_invalid")
+        return effects
+
+    def receipt(self) -> ProductWorkerActivationReceiptV1:
+        value = self._require_effects().receipt("product")
+        if type(value) is not ProductWorkerActivationReceiptV1:
+            raise self._failure("receipt_required")
+        return value
+
+    async def recover(self) -> tuple[str, ...]:
+        value = await self._require_effects().recover()
+        if (
+            not isinstance(value, tuple)
+            or not value
+            or any(not isinstance(item, str) or not item for item in value)
+        ):
+            raise self._failure("recovery_invalid")
+        return value
+
+    async def start(self, *, correlation_id: str) -> _StatusT:
+        value = await self._require_effects().start(correlation_id=correlation_id)
+        return self._checked_status(value)
+
+    @property
+    def status(self) -> _StatusT:
+        raw = self._status_owner
+        if raw is None:
+            raise self._failure("attempt_closed")
+        try:
+            value = getattr(raw, "status")
+        except BaseException:
+            raise self._failure("status_invalid") from None
+        return self._checked_status(value)
+
+    def _checked_status(self, value: object) -> _StatusT:
+        if type(value) is not self._status_type:
+            raise self._failure("status_invalid")
+        return cast(_StatusT, value)
+
+    async def close(self) -> None:
+        async with self._close_lock:
+            if self._closed:
+                return
+            await self._close()
+            self._closed = True
+            self._status_owner = None
+
 
 
 class _StartGatePort(_ProductGatePort, Protocol):

@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
-import sys
 from collections.abc import Sequence
-from contextlib import closing
 from functools import partial
 from pathlib import Path
 
@@ -18,13 +15,11 @@ from loushang.coding.package.product_runtime import (
     _open_installed_product,
     admit_coding_external_worker_wheel,
 )
+from loushang.coding.package.product_worker_installed_native import (
+    _product_native_release_custody,
+)
 from loushang.coding.package.product_worker_native_approval import (
     CodingWorkerNativeApprovalJournal,
-)
-from loushang.coding.package.product_worker_native_install import (
-    install_coding_product_worker_native_release,
-    repair_coding_product_worker_native_release,
-    review_coding_product_worker_native_release,
 )
 from loushang.coding.package.product_worker_operator_query import (
     query_coding_product_worker,
@@ -44,10 +39,10 @@ from loushang.coding.plugin_manager.lifecycle import (
 )
 from loushang.harness.cli.worker_candidate import (
     NativeWorkerCandidateOperator,
-    NativeWorkerReleaseInput,
     add_native_worker_review_commands,
     add_worker_candidate_commands,
     add_worker_candidate_opt_in_commands,
+    execute_linux_worker_release_action,
     read_worker_candidate_status,
 )
 from loushang.harness.cli.worker_recovery import (
@@ -56,6 +51,9 @@ from loushang.harness.cli.worker_recovery import (
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
+)
+from loushang.harness.package_product.product_worker_candidate import (
+    NativeWorkerReleaseInput,
 )
 
 _RELEASE_INPUT = NativeWorkerReleaseInput(
@@ -128,15 +126,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     add_posix_worker_recovery_commands(actions)
     args = parser.parse_args(argv)
 
-    if os.name != "posix" or not sys.platform.startswith("linux"):
-        sys.stderr.write("Coding Worker native command refused: platform_unsupported\n")
-        return 1
-
     return _CANDIDATE_OPERATOR.run(
         args,
         resolve_layout=resolve_coding_plugin_lifecycle_state_layout,
         admit=lambda layout: partial(admit_coding_external_worker_wheel, layout),
         execute=_run_product_action,
+        platform_unavailable="platform_unsupported",
     )
 
 
@@ -155,10 +150,10 @@ def _run_product_action(
         workspace=workspace,
         worker_candidates=True,
     )
-    with closing(application):
-        product = application.runtime_owner.product_owner
-        if not isinstance(product, PosixLocalWheelProductSessionOwner):
-            raise ValueError("Coding Worker native Product owner is unsupported")
+    with _CANDIDATE_OPERATOR.hold_installed_product(
+        application, PosixLocalWheelProductSessionOwner,
+        unavailable="Coding Worker native Product owner is unsupported",
+    ) as product:
         return _execute(product, args)
 
 
@@ -200,60 +195,10 @@ def _execute(
     )
     if recovered is not None:
         return recovered
-    owner = CodingWorkerNativeApprovalJournal(product)
-    if args.action == "status":
-        decision = owner.current()
-        return {"approvalDecision": None if decision is None else decision.to_dict()}
-    if args.action == "revoke":
-        decision = owner.change(
-            operation_id=args.operation_id,
-            expected_generation=args.expected_generation,
-            action="revoke",
-            approval=None,
-        )
-        return {"approvalDecision": decision.to_dict()}
-    if args.action == "repair-install":
-        decision = owner.current()
-        if (
-            decision is None
-            or decision.action != "approve"
-            or decision.approval is None
-        ):
-            raise ValueError("Coding Worker native release approval is absent")
-        reader = repair_coding_product_worker_native_release(
-            product, approval_owner=owner, approved=decision.approval
-        )
-        return {"nativeClosure": reader.current_closure().to_dict()}
-    wheel = _RELEASE_INPUT.read(args.wheel)
-    review = review_coding_product_worker_native_release(product, wheel=wheel)
-    if args.action == "review":
-        return {"nativeReleaseReview": review.to_dict()}
-    if args.action == "approve":
-        if args.review_id != review.review_id:
-            raise ValueError("Coding Worker native release review changed")
-        decision = owner.change(
-            operation_id=args.operation_id,
-            expected_generation=args.expected_generation,
-            action="approve",
-            approval=review.approval,
-        )
-        return {"approvalDecision": decision.to_dict()}
-    if args.action == "install":
-        decision = owner.current()
-        if (
-            decision is None
-            or decision.action != "approve"
-            or decision.approval != review.approval
-        ):
-            raise ValueError("Coding Worker native release approval is not current")
-        reader = install_coding_product_worker_native_release(
-            product,
-            approval_owner=owner,
-            approved=review.approval,
-            wheel=wheel,
-        )
-        return {"nativeClosure": reader.current_closure().to_dict()}
-    raise ValueError("Coding Worker native command is unsupported")
+    return execute_linux_worker_release_action(
+        product, args, _RELEASE_INPUT, _product_native_release_custody(),
+        CodingWorkerNativeApprovalJournal(product), label=_CANDIDATE_OPERATOR.label,
+    )
 
 
 if __name__ == "__main__":

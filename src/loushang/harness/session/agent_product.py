@@ -47,7 +47,6 @@ from loushang.harness.capabilities import (
     RuntimeProfileSlotExplanation,
     ScopedSourcePublicationReference,
     StagedResourceCompositionCandidate,
-    stage_resource_composition_candidate,
     standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.component_host import (
@@ -191,6 +190,9 @@ from loushang.harness.session.composition import (
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
+from loushang.harness.session.extension_profiles import (
+    prepare_session_resource_candidate,
+)
 from loushang.harness.session.legacy_side_question import (
     LegacySideQuestionBinding,
     bind_legacy_side_question,
@@ -342,7 +344,7 @@ def _create_query_only_session(
             }
         ),
         session_manager=manager,
-        capability_runtime=stage_resource_composition_candidate(profile_plan),
+        capability_runtime=prepare_session_resource_candidate(profile_plan),
         execute_compaction=refuse_model_execution,
         execute_branch_summary=refuse_model_execution,
         get_changelog=lambda cwd, args: (cwd, args),

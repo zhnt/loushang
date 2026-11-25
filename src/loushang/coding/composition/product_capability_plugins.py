@@ -23,7 +23,6 @@ from loushang.coding.composition.capability_plugins import (
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionPreparation,
     CodingResumePluginParents,
-    _capability_configuration_entries,
     _prepare_capability_plugin_plan,
 )
 from loushang.coding.composition.capability_plugins import (
@@ -90,7 +89,6 @@ from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginPlanSeed,
-    build_product_plugin_selection_plan,
     project_product_owner_candidates,
 )
 
@@ -446,7 +444,8 @@ def _product_plan_seed(
         )
     by_id = {item.manifest.name: item for item in selected}
     plugin_ids = tuple(sorted(by_id))
-    plan = build_product_plugin_selection_plan(
+    return ProductPluginPlanSeed.compile_capability_plan(
+        pairs,
         product_id="coding" if base_plan is None else base_plan.context.product_id,
         scope_id=scope_id,
         policy_revision=product_policy_revision,
@@ -455,26 +454,18 @@ def _product_plan_seed(
             by_id[plugin_id].snapshot.instance_revision_ref for plugin_id in plugin_ids
         ),
         source_trust=(_required_trust(by_id[plugin_id]) for plugin_id in plugin_ids),
-        additions=_capability_configuration_entries(
-            (
-                package
-                for package, _ in pairs
-                if base_plan is None
-                or package.manifest.name in configurations
-                or package.manifest.name in selected_data_ids
-            ),
-            configurations,
+        configuration_packages=(
+            package
+            for package, _ in pairs
+            if base_plan is None
+            or package.manifest.name in configurations
+            or package.manifest.name in selected_data_ids
         ),
+        configure_capability=lambda plugin_id: configurations[plugin_id].to_dict(),
         allowed_authority_ceiling=("filesystem", "process"),
+        tool_authority=tool_authority,
+        owner_bindings=base_owner_bindings,
         base=base_plan,
-    )
-    return ProductPluginPlanSeed.from_package_bindings(
-        plan,
-        pairs,
-        owner_bindings=(
-            *base_owner_bindings,
-            ProductContributionOwnerBinding(authority=tool_authority),
-        ),
     )
 
 

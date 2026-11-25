@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
 from uuid import uuid4
 
 from loushang.harnesswork import WorkOperation, WorkRunSpec, WorkStepSpec
@@ -32,6 +31,7 @@ from ._goal_proposal import planning_instructions as planning_instructions
 
 class ModelPlanningPolicy(BatchPlanningPolicy, CalculatorPolicy):
     policy_id = POLICY_ID
+    _observations = BatchPlanningPolicy._project_observations
 
     def __init__(self, *, allowance, tool_policy, history, **kwargs):
         super().__init__(**kwargs)
@@ -99,93 +99,54 @@ class ModelPlanningPolicy(BatchPlanningPolicy, CalculatorPolicy):
                 basis, "needs_user", f"planning_evidence_unknown:{error}"
             )
 
-    def _observations(self, basis, facts):
-        """Derive limits and input facts, without a second index or counter ledger."""
-        evidence: list[dict[str, Any]] = []
-        routes: list[dict[str, Any]] = []
-        rejections: list[dict[str, Any]] = []
-        invalid = no_progress = planning = 0
-        knowledge = set()
-        failures = None
-        for batch in facts.batches:
-            if batch.goal_id != basis.goal.id:
-                continue
-            phase = batch.source.get("phase")
-            planning += phase == "planning"
-            run = self._run(batch, facts)
-            if run is None:
-                continue
-            if phase == "planning":
-                if run.status == "cancelled":
-                    continue
-                try:
-                    proposal = self._proposal(batch, run)
-                    if proposal.action.name == "repair":
-                        self._repair_proof(
-                            batch.revision,
-                            batch.epoch,
-                            batch.source["inventory"]["calculator.py"]["sha256"],
-                            evidence,
-                        )
-                    routes.append(
-                        {"proposal_id": batch.operation_id, "proposal": proposal.data()}
-                    )
-                except ProposalRejected as error:
-                    invalid += 1
-                    rejections.append(
-                        {"proposal_id": batch.operation_id, "reason": str(error)}
-                    )
-                continue
-            # Only an actual original implementation run resets proposal failures.
-            invalid = 0
-            item = {
-                "id": batch.operation_id,
-                "phase": phase,
-                "status": run.status,
-                "revision": batch.revision,
-                "epoch": batch.epoch,
-                "action": plain(batch.source.get("action")),
-            }
-            progress = False
-            if phase in {"verification", "check"}:
-                historical = GoalBasis(
-                    basis.header,
-                    replace(basis.goal, revision=batch.revision, epoch=batch.epoch),
-                    basis.sequence,
-                )
-                proof = self._verification(
-                    replace(batch, run_receipt=run.run_id),
-                    historical,
-                    plain(batch.source["inventory"]),
-                    phase=phase,
-                )
-                if proof is None:
-                    raise GoalError("historical verification evidence missing")
-                item["result"] = proof
-                current_failures = frozenset(
-                    row["id"] for row in proof["result"]["results"] if not row["passed"]
-                )
-                progress = "check_all" not in knowledge or (
-                    failures is not None and current_failures < failures
-                )
-                knowledge.add("check_all")
-                failures = current_failures
-            elif phase == "inspect":
-                report = self._report(batch, run, "goal_inspection_report")
-                if (
-                    report["source_sha256"]
-                    != batch.source["inventory"]["calculator.py"]["sha256"]
-                ):
-                    raise GoalError("inspection source mismatch")
-                item["result"] = report
-                inspected = {f"inspect:{target}" for target in report["targets"]}
-                progress = bool(inspected - knowledge)
-                knowledge.update(inspected)
-            elif phase != "repair":
-                raise GoalError("unknown model-planning implementation phase")
-            no_progress = 0 if progress else no_progress + 1
-            evidence.append(item)
-        return evidence, routes, rejections, planning, invalid, no_progress
+    def _validate_observed_proposal(self, batch, proposal, evidence):
+        if proposal.action.name == "repair":
+            self._repair_proof(
+                batch.revision,
+                batch.epoch,
+                batch.source["inventory"]["calculator.py"]["sha256"],
+                evidence,
+            )
+
+    def _observed_work(self, basis, batch, run, evidence, knowledge, context):
+        phase = batch.source.get("phase")
+        item = self._implementation_observation(batch, run)
+        progress = False
+        if phase in {"verification", "check"}:
+            historical = GoalBasis(
+                basis.header,
+                replace(basis.goal, revision=batch.revision, epoch=batch.epoch),
+                basis.sequence,
+            )
+            proof = self._verification(
+                replace(batch, run_receipt=run.run_id),
+                historical,
+                plain(batch.source["inventory"]),
+                phase=phase,
+            )
+            if proof is None:
+                raise GoalError("historical verification evidence missing")
+            item["result"] = proof
+            current_failures = frozenset(
+                row["id"] for row in proof["result"]["results"] if not row["passed"]
+            )
+            previous = knowledge.get("check_all")
+            progress = previous is None or current_failures < previous
+            knowledge["check_all"] = current_failures
+        elif phase == "inspect":
+            report = self._report(batch, run, "goal_inspection_report")
+            if (
+                report["source_sha256"]
+                != batch.source["inventory"]["calculator.py"]["sha256"]
+            ):
+                raise GoalError("inspection source mismatch")
+            item["result"] = report
+            inspected = {f"inspect:{target}" for target in report["targets"]}
+            progress = bool(inspected - knowledge.keys())
+            knowledge.update(dict.fromkeys(inspected))
+        elif phase != "repair":
+            raise GoalError("unknown model-planning implementation phase")
+        return item, progress
 
     @staticmethod
     def _repair_proof(revision, epoch, source_sha256, evidence):

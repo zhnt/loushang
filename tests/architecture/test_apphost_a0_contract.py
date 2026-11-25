@@ -24,6 +24,7 @@ APPHOST_OPTIONAL_MODULES = {
     APPHOST_ROOT / "launcher.py",
     APPHOST_ROOT / "workspace_registry.py",
     APPHOST_ROOT / "local.py",
+    APPHOST_ROOT / "local_application.py",
     APPHOST_ROOT / "hosted.py",
 }
 HARNESS_SESSION_ADAPTER = Path("src/loushang/apphost/integrations/harness_session.py")
@@ -384,6 +385,9 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
                 "loushang.apphost.integrations.session_control._HostedApprovalPresentation",
                 "loushang.apphost.integrations.resource_access",
                 "loushang.apphost.integrations.resource_access.HostedResourceAccess",
+                "loushang.apphost.integrations.resource_tools",
+                "loushang.apphost.integrations.resource_tools.HostReferencePolicy",
+                "loushang.apphost.integrations.resource_tools.bind_hosted_session_tools",
             }
             if path == Path('src/loushang/coding/hosted/resume.py') else set()
         )
@@ -402,18 +406,23 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path('src/loushang/coding/hosted/method_application.py'),
         # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
         Path('src/loushang/coding/hosted/goal_application.py'),
+        Path('src/loushang/coding/hosted/goal_commands.py'),
         Path('src/loushang/coding/hosted/continuity.py'),
         Path('src/loushang/coding/hosted/catalog.py'),
         Path('src/loushang/coding/hosted/session.py'),
         Path('src/loushang/coding/hosted/_session_commands.py'),
-        Path('src/loushang/coding/hosted/resources.py'),
         Path('src/loushang/coding/hosted/resource_tools.py'),
+        Path('src/loushang/coding/hosted/resources.py'),
+        Path('src/loushang/coding/hosted/session_goal.py'),
+        Path('src/loushang/coding/hosted/user_choice.py'),
         # Stage 1A: validate the original managed lease binding key.
         Path('src/loushang/coding/hosted/execution.py'),
         Path("src/loushang/coding/cli/hosted.py"),
         Path("src/loushang/coding/cli/hosted_client.py"),
         Path("src/loushang/coding/cli/mux.py"),
+        Path("src/loushang/coding/cli/mux_service.py"),
         Path('src/loushang/coding/hosted/bootstrap.py'),
+        Path('src/loushang/coding/hosted/foreground.py'),
         Path('src/loushang/coding/hosted/local.py'),
         # Accepted optional lmux deployment composition; never a core edge.
         Path("src/loushang/coding/cli/lmux.py"),

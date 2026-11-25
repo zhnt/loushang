@@ -23,6 +23,9 @@ from tempfile import TemporaryDirectory
 from typing import Any, ClassVar, Generic, Literal, Protocol, TypeVar, cast
 
 from loushang.harness.journal._io_loops import write_all
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     _rename_directory_noreplace,
 )
@@ -41,7 +44,7 @@ from loushang.harness.worker.history._native_approval import (
     RootedNativeApprovalRecords,
     _NativeApprovalMethods,
     _NativeDecisionMethods,
-    _valid_opaque,
+    _require_native_approval_command,
 )
 from loushang.harness.worker.native_executable_format import (
     WorkerNativeExecutableFormatError,
@@ -68,6 +71,8 @@ class _Closure(Protocol):
     def containment_launcher_digest(self) -> str: ...
     @property
     def containment_profile_digest(self) -> str: ...
+
+    def to_dict(self) -> dict[str, object]: ...
 
 
 class _Reader(Protocol):
@@ -679,6 +684,27 @@ class _LinuxWorkerNativeReleaseCustody(Generic[A, V, C, M, R]):
             )
 
 
+class _InstalledLinuxWorkerReleaseReader(Generic[M]):
+    """Reopen the same Product release and retain its GC authority across reads."""
+
+    _read_launch_material: Callable[[Path, PosixLocalWheelProductSessionOwner], M]
+
+    def __init__(self, *, product_owner: PosixLocalWheelProductSessionOwner) -> None:
+        self._product_owner = product_owner
+        self._root = product_owner.state_root / _PRODUCT_NATIVE_RELEASE_ROOT
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReservationJournal:
+        return self._product_owner.gc_gate
+
+    @property
+    def product_owner(self) -> PosixLocalWheelProductSessionOwner:
+        return self._product_owner
+
+    def _current_launch_material(self) -> M:
+        return self._read_launch_material(self._root, self._product_owner)
+
+
 _ApprovalDecisionT = TypeVar("_ApprovalDecisionT", bound=_NativeDecisionMethods)
 
 
@@ -715,14 +741,10 @@ class _ProductRootedNativeApprovalRecords(
         action: Literal["approve", "revoke"],
         approval: A | None,
     ) -> _ApprovalDecisionT:
-        if (
-            not _valid_opaque(operation_id)
-            or type(expected_generation) is not int
-            or expected_generation < 0
-            or (action not in {"approve", "revoke"})
-            or ((action == "approve") != isinstance(approval, self._approval_type))
-        ):
-            raise ValueError("Worker native approval command is invalid")
+        _require_native_approval_command(
+            operation_id, expected_generation, action, approval, self._approval_type,
+            invalid="Worker native approval command is invalid",
+        )
         with (
             self._product_owner.gc_gate.guard(require_write=True),
             self._bound_journal() as rooted,

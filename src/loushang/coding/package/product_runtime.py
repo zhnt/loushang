@@ -13,7 +13,7 @@ from hashlib import sha256
 from importlib.metadata import version as version
 from pathlib import Path
 from threading import Lock
-from typing import Literal, cast
+from typing import TypeVar
 
 from loushang.coding.plugin_manager.lifecycle import (
     CodingPluginLifecycleStateLayout,
@@ -34,22 +34,24 @@ from loushang.harness.package_product._application_runtime import (
     LegacyProductWorkspace,
     OrdinaryProductSessionOwner,
     bind_fenced_product_session_owner,
+    capture_fenced_posix_source,
     fenced_source_catalog_scope,
     handoff_product_open,
-    hold_accepted_product_adoption,
     open_fenced_product_management_state,
     require_current_product_admission,
 )
 from loushang.harness.package_product._legacy_runtime import (
+    legacy_product_state_has_inputs,
     matches_epoch_layout,
     open_native_fenced_product_epoch,
     read_fresh_product_source_snapshot,
 )
 from loushang.harness.package_product._plugin_bootstrap import (
+    ReviewedPluginChoices,
     _PluginBootstrapPolicy,
-    bootstrap_product_plugin,
+    adopt_reviewed_product_plugins,
+    bootstrap_fresh_product_session,
     bootstrap_product_plugins,
-    fresh_product_bootstrap_pending,
     product_bootstrap_completed,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -173,35 +175,26 @@ from .product_backup_types import (
     ensure_coding_product_backup_types as ensure_coding_product_backup_types,
 )
 from .product_worker_opt_in import CodingWorkerOptInJournal
-from .source_snapshot import coding_settings_have_pre_b_inputs_without_writes
+from .source_snapshot import _source_projection
 
 CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH = 2
 CODING_PACKAGE_PRODUCT_POLICY_REVISION = "coding-product-package-policy:1"
-
-_CODING_BUILTIN_PLUGIN_IDS = (
-    "coding.base",
-    "coding.lsp.default",
-    "coding.arch.default",
-)
 
 _CODING_BUILTIN_BOOTSTRAP_POLICY = _PluginBootstrapPolicy(
     product_id="coding",
     operation_id_prefix="coding-builtin-bootstrap:",
     enable_id_prefix="coding-builtin-bootstrap-enable:",
     error_prefix="Coding builtin Product bootstrap",
+    plugin_ids=("coding.base", "coding.lsp.default", "coding.arch.default"),
 )
 
 _fresh_coding_builtin_bootstrap_completed = partial(
     product_bootstrap_completed,
-    plugin_ids=_CODING_BUILTIN_PLUGIN_IDS,
     policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
 )
 
 
 _RESUME_EPOCH_DOMAIN = b"loushang.coding.resume-epoch/v1\0"
-
-
-_LIFECYCLE_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -592,9 +585,12 @@ def admit_coding_external_data_wheel(
 ) -> CodingExternalDataWheelBindingV1:
     """Capture one local data Wheel under the current fenced Product Source root."""
 
-    return cast(
-        "CodingExternalDataWheelBindingV1",
-        _capture_coding_inert_source(lifecycle, source=source, kind="data"),
+    return capture_fenced_posix_source(
+        source,
+        resolve_coding_package_epoch_layout(lifecycle).fenced_runtime_open_kwargs(),
+        scope_id=lifecycle.scope_id,
+        no_namespace="Coding Package Product root is not fenced",
+        catalog=CodingExternalDataWheelCatalog.for_roots,
     )
 
 
@@ -605,9 +601,12 @@ def admit_coding_external_dependency_wheel(
 ) -> CodingExternalDependencyWheelBindingV1:
     """Pin inert dependency bytes; no Coding Plugin profile may use them yet."""
 
-    return cast(
-        "CodingExternalDependencyWheelBindingV1",
-        _capture_coding_inert_source(lifecycle, source=source, kind="dependency"),
+    return capture_fenced_posix_source(
+        source,
+        resolve_coding_package_epoch_layout(lifecycle).fenced_runtime_open_kwargs(),
+        scope_id=lifecycle.scope_id,
+        no_namespace="Coding Package Product root is not fenced",
+        catalog=CodingExternalDependencyWheelCatalog.for_roots,
     )
 
 
@@ -630,37 +629,9 @@ def admit_coding_external_worker_wheel(
             return CodingWindowsExternalWorkerWheelCatalog(
                 epoch_runtime=epoch_runtime, state_root=roots.state_root, **roots.identity
             ).capture(source, admission=admission)
-        return CodingExternalWorkerWheelCatalog(
-            roots.state_root / "external-worker-wheel-bindings.jsonl",
-            **roots.identity,
-        ).capture(source, admission=admission, epoch_runtime=epoch_runtime)
-
-
-def _capture_coding_inert_source(
-    lifecycle: CodingPluginLifecycleStateLayout,
-    *,
-    source: Path,
-    kind: Literal["data", "dependency"],
-) -> CodingExternalDataWheelBindingV1 | CodingExternalDependencyWheelBindingV1:
-    """Capture one inert source through the original epoch and catalog owners."""
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
-        **epoch.fenced_runtime_open_kwargs()
-    )
-    with fenced_source_catalog_scope(
-        epoch_runtime,
-        scope_id=lifecycle.scope_id,
-        no_namespace="Coding Package Product root is not fenced",
-    ) as roots:
-        catalog = (
-            CodingExternalDataWheelCatalog.for_roots(roots)
-            if kind == "data"
-            else CodingExternalDependencyWheelCatalog(
-                roots.state_root / "external-dependency-wheel-bindings.jsonl",
-                **roots.identity,
-            )
+        return CodingExternalWorkerWheelCatalog.for_roots(roots).capture(
+            source, admission=admission, epoch_runtime=epoch_runtime
         )
-        return catalog.capture(source, epoch_runtime=epoch_runtime)
 
 
 def bootstrap_coding_builtin_product_plugins(
@@ -692,7 +663,6 @@ def bootstrap_coding_builtin_product_plugins(
     with closing(owner):
         return bootstrap_product_plugins(
             owner.runtime_owner.product_owner,
-            _CODING_BUILTIN_PLUGIN_IDS,
             policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
             require_current_admission=partial(
                 _require_current_coding_product_admission, require_current_admission
@@ -711,41 +681,50 @@ def bootstrap_coding_accepted_disabled_only_product_plugins(
 ) -> CodingLegacyDisabledOnlyAcceptanceV1:
     """Install builtins from an explicitly accepted, fenced Source snapshot."""
 
+    return _adopt_coding_reviewed_plugins(
+        lifecycle, settings_manager, workspace=workspace, accepted_review_id=accepted_review_id,
+        runtime_version=runtime_version, runtime_protocol_epoch=runtime_protocol_epoch,
+        open_epoch=PackageProductPosixFencedRuntimeOwner.open,
+        accept_review=accept_coding_first_b_disabled_only,
+        open_application=open_coding_fenced_product_application_owner,
+        reviewed_choices=lambda receipt: frozenset(item.plugin_id for item in receipt.review.disabled_plugins),
+    )
+
+
+_AcceptedReviewT = TypeVar("_AcceptedReviewT")
+
+
+def _adopt_coding_reviewed_plugins(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings_manager: SettingsManager,
+    *,
+    workspace: Path,
+    accepted_review_id: str,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+    open_epoch: Callable[..., PackageProductPosixFencedRuntimeOwner | PackageProductWindowsFencedRuntimeOwner],
+    accept_review: Callable[..., _AcceptedReviewT],
+    open_application: Callable[..., CodingFencedProductApplicationOwner],
+    reviewed_choices: Callable[[_AcceptedReviewT], ReviewedPluginChoices | frozenset[str]],
+    removal_label: str = "",
+    windows_candidate: bool = False,
+) -> _AcceptedReviewT:
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    with hold_accepted_product_adoption(
-        open_epoch=lambda: PackageProductPosixFencedRuntimeOwner.open(
-            **epoch.fenced_runtime_open_kwargs()
-        ),
-        accept_review=lambda epoch_runtime: accept_coding_first_b_disabled_only(
-            lifecycle,
-            epoch_runtime,
-            settings_manager=settings_manager,
+    return adopt_reviewed_product_plugins(
+        open_epoch=partial(open_epoch, **epoch.fenced_runtime_open_kwargs()),
+        accept_review=lambda owner: accept_review(
+            lifecycle, owner, settings_manager=settings_manager,
             accepted_review_id=accepted_review_id,
         ),
-        open_application=lambda: open_coding_fenced_product_application_owner(
-            lifecycle,
-            workspace=workspace,
-            runtime_version=runtime_version,
-            runtime_protocol_epoch=runtime_protocol_epoch,
+        open_application=partial(
+            open_application, lifecycle, workspace=workspace,
+            runtime_version=runtime_version, runtime_protocol_epoch=runtime_protocol_epoch,
+            windows_candidate=windows_candidate,
         ),
-    ) as (receipt, owner):
-        bootstrap_product_plugins(
-            owner.runtime_owner.product_owner,
-            _CODING_BUILTIN_PLUGIN_IDS,
-            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-            disabled_ids={item.plugin_id for item in receipt.review.disabled_plugins},
-        )
-        return receipt
-
-
-def _coding_settings_have_legacy_product_inputs(settings_manager: SettingsManager) -> bool:
-    settings = settings_manager.get_settings()
-    return bool(
-        settings.disabled_plugins
-        or settings.plugin_sources
-        or settings.resource_roots
-        or settings.package_roots
-        or settings.package_sources
+        reviewed_choices=reviewed_choices,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+        removal_label=removal_label,
+        history_label="Coding builtin-only Product",
     )
 
 
@@ -759,16 +738,14 @@ def require_fresh_coding_product_inputs(
 
     if not isinstance(settings_manager, SettingsManager):
         raise TypeError("Coding settings manager is required")
-    if _coding_settings_have_legacy_product_inputs(settings_manager):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(
+        _source_projection.has_loaded_pre_fence_inputs(settings_manager),
+    )
     if type(roots_may_be_absent) is not bool:
         raise TypeError("Coding fresh Product root policy is invalid")
-    if _legacy_state_requires_migration(lifecycle, skip_missing=roots_may_be_absent):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(
+        _legacy_state_requires_migration(lifecycle, skip_missing=roots_may_be_absent),
+    )
 
 
 def require_fresh_coding_product_inputs_without_writes(
@@ -779,14 +756,11 @@ def require_fresh_coding_product_inputs_without_writes(
 ) -> None:
     """Require empty input for an explicit fresh-only Product cutover."""
 
-    if coding_product_inputs_need_compatibility(
-        lifecycle,
-        workspace=workspace,
-        settings_manager=settings_manager,
-    ):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(
+        coding_product_inputs_need_compatibility(
+            lifecycle, workspace=workspace, settings_manager=settings_manager
+        ),
+    )
 
 
 def coding_product_inputs_need_compatibility(
@@ -799,8 +773,6 @@ def coding_product_inputs_need_compatibility(
 
     if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
-    if not isinstance(workspace, Path) or not workspace.is_absolute():
-        raise ValueError("Coding workspace must be absolute")
     if _coding_product_settings_need_compatibility(
         workspace=workspace, settings_manager=settings_manager
     ):
@@ -813,13 +785,11 @@ def require_fresh_coding_product_settings_without_writes(
 ) -> None:
     """Require fresh settings for an explicit fresh-only Product cutover."""
 
-    if _coding_product_settings_need_compatibility(
-        workspace=workspace,
-        settings_manager=settings_manager,
-    ):
-        raise RuntimeError(
-            "Coding pre-B workspace is unsupported; use a fresh workspace"
-        )
+    _source_projection.require_fresh_inputs(
+        _coding_product_settings_need_compatibility(
+            workspace=workspace, settings_manager=settings_manager
+        ),
+    )
 
 
 def _coding_product_settings_need_compatibility(
@@ -829,25 +799,9 @@ def _coding_product_settings_need_compatibility(
 ) -> bool:
     if not isinstance(workspace, Path) or not workspace.is_absolute():
         raise ValueError("Coding workspace must be absolute")
-    settings_paths = [
-        default_global_settings_path(),
-        default_project_settings_path(workspace),
-    ]
-    if settings_manager is not None:
-        if not isinstance(settings_manager, SettingsManager):
-            raise TypeError("Coding Product settings manager is invalid")
-        if _coding_settings_have_legacy_product_inputs(settings_manager):
-            return True
-        settings_paths.extend(
-            path
-            for path in (
-                settings_manager.global_settings_path,
-                settings_manager.project_settings_path,
-            )
-            if path is not None
-        )
-    return coding_settings_have_pre_b_inputs_without_writes(
-        *dict.fromkeys(settings_paths)
+    return _source_projection.workspace_has_pre_fence_inputs(
+        (default_global_settings_path(), default_project_settings_path(workspace)),
+        settings_manager,
     )
 
 
@@ -874,12 +828,6 @@ def _fresh_coding_bootstrap_settings(
     )
 
 
-def _native_coding_fresh_route(windows_candidate: bool) -> bool:
-    return (os.name == "posix" and sys.platform.startswith("linux")) or (
-        os.name == "nt" and windows_candidate
-    )
-
-
 def _bootstrap_coding_product_for_session(
     lifecycle: CodingPluginLifecycleStateLayout,
     *,
@@ -889,68 +837,50 @@ def _bootstrap_coding_product_for_session(
     require_current_admission: Callable[[], None] | None,
     initial: bool,
 ) -> None:
-    """Start a fresh offline cutover or resume its interrupted builtin replay."""
-    if initial:
-        require_fresh_coding_product_inputs_without_writes(
-            lifecycle, workspace=workspace, settings_manager=settings_manager
+    """Bind Coding's inputs and default packages to the shared startup route."""
+
+    def bootstrap() -> None:
+        settings = _fresh_coding_bootstrap_settings(
+            lifecycle, workspace, settings_manager,
+            initial=initial, require_current_admission=require_current_admission,
         )
-    if not _native_coding_fresh_route(windows_candidate):
+        install: Callable[..., object] = bootstrap_coding_builtin_product_plugins
         if initial:
-            raise RuntimeError(
-                "Coding native automatic B Session route is not yet admitted"
+            epoch = resolve_coding_package_epoch_layout(lifecycle)
+            namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
+            from loushang.coding.package.pre_b_snapshot import (
+                cutover_and_bootstrap_coding_package_product,
             )
-        return
 
-    if initial:
-        if not workspace.is_dir():
-            raise ValueError("Coding Product workspace must be an existing directory")
-    else:
-        epoch = resolve_coding_package_epoch_layout(lifecycle)
-        _require_current_coding_product_admission(require_current_admission)
-        if not fresh_product_bootstrap_pending(
-            epoch.fenced_runtime_open_kwargs(),
-            windows=os.name == "nt",
-            verify_snapshot=partial(is_coding_fresh_first_b_snapshot, lifecycle),
-            open_application=lambda: open_coding_fenced_product_application_owner(
-                lifecycle,
-                workspace=workspace,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-                windows_candidate=windows_candidate,
-                require_current_admission=require_current_admission,
-            ),
-            plugin_ids=_CODING_BUILTIN_PLUGIN_IDS,
-            policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-        ):
-            return
+            install = partial(cutover_and_bootstrap_coding_package_product, namespace_id=namespace_id)
+        install(
+            lifecycle, settings, workspace=workspace,
+            runtime_version=version("loushang"),
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+            windows_candidate=windows_candidate,
+            require_current_admission=require_current_admission,
+        )
 
-    settings = _fresh_coding_bootstrap_settings(
-        lifecycle,
+    bootstrap_fresh_product_session(
         workspace,
-        settings_manager,
         initial=initial,
-        require_current_admission=require_current_admission,
-    )
-    bootstrap: Callable[..., object] = bootstrap_coding_builtin_product_plugins
-    if initial:
-        epoch = resolve_coding_package_epoch_layout(lifecycle)
-        namespace_id = _fresh_coding_product_namespace_id(epoch.store_id)
-        # The cutover owner also uses this module's Product bootstrap.
-        from loushang.coding.package.pre_b_snapshot import (
-            cutover_and_bootstrap_coding_package_product,
-        )
-
-        bootstrap = partial(
-            cutover_and_bootstrap_coding_package_product, namespace_id=namespace_id
-        )
-    bootstrap(
-        lifecycle,
-        settings,
-        workspace=workspace,
-        runtime_version=version("loushang"),
-        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
         windows_candidate=windows_candidate,
+        product_label="Coding",
+        require_fresh_inputs=partial(
+            require_fresh_coding_product_inputs_without_writes,
+            lifecycle, workspace=workspace, settings_manager=settings_manager,
+        ),
+        resolve_roots=lambda: resolve_coding_package_epoch_layout(lifecycle).fenced_runtime_open_kwargs(),
+        verify_snapshot=partial(is_coding_fresh_first_b_snapshot, lifecycle),
+        open_application=lambda: open_coding_fenced_product_application_owner(
+            lifecycle, workspace=workspace, runtime_version=version("loushang"),
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+            windows_candidate=windows_candidate,
+            require_current_admission=require_current_admission,
+        ),
         require_current_admission=require_current_admission,
+        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
+        bootstrap=bootstrap,
     )
 
 
@@ -981,39 +911,14 @@ def is_coding_fresh_first_b_snapshot(
     raw = read_fresh_product_source_snapshot(
         _snapshot_reader(lifecycle, runtime),
         namespace_id=_fresh_coding_product_namespace_id(epoch.store_id),
-        source_member="coding-source-configuration.json",
-        maximum_bytes=_LIFECYCLE_SNAPSHOT_MAX_BYTES,
+        source_member=_source_projection.projection_name,
+        maximum_bytes=_source_projection.maximum_bytes,
         label="Coding",
     )
     if raw is None:
         return False
-    source = json.loads(raw)
-    classification = classify_coding_legacy_source_configuration(source)
-    if classification.disabled_plugins or classification.configured_source_keys:
-        return False
-    scopes = source["scopes"]
-    return not any(
-        any(patch.values())
-        for patch in (
-            scopes["global"]["sourcePatch"],
-            scopes["project"]["sourcePatch"],
-        )
-    )
-
-
-def _bootstrap_coding_builtin_plugin(
-    owner: CodingFencedProductApplicationOwner,
-    plugin_id: str,
-    *,
-    enable: bool = True,
-) -> bool:
-    return bootstrap_product_plugin(
-        owner.runtime_owner.product_owner,
-        plugin_id,
-        store_id=owner.epoch_runtime.registry.store_id,
-        policy=_CODING_BUILTIN_BOOTSTRAP_POLICY,
-        enable=enable,
-    )
+    classification = classify_coding_legacy_source_configuration(json.loads(raw))
+    return not (classification.disabled_plugins or classification.configured_source_keys)
 
 
 def open_coding_base_product_runtime_owner(
@@ -1183,10 +1088,8 @@ def _compose_coding_product_source_policy(
         roots, read_only=read_only
     ).extend_policy(policy)
     if isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
-        policy = CodingExternalDependencyWheelCatalog(
-            state_root / "external-dependency-wheel-bindings.jsonl",
-            **roots.identity,
-            read_only=read_only,
+        policy = CodingExternalDependencyWheelCatalog.for_roots(
+            roots, read_only=read_only
         ).extend_policy(policy)
     if include_worker_candidates:
         worker_catalog = (
@@ -1194,11 +1097,7 @@ def _compose_coding_product_source_policy(
                 epoch_runtime=epoch_runtime, state_root=state_root, **roots.identity
             )
             if isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
-            else CodingExternalWorkerWheelCatalog(
-                state_root / "external-worker-wheel-bindings.jsonl",
-                **roots.identity,
-                read_only=read_only,
-            )
+            else CodingExternalWorkerWheelCatalog.for_roots(roots, read_only=read_only)
         )
         policy = worker_catalog.extend_policy(policy)
     return policy, host
@@ -1209,18 +1108,13 @@ def _legacy_state_requires_migration(
 ) -> bool:
     """Inspect the historical roots in lifecycle-before-package order."""
 
-    for root, resolve_members in (
-        (lifecycle.root, resolve_coding_lifecycle_pre_b_members),
-        (lifecycle.package_root, resolve_coding_package_pre_b_store_members),
-    ):
-        if skip_missing:
-            try:
-                root.lstat()
-            except FileNotFoundError:
-                continue
-        if any(resolve_members(lifecycle).domain_members().values()):
-            return True
-    return False
+    return legacy_product_state_has_inputs(
+        (
+            (lifecycle.root, lambda: resolve_coding_lifecycle_pre_b_members(lifecycle).domain_members()),
+            (lifecycle.package_root, lambda: resolve_coding_package_pre_b_store_members(lifecycle).domain_members()),
+        ),
+        skip_missing=skip_missing,
+    )
 
 
 __all__ = [

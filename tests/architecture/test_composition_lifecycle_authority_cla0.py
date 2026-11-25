@@ -79,8 +79,8 @@ EXPECTED_CONSTRUCTION_SITES = {
     },
     "RuntimeProfileBinder": {
         (
-            Path('src/loushang/coding/session/continuity.py'),
-            "_compose_coding_continuity_base",
+            Path("src/loushang/harness/continuity/composition.py"),
+            "_bind_base_continuity_profile",
         ),
         (
             Path("src/loushang/harness/capabilities/composition_runtime.py"),
@@ -113,20 +113,12 @@ EXPECTED_CONSTRUCTION_SITES = {
 
 EXPECTED_COMPOSITION_BIND_CALLERS = {
     (
-        Path('src/loushang/coding/composition/bootstrap.py'),
-        "<lambda>",
+        Path("src/loushang/harness/session/extension_profiles.py"),
+        "prepare_session_resource_candidate",
     ),
     (
-        Path("src/loushang/harness/session/agent_product.py"),
-        "_create_query_only_session",
-    ),
-    (
-        Path('src/loushang/coding/composition/runtime_admission.py'),
-        "CodingCapabilityProfileResolution.bind",
-    ),
-    (
-        Path("src/loushang/coding/session/agent_session.py"),
-        "AgentSession.__init__",
+        Path("src/loushang/harness/session/extension_profiles.py"),
+        "SessionExtensionProfileResolution.bind",
     ),
 }
 TRACKED_CALL_SYMBOLS = frozenset(
@@ -440,7 +432,7 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
         _call_name(node.func) for node in ast.walk(direct) if isinstance(node, ast.Call)
     ]
     assert direct_calls.count("resolve_coding_capability_profile") == 1
-    assert direct_calls.count("stage_resource_composition_candidate") == 1
+    assert direct_calls.count("prepare_session_resource_candidate") == 1
 
     model_call = _method_node(
         Path("src/loushang/harness/session/agent_product.py"),

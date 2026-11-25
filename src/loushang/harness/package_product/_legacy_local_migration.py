@@ -71,6 +71,9 @@ from loushang.harness.resources.packages._private_receipts_windows import (
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordSchema,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
 )
@@ -257,6 +260,11 @@ class _LocalAcceptanceReview(_FirstAcceptanceReview, Protocol):
 _LocalReviewT = TypeVar("_LocalReviewT", bound=_LocalAcceptanceReview)
 _LegacyResourceKind = Literal["skill", "prompt", "theme"]
 _RESOURCE_KIND_VERSION = {"skill": 1, "prompt": 2, "theme": 3}
+
+
+def require_legacy_local_resource_kind(kind: _LegacyResourceKind) -> None:
+    if kind not in _RESOURCE_KIND_VERSION:
+        raise ValueError("Unsupported legacy Resource type")
 
 
 def _legacy_resource_kind(
@@ -596,50 +604,36 @@ class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
         epoch_runtime = self.epoch_runtime
         state_root = epoch_runtime.prepare_product_state_root()
         path = self._path(state_root, review.plugin_id)
-        descriptor = os.open(
-            state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        )
-        try:
-            before = os.fstat(descriptor)
-            self._require_private_parent(state_root, before)
-            with RootedFileIO(state_root, descriptor) as file_io:
-                with file_io.bind(path) as target:
-                    target.acquire_lock(exclusive=True, suffix=".lock")
-                    epoch_runtime.assert_current()
-                    try:
-                        raw = target.read_bytes(max_bytes=self.max_acceptance_bytes)
-                    except FileNotFoundError:
-                        raw = None
-                    if raw is not None:
-                        records = self._decode(raw, path)
-                        if len(records) != 1 or records[0] != proposed:
-                            raise self.error_type(
-                                f"{self.label} acceptance conflicts with prior review"
-                            )
-                    else:
-                        desired = target.sibling("desired-state.jsonl")
-                        desired.acquire_lock(exclusive=True, suffix=".lock")
-                        self._require_unseen_installation(
-                            desired,
-                            state_root / "desired-state.jsonl",
-                            review,
-                        )
-                        require_live_resource_kind()
-                        if self.review_live() != review:
-                            raise self.error_type(
-                                f"{self.label} review changed before acceptance"
-                            )
-                        payload = encode_jsonl_record(
-                            proposed,
-                            record_codec=self.record_type._record_codec(),
-                            format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                        )
-                        target.atomic_write(payload, exclusive=True)
-                        epoch_runtime.assert_current()
-                self._require_private_parent_after(state_root, descriptor, before)
-                return proposed
-        finally:
-            os.close(descriptor)
+        with self._bound_receipt(path) as target:
+            assert target is not None
+            target.acquire_lock(exclusive=True, suffix=".lock")
+            epoch_runtime.assert_current()
+            raw = self._read_receipt(target)
+            if raw is not None:
+                records = self._decode(raw, path)
+                if len(records) != 1 or records[0] != proposed:
+                    raise self.error_type(
+                        f"{self.label} acceptance conflicts with prior review"
+                    )
+            else:
+                desired = target.sibling("desired-state.jsonl")
+                desired.acquire_lock(exclusive=True, suffix=".lock")
+                self._require_unseen_installation(
+                    desired, state_root / "desired-state.jsonl", review
+                )
+                require_live_resource_kind()
+                if self.review_live() != review:
+                    raise self.error_type(
+                        f"{self.label} review changed before acceptance"
+                    )
+                payload = encode_jsonl_record(
+                    proposed,
+                    record_codec=self.record_type._record_codec(),
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                )
+                target.atomic_write(payload, exclusive=True)
+                epoch_runtime.assert_current()
+        return proposed
 
     def read_acceptance(
         self, plugin_id: str, *, check_live: bool = False
@@ -650,25 +644,8 @@ class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
         epoch_runtime = self.epoch_runtime
         state_root = epoch_runtime.control_root / "product-state"
         path = self._path(state_root, plugin_id)
-        try:
-            descriptor = os.open(
-                state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-            )
-        except FileNotFoundError:
-            epoch_runtime.assert_current()
-            return None
-        try:
-            before = os.fstat(descriptor)
-            self._require_private_parent(state_root, before)
-            with RootedFileIO(state_root, descriptor) as file_io:
-                with file_io.bind(path) as target:
-                    try:
-                        raw = target.read_bytes(max_bytes=self.max_acceptance_bytes)
-                    except FileNotFoundError:
-                        raw = None
-                self._require_private_parent_after(state_root, descriptor, before)
-        finally:
-            os.close(descriptor)
+        with self._bound_receipt(path, missing_root_ok=True) as target:
+            raw = None if target is None else self._read_receipt(target)
         if raw is None:
             epoch_runtime.assert_current()
             return None
@@ -687,6 +664,36 @@ class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
                 )
             epoch_runtime.assert_current()
         return record
+
+    @contextmanager
+    def _bound_receipt(
+        self, path: Path, *, missing_root_ok: bool = False
+    ) -> Iterator[RootedFile | None]:
+        state_root = path.parent
+        try:
+            descriptor = os.open(
+                state_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            )
+        except FileNotFoundError:
+            if not missing_root_ok:
+                raise
+            yield None
+            return
+        try:
+            before = os.fstat(descriptor)
+            self._require_private_parent(state_root, before)
+            with RootedFileIO(state_root, descriptor) as file_io:
+                with file_io.bind(path) as target:
+                    yield target
+                self._require_private_parent_after(state_root, descriptor, before)
+        finally:
+            os.close(descriptor)
+
+    def _read_receipt(self, target: RootedFile) -> bytes | None:
+        try:
+            return target.read_bytes(max_bytes=self.max_acceptance_bytes)
+        except FileNotFoundError:
+            return None
 
     def _require_epoch(self) -> None:
         if not matches_epoch_layout(self.epoch_runtime, self.resolve_epoch()):
@@ -740,11 +747,9 @@ class _LocalAcceptanceProtocol(Generic[_LocalReviewT, _LocalReceiptT]):
         return state_root / f"legacy-local-acceptance-{name_digest}.jsonl"
 
 
-class _ConfiguredSource(Protocol):
-    @property
-    def scope(self) -> Literal["global", "project"]: ...
-    @property
-    def path(self) -> str: ...
+class _ConfiguredSource(NamedTuple):
+    scope: Literal["global", "project"]
+    path: str
 
 
 class _AcceptedReview(Protocol):
@@ -1041,13 +1046,34 @@ class _FrozenSources:
 
 def project_frozen_legacy_sources(
     acceptance: _AcceptedSource,
-    projection: dict[str, object],
+    projection_bytes: bytes,
     *,
     projection_digest: str,
-    by_plugin: Mapping[str, _ConfiguredSource | None],
+    read_inventory: Callable[[], LegacyInventoryEvidence],
+    index_configured_sources: Callable[
+        [object, tuple[str, ...]], Mapping[str, _LegacySourceScope]
+    ],
     error_type: type[Exception],
 ) -> _FrozenSources:
-    """Join the accepted source, original ordering and locked settings digests."""
+    """Join authenticated settings and installations for the accepted Source."""
+    projection = json.loads(projection_bytes)
+    installations = read_inventory().inventory.active_local
+    configured_sources = (
+        index_configured_sources(
+            projection, tuple(binding.source_identity for binding, _, _ in installations)
+        )
+        if installations
+        else {}
+    )
+    by_plugin: dict[str, _ConfiguredSource | None] = {}
+    for binding, _, _ in installations:
+        path = binding.source_identity.removeprefix("local:")
+        configured_scope = configured_sources.get(path)
+        by_plugin[binding.plugin_id] = (
+            _ConfiguredSource(configured_scope, path)
+            if configured_scope is not None else None
+        )
+
     review = acceptance.review
     if review.plugin_id not in by_plugin:
         raise error_type("Accepted Plugin differs from first-fence Installation")
@@ -1100,6 +1126,10 @@ class _SourceConsumptionSettings(Protocol):
     ) -> None: ...
 
 
+def _source_consumption_receipt_bytes(identity: dict[str, object], phase: str) -> bytes:
+    return canonical_json_bytes({**identity, "phase": phase}) + b"\n"
+
+
 @dataclass(frozen=True)
 class _SourceConsumptionProtocol:
     epoch_runtime: PackageProductPosixFencedRuntimeOwner
@@ -1109,37 +1139,26 @@ class _SourceConsumptionProtocol:
     reopen_acceptance: Callable[[str], _AcceptedSource | None]
     projection: _LegacySourceProjection
     other_source_keys: frozenset[str]
-    receipt_bytes: Callable[[dict[str, object], str], bytes]
     error_type: type[Exception]
     max_receipt_bytes: int
 
     def consume(self) -> None:
-        epoch_runtime, acceptance, settings, frozen = (
-            self.epoch_runtime,
-            self.acceptance,
-            self.settings,
-            self.frozen,
-        )
+        epoch_runtime, acceptance = self.epoch_runtime, self.acceptance
+        frozen = self.frozen
         configured = frozen.by_plugin[acceptance.review.plugin_id]
         if configured is None:
-            with settings.transaction():
-                settled_others = self._settled_other_paths(
-                    epoch_runtime, acceptance, frozen
-                )
-                self._live_state(settings, None, frozen, settled_others)
+            self._observe_live_state(None)
             epoch_runtime.assert_current()
             return
         state_root = epoch_runtime.prepare_product_state_root()
         path = self._receipt_path(state_root, acceptance.review.plugin_id)
-        expected = self._identity(acceptance, configured, frozen.projection_digest)
+        expected = self._identity(acceptance, configured)
         with self._rooted_file(state_root, path) as target:
             target.acquire_lock(exclusive=True, suffix=".lock")
             phase = self._read_phase(target, expected)
-            with settings.transaction():
-                settled_others = self._settled_other_paths(
-                    epoch_runtime, acceptance, frozen
-                )
-                state = self._live_state(settings, configured, frozen, settled_others)
+            with self.settings.transaction():
+                settled_others = self._settled_other_paths()
+                state = self._live_state(configured, settled_others)
                 if phase is None:
                     if state != "original":
                         raise self.error_type(
@@ -1147,7 +1166,8 @@ class _SourceConsumptionProtocol:
                         )
                     epoch_runtime.assert_current()
                     target.atomic_write(
-                        self.receipt_bytes(expected, "prepared"), exclusive=True
+                        _source_consumption_receipt_bytes(expected, "prepared"),
+                        exclusive=True,
                     )
                     phase = "prepared"
                 if phase == "settled":
@@ -1161,71 +1181,59 @@ class _SourceConsumptionProtocol:
                         for path in frozen.ordered_paths[configured.scope]
                         if path not in settled_others and path != configured.path
                     )
-                    settings.update_settings(
+                    self.settings.update_settings(
                         scope=configured.scope, plugin_sources=remaining
                     )
-                    if (
-                        self._live_state(settings, configured, frozen, settled_others)
-                        != "cleared"
-                    ):
+                    if self._live_state(configured, settled_others) != "cleared":
                         raise self.error_type(
                             "Configured Source setting was not consumed"
                         )
                 epoch_runtime.assert_current()
-                target.atomic_write(self.receipt_bytes(expected, "settled"))
+                target.atomic_write(
+                    _source_consumption_receipt_bytes(expected, "settled")
+                )
                 epoch_runtime.assert_current()
 
     def consumed(self) -> bool:
-        epoch_runtime, acceptance, settings, frozen = (
-            self.epoch_runtime,
-            self.acceptance,
-            self.settings,
-            self.frozen,
-        )
+        epoch_runtime, acceptance = self.epoch_runtime, self.acceptance
+        frozen = self.frozen
         configured = frozen.by_plugin[acceptance.review.plugin_id]
         state_root = epoch_runtime.control_root / "product-state"
         if configured is not None:
-            phase = self._source_phase(state_root, acceptance, configured, frozen)
+            phase = self._source_phase(state_root, acceptance, configured)
             if phase != "settled":
                 return False
-        with settings.transaction():
-            settled_others = self._settled_other_paths(
-                epoch_runtime, acceptance, frozen
-            )
-            result = (
-                self._live_state(settings, configured, frozen, settled_others)
-                == "cleared"
-            )
+        result = self._observe_live_state(configured) == "cleared"
         epoch_runtime.assert_current()
         return result
+
+    def _observe_live_state(
+        self, configured: _ConfiguredSource | None
+    ) -> Literal["original", "cleared"]:
+        with self.settings.transaction():
+            return self._live_state(configured, self._settled_other_paths())
 
     def _source_phase(
         self,
         state_root: Path,
         acceptance: _AcceptedSource,
         configured: _ConfiguredSource,
-        frozen: _FrozenSources,
     ) -> Literal["prepared", "settled"] | None:
         path = self._receipt_path(state_root, acceptance.review.plugin_id)
         try:
             with self._rooted_file(state_root, path) as target:
                 return self._read_phase(
                     target,
-                    self._identity(acceptance, configured, frozen.projection_digest),
+                    self._identity(acceptance, configured),
                 )
         except FileNotFoundError:
             return None
 
-    def _settled_other_paths(
-        self,
-        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-        acceptance: _AcceptedSource,
-        frozen: _FrozenSources,
-    ) -> frozenset[str]:
-        state_root = epoch_runtime.control_root / "product-state"
+    def _settled_other_paths(self) -> frozenset[str]:
+        state_root = self.epoch_runtime.control_root / "product-state"
         settled: set[str] = set()
-        for plugin_id, configured in frozen.by_plugin.items():
-            if configured is None or plugin_id == acceptance.review.plugin_id:
+        for plugin_id, configured in self.frozen.by_plugin.items():
+            if configured is None or plugin_id == self.acceptance.review.plugin_id:
                 continue
             other = self.reopen_acceptance(plugin_id)
             if other is None:
@@ -1235,17 +1243,16 @@ class _SourceConsumptionProtocol:
                 or other.review.configured_plugin_source_scope != configured.scope
             ):
                 raise self.error_type("Other configured Source acceptance changed")
-            if self._source_phase(state_root, other, configured, frozen) == "settled":
+            if self._source_phase(state_root, other, configured) == "settled":
                 settled.add(configured.path)
         return frozenset(settled)
 
     def _live_state(
         self,
-        settings: _SourceConsumptionSettings,
         configured: _ConfiguredSource | None,
-        frozen: _FrozenSources,
         settled_others: frozenset[str],
     ) -> Literal["original", "cleared"]:
+        settings, frozen = self.settings, self.frozen
         if settings.get_session_settings():
             raise self.error_type(
                 "Session settings cannot enter configured Source consumption"
@@ -1298,13 +1305,12 @@ class _SourceConsumptionProtocol:
         self,
         acceptance: _AcceptedSource,
         configured: _ConfiguredSource,
-        projection_digest: str,
     ) -> dict[str, object]:
         return {
             "receiptVersion": 1,
             "acceptanceId": acceptance.acceptance_id,
             "reviewId": acceptance.review.review_id,
-            "projectionDigest": projection_digest,
+            "projectionDigest": self.frozen.projection_digest,
             "scope": configured.scope,
             "sourcePath": configured.path,
         }
@@ -1324,9 +1330,9 @@ class _SourceConsumptionProtocol:
             raw = target.read_bytes(max_bytes=self.max_receipt_bytes)
         except FileNotFoundError:
             return None
-        if raw == self.receipt_bytes(identity, "prepared"):
+        if raw == _source_consumption_receipt_bytes(identity, "prepared"):
             return "prepared"
-        if raw == self.receipt_bytes(identity, "settled"):
+        if raw == _source_consumption_receipt_bytes(identity, "settled"):
             return "settled"
         raise self.error_type(
             "Configured Source consumption receipt conflicts with accepted review"
@@ -1503,27 +1509,53 @@ def adopt_legacy_local_data(
     *,
     open_epoch: Callable[[], PackageProductPosixFencedRuntimeOwner],
     open_application: Callable[[], FencedOrdinaryProductApplication],
-    accept_and_consume: Callable[
-        [PackageProductPosixFencedRuntimeOwner], tuple[_AcceptedT, bool]
+    open_settings: Callable[[], SettingsManager],
+    read_acceptance: Callable[[PackageProductPosixFencedRuntimeOwner], _AcceptedT | None],
+    accept_review: Callable[[PackageProductPosixFencedRuntimeOwner], _AcceptedT],
+    require_live_source: Callable[[PackageProductPosixFencedRuntimeOwner], None],
+    require_frozen_source: Callable[[PackageProductPosixFencedRuntimeOwner], None],
+    consume_source: Callable[
+        [PackageProductPosixFencedRuntimeOwner, _AcceptedT, SettingsManager], None
     ],
-    bind_source: Callable[[PackageProductPosixFencedRuntimeOwner, bool], None],
+    bind_source: Callable[[PackageProductPosixFencedRuntimeOwner], object],
     plugin_id: str,
+    accepted_review_id: str,
+    resource_kind: _LegacyResourceKind,
     trust_classes: Collection[str],
     expected_trust: Callable[[], str],
-    changed_message: str,
+    product_label: str,
     install: Callable[[], _InstallationReceiptT],
     enable: Callable[[], _EnablementReceiptT],
     reviewed_choices: Callable[[_AcceptedT], ReviewedPluginChoices],
-    builtin_plugin_ids: tuple[str, ...],
     bootstrap_policy: _PluginBootstrapPolicy,
     removal_label: str,
 ) -> tuple[_AcceptedT, _InstallationReceiptT, _EnablementReceiptT | None]:
     """Complete the replayable Source, installation and builtin adoption chain."""
+
+    def accept_and_consume(
+        epoch: PackageProductPosixFencedRuntimeOwner,
+    ) -> tuple[_AcceptedT, bool]:
+        accepted = read_acceptance(epoch)
+        first_acceptance = accepted is None
+        if accepted is None:
+            require_live_source(epoch)
+            accepted = accept_review(epoch)
+        else:
+            if accepted.review.review_id != accepted_review_id:
+                raise ValueError(f"{product_label} legacy local review ID changed")
+            require_frozen_source(epoch)
+        if accepted.resource_kind != resource_kind:
+            raise ValueError(
+                f"{product_label} legacy data adoption requires a matching Resource receipt"
+            )
+        consume_source(epoch, accepted, open_settings())
+        return accepted, first_acceptance
+
     with hold_accepted_product_adoption(
         open_epoch=open_epoch,
         accept_review=accept_and_consume,
         open_application=open_application,
-    ) as ((acceptance, admission_checked), application):
+    ) as ((acceptance, first_acceptance), application):
         matches, bound = match_legacy_replay_source(
             application.runtime_owner.product_owner.policy.bindings,
             acceptance,
@@ -1532,17 +1564,20 @@ def adopt_legacy_local_data(
             expected_trust=expected_trust(),
         )
         if not matches:
-            raise RuntimeError(changed_message)
+            raise RuntimeError(
+                f"{product_label} legacy local Product Source binding changed"
+            )
     if bound is None:
         with closing(open_epoch()) as epoch:
-            bind_source(epoch, admission_checked)
+            if not first_acceptance:
+                require_live_source(epoch)
+            bind_source(epoch)
     installation = install()
     enablement = enable() if acceptance.review.desired_state == "installed_enabled" else None
     with closing(open_application()) as application:
         choices = reviewed_choices(acceptance)
         replay_reviewed_product_plugins(
             application.runtime_owner.product_owner,
-            builtin_plugin_ids,
             choices=choices,
             removal_label=removal_label,
             policy=bootstrap_policy,
@@ -1883,6 +1918,7 @@ class _LegacySourceProjection:
     projection_name: str
     prefix: str
     maximum_bytes: int
+    loaded_fields: tuple[str, ...] = ()
 
     @contextmanager
     def hold(
@@ -1998,6 +2034,34 @@ class _LegacySourceProjection:
             maximum_bytes=lambda: self.maximum_bytes,
             label=f"{self.label} Source settings",
         )
+
+    def workspace_has_pre_fence_inputs(
+        self, paths: tuple[Path, ...], settings_manager: SettingsManager | None
+    ) -> bool:
+        """Check effective settings before the ordered on-disk source patches."""
+        if settings_manager is not None:
+            if not isinstance(settings_manager, SettingsManager):
+                raise TypeError(f"{self.label} Product settings manager is invalid")
+            if self.has_loaded_pre_fence_inputs(settings_manager):
+                return True
+            paths = (*paths, *(
+                path
+                for path in (
+                    settings_manager.global_settings_path, settings_manager.project_settings_path
+                )
+                if path is not None
+            ))
+        return self.has_pre_fence_inputs(*dict.fromkeys(paths))
+
+    def has_loaded_pre_fence_inputs(self, settings_manager: SettingsManager) -> bool:
+        settings = settings_manager.get_settings()
+        return any(getattr(settings, field) for field in self.loaded_fields)
+
+    def require_fresh_inputs(self, has_legacy_inputs: bool) -> None:
+        if has_legacy_inputs:
+            raise RuntimeError(
+                f"{self.label} pre-B workspace is unsupported; use a fresh workspace"
+            )
 
     def has_pre_fence_inputs(self, *paths: Path) -> bool:
         """Read settings in order and short-circuit on the first legacy input."""
@@ -2227,7 +2291,6 @@ def read_settled_legacy_local_adoption(
     plugin_id: str,
     source_trust_class: str,
     install_policy: _LegacyLocalInstallPolicy,
-    builtin_ids: tuple[str, ...],
     choices: ReviewedPluginChoices,
     bootstrap_policy: _PluginBootstrapPolicy,
     handoff_error: str,
@@ -2254,7 +2317,7 @@ def read_settled_legacy_local_adoption(
     disabled_ids = frozenset(choices.disabled_ids)
     removed_operations = {
         name: choices.operation_id_for(name)
-        for name in builtin_ids
+        for name in bootstrap_policy.plugin_ids
         if name in choices.removed_ids
     }
     before, history = desired.capture_read_only()
@@ -2294,7 +2357,7 @@ def read_settled_legacy_local_adoption(
     ):
         return False
 
-    for builtin_id in builtin_ids:
+    for builtin_id in bootstrap_policy.plugin_ids:
         events = transitions_for(
             PluginInstallationKeyV1.workspace(key.product_id, key.scope_id, builtin_id)
         )

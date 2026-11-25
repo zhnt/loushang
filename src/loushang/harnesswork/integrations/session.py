@@ -199,6 +199,27 @@ class SessionWorkTurn:
         )
 
 
+def build_session_work_plan_spec(
+    turns: Sequence[SessionWorkTurn],
+    *,
+    profile: SessionWorkProfile,
+    run_id: str | None = None,
+) -> WorkRunSpec:
+    """Capture a multi-step run and the first turn's original scope evidence."""
+    if not turns:
+        raise ValueError("a session plan requires at least one turn")
+    first = turns[0]
+    initial = first.to_run_spec(profile=profile, run_id=run_id)
+    return WorkRunSpec(
+        run_id=run_id,
+        method_id=first.method_id,
+        plan_id=first.plan_id,
+        run_event_payload=initial.run_event_payload,
+        scope_event_payload=initial.scope_event_payload,
+        steps=tuple(turn.to_step_spec(profile=profile) for turn in turns),
+    )
+
+
 SessionTurnHook = Callable[
     [SessionWorkTurn, int, int],
     Awaitable[None] | None,
@@ -670,16 +691,8 @@ class SessionWorkRuntime:
             before_turn=before_turn,
             after_turn=after_turn,
         )
-        first_spec = first.to_run_spec(profile=self.profile, run_id=run_id)
-        spec = WorkRunSpec(
-            run_id=run_id,
-            method_id=first.method_id,
-            plan_id=first.plan_id,
-            run_event_payload=first_spec.run_event_payload,
-            scope_event_payload=first_spec.scope_event_payload,
-            steps=tuple(
-                turn.to_step_spec(profile=self.profile) for turn in resolved_turns
-            ),
+        spec = build_session_work_plan_spec(
+            resolved_turns, profile=self.profile, run_id=run_id
         )
         accepted = await self.accept_operation(
             operation,
@@ -890,6 +903,7 @@ __all__ = [
     "SessionWorkProfile",
     "SessionWorkRuntime",
     "SessionWorkTurn",
+    "build_session_work_plan_spec",
     "project_prepared_session_work_turns",
     "require_session_work_turn",
     "submit_session_turn",

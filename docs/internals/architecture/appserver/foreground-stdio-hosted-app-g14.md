@@ -102,8 +102,16 @@ Harnesstui Hosted Mux                   explicit Coding composition root
 the child process, pipe endpoints and exit status. AppServer accepts injected
 byte IO and semantic ports; it neither spawns a process nor constructs an
 AppService. The optional AppHost edge orders connection and application
-shutdown. Only the outer Product command resolves trusted filesystem/config
-inputs. Application records never select executable code or an entrypoint.
+shutdown. Its inherited stdio integration opens the prepared application,
+creates the byte transport, and retains partial acquisitions for cleanup if
+foreground construction fails. Coding resolves trusted filesystem and profile
+inputs before this handoff. Application records never select executable code
+or an entrypoint.
+
+The explicit stdio and local Mux commands share the AppHost process exit path.
+Each command supplies its own diagnostic labels and reportable error types.
+The process runner reserves stdout for protocol or command output and exits
+nonzero when cleanup remains pending. The parent still owns terminate and reap.
 
 The inherited pipe pair is the authority boundary: possession is granted by
 the parent. G14 has no network listener and makes no remote-user
@@ -132,7 +140,8 @@ appserver.connection -> appserver.client + appserver.protocol + stdlib
 appserver.stdio -> appserver.connection byte ports + stdlib
 appserver.remote_client -> appserver.client + protocol + byte ports
 apphost foreground edge -> appserver.connection + apphost.application/continuity
-Coding foreground command -> Coding bindings + optional AppHost edge + exact-root store
+apphost stdio integration -> apphost.foreground + appserver.stdio
+Coding foreground command -> Coding bindings + AppHost stdio integration + exact-root store
 Harnesstui Hosted Mux -> appserver.client + protocol
 
 AppServer -/-> AppService / AppHost / Hosting / Harness / Coding / UI

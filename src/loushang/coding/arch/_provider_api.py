@@ -6,7 +6,6 @@ does not expose the future public Plugin author SDK.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Never, cast
@@ -45,8 +44,11 @@ from loushang.harness.capabilities.contracts import (
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleValue,
-    CapabilityFacetBinding,
     CapabilityProviderContext,
+    bind_owned_bundle_facets,
+    require_owned_bundle_runtime,
+    require_provider_configuration,
+    require_provider_facet_members,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.capabilities.workspace_contracts import (
@@ -57,6 +59,7 @@ from loushang.harness.capabilities.workspace_contracts import (
 from loushang.harness.plugin_authoring.capability_provider import (
     PLUGIN_PROVIDER_SELECTION_RULE,
 )
+from loushang.harness.workspace.paths import resolve_path_inside_workspace
 
 CODING_ARCH_PLUGIN_CONFIG_VERSION = 1
 CODING_ARCH_PRIVATE_STATE_SCHEMA_VERSION = 1
@@ -166,10 +169,11 @@ class CodingArchPluginConfigV1:
 
     @classmethod
     def from_mapping(cls, value: object) -> CodingArchPluginConfigV1:
-        document = _exact_mapping(
+        document = require_provider_configuration(
             value,
             fields=_CONFIG_FIELDS,
             name="Coding Arch Plugin configuration",
+            error=CodingArchPluginConfigError,
         )
         for field_name in ("configVersion", "privateStateSchemaVersion"):
             field_value = document[field_name]
@@ -301,56 +305,6 @@ class _CodingArchProviderRuntimeOwner:
         self._diagnostics = graph.diagnostics
         return graph
 
-    async def inspect(
-        self,
-        *,
-        workspace: str | Path,
-        root: str = ".",
-        package_prefix: str | None = None,
-        language: str = "auto",
-        granularity: str = "module",
-        imports: str = "eager",
-        query: str = "summary",
-        source: str | None = None,
-        target: str | None = None,
-        limit: int = 100,
-        excludes: list[str] | None = None,
-        boundary_rules: list[BoundaryRuleInput] | None = None,
-        refresh_cache: bool = False,
-        signal: object | None = None,
-    ) -> dict[str, object]:
-        self._require_open()
-        if Path(workspace).expanduser().resolve() != self.config.workspace_root:
-            raise PermissionError(
-                "Coding Arch Tool workspace does not match its Provider scope"
-            )
-        validate_import_graph_inspection_request(
-            granularity=granularity,
-            imports=imports,
-            query=query,
-            limit=limit,
-            excludes=excludes,
-            boundary_rules=boundary_rules,
-        )
-        graph = await self.analyze(
-            root=root,
-            package_prefix=package_prefix,
-            language=language,
-            granularity=cast(ImportGranularity, granularity),
-            imports=cast(ImportSelection, imports),
-            excludes=tuple(excludes or ()),
-            refresh_cache=refresh_cache,
-            signal=signal,
-        )
-        return project_import_graph_inspection_result(
-            graph,
-            query=query,
-            source=source,
-            target=target,
-            limit=limit,
-            boundary_rules=boundary_rules,
-        )
-
     def diagnostics(self) -> tuple[ArchitectureDiagnostic, ...]:
         self._require_open()
         return self._diagnostics
@@ -413,23 +367,38 @@ class _CodingArchToolRuntimeView:
         refresh_cache: bool = False,
         signal: object | None = None,
     ) -> dict[str, object]:
-        return await self._owner.inspect(
-            workspace=workspace,
+        owner = self._owner
+        owner._require_open()
+        if Path(workspace).expanduser().resolve() != owner.config.workspace_root:
+            raise PermissionError(
+                "Coding Arch Tool workspace does not match its Provider scope"
+            )
+        validate_import_graph_inspection_request(
+            granularity=granularity,
+            imports=imports,
+            query=query,
+            limit=limit,
+            excludes=excludes,
+            boundary_rules=boundary_rules,
+        )
+        graph = await owner.analyze(
             root=root,
             package_prefix=package_prefix,
             language=language,
-            granularity=granularity,
-            imports=imports,
+            granularity=cast(ImportGranularity, granularity),
+            imports=cast(ImportSelection, imports),
+            excludes=tuple(excludes or ()),
+            refresh_cache=refresh_cache,
+            signal=signal,
+        )
+        return project_import_graph_inspection_result(
+            graph,
             query=query,
             source=source,
             target=target,
             limit=limit,
-            excludes=excludes,
             boundary_rules=boundary_rules,
-            refresh_cache=refresh_cache,
-            signal=signal,
         )
-
 
 @dataclass(frozen=True, slots=True)
 class _CodingArchDiagnosticsView:
@@ -439,15 +408,20 @@ class _CodingArchDiagnosticsView:
         return self._owner.diagnostics()
 
 
+_BUNDLE_VIEWS = (
+    (CODING_ARCH_ANALYSIS_FACET, _CodingArchAnalysisView),
+    (CODING_ARCH_TOOL_RUNTIME_FACET, _CodingArchToolRuntimeView),
+    (CODING_ARCH_DIAGNOSTICS_FACET, _CodingArchDiagnosticsView),
+)
+
+
 def coding_arch_capability_provider() -> CapabilityBundleProvider:
     """Describe the fixed private Provider without constructing live state."""
 
-    return CapabilityBundleProvider(
-        capability_id=CODING_ARCH_CAPABILITY,
+    return CapabilityBundleProvider.for_definition(
+        CODING_ARCH_CAPABILITY_DEFINITION,
         provider_id="coding.arch.default",
         implementation_version=1,
-        compatible_contract=CapabilityContractRange.exact(1),
-        facets=CODING_ARCH_CAPABILITY_DEFINITION.facets,
         requirements=(CODING_ARCH_WORKSPACE_REQUIREMENT,),
         required_authorities=frozenset({"filesystem"}),
         source_id="plugin:coding.arch.default",
@@ -484,8 +458,7 @@ def create_coding_arch_provider(
             "search facet",
         ),
     ):
-        for member in members:
-            _require_callable_member(value, member, name=name)
+        require_provider_facet_members(value, members, label=f"Coding Arch Provider {name}")
     cache = ImportFactCache(
         config.private_data_root
         / f"import-facts-v{config.private_state_schema_version}.json",
@@ -498,41 +471,16 @@ def create_coding_arch_provider(
         workspace_search=search,
         cache=cache,
     )
-    return CapabilityBundleValue(
-        (
-            CapabilityFacetBinding(
-                CODING_ARCH_ANALYSIS_FACET,
-                _CodingArchAnalysisView(owner),
-            ),
-            CapabilityFacetBinding(
-                CODING_ARCH_TOOL_RUNTIME_FACET,
-                _CodingArchToolRuntimeView(owner),
-            ),
-            CapabilityFacetBinding(
-                CODING_ARCH_DIAGNOSTICS_FACET,
-                _CodingArchDiagnosticsView(owner),
-            ),
-        )
-    )
+    return bind_owned_bundle_facets(owner, _BUNDLE_VIEWS)
 
 
 def dispose_coding_arch_provider(value: CapabilityBundleValue) -> None:
     """Dispose only the owner shared by the exact Arch Bundle facets."""
 
-    if not isinstance(value, CapabilityBundleValue):
-        raise TypeError("Coding Arch Provider disposer requires a Bundle value")
-    analysis = value.require(CODING_ARCH_ANALYSIS_FACET)
-    tools = value.require(CODING_ARCH_TOOL_RUNTIME_FACET)
-    diagnostics = value.require(CODING_ARCH_DIAGNOSTICS_FACET)
-    if (
-        not isinstance(analysis, _CodingArchAnalysisView)
-        or not isinstance(tools, _CodingArchToolRuntimeView)
-        or not isinstance(diagnostics, _CodingArchDiagnosticsView)
-    ):
-        raise TypeError("Coding Arch Provider Bundle contains a foreign access view")
-    if analysis._owner is not tools._owner or analysis._owner is not diagnostics._owner:
-        raise ValueError("Coding Arch Provider Bundle facets do not share one runtime")
-    analysis._owner.dispose()
+    owner = require_owned_bundle_runtime(
+        value, _BUNDLE_VIEWS, label="Coding Arch Provider"
+    )
+    owner.dispose()
 
 
 def _absolute_path(value: object, *, name: str) -> Path:
@@ -544,32 +492,12 @@ def _absolute_path(value: object, *, name: str) -> Path:
 
 
 def _contained_root(workspace: Path, root: str) -> Path:
-    candidate = Path(root).expanduser()
-    if not candidate.is_absolute():
-        candidate = workspace / candidate
-    resolved = candidate.resolve()
-    if not resolved.is_relative_to(workspace):
-        raise PermissionError("Coding Arch analysis root must stay in the workspace")
-    return resolved
-
-
-def _exact_mapping(
-    value: object,
-    *,
-    fields: frozenset[str],
-    name: str,
-) -> Mapping[str, object]:
-    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
-        _reject(f"{name} must be an object with exact fields")
-    actual = frozenset(value)
-    if actual != fields:
-        _reject(f"{name} fields do not match the v1 contract")
-    return cast(Mapping[str, object], value)
-
-
-def _require_callable_member(value: object, member: str, *, name: str) -> None:
-    if not callable(getattr(value, member, None)):
-        raise TypeError(f"Coding Arch Provider {name} is invalid")
+    return resolve_path_inside_workspace(
+        root,
+        workspace,
+        error_type=PermissionError,
+        message="Coding Arch analysis root must stay in the workspace",
+    )
 
 
 def _reject(message: str) -> Never:

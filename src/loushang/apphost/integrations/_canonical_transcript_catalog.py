@@ -31,7 +31,9 @@ from loushang.apphost.contracts import (
     SessionIdentityProjectionV1,
 )
 from loushang.apphost.workspace_registry import (
+    Workspace,
     WorkspaceFileRead,
+    WorkspacePath,
     WorkspacePreviewError,
     WorkspaceRegistrationError,
 )
@@ -75,6 +77,7 @@ from loushang.harness.transcript.jsonl_file import AgentTranscriptFileLayout
 from loushang.harness.transcript.product_session import ProductTranscriptSession
 from loushang.harness.transcript.session_catalog import SessionDiscoveryReadBudget
 from loushang.harness.transcript.store_admission import (
+    TranscriptStoreAdmission,
     _TranscriptStoreCatalogObservations,
 )
 
@@ -108,6 +111,8 @@ class CanonicalTranscriptScope(Protocol):
     def fingerprint(self) -> str: ...
     @property
     def source_id(self) -> str: ...
+    @property
+    def workspace_id(self) -> str | None: ...
 
 
 def session_identity_matches_open(
@@ -135,6 +140,8 @@ class CanonicalTranscriptRecord(Protocol):
     def operation_id(self) -> str: ...
     @property
     def header(self) -> ConversationHeader: ...
+    @property
+    def compatible(self) -> bool: ...
 
 
 def canonical_discovery_scope(scope: SessionScopeV1) -> SessionDiscoveryScope:
@@ -332,6 +339,8 @@ class _CanonicalTranscriptCatalogMethods(
     _CanonicalTranscriptSourceMethods,
     Generic[RecordT, CandidateT, BindingInputT, ProductBindingT],
 ):
+    _shared_store_views: ClassVar[bool] = False
+
     scopes: tuple[CanonicalTranscriptScope, ...]
     _records: dict[SessionCandidateRefV1, RecordT]
     _lock: asyncio.Lock
@@ -439,13 +448,30 @@ class _CanonicalTranscriptCatalogMethods(
         return True
 
     def _record_compatible(self, record: RecordT) -> bool:
-        raise NotImplementedError
+        envelope = record.projection.envelope
+        return record.compatible and envelope is not None and (
+            envelope.product_compatibility_id == self._compatibility_id()
+        )
 
     def _record_available(self, record: RecordT) -> bool:
         return self._record_compatible(record)
 
     def _validate_records(self, records: list[RecordT]) -> None:
-        raise NotImplementedError
+        """Reject ambiguous identities before filtering the visible records."""
+        seen: dict[str, RecordT] = {}
+        for record in records:
+            session_id = record.identity.session_id
+            previous = seen.get(session_id)
+            if previous is not None and (
+                not self._shared_store_views
+                or previous.path != record.path
+                or previous.header != record.header
+                or previous.projection.envelope != record.projection.envelope
+                or previous.projection.reference.revision != record.projection.reference.revision
+                or previous.scope.scope is record.scope.scope
+            ):
+                raise self._catalog_error()
+            seen[session_id] = record
 
     def _new_root_creation(self) -> bool:
         return False
@@ -487,8 +513,9 @@ class _CanonicalTranscriptCatalogMethods(
         async with self._lock:
             self._accepting()
             record = self._records.get(reference)
-            if record is None or self._source_revision(record.path) != reference.revision:
+            if record is None:
                 raise self._catalog_error()
+            self._require_source_revision(record.path, reference.revision)
             yield record
 
     async def _read_discovered_history(
@@ -503,10 +530,8 @@ class _CanonicalTranscriptCatalogMethods(
             path = record.path
         history = await settled_io(read, path)
         self._accepting()
-        if (
-            self._source_revision(record.path) != reference.revision
-            or not matches_source(history, reference.revision, record.header)
-        ):
+        self._require_source_revision(record.path, reference.revision)
+        if not matches_source(history, reference.revision, record.header):
             raise self._catalog_error()
         return history
 
@@ -544,6 +569,35 @@ class _CanonicalTranscriptCatalogMethods(
             self._records = {
                 key: value for key, value in self._records.items() if value.identity != identity
             }
+
+    def _workspace_transcripts(self) -> tuple[Path, ...]:
+        paths: list[Path] = []
+        scopes = {scope.session_dir: scope for scope in self.scopes}
+        for directory, scope in scopes.items():
+            if directory != directory.resolve():
+                raise self._catalog_error()
+            if self._directory_revision(directory) is None:
+                continue
+            layout = self._candidate_layout(directory)
+            scan = layout.scan_candidate_path_snapshot(layout.namespace, raise_on_error=True)
+            if not scan.complete:
+                raise self._catalog_error()
+            paths.extend(
+                path for path in scan.paths if self._read_record(scope, path) is not None
+            )
+        return tuple(paths)
+
+    async def delete_workspace_history(self) -> None:
+        from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
+
+        async with self._lock:
+            if not self._closing:
+                for path in await settled_io(self._workspace_transcripts):
+                    await delete_agent_transcript_jsonl(path, maintenance_owner=self._owned_factory)
+                    self._records.clear()
+        # Fence only after deletion has finished, then let retries settle
+        # any original factory cleanup before removing the registration.
+        await self.close()
 
     @staticmethod
     def _record_lifecycle_context(record: RecordT) -> AgentTranscriptLifecycleContext:
@@ -662,8 +716,7 @@ class _CanonicalTranscriptCatalogMethods(
         self._validate_open_record(record)
         if self._owned_factory is None:
             return await self._open_legacy_record(record)
-        if self._source_revision(record.path) != record.projection.reference.revision:
-            raise self._catalog_error_class()()
+        self._require_source_revision(record.path, record.projection.reference.revision)
         context = self._record_lifecycle_context(record)
         session = await self._owned_factory.restore_context(context)
         return await self._candidate_from_owned(session, record.scope, expected=record)
@@ -934,6 +987,8 @@ class _ManagedCanonicalTranscriptCatalogMethods(
         RecordT, CandidateT, BindingInputT, ProductBindingT
     ],
 ):
+    _shared_store_views = True
+
     _root_initialization: bool
     _root_observed: threading.Event
 
@@ -1029,11 +1084,8 @@ class _CanonicalTranscriptCandidateMethods(
         guard = self._history_source_guard()
         if guard is not None:
             guard()
-        elif (
-            self._source_revision(self._record.path)
-            != self.projection.reference.revision
-        ):
-            raise self._catalog_error()
+        else:
+            self._require_source_revision(self._record.path, self.projection.reference.revision)
 
     async def claim(self) -> ClaimedT:
         await self.verify_current()
@@ -1048,6 +1100,16 @@ class _CanonicalTranscriptCandidateMethods(
             await self._binding.close()
 
 
+def _workspace_edit_error(error: ValueError) -> AppServiceError:
+    code = {
+        "workspace_path_not_found": AppErrorCodeV1.NOT_FOUND,
+        "workspace_path_missing": AppErrorCodeV1.NOT_FOUND,
+        "workspace_path_permission_denied": AppErrorCodeV1.PERMISSION_DENIED,
+        "workspace_path_unsafe": AppErrorCodeV1.PERMISSION_DENIED,
+    }.get(str(error), AppErrorCodeV1.INVALID_REQUEST)
+    return AppServiceError(code)
+
+
 class _WorkspaceSessionCatalogPort(SessionIdentityCatalogPortV1, Protocol):
     @property
     def scopes(self) -> tuple[CanonicalTranscriptScope, ...]: ...
@@ -1057,6 +1119,7 @@ class _WorkspaceSessionCatalogPort(SessionIdentityCatalogPortV1, Protocol):
         self, scope: HostedSessionDiscoveryScopeV1, *, stop: Callable[[], bool]
     ) -> HostedSessionDiscoverySnapshotV1: ...
     async def delete_session_history(self, identity: SessionIdentityV1) -> None: ...
+    async def delete_workspace_history(self) -> None: ...
     def fence(self) -> None: ...
     async def close(self) -> None: ...
 
@@ -1065,20 +1128,31 @@ WorkspaceCatalogT = TypeVar("WorkspaceCatalogT", bound=_WorkspaceSessionCatalogP
 
 
 class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
-    """Retain workspace catalogs and route their existing transcript owners.
+    """Coordinate workspace registration and retained transcript catalogs.
 
-    Product adapters supply actual catalog construction and candidate-open
-    policy. The adapter remains the sole collection object; Registry and child
-    catalogs retain their existing native storage and Session lifetimes.
+    Products choose the catalog and its construction, inspection, and open
+    policy. The registry and child catalogs keep their own storage lifetimes.
     """
 
     registry: HostWorkspaceRegistryPort
     _catalogs: dict[Path, WorkspaceCatalogT]
+    _logical_catalogs: dict[str, Path]
+    _state: Path
     _loaded: bool
     _closed: bool
 
-    def _create_catalog(self, path: Path) -> WorkspaceCatalogT:
+    def _create_catalog(
+        self, path: Path, workspace_id: str | None = None
+    ) -> WorkspaceCatalogT:
         raise NotImplementedError
+
+    def _retained_logical_store(self, workspace_id: str) -> bool:
+        raise NotImplementedError
+
+    def _retained_transcript_root(self, root: Path) -> bool:
+        return os.path.lexists(root) or os.path.lexists(
+            TranscriptStoreAdmission(root, state_root=self._state).witness_root
+        )
 
     async def _open_workspace_candidate(self, catalog: WorkspaceCatalogT, reference):
         raise NotImplementedError
@@ -1088,6 +1162,141 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
         scope: CanonicalTranscriptScope, session_id: str | None,
     ) -> dict[str, object]:
         raise NotImplementedError
+
+    async def load(self) -> None:
+        if self._loaded:
+            return
+        await settled_io(self.registry.open)
+        origins = await settled_io(self.registry.list)
+        for origin in origins:
+            self._add(origin)
+        for workspace in await settled_io(self.registry.workspaces):
+            if self._retained_logical_store(workspace.id):
+                await self._logical_catalog(workspace)
+        self._loaded = True
+
+    async def _logical_catalog(self, workspace: Workspace) -> WorkspaceCatalogT:
+        path = self._logical_catalogs.get(workspace.id)
+        if path is None:
+            path = await settled_io(self.registry.session_context, workspace.id)
+            self._catalogs[path] = self._create_catalog(path, workspace.id)
+            self._logical_catalogs[workspace.id] = path
+        return self._catalogs[path]
+
+    def _workspace_mux_name(self, workspace: Workspace) -> str:
+        raise NotImplementedError
+
+    async def _logical_info(self, item: Workspace) -> WorkspaceInfoV1:
+        scope = (await self._logical_catalog(item)).scopes[0]
+        links = []
+        for link in item.paths:
+            status = await settled_io(self.registry.path_status, link)
+            links.append({"id": link.id, "alias": link.alias, "path": str(link.path), "status": status})
+        return WorkspaceInfoV1(str(scope.cwd), scope.scope, scope.fingerprint, workspace={
+            "id": item.id, "name": item.name, "paths": links, "default": item.default,
+            "defaultPathId": item.default_path_id, "muxName": self._workspace_mux_name(item),
+        })
+
+    async def _available_default_path(self, item: Workspace) -> WorkspacePath | None:
+        link = item.default_path
+        if link is not None and await settled_io(self.registry.path_status, link) == "available":
+            return link
+        return None
+
+    async def _workspace_by_id(self, workspace_id: str) -> Workspace:
+        try:
+            return await settled_io(self.registry.workspace, workspace_id)
+        except ValueError:
+            raise AppServiceError(AppErrorCodeV1.NOT_FOUND) from None
+
+    async def _owned_workspace_catalogs(self, item: Workspace) -> tuple[WorkspaceCatalogT, ...]:
+        if self._closed or item.default:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        logical = await self._logical_catalog(item)
+        return (logical, *(self._add(origin) for origin in item.legacy_origins))
+
+    async def workspace_deletion_scopes(self, workspace_id: str) -> frozenset[str]:
+        item = await self._workspace_by_id(workspace_id)
+        catalogs = await self._owned_workspace_catalogs(item)
+        return frozenset(scope.fingerprint for catalog in catalogs for scope in catalog.scopes)
+
+    async def _logical_workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        action = request.action
+        if action == "workspaces":
+            records = await settled_io(self.registry.workspaces)
+            return WorkspaceResultV1(tuple([await self._logical_info(item) for item in records]))
+        if action == "create-workspace":
+            assert request.name is not None
+            try:
+                created = await settled_io(
+                    self.registry.create_workspace, request.name, path=request.path, alias=request.alias,
+                )
+            except ValueError as error:
+                raise _workspace_edit_error(error) from error
+            return WorkspaceResultV1((await self._logical_info(created),))
+        workspace_id = request.workspace_id
+        assert workspace_id is not None
+        item = await self._workspace_by_id(workspace_id)
+        if action in {"inspect-workspace", "preview-workspace"}:
+            link = await self._available_default_path(item)
+            if link is None:
+                raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
+            fingerprint = (
+                request.preview.scope_fingerprint if request.preview is not None else request.scope_fingerprint
+            )
+            catalog = await self._logical_catalog(item)
+            if fingerprint is not None and catalog.scopes[0].fingerprint != fingerprint:
+                legacy = next((self._catalogs[origin] for origin in item.legacy_origins
+                               if self._catalogs[origin].scopes[0].fingerprint == fingerprint), None)
+                if legacy is None:
+                    raise AppServiceError(AppErrorCodeV1.PERMISSION_DENIED)
+                catalog = legacy
+            if action == "inspect-workspace":
+                return await self._inspect_workspace_result(link.path, catalog, request.session_id)
+            assert request.preview is not None
+            return await self._read_workspace_preview(link.path, catalog, request.preview)
+        if action == "delete-workspace":
+            if item.default or item.legacy_origins:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            catalog = await self._logical_catalog(item)
+            if self._retained_logical_store(workspace_id):
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            await settled_io(self.registry.delete_workspace, workspace_id)
+            # Keep ownership until close settles, including shutdown retry.
+            await catalog.close()
+            path = self._logical_catalogs.pop(workspace_id)
+            self._catalogs.pop(path)
+            return WorkspaceResultV1(())
+        if action == "delete-workspace-with-history":
+            catalogs = await self._owned_workspace_catalogs(item)
+            try:
+                for catalog in catalogs:
+                    await catalog.delete_workspace_history()
+                await settled_io(self.registry.delete_workspace, workspace_id, history_deleted=True)
+            except Exception as error:
+                raise AppServiceError(AppErrorCodeV1.CLEANUP_INCOMPLETE) from error
+            self._catalogs.pop(self._logical_catalogs.pop(workspace_id))
+            for origin in item.legacy_origins:
+                self._catalogs.pop(origin)
+            return WorkspaceResultV1(())
+        try:
+            if action == "rename-workspace":
+                assert request.name is not None
+                await settled_io(self.registry.rename_workspace, workspace_id, request.name)
+            elif action == "add-path":
+                assert request.alias is not None and request.path is not None
+                await settled_io(self.registry.add_path, workspace_id, request.alias, request.path)
+            elif action == "update-path":
+                assert request.path_id is not None and request.alias is not None and request.path is not None
+                await settled_io(self.registry.update_path, workspace_id, request.path_id, request.alias, request.path)
+            elif action == "remove-path":
+                assert request.path_id is not None
+                await settled_io(self.registry.remove_path, workspace_id, request.path_id)
+            elif action == "set-default-path":
+                await settled_io(self.registry.set_default_path, workspace_id, request.path_id)
+        except ValueError as error:
+            raise _workspace_edit_error(error) from error
+        return WorkspaceResultV1((await self._logical_info(await settled_io(self.registry.workspace, workspace_id)),))
 
     async def _select_workspace_for_read(self, path: str) -> Path:
         if self._closed:
@@ -1128,18 +1337,58 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
             preview = WorkspaceDirectoryPreviewV1(opened.path, entries, opened.limited)
         return WorkspaceResultV1((_workspace_info(root, scope, preview=preview),))
 
+    async def _inspect_workspace_result(
+        self, path: Path, catalog: WorkspaceCatalogT, session_id: str | None
+    ) -> WorkspaceResultV1:
+        scope = catalog.scopes[0]
+        report = await self._inspect_workspace(path, catalog, scope, session_id)
+        return WorkspaceResultV1((_workspace_info(path, scope, inspection=report),))
+
     async def workspace(self, request: WorkspaceRequestV1) -> WorkspaceResultV1:
+        if request.action == "allocate-temporary":
+            # Old callers still receive a creation scope, backed by the same
+            # default Workspace as every other ordinary chat.
+            item = await settled_io(self.registry.default_workspace)
+            scope = (await self._logical_catalog(item)).scopes[0]
+            return WorkspaceResultV1((_workspace_info(scope.cwd, scope),))
+        if request.action in request.logical_actions:
+            if self._closed:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            return await self._logical_workspace(request)
         if request.preview is not None and request.path is not None:
             return await self._preview_workspace(request.path, request.preview)
         if request.action == "inspect":
             path, catalog = await self._registered_workspace_for_read(cast(str, request.path))
             if self.registry.is_temporary(path):
                 raise AppServiceError(AppErrorCodeV1.NOT_FOUND)
-            scope = catalog.scopes[0]
-            report = await self._inspect_workspace(path, catalog, scope, request.session_id)
-            return WorkspaceResultV1((_workspace_info(path, scope, inspection=report),))
+            return await self._inspect_workspace_result(path, catalog, request.session_id)
+
+        if request.action == "open" and request.path is not None:
+            selected = await settled_io(self.registry.select, request.path)
+            matches = [
+                item for item in await settled_io(self.registry.workspaces)
+                if any(link.path == selected for link in item.paths)
+            ]
+            if len(matches) > 1:
+                raise AppServiceError(AppErrorCodeV1.REVISION_CONFLICT)
+            if matches and selected not in matches[0].legacy_origins:
+                return WorkspaceResultV1((await self._logical_info(matches[0]),))
+            scope = self._add(selected).scopes[0]
+            return WorkspaceResultV1((_workspace_info(selected, scope),))
+        if request.action == "unregister" and request.path is not None:
+            registered = self._catalogs.get(Path(request.path))
+            if registered is not None and any(
+                self._retained_transcript_root(scope.session_dir) for scope in registered.scopes
+            ):
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         entries = await self._workspace_entries(request)
-        return WorkspaceResultV1(tuple(_workspace_info(path, catalog.scopes[0]) for path, catalog in entries))
+        return WorkspaceResultV1(
+            tuple(
+                _workspace_info(path, catalog.scopes[0])
+                for path, catalog in entries
+                if catalog.scopes[0].workspace_id is None
+            )
+        )
 
     async def delete_session_history(self, identity: SessionIdentityV1) -> None:
         catalog = self._find(lambda scope: scope.fingerprint == identity.scope_fingerprint)

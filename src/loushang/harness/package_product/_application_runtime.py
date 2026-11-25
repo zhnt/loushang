@@ -18,6 +18,7 @@ from typing import (
     Literal,
     NamedTuple,
     Protocol,
+    Self,
     TypedDict,
     TypeVar,
     Unpack,
@@ -83,10 +84,12 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
 )
 
 from ._legacy_runtime import (
+    FencedRuntimeOpenKwargs,
     _FencedRuntime,
     _LegacyEpoch,
     legacy_product_fence_exists,
     matches_epoch_layout,
+    open_read_only_fenced_product,
 )
 from .product_local_wheel_runtime import (
     READ_ONLY_PRODUCT_JOURNAL_POLICY,
@@ -95,10 +98,13 @@ from .product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
     WindowsLocalWheelProductRuntimeFactory,
     WindowsLocalWheelProductSessionOwner,
+    _LocalWheelSelectedManifestReader,
     _repair_ordinary_posix_runtime_leases,
     _repair_ordinary_windows_runtime_leases,
+    bind_read_only_local_wheel_manifests,
     bind_read_only_product_desired_state,
 )
+from .product_runtime import PackageProductRuntimeFactoryPort, guard_unbound_factory
 
 _GC_RESERVATIONS_NAME = "gc-reservations.jsonl"
 _GC_BINDINGS_NAME = "gc-bindings.jsonl"
@@ -136,6 +142,34 @@ def require_current_product_admission(
             invalid_check=f"{label} requires a synchronous current admission check",
             invalid_return=f"{label} admission check must return None",
         )
+
+
+def is_explicit_worker_plugin_id(plugin_id: object) -> bool:
+    return not (
+        not isinstance(plugin_id, str)
+        or not plugin_id
+        or plugin_id != plugin_id.strip()
+    )
+
+
+def select_resume_worker_candidates(
+    include_candidates: bool,
+    plugin_id: str | None,
+    *,
+    has_application_owner: bool,
+    require_selected_plugin: bool = False,
+    invalid: str,
+) -> bool:
+    """Select the Worker-capable factory only with its application owner."""
+    selected = plugin_id is not None
+    if (
+        type(include_candidates) is not bool
+        or (selected and not is_explicit_worker_plugin_id(plugin_id))
+        or ((include_candidates or selected) and not has_application_owner)
+        or (require_selected_plugin and not selected)
+    ):
+        raise ValueError(invalid)
+    return include_candidates or selected
 
 
 class SourceCatalogIdentity(TypedDict):
@@ -208,6 +242,30 @@ def fenced_source_catalog_scope(
         yield fenced_source_catalog_roots(
             runtime, scope_id=scope_id, no_namespace=no_namespace
         )
+
+
+_SourceRecordT_co = TypeVar("_SourceRecordT_co", covariant=True)
+_SourceRecordT = TypeVar("_SourceRecordT")
+
+
+class _InertPosixSourceCatalog(Protocol[_SourceRecordT_co]):
+    def capture(
+        self, source: Path, *, epoch_runtime: PackageProductPosixFencedRuntimeOwner
+    ) -> _SourceRecordT_co: ...
+
+
+def capture_fenced_posix_source(
+    source: Path,
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    scope_id: str,
+    no_namespace: str,
+    catalog: Callable[[FencedSourceCatalogRoots], _InertPosixSourceCatalog[_SourceRecordT]],
+) -> _SourceRecordT:
+    """Pin one inert Source through its Catalog in the current POSIX epoch."""
+    runtime = PackageProductPosixFencedRuntimeOwner.open(**roots)
+    with fenced_source_catalog_scope(runtime, scope_id=scope_id, no_namespace=no_namespace) as bound:
+        return catalog(bound).capture(source, epoch_runtime=runtime)
 
 
 class FencedProductManagementState(NamedTuple):
@@ -643,6 +701,48 @@ class _SessionEpochLayout(_LegacyEpoch, Protocol):
     def epoch_root(self, namespace_id: str) -> Path: ...
 
 
+@contextmanager
+def open_fenced_product_manifest_reader(
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    epoch: _SessionEpochLayout,
+    scope_id: str,
+    identity_prefix: str,
+    product_label: str,
+    workspace_guard: Callable[[], None] | None,
+    read_source_policy: Callable[
+        [PackageProductPosixFencedRuntimeOwner, FencedSourceCatalogRoots],
+        PackageProductLocalWheelPolicy,
+    ],
+) -> Iterator[tuple[
+    PackageProductPosixFencedRuntimeOwner,
+    PackageProductLocalWheelPolicy,
+    _LocalWheelSelectedManifestReader,
+    PluginPackageGcReservationJournal,
+]]:
+    """Transfer an admitted read-only epoch with its exact selected manifests."""
+    with open_read_only_fenced_product(**roots) as runtime:
+        if workspace_guard is not None:
+            workspace_guard()
+        source_roots = fenced_source_catalog_roots(
+            runtime,
+            scope_id=scope_id,
+            no_namespace=f"{product_label} Package Product root is not fenced",
+            read_only=True,
+        )
+        policy = read_source_policy(runtime, source_roots)
+        selected, gate = bind_read_only_local_wheel_manifests(
+            runtime,
+            policy=policy,
+            plugin_store_root=epoch.epoch_root(source_roots.identity["namespace_id"]),
+            root_store_identity=f"{identity_prefix}-root-store:{epoch.store_id}",
+        )
+        runtime.assert_current()
+        if workspace_guard is not None:
+            workspace_guard()
+        yield runtime, policy, selected, gate
+
+
 def bind_fenced_product_session_owner(
     epoch_runtime: _FencedRuntime,
     *,
@@ -821,6 +921,7 @@ _SessionManagerT = TypeVar("_SessionManagerT", bound=_ProductSessionIdentity)
 _ProductSessionFactory = (
     PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory
 )
+_OwnedFactoryT = TypeVar("_OwnedFactoryT", bound=PackageProductRuntimeFactoryPort)
 
 
 class OrdinaryProductSessionOwner(Generic[_SessionManagerT]):
@@ -1095,6 +1196,46 @@ class FencedProductApplicationSelection(Generic[_SessionManagerT, _SettingsT], A
                 historical_origin=self._historical_workspace(manager),
             )
             return owner.factory_for_session(manager) if owner is not None else None
+
+    def transfer_factory_for_session(
+        self,
+        manager: _SessionManagerT,
+        *,
+        read_settings: Callable[[], _SettingsT | None],
+        own_factory: Callable[[_ProductSessionFactory, Self], _OwnedFactoryT],
+    ) -> _OwnedFactoryT | None:
+        """Transfer this one-Session selection alongside its native factory."""
+
+        with handoff_product_open(
+            self, cleanup_note=f"{self._application_label} Product owner cleanup also failed"
+        ):
+            factory = self.factory_for_session(manager, settings_manager=read_settings())
+            if factory is not None:
+                with guard_unbound_factory(factory):
+                    return own_factory(factory, self)
+        self.close()
+        return None
+
+    def borrow_factory_for_session(
+        self,
+        manager: _SessionManagerT,
+        *,
+        settings_manager: _SettingsT | None,
+        worker_factory: Callable[[_ProductSessionFactory, Self], PackageProductRuntimeFactoryPort]
+        | None = None,
+    ) -> PackageProductRuntimeFactoryPort | None:
+        """Borrow a factory lease while the application retains its selection."""
+
+        factory = self.factory_for_session(manager, settings_manager=settings_manager)
+        if worker_factory is None:
+            return factory
+        with guard_unbound_factory(factory):
+            if not isinstance(
+                factory,
+                (PosixLocalWheelProductRuntimeFactory, WindowsLocalWheelProductRuntimeFactory),
+            ):
+                raise TypeError(f"{self._application_label} Worker requires Product selection")
+            return worker_factory(factory, self)
 
     def _session_workspace(self, manager: _SessionManagerT) -> Path:
         return Path(manager.get_cwd())

@@ -26,6 +26,7 @@ from loushang.coding.lsp.selector import LspSelector
 from loushang.coding.lsp.status import LspSessionStatus
 from loushang.coding.lsp.supervisor import LspServerSupervisor
 from loushang.coding.lsp.tools import CodingLspTools
+from loushang.harness.workspace.paths import resolve_path_inside_workspace
 
 
 class _CodingLspQueries:
@@ -147,14 +148,12 @@ class CodingLspBinding(_CodingLspQueries):
             raise LspInvalidInputError(
                 f"unknown LSP server definition: {definition_id!r}"
             ) from exc
-        root = Path(workspace_root).expanduser()
-        if not root.is_absolute():
-            root = self._workspace_root / root
-        root = root.resolve()
-        if not root.is_relative_to(self._workspace_root):
-            raise LspInvalidInputError(
-                "LSP Server root must stay within the Coding workspace"
-            )
+        root = resolve_path_inside_workspace(
+            workspace_root,
+            self._workspace_root,
+            error_type=LspInvalidInputError,
+            message="LSP Server root must stay within the Coding workspace",
+        )
         return await self._supervisor.stop(LspServerKey(definition_id, root))
 
     async def dispose(self) -> None:

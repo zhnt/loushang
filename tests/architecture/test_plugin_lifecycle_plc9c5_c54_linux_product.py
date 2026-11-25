@@ -14,9 +14,6 @@ CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
 PRODUCT_WORKER_BOUNDED_IMPORTS = {
-    CODING_ROOT / "package/product_worker_windows_native_approval_owner.py": {
-        "loushang.harness.worker.history._native_approval",
-    },
     CODING_ROOT / "package/product_worker_windows_reserved_settlement.py": {
         "loushang.harness.worker.history._windows_stage_review_wire",
     },

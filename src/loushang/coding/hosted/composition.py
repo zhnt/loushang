@@ -5,37 +5,31 @@ from __future__ import annotations
 import asyncio
 import inspect
 import re
-from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol
 
 from loushang.apphost import (
     AdmissionGenerationSourceV1,
     AppHostCatalogInputV1,
     AppHostRuntimeV1,
-    AppHostSessionLeaseV1,
     AppHostShutdownBudgetV1,
     AppHostShutdownReportV1,
     ProductCandidateValidatorV1,
     ProfileRegistrationV1,
-    SessionBindingKeyV1,
-    SessionCandidateRefV1,
-    SessionCreateRequestV1,
     SessionIdentityCatalogPortV1,
 )
 from loushang.apphost._ownership import (
     _construct_product_apphost,
+    _ExplicitProductAppHostLifecycle,
     _method_descriptor,
-    _report_task_needs_retry,
+    _require_async_method,
+    _require_session_catalog_methods,
 )
 from loushang.coding.composition.plan import CODING_PRODUCT_ID
 from loushang.coding.hosted.product import (
     CodingAppHostProductFactoryV1,
     CodingAppHostWorkerAttemptFactoryV1,
     coding_apphost_product_registration,
-)
-from loushang.foundation._owned_tasks import (
-    _observe_task_result as _observe_background_result,
 )
 from loushang.harness.runtime import await_owned_task as _await_owned_task
 
@@ -149,17 +143,11 @@ class CodingAppHostCompositionRequestV1:
             or any(type(item) is not ProfileRegistrationV1 for item in self.profiles)
         ):
             raise TypeError("Coding AppHost profiles must be a non-empty exact tuple")
-        _require_async_method(self.product_admission_source, "acquire_pin")
-        _require_async_method(self.candidate_validator, "open_product_candidate")
+        _require_async_method(self.product_admission_source, "acquire_pin", label="Coding AppHost")
+        _require_async_method(self.candidate_validator, "open_product_candidate", label="Coding AppHost")
         _require_sync_method(self.attempt_factory, "create_attempt")
-        for method in (
-            "list_identities",
-            "open_candidate",
-            "find_created_candidate",
-            "create_candidate",
-        ):
-            _require_async_method(self.sessions, method)
-        _require_async_method(self.rollback_control, "latch_future_attempts")
+        _require_session_catalog_methods(self.sessions, label="Coding AppHost")
+        _require_async_method(self.rollback_control, "latch_future_attempts", label="Coding AppHost")
         if type(self.shutdown_budget) is not AppHostShutdownBudgetV1:
             raise TypeError("Coding AppHost shutdown budget is invalid")
 
@@ -221,8 +209,16 @@ class CodingAppHostSettlementReportV1:
             raise ValueError("Coding AppHost settlement report is unsupported")
 
 
-class CodingAppHostCompositionV1:
+class CodingAppHostCompositionV1(
+    _ExplicitProductAppHostLifecycle[
+        CodingAppHostRollbackLatchV1, CodingAppHostSettlementReportV1
+    ]
+):
     """Sole process-scoped owner of the explicit Coding AppHost composition."""
+
+    _product_id = CODING_PRODUCT_ID
+    _rollback_latch_type = CodingAppHostRollbackLatchV1
+    _settlement_report_type = CodingAppHostSettlementReportV1
 
     __slots__ = (
         "_accepting",
@@ -254,16 +250,12 @@ class CodingAppHostCompositionV1:
             raise TypeError("Coding AppHost composition requires its factory")
         self._activation = activation
         self._generation_id = generation_id
-        self._runtime = runtime
-        self._product_factory = product_factory
-        self._rollback_control = rollback_control
-        self._shutdown_budget = shutdown_budget
-        self._accepting = True
-        self._admission_lock = asyncio.Lock()
-        self._control_lock = asyncio.Lock()
-        self._control_mode: CodingAppHostSettlementMode | None = None
-        self._control_task: asyncio.Task[CodingAppHostSettlementReportV1] | None = None
-        self._rollback_latch: CodingAppHostRollbackLatchV1 | None = None
+        self._initialize_lifecycle(
+            runtime, product_factory, rollback_control, shutdown_budget
+        )
+
+    def _composition_error(self, code: str) -> CodingAppHostCompositionError:
+        return CodingAppHostCompositionError(code=f"coding_apphost_composition_{code}")
 
     @property
     def activation(self) -> CodingAppHostCompositionActivationV1:
@@ -273,169 +265,8 @@ class CodingAppHostCompositionV1:
     def generation_id(self) -> str:
         return self._generation_id
 
-    @property
-    def accepting(self) -> bool:
-        return self._accepting
-
-    async def attach_resume(
-        self,
-        *,
-        reference: SessionCandidateRefV1,
-        profile_id: str,
-    ) -> AppHostSessionLeaseV1:
-        await self._admit()
-        return await self._runtime.attach_resume(
-            product_id=CODING_PRODUCT_ID,
-            reference=reference,
-            profile_id=profile_id,
-        )
-
-    async def attach_create(
-        self,
-        request: SessionCreateRequestV1,
-        *,
-        profile_id: str,
-    ) -> AppHostSessionLeaseV1:
-        await self._admit()
-        if request.product_id != CODING_PRODUCT_ID:
-            raise CodingAppHostCompositionError(
-                code="coding_apphost_composition_product_mismatch"
-            )
-        return await self._runtime.attach_create(request, profile_id=profile_id)
-
-    async def close_session(self, key: SessionBindingKeyV1) -> None:
-        await self._admit()
-        await self._runtime.close_session(key)
-
     async def rollback(self) -> CodingAppHostSettlementReportV1:
-        task = await self._settlement_task("rollback")
-        return await asyncio.shield(task)
-
-    async def close(self) -> None:
-        task = await self._settlement_task("close")
-        report = await asyncio.shield(task)
-        if not report.completed:
-            raise CodingAppHostCompositionError(
-                code="coding_apphost_composition_cleanup_incomplete"
-            )
-
-    async def _admit(self) -> None:
-        async with self._admission_lock:
-            if not self._accepting:
-                raise CodingAppHostCompositionError(
-                    code="coding_apphost_composition_fenced"
-                )
-
-    async def _fence(self) -> None:
-        async with self._admission_lock:
-            self._accepting = False
-
-    async def _settlement_task(
-        self,
-        requested_mode: CodingAppHostSettlementMode,
-    ) -> asyncio.Task[CodingAppHostSettlementReportV1]:
-        async with self._control_lock:
-            task = self._control_task
-            mode = self._control_mode
-            if mode == "close" and requested_mode == "rollback":
-                assert task is not None
-                task = asyncio.create_task(self._upgrade_close_to_rollback(task))
-                task.add_done_callback(_observe_background_result)
-                self._control_task = task
-                self._control_mode = "rollback"
-                return task
-            effective_mode: CodingAppHostSettlementMode = (
-                "rollback" if mode == "rollback" else requested_mode
-            )
-            if task is None or _report_task_needs_retry(task):
-                task = asyncio.create_task(self._settle_once(effective_mode))
-                task.add_done_callback(_observe_background_result)
-                self._control_task = task
-                self._control_mode = effective_mode
-            assert task is not None
-            return task
-
-    async def _settle_once(
-        self,
-        mode: CodingAppHostSettlementMode,
-        *,
-        attempt_rollback_latch: bool = True,
-    ) -> CodingAppHostSettlementReportV1:
-        await self._fence()
-        failed: list[CodingAppHostSettlementPhase] = []
-
-        if (
-            mode == "rollback"
-            and self._rollback_latch is None
-            and (not attempt_rollback_latch or not await self._latch_rollback())
-        ):
-            failed.append("rollback_latch")
-
-        shutdown: AppHostShutdownReportV1 | None = None
-        try:
-            shutdown = await self._runtime.shutdown(self._shutdown_budget)
-            if not shutdown.completed:
-                failed.append("apphost_shutdown")
-        except Exception:
-            failed.append("apphost_shutdown")
-
-        product_cleanup_complete = False
-        if shutdown is not None and shutdown.completed:
-            try:
-                await self._product_factory.close()
-                product_cleanup_complete = True
-            except Exception:
-                failed.append("product_cleanup")
-
-        failed_phases = tuple(dict.fromkeys(failed))
-        completed = (
-            (mode == "close" or self._rollback_latch is not None)
-            and shutdown is not None
-            and shutdown.completed
-            and product_cleanup_complete
-            and not failed_phases
-        )
-        return CodingAppHostSettlementReportV1(
-            mode=mode,
-            completed=completed,
-            admission_fenced=True,
-            rollback_latch=(self._rollback_latch if mode == "rollback" else None),
-            apphost_shutdown=shutdown,
-            product_cleanup_complete=product_cleanup_complete,
-            failed_phases=cast(
-                tuple[CodingAppHostSettlementPhase, ...],
-                failed_phases,
-            ),
-        )
-
-    async def _upgrade_close_to_rollback(
-        self,
-        close_task: asyncio.Task[CodingAppHostSettlementReportV1],
-    ) -> CodingAppHostSettlementReportV1:
-        """Make an emergency rollback dominate an earlier normal close."""
-
-        await self._fence()
-        await self._latch_rollback()
-        with suppress(asyncio.CancelledError, Exception):
-            await asyncio.shield(close_task)
-        # The retryable runtime/factory owners, rather than the prior task
-        # result, determine whether the upgraded settlement is complete.
-        return await self._settle_once(
-            "rollback",
-            attempt_rollback_latch=False,
-        )
-
-    async def _latch_rollback(self) -> bool:
-        if self._rollback_latch is not None:
-            return True
-        try:
-            raw_latch = await self._rollback_control.latch_future_attempts()
-            if type(raw_latch) is not CodingAppHostRollbackLatchV1:
-                raise TypeError("rollback control returned an invalid latch")
-        except Exception:
-            return False
-        self._rollback_latch = raw_latch
-        return True
+        return await self._rollback()
 
 
 async def create_coding_apphost_composition(
@@ -501,11 +332,6 @@ def _require_opaque(value: object, *, name: str) -> None:
         or any(character.isspace() for character in value)
     ):
         raise ValueError(f"Coding AppHost {name} is invalid")
-
-
-def _require_async_method(value: object, name: str) -> None:
-    if not inspect.iscoroutinefunction(_method_descriptor(value, name)):
-        raise TypeError(f"Coding AppHost {name} port is invalid")
 
 
 def _require_sync_method(value: object, name: str) -> None:

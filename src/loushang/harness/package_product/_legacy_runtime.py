@@ -20,6 +20,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
     PackageLegacyStateEvidenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackageEpochCutoverSnapshotReceiptV1,
     PackagePosixEpochCutoverError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
@@ -36,8 +37,10 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackagePosixEpochCutoverResultV1,
+    PackageProductPosixCutoverAttemptV1,
     PackageProductPreBSnapshotOwner,
     PackageProductPreBSnapshotSharedMemberV1,
+    hold_legacy_product_projection_root,
     prepare_legacy_product_cutover_root,
     read_posix_product_pre_b_snapshot,
     reopen_posix_product_cutover,
@@ -46,6 +49,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
+    PackageProductWindowsCutoverAttemptV1,
     PackageProductWindowsPreBSnapshotOwner,
     PackageWindowsEpochCutoverResultV1,
     read_windows_product_pre_b_snapshot,
@@ -292,27 +296,83 @@ def legacy_product_projection_parent(lifecycle_root: Path) -> Path:
     return lifecycle_root.parent
 
 
+def legacy_product_state_has_inputs(
+    roots: Iterable[tuple[Path, Callable[[], Mapping[str, tuple[str, ...]]]]],
+    *,
+    skip_missing: bool,
+) -> bool:
+    """Observe historical state without acquiring write or repair authority."""
+    for root, domain_members in roots:
+        if skip_missing:
+            try:
+                root.lstat()
+            except FileNotFoundError:
+                continue
+        if any(domain_members().values()):
+            return True
+    return False
+
+
+class _LegacyCutoverRoots(Protocol):
+    @property
+    def control_root(self) -> Path: ...
+    @property
+    def snapshot_root(self) -> Path: ...
+    @property
+    def epochs_root(self) -> Path: ...
+
+
+class _LegacySnapshotLayout(_LegacyCutoverRoots, Protocol):
+    @property
+    def authority_root(self) -> Path: ...
+    @property
+    def store_id(self) -> str: ...
+    @property
+    def legacy_root_name(self) -> str: ...
+    @property
+    def epochs_root_name(self) -> str: ...
+
+
+_CutoverRootsT = TypeVar("_CutoverRootsT", bound=_LegacyCutoverRoots)
+_SnapshotEvidenceT = TypeVar("_SnapshotEvidenceT")
+
+_SnapshotMembers = Iterable[tuple[Path, Mapping[str, tuple[str, ...]]]]
+_SharedMembers = tuple[PackageProductPreBSnapshotSharedMemberV1, ...]
+_PreBSnapshotOwner = PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner
+_CutoverAttempt = PackageProductPosixCutoverAttemptV1 | PackageProductWindowsCutoverAttemptV1
+
+
+class _SnapshotPreparation(Protocol):
+    @property
+    def owner(self) -> _PreBSnapshotOwner: ...
+
+
+_SnapshotPreparationT = TypeVar("_SnapshotPreparationT", bound=_SnapshotPreparation)
+
+
 def prepare_legacy_product_cutover_roots(
     lifecycle: _LegacyStateRoots,
     *,
-    control_root: Path,
-    snapshot_root: Path,
-    epochs_root: Path,
+    resolve_epoch: Callable[[], _CutoverRootsT],
     label: str,
-) -> None:
+) -> _CutoverRootsT:
     """Prepare the state roots before either Package data root."""
+    if os.name not in {"posix", "nt"}:
+        raise RuntimeError("Native Package cutover preparation is required")
+    epoch = resolve_epoch()
     windows = os.name == "nt"
-    state_roots: tuple[Path, ...] = (lifecycle.root, control_root, snapshot_root)
+    state_roots: tuple[Path, ...] = (lifecycle.root, epoch.control_root, epoch.snapshot_root)
     if windows:
         state_roots += (legacy_product_projection_parent(lifecycle.root),)
     for root in state_roots:
         prepare_legacy_product_cutover_root(
             root, private_base=lifecycle.private_state_base, windows=windows, label=label
         )
-    for root in (lifecycle.package_root, epochs_root):
+    for root in (lifecycle.package_root, epoch.epochs_root):
         prepare_legacy_product_cutover_root(
             root, private_base=lifecycle.private_data_base, windows=windows, label=label
         )
+    return epoch
 
 
 def legacy_product_fence_exists(control_root: Path) -> bool:
@@ -324,47 +384,87 @@ def legacy_product_fence_exists(control_root: Path) -> bool:
     return True
 
 
-def bind_legacy_pre_b_snapshot_owner(
-    snapshot_root: Path,
+@contextmanager
+def hold_legacy_pre_b_snapshot_owner(
+    epoch: _LegacySnapshotLayout,
+    source_projection: AbstractContextManager[Path],
     *,
-    store_id: str,
-    observed_roots: Iterable[tuple[Path, Mapping[str, tuple[str, ...]]]],
-    fence_root: Path,
-    source_configuration_root: Path,
-    legacy_pointer_root: Path,
-    legacy_root_pointer_name: str,
-    shared_members: tuple[PackageProductPreBSnapshotSharedMemberV1, ...],
-) -> PackageProductPreBSnapshotOwner | PackageProductWindowsPreBSnapshotOwner:
-    """Bind observed store and lifecycle members to the native cutover inputs."""
-    domain_roots: dict[str, Path] = {}
-    domain_members: dict[str, tuple[str, ...] | None] = {}
-    for root, members in observed_roots:
-        if domain_roots.keys() & members.keys():
+    projection_parent: Path,
+    projection_name: str,
+    projection_label: str,
+    pointer_prefix: str,
+    observe: Callable[[Path], tuple[_SnapshotMembers, _SharedMembers, _SnapshotEvidenceT]],
+) -> Iterator[tuple[_PreBSnapshotOwner, Path, _SnapshotEvidenceT]]:
+    """Pin the Source and pointer projections for the full native snapshot lifetime."""
+    with (
+        source_projection as source_root,
+        hold_legacy_product_projection_root(
+            projection_parent,
+            prefix=pointer_prefix,
+            projection_name=projection_name,
+            projection_label=projection_label,
+        ) as pointer_root,
+    ):
+        observed_roots, shared_members, evidence = observe(source_root)
+        domain_roots: dict[str, Path] = {}
+        domain_members: dict[str, tuple[str, ...] | None] = {}
+        for root, members in observed_roots:
+            if domain_roots.keys() & members.keys():
+                raise ValueError("Legacy Product snapshot domains overlap")
+            domain_roots.update(dict.fromkeys(members, root))
+            domain_members.update(members)
+        inert_roots = {
+            "fence_record": epoch.control_root,
+            "source_configuration": source_root,
+            "legacy_root_pointer": pointer_root,
+        }
+        if domain_roots.keys() & inert_roots.keys():
             raise ValueError("Legacy Product snapshot domains overlap")
-        domain_roots.update(dict.fromkeys(members, root))
-        domain_members.update(members)
-    inert_roots = {
-        "fence_record": fence_root,
-        "source_configuration": source_configuration_root,
-        "legacy_root_pointer": legacy_pointer_root,
-    }
-    if domain_roots.keys() & inert_roots.keys():
-        raise ValueError("Legacy Product snapshot domains overlap")
-    domain_roots.update(inert_roots)
-    domain_members.update(dict.fromkeys(inert_roots))
-    owner_type = (
-        PackageProductWindowsPreBSnapshotOwner
-        if os.name == "nt"
-        else PackageProductPreBSnapshotOwner
-    )
-    return owner_type(
-        snapshot_root,
-        store_id=store_id,
-        domain_roots=domain_roots,
-        domain_members=domain_members,
-        legacy_root_pointer_name=legacy_root_pointer_name,
-        shared_members=shared_members,
-    )
+        domain_roots.update(inert_roots)
+        domain_members.update(dict.fromkeys(inert_roots))
+        owner_type = (
+            PackageProductWindowsPreBSnapshotOwner
+            if os.name == "nt"
+            else PackageProductPreBSnapshotOwner
+        )
+        owner = owner_type(
+            epoch.snapshot_root,
+            store_id=epoch.store_id,
+            domain_roots=domain_roots,
+            domain_members=domain_members,
+            legacy_root_pointer_name=epoch.legacy_root_name,
+            shared_members=shared_members,
+        )
+        yield owner, source_root, evidence
+
+
+@contextmanager
+def commit_legacy_product_snapshot(
+    epoch: _LegacySnapshotLayout,
+    preparation: AbstractContextManager[_SnapshotPreparationT],
+    *,
+    namespace_id: str,
+    minimum_runtime_version: str,
+    minimum_runtime_protocol_epoch: int,
+    snapshot_admission: Callable[[_SnapshotPreparationT, PackageEpochCutoverSnapshotReceiptV1], None] | None,
+) -> Iterator[tuple[_CutoverAttempt, _PreBSnapshotOwner]]:
+    """Keep snapshot inputs pinned through admission, native commit and result binding."""
+    with preparation as prepared:
+        owner = prepared.owner
+        attempt = owner.cutover_from_legacy(
+            authority_root=epoch.authority_root,
+            control_root=epoch.control_root,
+            legacy_root_name=epoch.legacy_root_name,
+            epochs_root_name=epoch.epochs_root_name,
+            namespace_id=namespace_id,
+            minimum_runtime_version=minimum_runtime_version,
+            minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+            snapshot_admission=(
+                None if snapshot_admission is None
+                else lambda snapshot: snapshot_admission(prepared, snapshot)
+            ),
+        )
+        yield attempt, owner
 
 
 def reopen_legacy_product_cutover(
@@ -386,6 +486,29 @@ def reopen_legacy_product_cutover(
     ):
         raise RuntimeError(f"{label} fence belongs to another cutover")
     return result
+
+
+@contextmanager
+def hold_legacy_product_cutover_review(
+    roots: FencedRuntimeOpenKwargs,
+    *,
+    windows: bool,
+    first_cutover: tuple[str, Callable[[], PackagePosixEpochCutoverResultV1]] | None,
+    label: str,
+) -> Iterator[_FencedRuntime]:
+    """Prepare the requested first fence and hold the native review authority."""
+    if first_cutover is not None:
+        namespace, prepare = first_cutover
+        if legacy_product_fence_exists(roots["control_root"]):
+            reopen_legacy_product_cutover(
+                **roots, read_only=False, expected_namespace=namespace, label=label
+            )
+        elif prepare().disposition != "fenced":
+            raise RuntimeError(f"{label} fence was not committed")
+    with closing(
+        open_native_fenced_product_epoch(windows=windows, posix_read_only=True, **roots)
+    ) as runtime:
+        yield runtime
 
 
 class _LegacyStateRoots(Protocol):

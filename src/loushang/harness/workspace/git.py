@@ -101,6 +101,37 @@ def _paths_from_git_path(repo_dir: Path, git_path: Path) -> GitPaths | None:
     return None
 
 
+def git_workspace_access_roots(
+    workspace_root: Path, writable: bool
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Return workspace roots plus the repository and its Git metadata roots."""
+    readable = [workspace_root]
+    writable_roots = [workspace_root] if writable else []
+    git_paths = find_git_paths(workspace_root)
+    if git_paths is not None:
+        _append_uncovered_root(readable, git_paths.repo_dir)
+        for metadata_root in (git_paths.common_git_dir, git_paths.head_path.parent):
+            _append_uncovered_root(readable, metadata_root)
+            if writable:
+                _append_uncovered_root(writable_roots, metadata_root)
+    return tuple(readable), tuple(writable_roots)
+
+
+def _append_uncovered_root(roots: list[Path], candidate: Path) -> None:
+    candidate = candidate.resolve(strict=False)
+    if any(
+        candidate == existing or candidate.is_relative_to(existing)
+        for existing in roots
+    ):
+        return
+    roots[:] = [
+        existing
+        for existing in roots
+        if not existing.is_relative_to(candidate)
+    ]
+    roots.append(candidate)
+
+
 def list_git_worktree_paths(
     cwd: str | Path,
     *,
@@ -266,6 +297,7 @@ __all__ = [
     "GitPaths",
     "find_git_paths",
     "get_git_branch",
+    "git_workspace_access_roots",
     "list_git_worktree_paths",
     "observe_git_inventory",
     "observe_workspace_inventory",

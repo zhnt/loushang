@@ -39,6 +39,20 @@ def _valid_opaque(value: object) -> bool:
     )
 
 
+def _require_native_approval_command(
+    operation_id: str, expected_generation: int, action: str,
+    approval: object, approval_type: type, *, invalid: str,
+) -> None:
+    if (
+        not _valid_opaque(operation_id)
+        or type(expected_generation) is not int
+        or expected_generation < 0
+        or action not in {"approve", "revoke"}
+        or (action == "approve") != isinstance(approval, approval_type)
+    ):
+        raise ValueError(invalid)
+
+
 class _NativeApprovalMethods:
     __slots__ = ()
     wheel_sha256: str

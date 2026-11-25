@@ -54,7 +54,6 @@ from loushang.harness.capabilities import (
     CapabilityBundleProvider,
     CapabilityBundleProviderBinding,
     CapabilityBundleValue,
-    CapabilityContractRange,
     CapabilityDependencyBinding,
     CapabilityFacetBinding,
     CapabilityProviderContext,
@@ -1351,12 +1350,10 @@ def build_session_model_call_capability_binding(
     if not isinstance(resolved_conversation_id, str) or not resolved_conversation_id:
         raise ValueError("model-call binding requires a conversation id")
 
-    provider = CapabilityBundleProvider(
-        capability_id=MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+    provider = CapabilityBundleProvider.for_definition(
+        MODEL_INPUT_CAPABILITY_DEFINITION,
         provider_id="harness.model_input.standard",
         implementation_version=1,
-        compatible_contract=CapabilityContractRange.exact(1),
-        facets=MODEL_INPUT_CAPABILITY_DEFINITION.facets,
         requirements=(
             (SESSION_TRANSCRIPT_REQUIREMENT,) if session_provider is not None else ()
         ),

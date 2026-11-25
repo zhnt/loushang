@@ -4913,6 +4913,8 @@ def test_create_agent_session_passes_compaction_settings_to_session(
         model=_model(),
     )
 
+    assert session.agent.call_options.pairing_mode == "repair"
+
     async def _fake_compact(**kwargs):
         preparation = kwargs["preparation"]
         assert preparation.first_kept_entry_id == assistant_id

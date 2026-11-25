@@ -78,9 +78,11 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/harness/config/agent/_settings_patch.py"),
     Path("src/loushang/harness/config/agent/manager.py"),
     Path("src/loushang/harness/config/agent/types.py"),
+    Path("src/loushang/harness/continuity/_binding_lifetime.py"),
     Path("src/loushang/harness/package_product/_legacy_inventory.py"),
     Path("src/loushang/harness/package_product/_legacy_local_review.py"),
     Path("src/loushang/harness/package_product/_legacy_removed_review.py"),
+    Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/packages/catalog.py"),
     Path("src/loushang/harness/resources/packages/projection.py"),
     Path("src/loushang/harness/resources/packages/roots.py"),
@@ -130,11 +132,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             Path("src/loushang/coding/package/product_runtime.py"),
             "is_coding_fresh_first_b_snapshot",
         ): 1,
-        # ARD-008: read effective legacy settings before selecting a storage owner.
-        (
-            Path("src/loushang/coding/package/product_runtime.py"),
-            "_coding_settings_have_legacy_product_inputs",
-        ): 1,
         (
             Path("src/loushang/harness/config/agent/_settings_patch.py"),
             "AgentSettingsUpdate",
@@ -146,15 +143,19 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "_bootstrap_request_fingerprint",
-        ): 2,
+        ): 3,
         (
             Path("src/loushang/coding/composition/continuity.py"),
             "bind_coding_configured_continuity",
         ): 6,
         (
-            Path("src/loushang/coding/composition/continuity.py"),
-            "_configured_sources",
+            Path("src/loushang/harness/plugin_management/configured_sources.py"),
+            "read_configured_plugin_selection",
         ): 1,
+        (
+            Path("src/loushang/harness/continuity/_binding_lifetime.py"),
+            "configured_continuity_request_fingerprint",
+        ): 2,
         (
             Path("src/loushang/coding/cli/application.py"),
             "_run_list_packages.fallback_records",
@@ -256,7 +257,11 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         (
             Path("src/loushang/coding/package/legacy_builtin_review.py"),
             "review_coding_first_b_builtin_only",
-        ): 2,
+        ): 1,
+        (
+            Path("src/loushang/harness/package_product/_legacy_inventory.py"),
+            "LegacyBuiltinReviewRecord._from_verified_inventory",
+        ): 1,
         (
             Path("src/loushang/coding/package/legacy_disabled_acceptance.py"),
             "CodingLegacyDisabledOnlyAcceptanceV1._check_review",
@@ -328,7 +333,11 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
         (
             Path("src/loushang/coding/package/legacy_removed_review.py"),
             "review_coding_first_b_removed_local",
-        ): 2,
+        ): 1,
+        (
+            Path("src/loushang/harness/package_product/_legacy_removed_review.py"),
+            "LegacyRemovalReviewRecord._from_verified_removals",
+        ): 1,
         (
             Path("src/loushang/coding/package/legacy_review.py"),
             "CodingLegacyLocalAdoptionReviewV1",

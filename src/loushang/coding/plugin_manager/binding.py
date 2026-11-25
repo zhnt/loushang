@@ -40,6 +40,7 @@ from loushang.harness.plugin_management import (
 from loushang.harness.plugin_management.configured_sources import (
     ConfiguredPluginSourceIdentityConflict,
     ConfiguredPluginSourceProfile,
+    configured_plugin_strings,
     project_configured_plugin_sources,
 )
 from loushang.harness.workspace.paths import read_workspace_directory_identity
@@ -93,15 +94,13 @@ class CodingConfiguredPluginSourceProjection:
                 code="coding_plugin_sources_owner_invalid",
             )
         settings = self.settings_manager.get_settings()
-        raw_sources = getattr(settings, "plugin_sources", None)
-        if not isinstance(raw_sources, (list, tuple)) or any(
-            not isinstance(item, str) or not item for item in raw_sources
-        ):
-            raise CodingPluginManagementCliError(
+        return configured_plugin_strings(
+            getattr(settings, "plugin_sources", None),
+            invalid=lambda: CodingPluginManagementCliError(
                 "configured Plugin Sources are invalid",
                 code="coding_plugin_sources_invalid",
-            )
-        return tuple(raw_sources)
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)

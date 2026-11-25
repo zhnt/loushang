@@ -37,6 +37,7 @@ from loushang.harness.package_product._legacy_management_evidence import (
     require_service_lock_markers,
 )
 from loushang.harness.package_product._legacy_runtime import (
+    LegacyReviewFenceIdentity,
     _FencedRuntime,
     _LegacyFirstSnapshot,
     require_legacy_snapshot_members,
@@ -101,6 +102,7 @@ class _BindingHead(Protocol):
 
 _BindingT = TypeVar("_BindingT", bound=_BindingHead)
 _WheelT = TypeVar("_WheelT")
+_BuiltinIntentT = TypeVar("_BuiltinIntentT")
 
 
 class LegacyInventoryFacts(NamedTuple, Generic[_BindingT]):
@@ -109,6 +111,29 @@ class LegacyInventoryFacts(NamedTuple, Generic[_BindingT]):
     removed_plugin_ids: tuple[str, ...]
     unselected_source_identities: tuple[str, ...]
     lockfile_digest: str | None
+
+    def require_builtin_only(
+        self, *, desired_digest: str | None, removable_ids: Set[str], error: ValueError
+    ) -> None:
+        if (
+            self.active_local
+            or self.unselected_source_identities
+            or self.lockfile_digest is not None
+            or desired_digest is None
+            or not (self.builtin_intent or self.removed_plugin_ids)
+            or any(item not in removable_ids for item in self.removed_plugin_ids)
+        ):
+            raise error
+
+    def reviewed_builtin_selections(
+        self,
+        intent_type: Callable[[str, _InstalledState], _BuiltinIntentT],
+        removable_ids: Set[str],
+    ) -> tuple[tuple[_BuiltinIntentT, ...], tuple[str, ...]]:
+        return (
+            tuple(intent_type(*item) for item in self.builtin_intent),
+            tuple(item for item in self.removed_plugin_ids if item in removable_ids),
+        )
 
 
 class LegacyRemovedBinding(NamedTuple, Generic[_BindingT]):
@@ -422,6 +447,30 @@ class LegacyBuiltinReviewRecord(_LegacyFencedReviewRecord):
         removed_builtin_ids: tuple[str, ...]
         review_version: int
 
+    @classmethod
+    def _from_verified_inventory(
+        cls,
+        identity: LegacyReviewFenceIdentity,
+        evidence: LegacyInventoryEvidence,
+        *,
+        scope_id: str,
+        source_projection_digest: str,
+        disables: tuple[_LegacyScopedDisable, ...],
+    ) -> Self:
+        intent, removed = evidence.inventory.reviewed_builtin_selections(
+            cls._builtin_intent_type, cls._removable_builtin_ids
+        )
+        create: Callable[..., Self] = cls
+        return create(
+            **identity,
+            scope_id=scope_id,
+            source_projection_digest=source_projection_digest,
+            desired_journal_digest=evidence.desired_journal_digest or "",
+            disabled_plugins=disables,
+            builtin_intent=intent,
+            removed_builtin_ids=removed,
+        )
+
     def __post_init__(self) -> None:
         if (
             type(self.store_id) is not str
@@ -601,8 +650,9 @@ class LegacyInventoryReader:
         snapshot: PackageEpochCutoverSnapshotReceiptV1,
         *,
         expected: Mapping[str, tuple[str, ...]],
+        removable_ids: Set[str],
         review_error: type[ValueError],
-    ) -> tuple[LegacyInventoryFacts[LegacyLocalBindingEvidence], str]:
+    ) -> None:
         """Check exact builtin Desired and management evidence before the first fence."""
         receipt_id = snapshot.receipt_id
         evidence = owner.snapshot(receipt_id)
@@ -644,7 +694,11 @@ class LegacyInventoryReader:
                 operation_label=f"{self.label} old",
                 instance_error=review_error,
             )
-        return self.classify((), desired), digest
+        self.classify((), desired).require_builtin_only(
+            desired_digest=digest,
+            removable_ids=removable_ids,
+            error=review_error(f"{self.label} old Desired State is not builtin-only"),
+        )
 
     def read(self, reader: _LegacyFirstSnapshot) -> LegacyInventoryEvidence:
         """Join first-fence facts using only immutable snapshot read authority."""

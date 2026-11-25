@@ -41,12 +41,20 @@ from loushang.coding.hosted.managed.process import (
     ENDPOINT,
     coding_managed_process_request,
 )
+from loushang.harness.environment import LocalHostEnvironmentProbe
+from loushang.harness.sandbox import LinuxBubblewrapBackend
 from loushang.harnesstui.mux import open_hosted_mux_profile
 from loushang.hosting.service import LinuxServiceObserverV1
 from tests.apphost.test_managed_starter import owners as owners
 from tests.hosting._pidfd_signal import send_signal
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux managed process entry")
+
+
+@pytest.fixture
+def tmp_path(standalone_workspace: Path) -> Path:
+    """Keep the imported AppHost storage fixtures under private ancestors."""
+    return standalone_workspace
 
 
 async def _same_control_operation(operation, *, deadline):
@@ -386,6 +394,10 @@ def test_concurrent_start_and_warm_reuse_use_one_production_child(production_own
     session_root = Path(namespace.platform_home) / "data/sessions"
     lazy_store = journal._database.service_admission_required
     if lazy_store:
+        # Opening the first Session with an attached Workspace requires native isolation.
+        sandbox = LinuxBubblewrapBackend().probe(LocalHostEnvironmentProbe().detect())
+        if sandbox.state != "available":
+            pytest.skip(sandbox.reason or "attached Workspace sandbox is unavailable")
         assert not session_root.exists()
     else:
         session_root.mkdir(parents=True, mode=0o700)

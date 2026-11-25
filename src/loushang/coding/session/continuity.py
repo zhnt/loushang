@@ -29,13 +29,11 @@ from loushang.harness.continuity import (
     ContinuityDeletionRecoveryAuthority,
     ContinuityHub,
     ContinuityProviderDescriptor,
-    ContinuityProviderPack,
     ContinuityProviderSourceDescriptor,
     ContinuityTarget,
     ExperienceComposition,
     ExperienceDescriptor,
     build_continuity_hub,
-    compose_experience_continuity,
 )
 from loushang.harness.continuity._binding_lifetime import (
     _ContinuityBindingReservationLifetime,
@@ -49,6 +47,7 @@ from loushang.harness.continuity._payload_staging import (
 from loushang.harness.continuity._payload_staging import (
     _PrivateContinuityPayload as _PrivateContinuityPayload,
 )
+from loushang.harness.continuity.composition import _bind_base_continuity_profile
 from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginGeneration,
     ContinuityPluginGenerationAuthority,
@@ -59,17 +58,11 @@ from loushang.harness.continuity.plugin_runtime import (
 )
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import (
-    CONTINUITY_PROVIDER_PACKS_SLOT,
-    ProductRuntimePlan,
     RuntimeCapabilityImplementation,
-    RuntimeCapabilityRegistry,
-    RuntimeCapabilitySelection,
-    RuntimeProfileAdmissionPolicy,
     RuntimeProfileBinder,
     RuntimeProfileBinding,
     RuntimeProfileLayer,
     RuntimeProfileLayerGrant,
-    RuntimeProfileResolver,
 )
 from loushang.harness.session._continuity_index import (
     _IndexedSessionContinuity,
@@ -479,58 +472,26 @@ def _compose_coding_continuity_base(
     grants: tuple[RuntimeProfileLayerGrant, ...],
     implementations: tuple[RuntimeCapabilityImplementation, ...],
 ) -> tuple[RuntimeProfileBinder, RuntimeProfileBinding, ExperienceComposition]:
-    plan = ProductRuntimePlan(
+    return _bind_base_continuity_profile(
         product_id=CODING_EXPERIENCE_ID,
-        slots=(CONTINUITY_PROVIDER_PACKS_SLOT,),
-        defaults=(
-            RuntimeCapabilitySelection(
-                slot=CONTINUITY_PROVIDER_PACKS_SLOT.key,
-                implementation=CODING_CONTINUITY_IMPLEMENTATION,
-                implementation_version=CODING_CONTINUITY_IMPLEMENTATION_VERSION,
-            ),
+        context=runtime,
+        implementation=CODING_CONTINUITY_IMPLEMENTATION,
+        implementation_version=CODING_CONTINUITY_IMPLEMENTATION_VERSION,
+        create_provider=lambda context: CodingContinuityProvider(
+            _require_runtime(context),
+            cwd=cwd,
+            all_sessions=all_sessions,
         ),
-    )
-    admitted = RuntimeProfileAdmissionPolicy(
-        grants=grants,
-        slot_permissions={
-            CONTINUITY_PROVIDER_PACKS_SLOT.key: frozenset({"continuity.provider"})
-        },
-    ).admit(plan, layers)
-    profile = RuntimeProfileResolver().resolve(
-        plan,
-        layers=admitted.require_valid(),
-    )
-    registry = RuntimeCapabilityRegistry(
-        (
-            RuntimeCapabilityImplementation(
-                slot=CONTINUITY_PROVIDER_PACKS_SLOT.key,
-                implementation=CODING_CONTINUITY_IMPLEMENTATION,
-                implementation_version=CODING_CONTINUITY_IMPLEMENTATION_VERSION,
-                create=lambda _selection, context: ContinuityProviderPack(
-                    providers=(
-                        CodingContinuityProvider(
-                            _require_runtime(context),
-                            cwd=cwd,
-                            all_sessions=all_sessions,
-                        ),
-                    )
-                ),
-            ),
-            *implementations,
-        )
-    )
-    binder = RuntimeProfileBinder(registry)
-    binding = binder.bind_sync(profile, context=runtime)
-    composition = compose_experience_continuity(
-        experience=ExperienceDescriptor(
+        describe_experience=lambda: ExperienceDescriptor(
             experience_id=CODING_EXPERIENCE_ID,
             label="Coding",
             domain_ids=("coding",),
             default_domain_id="coding",
         ),
-        binding=binding,
+        layers=layers,
+        grants=grants,
+        implementations=implementations,
     )
-    return binder, binding, composition
 
 
 def _retain_coding_continuity(

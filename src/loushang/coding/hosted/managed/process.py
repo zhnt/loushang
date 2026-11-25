@@ -1,37 +1,24 @@
-"""Dedicated Coding child entry for the managed deployment.
-
-The parent supplies a durable invocation and one inherited control descriptor.
-This module does not initialize directories, discover services or infer stop
-facts. Before application binding, failure exits nonzero without a clean-stop
-claim; after binding, the existing child process owner controls all settlement.
-"""
+"""Installed Coding entry for an AppHost managed child."""
 
 from __future__ import annotations
 
-import json
-import os
-import socket
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from functools import partial
 from pathlib import Path
-from time import monotonic, sleep
 
-from loushang.apphost.managed._files import ManagedStorageError
-from loushang.apphost.managed.bootstrap import ManagedChildBootstrapV1
-from loushang.apphost.managed.contracts import ManagedContractError, _path
-from loushang.apphost.managed.invocation import ManagedChildInvocationV1
-from loushang.apphost.managed.paths import resolve_managed_paths
-from loushang.hosting.contracts import (
-    ProcessLaunchRequest,
-    ProcessStderrMode,
-    ProcessStdinMode,
-    ProcessStdoutMode,
-    ProcessStreamSpec,
+from loushang.apphost.managed.bootstrap import (
+    ManagedChildApplicationPreparation,
+    ManagedChildBootstrapV1,
+    run_managed_child_entry,
 )
-from loushang.hosting.service_windows import (
-    WindowsServiceLaunchRequestV1,
-    read_windows_service_startup,
+from loushang.apphost.managed.child import ManagedChildApplicationPortV1
+from loushang.apphost.managed.invocation import (
+    ManagedChildInvocationV1,
+    build_managed_child_launch_request,
 )
+from loushang.hosting.contracts import ProcessLaunchRequest
+from loushang.hosting.service_windows import WindowsServiceLaunchRequestV1
 
 APPLICATION_ID = "coding.default"
 ENDPOINT = "workspace"
@@ -41,149 +28,50 @@ def coding_managed_process_request(
     invocation: ManagedChildInvocationV1, descriptor: int, *, executable: str,
     environment: Mapping[str, str], session_root: Path | None = None,
 ) -> ProcessLaunchRequest | WindowsServiceLaunchRequestV1:
-    """Pure launch material for the installed module, with frozen home/runtime."""
-    if type(invocation) is not ManagedChildInvocationV1 or invocation.service.product_id != "coding":
-        raise ManagedContractError()
-    _descriptor(descriptor)
-    _path(executable)
-    selected = session_root if session_root is not None else Path(invocation.namespace.platform_home) / "data/sessions"
-    if not isinstance(selected, Path):
-        raise ManagedContractError()
-    _path(str(selected))
-    effective = dict(environment)
-    effective["LOUSHANG_HOME"] = invocation.namespace.platform_home
-    effective["LOUSHANG_RUNTIME_DIR"] = invocation.runtime_root
-    effective["LOUSHANG_TMPDIR"] = _temporary(invocation)
-    executable_args = (executable, "-m", 'loushang.coding.hosted.managed.process')
-    invocation_json = invocation.to_json()
-    windows = sys.platform == "win32"
-    arguments = ("--inherited", str(descriptor)) if windows else (invocation_json, str(selected), str(descriptor))
-    request = ProcessLaunchRequest(
-        (*executable_args, *arguments), invocation.namespace.platform_home, tuple(effective.items()),
-        ProcessStreamSpec(ProcessStdinMode.CLOSED, ProcessStdoutMode.DISCARD, ProcessStderrMode.DISCARD),
+    return build_managed_child_launch_request(
+        invocation,
+        descriptor,
+        product_id="coding",
+        module="loushang.coding.hosted.managed.process",
+        executable=executable,
+        environment=environment,
+        session_root=session_root,
+        default_session_directory="data/sessions",
     )
-    if windows:
-        startup = json.dumps([invocation_json, str(selected)], ensure_ascii=False, separators=(",", ":"))
-        return WindowsServiceLaunchRequestV1(request, startup.encode("utf-8"))
-    return request
 
 
-def _descriptor(value: int) -> None:
-    maximum = 2**64 if sys.platform == "win32" else 2**31
-    if type(value) is not int or not 3 <= value < maximum:
-        raise ManagedContractError()
+def _load_application() -> ManagedChildApplicationPreparation:
+    from loushang.coding.hosted.managed.local import (
+        CodingManagedLocalCommandV1,
+        create_coding_managed_local_launch,
+    )
 
-
-def _temporary(invocation: ManagedChildInvocationV1) -> str:
-    return str(resolve_managed_paths(
-        invocation.namespace, invocation.service, invocation.instance,
-        runtime_root=invocation.runtime_root, temporary_override=invocation.temporary_override,
-    ).temporary)
-
-
-def _numeric_descriptor(value: str) -> int:
-    if not value.isascii() or not value.isdecimal() or len(value) > 20:
-        raise ManagedContractError()
-    descriptor = int(value)
-    _descriptor(descriptor)
-    return descriptor
-
-
-def _startup_settings(payload: str, session_root: str) -> tuple[ManagedChildInvocationV1, str]:
-    invocation = ManagedChildInvocationV1.from_json(payload)
-    if invocation.service.product_id != "coding":
-        raise ManagedContractError()
-    _path(session_root)
-    return invocation, session_root
-
-
-def _run(arguments: Sequence[str]) -> int:
-    if len(arguments) != 3:
-        raise ManagedContractError()
-    windows = sys.platform == "win32"
-    if windows and arguments[0] != "--inherited":
-        raise ManagedContractError()
-    settings = None if windows else _startup_settings(arguments[0], arguments[1])
-    endpoint = socket.socket(fileno=_numeric_descriptor(arguments[1 if windows else 2]))
-    bootstrap: ManagedChildBootstrapV1 | None = None
-    try:
-        if settings is None:
-            payload = read_windows_service_startup(endpoint, _numeric_descriptor(arguments[2]))
-            decoded = json.loads(payload)
-            if (type(decoded) is not list or len(decoded) != 2
-                    or any(type(item) is not str for item in decoded)):
-                raise ManagedContractError()
-            settings = _startup_settings(decoded[0], decoded[1])
-        invocation, session_root = settings
-        # Invocation identity wins over mutable inherited environment.
-        os.environ["LOUSHANG_HOME"] = invocation.namespace.platform_home
-        os.environ["LOUSHANG_RUNTIME_DIR"] = invocation.runtime_root
-        os.environ["LOUSHANG_TMPDIR"] = _temporary(invocation)
-        # The frontend imports this module only to construct launch material.
-        # Load the backend in its actual child, with endpoint cleanup already
-        # owned and before the native admission budget begins.
-        from loushang.coding.hosted.managed.local import (
-            CodingManagedLocalCommandV1,
-            create_coding_managed_local_launch,
-        )
-
-        bootstrap = ManagedChildBootstrapV1(
-            invocation.namespace, invocation.service, invocation.instance,
-            invocation.attempt_id, endpoint, runtime_root=invocation.runtime_root,
-            temporary_override=invocation.temporary_override,
-            diagnostics=True,
-        )
-        deadline = monotonic() + 15
-        while True:
-            try:
-                bootstrap.open(deadline=deadline)
-                break
-            except ManagedStorageError as error:
-                if error.code != "busy" or monotonic() >= deadline:
-                    raise
-                sleep(0.01)  # Same admission and frozen budget, never a new owner.
+    def build(
+        invocation: ManagedChildInvocationV1, session_root: Path,
+        bootstrap: ManagedChildBootstrapV1, deadline: float,
+    ) -> Callable[[], ManagedChildApplicationPortV1]:
         launch = create_coding_managed_local_launch(
-            invocation, session_root=Path(session_root), application_id=APPLICATION_ID,
+            invocation, session_root=session_root, application_id=APPLICATION_ID,
             endpoint=ENDPOINT, session_discovery=True,
             store_state_root=Path(invocation.namespace.platform_home) / "state/session-stores",
             managed_mux=bootstrap.managed_mux_binding(application_id=APPLICATION_ID),
         )
-        capture_factory = bootstrap.output_capture_factory(deadline=deadline)
-        trace = None
-        if invocation.trace_deadline_ms is not None:
-            trace_deadline = invocation.trace_deadline_ms / 1000
-            if monotonic() < trace_deadline:
-                try:
-                    trace = bootstrap.prepare_trace(deadline=trace_deadline)
-                except ManagedStorageError as error:
-                    if error.code != "busy" or monotonic() < trace_deadline:
-                        raise
-        bootstrap.bind(CodingManagedLocalCommandV1(launch, output_capture_factory=capture_factory))
-        if trace is not None:
-            # Dedicated process-wide composition, never a per-Session context.
-            # The child settles native work before this borrowed sink is removed.
-            from loushang.foundation.observability.runtime import (
-                observability_runtime_context,
-            )
+        return partial(
+            CodingManagedLocalCommandV1, launch,
+            output_capture_factory=bootstrap.output_capture_factory(deadline=deadline),
+        )
 
-            with observability_runtime_context(
-                session_id=None, cwd=invocation.service.host_root, mode="managed",
-                trace_sink=trace, trace_scopes=frozenset({"turn.start.performance", "host"}),
-            ):
-                bootstrap.trace_sink_installed(trace)
-                return bootstrap.run_process()
-        return bootstrap.run_process()
-    finally:
-        if bootstrap is not None:
-            bootstrap.close()
-        else:
-            endpoint.close()
+    return build
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Dedicated-process entry; never expose untrusted argument/exception text."""
     try:
-        return _run(sys.argv[1:] if argv is None else argv)
+        return run_managed_child_entry(
+            sys.argv[1:] if argv is None else argv,
+            product_id="coding",
+            load_application=_load_application,
+        )
     except Exception:
         print("managed_process_failed", file=sys.stderr)
         return 1
