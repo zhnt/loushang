@@ -6,12 +6,12 @@ import json
 import os
 import stat
 import subprocess
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
-from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Literal, TypeVar
+from typing import TYPE_CHECKING, Literal
 from zipfile import BadZipFile, ZipFile
 
 from loushang.harness.resources.packages._file_consumption import (
@@ -21,7 +21,6 @@ from loushang.harness.resources.packages._file_consumption import (
 
 if TYPE_CHECKING:
     from loushang.harness.resources.types import ResourceBundle
-    from loushang.harness.session.agent_product import AgentProductSession
     from loushang.harness.transcript.product_session import ProductTranscriptSession
 
 
@@ -31,31 +30,6 @@ class _SelectionRefusal(RuntimeError):
 
 class _UseRefusal(RuntimeError):
     pass
-
-
-_TranscriptT = TypeVar("_TranscriptT", bound="ProductTranscriptSession")
-_SessionT = TypeVar("_SessionT", bound="AgentProductSession")
-
-
-@asynccontextmanager
-async def hold_authoring_session(
-    registration: AbstractContextManager[None],
-    transcript_type: type[_TranscriptT],
-    build_session: Callable[[_TranscriptT], _SessionT],
-    *,
-    workspace: Path,
-    session_dir: Path,
-) -> AsyncIterator[tuple[_TranscriptT, _SessionT]]:
-    """Keep the offline transport registered through Session disposal."""
-    with registration:
-        manager = await transcript_type.new(
-            session_dir=session_dir, cwd=str(workspace), persist=True
-        )
-        session = build_session(manager)
-        try:
-            yield manager, session
-        finally:
-            await session.dispose()
 
 
 def read_authoring_wheel_document(wheel: Path, member: str) -> str:

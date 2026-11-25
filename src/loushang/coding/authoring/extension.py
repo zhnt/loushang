@@ -27,9 +27,9 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_authoring._offline_smoke import (
     capture_authoring_input,
     hold_authoring_home,
-    hold_authoring_session,
     require_authoring_tool_result,
 )
+from loushang.harness.session._cleanup import hold_authoring_session
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*\Z")
 _MAX_SOURCE_BYTES = 1024 * 1024

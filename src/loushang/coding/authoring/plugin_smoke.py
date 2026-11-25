@@ -37,7 +37,6 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.plugin_authoring._offline_smoke import (
     _SelectionRefusal,
     _UseRefusal,
-    hold_authoring_session,
     hold_authoring_wheel,
     prove_prepared_authoring_resource_use,
     read_authoring_wheel_document,
@@ -49,6 +48,7 @@ from loushang.harness.plugin_authoring._offline_smoke import (
     record_product_smoke_failure as _failure,
 )
 from loushang.harness.resources.frontmatter import strip_frontmatter
+from loushang.harness.session._cleanup import hold_authoring_session
 
 CodingDataSmokeKind = Literal["skill", "prompt", "theme"]
 

@@ -9,18 +9,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, TextIO, TypeVar
 
-from loushang.ai.model import (
-    ModelSelection,
-    model_selection_ref,
-    parse_model_selection_reference,
-)
-from loushang.ai.model.registry import ModelRegistry
 from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.cli.parser import (
     CliCommandUsageError,
     RaisingArgumentParser,
     extract_root_command,
     write_usage_error,
+)
+from loushang.harness.model_catalog import (
+    AiModelRegistry,
+    ModelSelection,
+    canonical_model_reference,
 )
 from loushang.harness.multiagent import (
     CollaborationRecipe,
@@ -88,7 +87,7 @@ async def run_multiagent_command(
     services: _ServicesT | None,
     build_services: Callable[[Path], _ServicesT],
     resolve_default_model: Callable[
-        [MultiAgentRunCommand, ModelRegistry | None], ModelSelection | None
+        [MultiAgentRunCommand, AiModelRegistry | None], ModelSelection | None
     ],
     prepare_runtime: Callable[
         [MultiAgentRunCommand, _ServicesT, ModelSelection | None],
@@ -212,19 +211,17 @@ def _write_execution_error(stderr: TextIO, message: str, error: BaseException) -
 def _resolve_role_models(
     command: MultiAgentRunCommand,
     *,
-    registry: ModelRegistry | None,
+    registry: AiModelRegistry | None,
 ) -> dict[str, str]:
     result: dict[str, str] = {}
     for role, value in command.agent_models.items():
-        selection = parse_model_selection_reference(
+        result[role] = canonical_model_reference(
             value,
             provider=command.provider
             if "/" not in value and ":" not in value
             else None,
             registry=registry,
         )
-        assert selection is not None
-        result[role] = model_selection_ref(selection)
     return result
 
 

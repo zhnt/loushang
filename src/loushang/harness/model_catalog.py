@@ -22,7 +22,11 @@ from loushang.ai.model.registry import (
     get_default_model_registry,
     resolve_model_ref,
 )
-from loushang.ai.model.selection import ModelSelection
+from loushang.ai.model.selection import (
+    ModelSelection,
+    model_selection_ref,
+    parse_model_selection_reference,
+)
 from loushang.foundation.observability import get_log
 from loushang.harness.runtime.registration import (
     RegistrationDisposalResult,
@@ -32,6 +36,18 @@ from loushang.harness.runtime.registration import (
 )
 
 log = get_log(__name__).bind(component="ModelCatalog")
+
+
+def canonical_model_reference(
+    value: str,
+    *,
+    provider: str | None,
+    registry: AiModelRegistry | None,
+) -> str:
+    """Complete a model reference using the catalog's selection contract."""
+    selection = parse_model_selection_reference(value, provider=provider, registry=registry)
+    assert selection is not None
+    return model_selection_ref(selection)
 
 
 @dataclass(frozen=True)
@@ -438,4 +454,4 @@ class ModelCatalog:
             raise
 
 
-__all__ = ["ModelCatalog"]
+__all__ = ["AiModelRegistry", "ModelCatalog", "ModelSelection", "canonical_model_reference"]
