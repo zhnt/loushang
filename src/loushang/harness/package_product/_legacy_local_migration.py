@@ -71,6 +71,9 @@ from loushang.harness.resources.packages._private_receipts_windows import (
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordSchema,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
 )
@@ -1118,6 +1121,10 @@ class _SourceConsumptionSettings(Protocol):
     ) -> None: ...
 
 
+def _source_consumption_receipt_bytes(identity: dict[str, object], phase: str) -> bytes:
+    return canonical_json_bytes({**identity, "phase": phase}) + b"\n"
+
+
 @dataclass(frozen=True)
 class _SourceConsumptionProtocol:
     epoch_runtime: PackageProductPosixFencedRuntimeOwner
@@ -1127,37 +1134,26 @@ class _SourceConsumptionProtocol:
     reopen_acceptance: Callable[[str], _AcceptedSource | None]
     projection: _LegacySourceProjection
     other_source_keys: frozenset[str]
-    receipt_bytes: Callable[[dict[str, object], str], bytes]
     error_type: type[Exception]
     max_receipt_bytes: int
 
     def consume(self) -> None:
-        epoch_runtime, acceptance, settings, frozen = (
-            self.epoch_runtime,
-            self.acceptance,
-            self.settings,
-            self.frozen,
-        )
+        epoch_runtime, acceptance = self.epoch_runtime, self.acceptance
+        frozen = self.frozen
         configured = frozen.by_plugin[acceptance.review.plugin_id]
         if configured is None:
-            with settings.transaction():
-                settled_others = self._settled_other_paths(
-                    epoch_runtime, acceptance, frozen
-                )
-                self._live_state(settings, None, frozen, settled_others)
+            self._observe_live_state(None)
             epoch_runtime.assert_current()
             return
         state_root = epoch_runtime.prepare_product_state_root()
         path = self._receipt_path(state_root, acceptance.review.plugin_id)
-        expected = self._identity(acceptance, configured, frozen.projection_digest)
+        expected = self._identity(acceptance, configured)
         with self._rooted_file(state_root, path) as target:
             target.acquire_lock(exclusive=True, suffix=".lock")
             phase = self._read_phase(target, expected)
-            with settings.transaction():
-                settled_others = self._settled_other_paths(
-                    epoch_runtime, acceptance, frozen
-                )
-                state = self._live_state(settings, configured, frozen, settled_others)
+            with self.settings.transaction():
+                settled_others = self._settled_other_paths()
+                state = self._live_state(configured, settled_others)
                 if phase is None:
                     if state != "original":
                         raise self.error_type(
@@ -1165,7 +1161,8 @@ class _SourceConsumptionProtocol:
                         )
                     epoch_runtime.assert_current()
                     target.atomic_write(
-                        self.receipt_bytes(expected, "prepared"), exclusive=True
+                        _source_consumption_receipt_bytes(expected, "prepared"),
+                        exclusive=True,
                     )
                     phase = "prepared"
                 if phase == "settled":
@@ -1179,71 +1176,59 @@ class _SourceConsumptionProtocol:
                         for path in frozen.ordered_paths[configured.scope]
                         if path not in settled_others and path != configured.path
                     )
-                    settings.update_settings(
+                    self.settings.update_settings(
                         scope=configured.scope, plugin_sources=remaining
                     )
-                    if (
-                        self._live_state(settings, configured, frozen, settled_others)
-                        != "cleared"
-                    ):
+                    if self._live_state(configured, settled_others) != "cleared":
                         raise self.error_type(
                             "Configured Source setting was not consumed"
                         )
                 epoch_runtime.assert_current()
-                target.atomic_write(self.receipt_bytes(expected, "settled"))
+                target.atomic_write(
+                    _source_consumption_receipt_bytes(expected, "settled")
+                )
                 epoch_runtime.assert_current()
 
     def consumed(self) -> bool:
-        epoch_runtime, acceptance, settings, frozen = (
-            self.epoch_runtime,
-            self.acceptance,
-            self.settings,
-            self.frozen,
-        )
+        epoch_runtime, acceptance = self.epoch_runtime, self.acceptance
+        frozen = self.frozen
         configured = frozen.by_plugin[acceptance.review.plugin_id]
         state_root = epoch_runtime.control_root / "product-state"
         if configured is not None:
-            phase = self._source_phase(state_root, acceptance, configured, frozen)
+            phase = self._source_phase(state_root, acceptance, configured)
             if phase != "settled":
                 return False
-        with settings.transaction():
-            settled_others = self._settled_other_paths(
-                epoch_runtime, acceptance, frozen
-            )
-            result = (
-                self._live_state(settings, configured, frozen, settled_others)
-                == "cleared"
-            )
+        result = self._observe_live_state(configured) == "cleared"
         epoch_runtime.assert_current()
         return result
+
+    def _observe_live_state(
+        self, configured: _ConfiguredSource | None
+    ) -> Literal["original", "cleared"]:
+        with self.settings.transaction():
+            return self._live_state(configured, self._settled_other_paths())
 
     def _source_phase(
         self,
         state_root: Path,
         acceptance: _AcceptedSource,
         configured: _ConfiguredSource,
-        frozen: _FrozenSources,
     ) -> Literal["prepared", "settled"] | None:
         path = self._receipt_path(state_root, acceptance.review.plugin_id)
         try:
             with self._rooted_file(state_root, path) as target:
                 return self._read_phase(
                     target,
-                    self._identity(acceptance, configured, frozen.projection_digest),
+                    self._identity(acceptance, configured),
                 )
         except FileNotFoundError:
             return None
 
-    def _settled_other_paths(
-        self,
-        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-        acceptance: _AcceptedSource,
-        frozen: _FrozenSources,
-    ) -> frozenset[str]:
-        state_root = epoch_runtime.control_root / "product-state"
+    def _settled_other_paths(self) -> frozenset[str]:
+        state_root = self.epoch_runtime.control_root / "product-state"
         settled: set[str] = set()
-        for plugin_id, configured in frozen.by_plugin.items():
-            if configured is None or plugin_id == acceptance.review.plugin_id:
+        for plugin_id, configured in self.frozen.by_plugin.items():
+            if configured is None or plugin_id == self.acceptance.review.plugin_id:
                 continue
             other = self.reopen_acceptance(plugin_id)
             if other is None:
@@ -1253,17 +1238,16 @@ class _SourceConsumptionProtocol:
                 or other.review.configured_plugin_source_scope != configured.scope
             ):
                 raise self.error_type("Other configured Source acceptance changed")
-            if self._source_phase(state_root, other, configured, frozen) == "settled":
+            if self._source_phase(state_root, other, configured) == "settled":
                 settled.add(configured.path)
         return frozenset(settled)
 
     def _live_state(
         self,
-        settings: _SourceConsumptionSettings,
         configured: _ConfiguredSource | None,
-        frozen: _FrozenSources,
         settled_others: frozenset[str],
     ) -> Literal["original", "cleared"]:
+        settings, frozen = self.settings, self.frozen
         if settings.get_session_settings():
             raise self.error_type(
                 "Session settings cannot enter configured Source consumption"
@@ -1316,13 +1300,12 @@ class _SourceConsumptionProtocol:
         self,
         acceptance: _AcceptedSource,
         configured: _ConfiguredSource,
-        projection_digest: str,
     ) -> dict[str, object]:
         return {
             "receiptVersion": 1,
             "acceptanceId": acceptance.acceptance_id,
             "reviewId": acceptance.review.review_id,
-            "projectionDigest": projection_digest,
+            "projectionDigest": self.frozen.projection_digest,
             "scope": configured.scope,
             "sourcePath": configured.path,
         }
@@ -1342,9 +1325,9 @@ class _SourceConsumptionProtocol:
             raw = target.read_bytes(max_bytes=self.max_receipt_bytes)
         except FileNotFoundError:
             return None
-        if raw == self.receipt_bytes(identity, "prepared"):
+        if raw == _source_consumption_receipt_bytes(identity, "prepared"):
             return "prepared"
-        if raw == self.receipt_bytes(identity, "settled"):
+        if raw == _source_consumption_receipt_bytes(identity, "settled"):
             return "settled"
         raise self.error_type(
             "Configured Source consumption receipt conflicts with accepted review"

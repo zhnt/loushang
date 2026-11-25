@@ -194,3 +194,14 @@ PLC9 仅同步两个旧禁用字段使用点的精确归属，原断言和 PR �
 四组受控记录与基线对照，覆盖 builtin-only 和 removed-local v1/v2，审阅 wire、
 字段、slots 和 pickle 字节相同。公开 `from_evidence` 的签名和解析后注解相同。
 最终源码上的切换、v1/v2 审阅、重放及 PLC9 组合为 30 项通过。
+
+### 旧配置 Source 消费
+
+Package Product 的既有消费事务直接编码 prepared 和 settled 回执。设置事务的
+只读复核由同一入口执行，读取和恢复使用同一份冻结证据。Coding 保留历史字段、
+允许消费的产品策略和现有错误类型。原有故障注入用例仍在写入 settled 回执前中断，
+注入点随实际编码职责移到 Harness。
+
+生产 Python 为 Coding −14、Harness −17、系统 −31 行。Hosting 和其他生产代码
+无变化。四组受控对照覆盖首次消费、重试、中断和损坏回执，持久化字节、结果、
+加锁与设置更新顺序一致。

@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from loushang.coding.plugin_manager.lifecycle import CodingPluginLifecycleStateLayout
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product._legacy_local_migration import (
     _SourceConsumptionProtocol,
     project_frozen_legacy_sources,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.records import (
-    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -66,14 +61,6 @@ def coding_accepted_legacy_local_source_consumed(
     ).consumed()
 
 
-def _receipt_bytes(identity: dict[str, object], phase: str) -> bytes:
-    return canonical_json_bytes({**identity, "phase": phase}) + b"\n"
-
-
-def _receipt_path(state_root: Path, plugin_id: str) -> Path:
-    return _SourceConsumptionProtocol._receipt_path(state_root, plugin_id)
-
-
 def _consumption_protocol(
     lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
@@ -110,7 +97,6 @@ def _consumption_protocol(
         ),
         _source_projection,
         _CONSUMPTION_BLOCKING_SOURCE_KEYS,
-        lambda identity, phase: _receipt_bytes(identity, phase),
         CodingLegacySourceConsumptionError,
         _MAX_RECEIPT_BYTES,
     )

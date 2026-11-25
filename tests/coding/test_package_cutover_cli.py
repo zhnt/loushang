@@ -21,7 +21,6 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.package import legacy_source_consumption as source_consumption
 from loushang.coding.package.epoch_layout import (
     resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
@@ -60,6 +59,9 @@ from loushang.coding.session.manager import SessionManager
 from loushang.coding.ui.plugin_theme import select_coding_plugin_theme
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product import (
+    _legacy_local_migration as source_consumption_owner,
+)
 from loushang.harness.package_product import _plugin_bootstrap
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,
@@ -4573,7 +4575,7 @@ def test_offline_local_skill_consumes_matching_configured_source_and_replays(
     settings_path.write_text(json.dumps(old_settings) + "\n", encoding="utf-8")
     capsys.readouterr()
 
-    original_receipt_bytes = source_consumption._receipt_bytes
+    original_receipt_bytes = source_consumption_owner._source_consumption_receipt_bytes
 
     def interrupt_before_settled(identity: dict[str, object], phase: str) -> bytes:
         if phase == "settled":
@@ -4581,7 +4583,9 @@ def test_offline_local_skill_consumes_matching_configured_source_and_replays(
         return original_receipt_bytes(identity, phase)
 
     with patch.object(
-        source_consumption, "_receipt_bytes", side_effect=interrupt_before_settled
+        source_consumption_owner,
+        "_source_consumption_receipt_bytes",
+        side_effect=interrupt_before_settled,
     ):
         assert cutover_main(adoption) == 1
     assert json.loads(settings_path.read_text()) == {
@@ -4839,7 +4843,7 @@ def test_offline_two_local_skills_require_both_explicit_adoptions(
             + "\n",
             encoding="utf-8",
         )
-        first_receipt = source_consumption._receipt_path(
+        first_receipt = source_consumption_owner._SourceConsumptionProtocol._receipt_path(
             epoch.control_root / "product-state", local[0][1]
         )
         first_receipt_bytes = first_receipt.read_bytes()
@@ -4883,7 +4887,7 @@ def test_offline_two_local_skills_require_both_explicit_adoptions(
     finally:
         between.close()
     if configured_layout == "same_scope":
-        original_receipt_bytes = source_consumption._receipt_bytes
+        original_receipt_bytes = source_consumption_owner._source_consumption_receipt_bytes
 
         def interrupt_second_settlement(
             identity: dict[str, object], phase: str
@@ -4893,8 +4897,8 @@ def test_offline_two_local_skills_require_both_explicit_adoptions(
             return original_receipt_bytes(identity, phase)
 
         with patch.object(
-            source_consumption,
-            "_receipt_bytes",
+            source_consumption_owner,
+            "_source_consumption_receipt_bytes",
             side_effect=interrupt_second_settlement,
         ):
             assert cutover_main(second_adoption) == 1
