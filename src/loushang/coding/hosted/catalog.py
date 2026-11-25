@@ -513,21 +513,10 @@ class CodingHostedSessionCatalogV1(
         if len({item.session_dir for item in scopes}) != len(scopes):
             raise ValueError("hosted scopes require distinct Session roots")
 
-    def _record_compatible(self, record: _Record) -> bool:
-        envelope = record.projection.envelope
-        return record.compatible and envelope is not None and (
-            envelope.product_compatibility_id == CODING_HOSTED_COMPATIBILITY_ID
-        )
-
     def _validate_open_record(self, record: _Record) -> None:
         # Legacy v1 compatibility remains the Product validator's decision.
         # Managed catalogs additionally fence workspace/runtime before IO.
         return None
-
-    def _validate_records(self, records: list[_Record]) -> None:
-        identities = [item.identity.session_id for item in records]
-        if len(set(identities)) != len(identities):
-            raise CodingHostedCatalogError()
 
     async def delete_session_history(self, identity: SessionIdentityV1) -> None:
         await self._delete_canonical_history(identity, _hosted_session_path)
@@ -540,8 +529,7 @@ class CodingHostedSessionCatalogV1(
         self._accepting()
         async with self._current_discovered_record(reference) as record:
             preview = inspect_coding_resume_header(record.header)
-            if self._source_revision(record.path) != reference.revision:
-                raise CodingHostedCatalogError()
+            self._require_source_revision(record.path, reference.revision)
             return preview
 
     async def preview_history_snapshot(

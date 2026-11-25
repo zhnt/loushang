@@ -141,6 +141,8 @@ class CanonicalTranscriptRecord(Protocol):
     def operation_id(self) -> str: ...
     @property
     def header(self) -> ConversationHeader: ...
+    @property
+    def compatible(self) -> bool: ...
 
 
 def canonical_discovery_scope(scope: SessionScopeV1) -> SessionDiscoveryScope:
@@ -338,6 +340,8 @@ class _CanonicalTranscriptCatalogMethods(
     _CanonicalTranscriptSourceMethods,
     Generic[RecordT, CandidateT, BindingInputT, ProductBindingT],
 ):
+    _shared_store_views: ClassVar[bool] = False
+
     scopes: tuple[CanonicalTranscriptScope, ...]
     _records: dict[SessionCandidateRefV1, RecordT]
     _lock: asyncio.Lock
@@ -445,13 +449,30 @@ class _CanonicalTranscriptCatalogMethods(
         return True
 
     def _record_compatible(self, record: RecordT) -> bool:
-        raise NotImplementedError
+        envelope = record.projection.envelope
+        return record.compatible and envelope is not None and (
+            envelope.product_compatibility_id == self._compatibility_id()
+        )
 
     def _record_available(self, record: RecordT) -> bool:
         return self._record_compatible(record)
 
     def _validate_records(self, records: list[RecordT]) -> None:
-        raise NotImplementedError
+        """Reject ambiguous identities before filtering the visible records."""
+        seen: dict[str, RecordT] = {}
+        for record in records:
+            session_id = record.identity.session_id
+            previous = seen.get(session_id)
+            if previous is not None and (
+                not self._shared_store_views
+                or previous.path != record.path
+                or previous.header != record.header
+                or previous.projection.envelope != record.projection.envelope
+                or previous.projection.reference.revision != record.projection.reference.revision
+                or previous.scope.scope is record.scope.scope
+            ):
+                raise self._catalog_error()
+            seen[session_id] = record
 
     def _new_root_creation(self) -> bool:
         return False
@@ -493,8 +514,9 @@ class _CanonicalTranscriptCatalogMethods(
         async with self._lock:
             self._accepting()
             record = self._records.get(reference)
-            if record is None or self._source_revision(record.path) != reference.revision:
+            if record is None:
                 raise self._catalog_error()
+            self._require_source_revision(record.path, reference.revision)
             yield record
 
     async def _read_discovered_history(
@@ -509,10 +531,8 @@ class _CanonicalTranscriptCatalogMethods(
             path = record.path
         history = await settled_io(read, path)
         self._accepting()
-        if (
-            self._source_revision(record.path) != reference.revision
-            or not matches_source(history, reference.revision, record.header)
-        ):
+        self._require_source_revision(record.path, reference.revision)
+        if not matches_source(history, reference.revision, record.header):
             raise self._catalog_error()
         return history
 
@@ -697,8 +717,7 @@ class _CanonicalTranscriptCatalogMethods(
         self._validate_open_record(record)
         if self._owned_factory is None:
             return await self._open_legacy_record(record)
-        if self._source_revision(record.path) != record.projection.reference.revision:
-            raise self._catalog_error_class()()
+        self._require_source_revision(record.path, record.projection.reference.revision)
         context = self._record_lifecycle_context(record)
         session = await self._owned_factory.restore_context(context)
         return await self._candidate_from_owned(session, record.scope, expected=record)
@@ -969,6 +988,8 @@ class _ManagedCanonicalTranscriptCatalogMethods(
         RecordT, CandidateT, BindingInputT, ProductBindingT
     ],
 ):
+    _shared_store_views = True
+
     _root_initialization: bool
     _root_observed: threading.Event
 
@@ -1064,11 +1085,8 @@ class _CanonicalTranscriptCandidateMethods(
         guard = self._history_source_guard()
         if guard is not None:
             guard()
-        elif (
-            self._source_revision(self._record.path)
-            != self.projection.reference.revision
-        ):
-            raise self._catalog_error()
+        else:
+            self._require_source_revision(self._record.path, self.projection.reference.revision)
 
     async def claim(self) -> ClaimedT:
         await self.verify_current()

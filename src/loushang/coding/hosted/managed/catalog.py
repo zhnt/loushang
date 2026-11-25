@@ -162,18 +162,5 @@ class CodingManagedSessionCatalogV1(
         # candidate binding retains the original canonical identity above.
         return replace(record.identity, scope=record.scope.scope, scope_fingerprint=record.scope.fingerprint)
 
-    def _validate_records(self, records: list[_Record]) -> None:
-        seen: dict[str, _Record] = {}
-        for record in records:
-            previous = seen.get(record.identity.session_id)
-            if previous is not None and (
-                previous.path != record.path or previous.header != record.header
-                or previous.projection.envelope != record.projection.envelope
-                or previous.projection.reference.revision != record.projection.reference.revision
-                or previous.scope.scope is record.scope.scope
-            ):
-                raise CodingHostedCatalogError()
-            seen[record.identity.session_id] = record
-
 
 __all__ = ["CodingManagedSessionCatalogV1"]
