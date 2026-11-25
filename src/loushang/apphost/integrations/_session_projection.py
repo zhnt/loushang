@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from contextlib import suppress
+from dataclasses import replace
 from secrets import token_hex
-from typing import Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
+from unicodedata import category
 
+from loushang.agent import Agent
+from loushang.ai.model import OpenAIResponsesConfig
+from loushang.ai.options import RetryOptions
 from loushang.ai.types import AssistantMessage, ToolCall, UserMessage
 from loushang.apphost.integrations.resource_access import (
     SUBMISSION_ID,
@@ -19,7 +26,12 @@ from loushang.appserver.protocol import (
 )
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.runtime_projection import project_session_runtime_event
+from loushang.harness.transcript import assistant_message_text
 from loushang.harness.transcript.types import AgentTranscriptRecord
+
+if TYPE_CHECKING:
+    from loushang.harness.session.agent_product import AgentProductSession
+
 
 _TEXT_LIMIT = 16_384
 _MAX_INTERACTIONS = 16
@@ -151,6 +163,102 @@ def _hosted_session_title(name: str | None, messages: Iterable[object]) -> str:
     if word_boundary >= 30:
         prefix = prefix[:word_boundary]
     return f"{prefix}…"
+
+
+
+class _HostedSessionTitle:
+    """Own one optional title request alongside the hosted conversation."""
+
+    def __init__(
+        self,
+        session: AgentProductSession,
+        *,
+        prompt: str,
+        eligible: Callable[[], bool],
+        messages: Callable[[], Iterable[object]],
+    ) -> None:
+        self._session = session
+        self._prompt = prompt
+        self._eligible = eligible
+        self._messages = messages
+        self.task: asyncio.Task[None] | None = None
+
+    @property
+    def pending(self) -> bool:
+        return self.task is not None and not self.task.done()
+
+    def start(self, *, closing: bool) -> None:
+        if closing or self._session.session_name or not self._eligible() or self.pending:
+            return
+        question = _first_user_prompt(self._messages())
+        if question is not None:
+            self.task = asyncio.create_task(self._generate(question))
+
+    async def wait(self) -> None:
+        # Title and conversation share the durable Model Input writer.
+        task = self.task
+        if task is not None and not task.done():
+            await asyncio.shield(task)
+
+    async def cancel(self) -> None:
+        if self.task is not None:
+            self.task.cancel()
+            await asyncio.gather(self.task, return_exceptions=True)
+
+    async def _generate(self, question: str) -> None:
+        # The optional request has its own deadline and cleanup.
+        with suppress(Exception):
+            async with asyncio.timeout(8):
+                await self._request_title(question)
+
+    async def _request_title(self, question: str) -> None:
+        session = self._session
+        parent = session.agent
+        adapter = parent.model.adapter
+        supports_output_cap = not (
+            isinstance(adapter, OpenAIResponsesConfig) and not adapter.max_output_tokens
+        )
+        available = session.get_available_thinking_levels()
+        level = next((item for item in ("minimal", "low") if item in available), None)
+        child = Agent(
+            initial_state={
+                "system_prompt": self._prompt,
+                "model": parent.model,
+                "thinking_level": level,
+            },
+            stream_fn=parent.stream_fn,
+            prepare_model_call=parent.prepare_model_call,
+            call_options=replace(
+                parent.call_options,
+                max_output_tokens=256 if supports_output_cap else None,
+                reasoning=None,
+                retry=RetryOptions(max_attempts=1),
+                tool_choice=None,
+                output=None,
+            ),
+            session_id=parent.session_id,
+        )
+        child.model_transport_requires_prepared_request_conformance = (
+            parent.model_transport_requires_prepared_request_conformance
+        )
+        try:
+            await child.prompt(
+                question[:4000],
+                model_call_purpose="session_title",
+            )
+        finally:
+            child.abort()
+        message = child.messages[-1]
+        if not isinstance(message, AssistantMessage) or message.stop_reason != "stop":
+            return
+        title = (assistant_message_text(message) or "").strip()
+        if (
+            0 < len(title) <= 48
+            and not title.startswith(("'", '"', "`", "#"))
+            and not any(category(character) in {"Cc", "Cf", "Zl", "Zp"} for character in title)
+            and not session.session_name
+        ):
+            await session.set_session_name(title)
 
 
 def _committed_transcript_record(
