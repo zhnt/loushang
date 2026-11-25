@@ -27,7 +27,12 @@ ROOT = Path(__file__).resolve().parents[2]
 def run(*args: object, **kwargs: object) -> str:
     argv = [str(arg) for arg in args]
     print("+", *argv, flush=True)
-    return subprocess.check_output(argv, text=True, timeout=180, **kwargs).strip()
+    try:
+        return subprocess.check_output(argv, text=True, timeout=180, **kwargs).strip()
+    except subprocess.CalledProcessError as error:
+        if error.stdout:
+            print(error.stdout, flush=True)
+        raise
 
 
 def stop_process(process: subprocess.Popen) -> None:
@@ -176,7 +181,7 @@ def verify(args: argparse.Namespace) -> None:
                     run("systemctl", "--user", "daemon-reload", env=env)
                     run("systemctl", "--user", "set-environment", f"LOUSHANG_HOME={state}", env=env)
                 else:
-                    run("sudo", "-n", "/usr/sbin/installer", "-pkg", package, "-target", "/")
+                    run("sudo", "-n", "/usr/sbin/installer", "-verboseR", "-pkg", package, "-target", "/")
                     receipt = plistlib.loads(run("/usr/sbin/pkgutil", "--pkg-info-plist", RECEIPT).encode())
                     assert receipt["pkg-version"] == version, receipt
                     info = plistlib.loads((APP / "Contents/Info.plist").read_bytes())
