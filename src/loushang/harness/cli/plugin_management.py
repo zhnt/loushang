@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal, Protocol, TypeGuard, cast, runtime_checkable
@@ -234,6 +236,81 @@ def is_plugin_terminal_string_list(value: object) -> TypeGuard[list[str]]:
 
 def valid_plugin_terminal_identifier(value: str) -> bool:
     return 0 < len(value) <= 256 and value.isascii() and value.isprintable()
+
+
+_TERMINAL_USAGE = (
+    "Usage: /plugins [list | status | explain OPERATION_ID | enable ID | disable ID | "
+    "remove ID | repair OPERATION_ID | repair-package ACTION OPERATION_ID]"
+)
+_TerminalQuery = Callable[[], dict[str, object]]
+_TerminalRenderer = Callable[[dict[str, object]], str]
+_TerminalCommand = Callable[[str], HostActionResult]
+
+
+async def dispatch_plugin_terminal_command(
+    text: str,
+    *,
+    has_attachments: bool,
+    session_commands: Callable[[], object],
+    queries: Mapping[str, tuple[_TerminalQuery | None, _TerminalRenderer]],
+    explain: Callable[[str], dict[str, object]] | None,
+    command: _TerminalCommand | None,
+    repair_package: _TerminalCommand | None,
+) -> HostActionResult:
+    """Route a reserved Plugin command to the selected workspace binding."""
+    if has_attachments:
+        return HostActionResult(error_message="/plugins does not accept attachments.")
+    provider = session_commands()
+    if callable(provider) and any(
+        getattr(item, "name", None) == "plugins" for item in provider()
+    ):
+        return HostActionResult(
+            error_message="/plugins conflicts with a selected Session command."
+        )
+
+    if text in queries:
+        query, render = queries[text]
+        return await _run_terminal_query(query, render, "Plugin preview is unavailable.")
+    words = text.split()
+    if len(words) == 3 and words[1] == "explain":
+        operation_id = words[2]
+        if not valid_plugin_terminal_identifier(operation_id):
+            return HostActionResult(error_message=_TERMINAL_USAGE)
+        from loushang.harness.cli.plugin_explanation import (
+            render_plugin_operation_explanation,
+        )
+
+        return await _run_terminal_query(
+            None if explain is None else partial(explain, operation_id),
+            partial(render_plugin_operation_explanation, operation_id=operation_id),
+            "Plugin explanation is unavailable.",
+        )
+    if len(words) == 4 and words[1] == "repair-package":
+        command = repair_package
+        unavailable = "Package repair is unavailable."
+        refused = "Package repair refused: package_repair_unavailable"
+    elif len(words) == 3 and words[1] in PLUGIN_DESIRED_ACTIONS | {"repair"}:
+        unavailable = "Plugin commands are unavailable."
+        refused = "Plugin command failed: plugin_management_unavailable"
+    else:
+        return HostActionResult(error_message=_TERMINAL_USAGE)
+    if command is None:
+        return HostActionResult(error_message=unavailable)
+    try:
+        return await asyncio.to_thread(command, text)
+    except Exception:
+        return HostActionResult(error_message=refused)
+
+
+async def _run_terminal_query(
+    query: _TerminalQuery | None, render: _TerminalRenderer, unavailable: str
+) -> HostActionResult:
+    if query is not None:
+        try:
+            return HostActionResult(status_message=render(await asyncio.to_thread(query)))
+        except Exception:
+            pass
+    return HostActionResult(error_message=unavailable)
 
 
 class PluginTerminalCommandClient(Protocol):

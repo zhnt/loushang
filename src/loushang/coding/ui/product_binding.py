@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Concatenate, ParamSpec, TextIO, TypeVar, cast
 
@@ -28,11 +28,9 @@ from loushang.coding.plugin_manager.ui import (
     format_coding_plugin_support_status as _format_coding_plugin_support_status,
 )
 from loushang.foundation.observability import get_log
-from loushang.harness.cli.plugin_explanation import (
-    render_plugin_operation_explanation as _format_coding_plugin_operation_explanation,
-)
+from loushang.harness.cli.plugin_explanation import render_plugin_operation_explanation
 from loushang.harness.cli.plugin_listing import render_plugin_management_list
-from loushang.harness.cli.plugin_management import valid_plugin_terminal_identifier
+from loushang.harness.cli.plugin_management import dispatch_plugin_terminal_command
 from loushang.harness.cli.plugin_preview import (
     render_plugin_preview as _format_coding_plugin_preview,
 )
@@ -68,13 +66,9 @@ from loushang.harnesstui.conversation.intents import (
 )
 
 _LOG = get_log(__name__).bind(component="CodingUiController")
+_format_coding_plugin_operation_explanation = render_plugin_operation_explanation
 _PluginArgs = ParamSpec("_PluginArgs")
 _PluginResultT = TypeVar("_PluginResultT")
-_PLUGIN_USAGE = (
-    "Usage: /plugins [list | status | explain OPERATION_ID | enable ID | disable ID | "
-    "remove ID | repair OPERATION_ID | repair-package ACTION OPERATION_ID]"
-)
-
 
 @dataclass(frozen=True, slots=True)
 class ScreenCodingDebugBinding:
@@ -140,6 +134,41 @@ def build_coding_ui_controller(
 
         return guarded
 
+    def read_workspace(workspace: Path, *, route: str) -> dict[str, object]:
+        if route == "/plugins list":
+            current = current_session()
+            return open_coding_plugin_management_read_client(workspace).management_snapshot(
+                correlation_id="coding:tui:plugins:list",
+                settings_manager=getattr(current, "settings_manager", None),
+            )
+        client = open_coding_plugin_management_read_client(workspace)
+        if route == "/plugins":
+            return client.preview_current(correlation_id="coding:tui:plugins")
+        return client.support_status(correlation_id="coding:tui:plugins:status")
+
+    def explain_workspace(workspace: Path, operation_id: str, /) -> dict[str, object]:
+        return open_coding_plugin_management_read_client(workspace).explain_operation(
+            operation_id, correlation_id="coding:tui:plugins:explain"
+        )
+
+    plugin_queries = {
+        route: (bind_plugin_workspace(provided, partial(read_workspace, route=route)), render)
+        for route, provided, render in (
+            ("/plugins", plugin_preview, _format_coding_plugin_preview),
+            ("/plugins list", plugin_management_snapshot, _format_coding_plugin_management_list),
+            ("/plugins status", plugin_support_status, _format_coding_plugin_support_status),
+        )
+    }
+    plugin_explain = bind_plugin_workspace(plugin_operation_explanation, explain_workspace)
+    plugin_mutation = bind_plugin_workspace(
+        plugin_command,
+        lambda workspace, text: execute_coding_plugin_management_ui_command(workspace, text),
+    )
+    package_repair = bind_plugin_workspace(
+        plugin_package_repair_command,
+        lambda workspace, text: execute_coding_package_repair_ui_command(workspace, text),
+    )
+
     async def dispatch_session_command(
         intent: object,
     ) -> HostActionResult | None:
@@ -157,128 +186,16 @@ def build_coding_ui_controller(
             if current_session() is not bound:
                 return HostActionResult(error_message="Goal result belongs to the previous Session.")
             return result
-        if isinstance(text, str) and (
-            text == "/plugins" or text.startswith("/plugins ")
-        ):
-            if getattr(intent, "images", None):
-                return HostActionResult(error_message="/plugins does not accept attachments.")
-            provider = getattr(current_session(), "list_commands", None)
-            if callable(provider) and any(
-                getattr(command, "name", None) == "plugins"
-                for command in provider()
-            ):
-                return HostActionResult(
-                    error_message="/plugins conflicts with a selected Session command."
-                )
-            if text not in {"/plugins", "/plugins list", "/plugins status"}:
-                words = text.split()
-                if len(words) == 4 and words[1] == "repair-package":
-                    package_command = bind_plugin_workspace(
-                        plugin_package_repair_command,
-                        lambda workspace, text: execute_coding_package_repair_ui_command(
-                            workspace, text
-                        ),
-                    )
-                    if package_command is None:
-                        return HostActionResult(
-                            error_message="Package repair is unavailable."
-                        )
-                    try:
-                        return await asyncio.to_thread(package_command, text)
-                    except Exception:
-                        return HostActionResult(
-                            error_message="Package repair refused: package_repair_unavailable"
-                        )
-                if len(words) == 3 and words[1] == "explain":
-                    operation_id = words[2]
-                    if not valid_plugin_terminal_identifier(operation_id):
-                        return HostActionResult(error_message=_PLUGIN_USAGE)
-                    def explain_workspace(
-                        workspace: Path, operation_id: str, /
-                    ) -> dict[str, object]:
-                        return open_coding_plugin_management_read_client(
-                            workspace
-                        ).explain_operation(
-                            operation_id,
-                            correlation_id="coding:tui:plugins:explain",
-                        )
-
-                    explain = bind_plugin_workspace(
-                        plugin_operation_explanation, explain_workspace
-                    )
-                    if explain is None:
-                        return HostActionResult(
-                            error_message="Plugin explanation is unavailable."
-                        )
-                    try:
-                        document = await asyncio.to_thread(explain, operation_id)
-                        return HostActionResult(status_message=(
-                            _format_coding_plugin_operation_explanation(
-                                document, operation_id=operation_id
-                            )
-                        ))
-                    except Exception:
-                        return HostActionResult(
-                            error_message="Plugin explanation is unavailable."
-                        )
-                if len(words) != 3 or words[1] not in {
-                    "enable", "disable", "remove", "repair"
-                }:
-                    return HostActionResult(error_message=_PLUGIN_USAGE)
-                command = bind_plugin_workspace(
-                    plugin_command,
-                    lambda workspace, text: execute_coding_plugin_management_ui_command(
-                        workspace, text
-                    ),
-                )
-                if command is None:
-                    return HostActionResult(
-                        error_message="Plugin commands are unavailable."
-                    )
-                try:
-                    return await asyncio.to_thread(command, text)
-                except Exception:
-                    return HostActionResult(
-                        error_message="Plugin command failed: plugin_management_unavailable"
-                    )
-            read = (
-                plugin_preview
-                if text == "/plugins"
-                else plugin_management_snapshot
-                if text == "/plugins list"
-                else plugin_support_status
+        if isinstance(text, str) and (text == "/plugins" or text.startswith("/plugins ")):
+            return await dispatch_plugin_terminal_command(
+                text,
+                has_attachments=bool(getattr(intent, "images", None)),
+                session_commands=lambda: getattr(current_session(), "list_commands", None),
+                queries=plugin_queries,
+                explain=plugin_explain,
+                command=plugin_mutation,
+                repair_package=package_repair,
             )
-
-            def read_workspace(workspace: Path) -> dict[str, object]:
-                if text == "/plugins list":
-                    current = current_session()
-                    return open_coding_plugin_management_read_client(
-                        workspace
-                    ).management_snapshot(
-                        correlation_id="coding:tui:plugins:list",
-                        settings_manager=getattr(current, "settings_manager", None),
-                    )
-                client = open_coding_plugin_management_read_client(workspace)
-                if text == "/plugins":
-                    return client.preview_current(correlation_id="coding:tui:plugins")
-                return client.support_status(correlation_id="coding:tui:plugins:status")
-
-            read = bind_plugin_workspace(read, read_workspace)
-            if read is None:
-                return HostActionResult(error_message="Plugin preview is unavailable.")
-            try:
-                document = await asyncio.to_thread(read)
-                return HostActionResult(
-                    status_message=(
-                        _format_coding_plugin_preview(document)
-                        if text == "/plugins"
-                        else _format_coding_plugin_management_list(document)
-                        if text == "/plugins list"
-                        else _format_coding_plugin_support_status(document)
-                    )
-                )
-            except Exception:
-                return HostActionResult(error_message="Plugin preview is unavailable.")
         if getattr(intent, "images", None):
             return None
         current = current_session()
