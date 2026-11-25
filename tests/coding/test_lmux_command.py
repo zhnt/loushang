@@ -686,7 +686,7 @@ def test_runner_construction_failure_settles_original_native_owners(managed_cli,
 
 
 def test_runner_refuses_to_enter_settles_original_native_owners(managed_cli, monkeypatch):
-    from loushang.coding.cli import mux
+    from loushang.apphost.integrations import _foreground_process
 
     _, commands = managed_cli
 
@@ -698,7 +698,7 @@ def test_runner_refuses_to_enter_settles_original_native_owners(managed_cli, mon
         def close(self):
             pass
 
-    monkeypatch.setattr(mux.asyncio, "Runner", Runner)
+    monkeypatch.setattr(_foreground_process.asyncio, "Runner", Runner)
     assert lmux.main(["new", "-s", "pending"]) == 1
     assert commands[0].native_closed and commands[0].namespace is None
 

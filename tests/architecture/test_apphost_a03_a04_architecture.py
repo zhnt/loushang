@@ -157,6 +157,10 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             "execution.resources": {"ResourceV1"},
             "protocol": {"AppErrorCodeV1", "AppServiceError"},
         },
+        APPHOST / "integrations/_foreground_process.py": {
+            "local_record": {"LocalRecordError"},
+            "protocol": {"AppServiceError"},
+        },
         APPHOST / "integrations/_session_commands.py": {
             "execution.session_commands": {
                 "SessionCommandCatalogV1", "SessionCommandChoiceV1",
