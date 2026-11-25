@@ -48,49 +48,6 @@ function Invoke-Mux([string]$Action) {
     $result | ConvertFrom-Json
 }
 
-function Trace-HostSpawn {
-    $acceptanceHome = $env:LOUSHANG_HOME
-    $env:LOUSHANG_HOME = Join-Path $root 'diagnostic-home'
-    New-Item -ItemType Directory $env:LOUSHANG_HOME | Out-Null
-    $probe = @'
-import asyncio
-import pathlib
-import sys
-import threading
-
-from loushang.coding.hosted.managed.service import control_managed_service
-
-def trace(frame, event, arg):
-    if event == "exception" and pathlib.Path(frame.f_code.co_filename).name in {
-        "service_windows.py", "_win32_process.py",
-    }:
-        kind, error, _ = arg
-        print(
-            f"{frame.f_code.co_name}: {kind.__name__} "
-            f"errno={getattr(error, 'errno', None)} winerror={getattr(error, 'winerror', None)}",
-            flush=True,
-        )
-    return trace
-
-threading.settrace(trace)
-sys.settrace(trace)
-async def probe():
-    status = await control_managed_service("start", None)
-    if status["state"] == "running":
-        await control_managed_service("stop", status["instanceId"])
-
-try:
-    asyncio.run(probe())
-except Exception as error:
-    print(f"AppHost diagnostic: {type(error).__name__}: {error}", flush=True)
-'@
-    try {
-        $probe | & $python -I -
-    } finally {
-        $env:LOUSHANG_HOME = $acceptanceHome
-    }
-}
-
 function Invoke-Web([hashtable]$Body) {
     Invoke-RestMethod "$url/api/loushang" -Method Post -TimeoutSec 30 `
         -Headers @{'X-Loushang-Client'='1'} -ContentType 'application/json' `
@@ -199,9 +156,6 @@ try {
     }
 } catch {
     Write-Warning "Installation verification failed: $_"
-    if ("$_" -like '*spawn_failed*') {
-        try { Trace-HostSpawn } catch { Write-Warning "Native spawn diagnostics failed: $_" }
-    }
     throw
 } finally {
     if ($gui -and -not $gui.HasExited) { Stop-Process -Id $gui.Id }
