@@ -11,8 +11,9 @@ import os
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages._file_consumption import closing_descriptor
@@ -624,8 +625,10 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
         source: S,
         receipt: R,
         *,
-        project_manifest: Callable[[MetadataIdentity, str], _MemberT],
-        project: Callable[[MetadataIdentity, S, _MemberT], _ArchiveT],
+        manifest_type: Callable[
+            [str, Literal["file"], MetadataIdentity, str], _MemberT
+        ],
+        snapshot_type: Callable[[str, MetadataIdentity, S, _MemberT], _ArchiveT],
     ) -> _ArchiveT:
         archive_path = parent_path / name
         parent_identity = inspect_windows_product_private_directory_identity(
@@ -699,7 +702,9 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
                         expected_manifest=lambda: self.codec.encode(
                             key, source, receipt
                         ),
-                        project=project_manifest,
+                        project=lambda identity, digest: manifest_type(
+                            self.codec.manifest_name, "file", identity, digest
+                        ),
                     )
                     self.verify_archive(
                         parent_fd, parent_path, name, key, source, receipt, acl
@@ -714,7 +719,12 @@ class WindowsPrivateArchiveIO(Generic[S, R]):
                         or self.io.directory_identity(parent_fd) != parent_identity
                     ):
                         raise ValueError(f"{self.io.label} archive root changed")
-                    return project(metadata_identity(before), files, manifest)
+                    return snapshot_type(
+                        sha256(os.fsencode(str(archive_path))).hexdigest(),
+                        metadata_identity(before),
+                        files,
+                        manifest,
+                    )
 
     @contextmanager
     def _parent_scope(
