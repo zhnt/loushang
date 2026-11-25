@@ -243,7 +243,9 @@ def test_G16_BOUNDARIES_shell_borrows_only_semantics_and_owns_no_native_connecti
     # LMUX reviewed capability help/completion and stale-result fencing:
     # shell +72, screen +22 versus da820585; same four owners and import guards.
     # R2.1 stable execution recovery and approval projection add 79 net lines.
-    assert sum(len(path.read_text().splitlines()) for path in paths) <= 950 + 72 + 22 + 79
+    # Hosted Session commands (bb5ba7903/b74a99709) add 48 lines of
+    # input routing, completion, read-only details and model picker presentation.
+    assert sum(len(path.read_text().splitlines()) for path in paths) <= 950 + 72 + 22 + 79 + 48
     picker = root / "session_picker.py"
     assert len(picker.read_text().splitlines()) <= 450
     paths.append(picker)

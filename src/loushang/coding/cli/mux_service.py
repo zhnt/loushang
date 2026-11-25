@@ -23,6 +23,40 @@ DEFAULT_UNIT = "loushang-host.service"
 OPERATIONS = ("start", "stop", "restart", "status", "logs", "run")
 
 
+def register_arguments(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+    foreground: argparse.ArgumentParser,
+) -> None:
+    foreground.add_argument(
+        "--systemd", action="store_true", help="signal readiness to the systemd user manager"
+    )
+    service = commands.add_parser("service", help="control the local AppHost service")
+    service.add_argument("operation", choices=OPERATIONS)
+    service.add_argument("--unit", type=unit_name, default=DEFAULT_UNIT)
+    service.add_argument("--json", action="store_true", help="return the local service state as JSON")
+    service.add_argument("--instance", help="require this running instance for stop or restart")
+
+
+def _take_systemd_socket() -> str | None:
+    address = os.environ.pop("NOTIFY_SOCKET", "")
+    if sys.platform == "linux" and address.startswith(("/", "@")):
+        return address
+    return None
+
+
+def foreground_notification_socket(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> str | None:
+    if not args.systemd:
+        return None
+    if args.describe or sys.platform != "linux":
+        parser.error("--systemd requires a Linux service launch without --describe")
+    address = _take_systemd_socket()
+    if address is None:
+        parser.error("--systemd requires the systemd notification socket")
+    return address
+
+
 def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if args.connection_root is not None or args.endpoint is not None:
         parser.error("service selects a systemd unit with --unit")
@@ -48,8 +82,8 @@ def run_systemd_host() -> int:
         control_managed_service,
     )
 
-    notify_socket = os.environ.pop("NOTIFY_SOCKET", "")
-    if sys.platform != "linux" or not notify_socket.startswith(("/", "@")):
+    notify_socket = _take_systemd_socket()
+    if notify_socket is None:
         print("loushang-mux service run requires a systemd notification socket", file=sys.stderr)
         return 1
     started = None
@@ -203,8 +237,11 @@ def _systemd_state() -> dict[str, object]:
 
 
 async def run_host(
-    command: CodingLocalCommandV1, notify_socket: str, log_ready: Callable[[], None]
+    command: CodingLocalCommandV1, notify_socket: str | None, log_ready: Callable[[], None]
 ) -> None:
+    if notify_socket is None:
+        await command.run(ready=log_ready)
+        return
     address = "\0" + notify_socket[1:] if notify_socket.startswith("@") else notify_socket
     loop = asyncio.get_running_loop()
     host = asyncio.current_task()

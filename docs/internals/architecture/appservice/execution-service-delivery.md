@@ -37,6 +37,35 @@ continues to project persisted facts without obtaining authority to resume.
 Linux contract probes cover Python, Rust and TypeScript. Windows native
 observer evidence remains a separate platform check.
 
+## G14 Hosted Session budget review
+
+Codex, acting as the implementation agent for the #936 integration, reviewed
+`src/loushang/coding/hosted_session.py` at `794156c3b` against its current
+`hosted/session.py` owner at `d718054aa`. The net 51 lines cover the logical
+Workspace and resource bindings, attached-directory policy, Goal and user
+choice coordination, persisted model and reasoning settings, and bounded
+Transcript snapshots.
+
+The Session factory composes the workspace view and policy for each Session.
+AppHost owns the Workspace registry; Hosted resources own reference resolution
+and reads. Session Goal and user choice retain their separate owners. Session
+control resolves approval outcomes, and the Hosted binding reuses the shared
+AppHost approval and event projections. The Session manager owns persisted
+settings and canonical history. The current binding has no material ownership
+or duplication finding that calls for production changes.
+
+Codex accepts the measured Session ceiling of 765 lines (formerly 714) for
+this revision. G14 measures 1,858 / 2,109 lines. The catalog and CLI ceilings
+remain 1,221 and 290, and the partition still counts every source file once.
+
+The same regression test then exposed G16's existing Mux CLI overage.
+Managed Workspace attachment had grown `cli/mux.py` to 300 lines. Codex
+reviewed the adjacent service boundary and accepted consolidating systemd
+argument registration, notification socket admission and foreground startup
+in the existing `cli/mux_service.py` owner. Attachment scope resolution stays
+in the Mux CLI. Both systemd entry points share notification socket validation.
+The CLI returns to its existing 277-line ceiling; no other ceiling changes.
+
 ## GUI integration review (2026-11-12)
 
 Codex, acting as the implementation agent for PR #889, reviewed the managed
@@ -1092,3 +1121,15 @@ following ownership boundaries.
 The review used the resource and command protocol round trips, managed
 Workspace continuity and approval regressions, Hosted command and recovery
 tests, and the import and size checks in the AppHost architecture suite.
+
+The implementing Codex agent rechecked the G16 integration budgets against
+`d718054aa`. The four-file Hosted TUI shell total grew from 1,123 to 1,171
+lines in `bb5ba7903` and `b74a99709`. The additions route Session commands
+and completions and present command details and model choices. Execution
+and authorization remain behind AppClient, and the same four files remain
+subject to dependency and native I/O checks. The aggregate now reflects
+1,171 lines. The picker and conversation binding keep their individual limits.
+
+Model reasoning selection added one line to the AppServer local adapter.
+Shutdown now reuses its existing listener fence after joining owned startup
+phases, preserving the 561-line cap and the two-phase shutdown boundary.

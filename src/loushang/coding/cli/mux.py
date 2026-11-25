@@ -115,15 +115,8 @@ class _ClientCommand:
                 if status:
                     raise RuntimeError("interactive connection ended")
             elif self._action == "list":
-                _emit(
-                    {
-                        "muxes": [
-                            _mux(item)
-                            for item in (await client.list_muxes()).mux_spaces
-                        ]
-                    },
-                    self._output,
-                )
+                muxes = (await client.list_muxes()).mux_spaces
+                _emit({"muxes": [_mux(item) for item in muxes]}, self._output)
             elif self._action == "create":
                 assert self._name is not None
                 _emit(
@@ -202,9 +195,6 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "--describe", action="store_true", help="print path-free selectors without IO"
     )
-    serve.add_argument(
-        "--systemd", action="store_true", help="signal readiness to the systemd user manager"
-    )
     commands.add_parser("list", help="list named muxes without attaching")
     create = commands.add_parser("create", help="create an empty named mux")
     create.add_argument("name")
@@ -226,11 +216,7 @@ def _parser() -> argparse.ArgumentParser:
         "stop",
         help="request application stop; acknowledgement is not completed cleanup",
     )
-    service = commands.add_parser("service", help="control the local AppHost service")
-    service.add_argument("operation", choices=mux_service.OPERATIONS)
-    service.add_argument("--unit", type=mux_service.unit_name, default=mux_service.DEFAULT_UNIT)
-    service.add_argument("--json", action="store_true", help="return the local service state as JSON")
-    service.add_argument("--instance", help="require this running instance for stop or restart")
+    mux_service.register_arguments(commands, serve)
     return parser
 
 
@@ -247,13 +233,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         root = args.connection_root.expanduser().resolve()
         if args.action == "serve":
-            notify_socket = None
-            if args.systemd:
-                if args.describe or sys.platform != "linux":
-                    parser.error("--systemd requires a Linux service launch without --describe")
-                notify_socket = os.environ.pop("NOTIFY_SOCKET", "")
-                if not notify_socket.startswith(("/", "@")):
-                    parser.error("--systemd requires the systemd notification socket")
+            notify_socket = mux_service.foreground_notification_socket(parser, args)
             # Management/help paths do not import the real Product/model bootstrap.
             from ..hosted.bootstrap import CodingHostedLaunchV1
             from ..hosted.local import CodingLocalCommandV1, CodingLocalLaunchV1
@@ -278,13 +258,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             def ready() -> None:
                 _emit({"status": "ready", **launch.describe()}, output)
 
-            async def serve() -> None:
-                if notify_socket is None:
-                    await command.run(ready=ready)
-                else:
-                    await mux_service.run_host(command, notify_socket, ready)
-
-            return _execute(serve, lambda: command.cleanup_pending)
+            return _execute(
+                lambda: mux_service.run_host(command, notify_socket, ready),
+                lambda: command.cleanup_pending,
+            )
         client = _ClientCommand(
             root, args.endpoint, args.action, getattr(args, "name", None), output
         )
