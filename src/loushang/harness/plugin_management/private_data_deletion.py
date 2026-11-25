@@ -11,6 +11,7 @@ import json
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Generic, Literal, Protocol, Self, TypeVar
 
@@ -45,7 +46,9 @@ from loushang.harness.resources.packages._tree_observation import (
     require_tree_subset,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
+    RecordField,
     RecordSchema,
+    decode_nullable,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     _entry_exists,
@@ -55,6 +58,26 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
 
 PRIVATE_DATA_DELETION_VERSION = 1
 PrivateDataDeletionDisposition = Literal["deleted", "already_absent"]
+_RecordT = TypeVar("_RecordT")
+
+
+def _read_record(
+    schema: RecordSchema,
+    construct: Callable[..., _RecordT],
+    value: object,
+    *,
+    error: str,
+) -> _RecordT:
+    if type(value) is not dict or set(value) != schema.keys:
+        raise ValueError(error)
+    return schema.decode(construct, value)
+
+
+_INSTALLATION_KEY = RecordField(
+    "installation_key",
+    decoder=PluginInstallationKeyV1.from_dict,
+    encoder=lambda key: key.to_dict(),
+)
 
 
 def _require_text(value: str, *, name: str) -> None:
@@ -99,29 +122,13 @@ class PluginPrivateDataDeletionPlanV1:
         ).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "installationKey": self.installation_key.to_dict(),
-            "ownerId": self.owner_id,
-            "planVersion": self.plan_version,
-            "targetId": self.target_id,
-        }
+        return _PLAN_SCHEMA.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataDeletionPlanV1:
-        if type(value) is not dict or set(value) != {
-            "installationKey",
-            "ownerId",
-            "planVersion",
-            "targetId",
-        }:
-            raise ValueError("Private-data deletion plan fields are invalid")
-        return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            owner_id=value["ownerId"],
-            target_id=value["targetId"],
-            plan_version=value["planVersion"],
+        return _read_record(
+            _PLAN_SCHEMA, cls, value,
+            error="Private-data deletion plan fields are invalid",
         )
 
 
@@ -143,24 +150,13 @@ class PluginPrivateDataDeletionConfirmationV1:
             raise ValueError("Unsupported private-data deletion confirmation")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "confirmationId": self.confirmation_id,
-            "confirmationVersion": self.confirmation_version,
-            "planFingerprint": self.plan_fingerprint,
-        }
+        return _CONFIRMATION_SCHEMA.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataDeletionConfirmationV1:
-        if type(value) is not dict or set(value) != {
-            "confirmationId",
-            "confirmationVersion",
-            "planFingerprint",
-        }:
-            raise ValueError("Private-data confirmation fields are invalid")
-        return cls(
-            plan_fingerprint=value["planFingerprint"],
-            confirmation_id=value["confirmationId"],
-            confirmation_version=value["confirmationVersion"],
+        return _read_record(
+            _CONFIRMATION_SCHEMA, cls, value,
+            error="Private-data confirmation fields are invalid",
         )
 
 
@@ -197,42 +193,62 @@ class PluginPrivateDataDeletionReceiptV1:
             raise ValueError("Unsupported private-data deletion receipt")
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "confirmationId": self.confirmation_id,
-            "disposition": self.disposition,
-            "installationKey": self.installation_key.to_dict(),
-            "ownerId": self.owner_id,
-            "planFingerprint": self.plan_fingerprint,
-            "receiptId": self.receipt_id,
-            "receiptVersion": self.receipt_version,
-            "targetId": self.target_id,
-        }
+        return _RECEIPT_SCHEMA.encode(self, sort_keys=True)
 
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataDeletionReceiptV1:
-        if type(value) is not dict or set(value) != {
-            "confirmationId",
-            "disposition",
-            "installationKey",
-            "ownerId",
-            "planFingerprint",
-            "receiptId",
-            "receiptVersion",
-            "targetId",
-        }:
-            raise ValueError("Private-data deletion receipt fields are invalid")
-        return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(
-                value["installationKey"]
-            ),
-            owner_id=value["ownerId"],
-            target_id=value["targetId"],
-            plan_fingerprint=value["planFingerprint"],
-            confirmation_id=value["confirmationId"],
-            receipt_id=value["receiptId"],
-            disposition=value["disposition"],
-            receipt_version=value["receiptVersion"],
+        return _read_record(
+            _RECEIPT_SCHEMA, cls, value,
+            error="Private-data deletion receipt fields are invalid",
         )
+
+    @classmethod
+    def _from_confirmed_plan(
+        cls,
+        plan: PluginPrivateDataDeletionPlanV1,
+        confirmation: PluginPrivateDataDeletionConfirmationV1,
+        *,
+        receipt_id: Callable[[], str],
+        disposition: PrivateDataDeletionDisposition,
+    ) -> PluginPrivateDataDeletionReceiptV1:
+        return cls(
+            installation_key=plan.installation_key,
+            owner_id=plan.owner_id,
+            target_id=plan.target_id,
+            plan_fingerprint=plan.fingerprint,
+            confirmation_id=confirmation.confirmation_id,
+            receipt_id=receipt_id(),
+            disposition=disposition,
+        )
+
+
+def _as_is(value: object) -> object:
+    return value
+
+
+_PLAN_SCHEMA = RecordSchema.for_dataclass(
+    PluginPrivateDataDeletionPlanV1, _as_is, _INSTALLATION_KEY
+)
+_CONFIRMATION_SCHEMA = RecordSchema.for_dataclass(
+    PluginPrivateDataDeletionConfirmationV1, _as_is
+)
+_RECEIPT_SCHEMA = RecordSchema.for_dataclass(
+    PluginPrivateDataDeletionReceiptV1, _as_is, _INSTALLATION_KEY
+)
+
+
+def confirmed_deletion_digest(
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
+    *,
+    domain: bytes,
+) -> str:
+    return hashlib.sha256(
+        domain
+        + plan.fingerprint.encode("ascii")
+        + b"\0"
+        + confirmation.confirmation_id.encode("utf-8")
+    ).hexdigest()
 
 
 class PrivateDataDeletionTarget(PrivateTreeSnapshot, Protocol):
@@ -297,10 +313,34 @@ class PluginPrivateDataDeletionEventV1(Generic[_TargetT_co]):
 
     @classmethod
     def from_dict(cls, value: object) -> Self:
-        schema = cls._record_schema()
-        if type(value) is not dict or set(value) != schema.keys:
-            raise ValueError("Private-data deletion event fields are invalid")
-        return schema.decode(cls, value)
+        return _read_record(
+            cls._record_schema(), cls, value,
+            error="Private-data deletion event fields are invalid",
+        )
+
+    @classmethod
+    def _bind_target_schema(cls, target: RecordField) -> RecordSchema:
+        cls.schema = RecordSchema.for_dataclass(
+            cls,
+            _as_is,
+            RecordField(
+                "plan",
+                decoder=PluginPrivateDataDeletionPlanV1.from_dict,
+                encoder=PluginPrivateDataDeletionPlanV1.to_dict,
+            ),
+            RecordField(
+                "confirmation",
+                decoder=PluginPrivateDataDeletionConfirmationV1.from_dict,
+                encoder=PluginPrivateDataDeletionConfirmationV1.to_dict,
+            ),
+            target,
+            RecordField(
+                "receipt",
+                decoder=partial(decode_nullable, decoder=PluginPrivateDataDeletionReceiptV1.from_dict),
+                encoder=lambda value: None if value is None else value.to_dict(),
+            ),
+        )
+        return cls.schema
 
     @classmethod
     def _record_schema(cls) -> RecordSchema:
@@ -641,13 +681,10 @@ def execute_windows_private_deletion(
     else:
         raise ValueError(f"Another {transaction._label} deletion is unfinished")
     disposition = remove_started(started)
-    receipt = PluginPrivateDataDeletionReceiptV1(
-        installation_key=plan.installation_key,
-        owner_id=plan.owner_id,
-        target_id=plan.target_id,
-        plan_fingerprint=plan.fingerprint,
-        confirmation_id=confirmation.confirmation_id,
-        receipt_id=transaction._receipt_id(plan, confirmation),
+    receipt = PluginPrivateDataDeletionReceiptV1._from_confirmed_plan(
+        plan,
+        confirmation,
+        receipt_id=lambda: transaction._receipt_id(plan, confirmation),
         disposition=disposition,
     )
     transaction.record_completion(started, receipt)

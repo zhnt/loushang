@@ -11,7 +11,6 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar
 
@@ -47,7 +46,10 @@ from .installation_private_data import (
     inspect_coding_windows_arch_installation_root,
 )
 from .legacy_windows_receipt import _receipt_io
-from .private_data_deletion_journal import CodingArchPrivateDataDeletionEventV1
+from .private_data_deletion_journal import (
+    CodingArchPrivateDataDeletionEventV1,
+    _receipt_id,
+)
 from .private_data_deletion_journal import _tombstone_name as _tombstone_name
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
 from .private_data_windows_confirmation import (
@@ -178,12 +180,7 @@ def windows_arch_deletion_receipt_id(
 ) -> str:
     if confirmation.plan_fingerprint != plan.fingerprint:
         raise ValueError("Windows Coding Arch deletion receipt is foreign")
-    return sha256(
-        b"loushang.coding-arch-private-data-receipt/v1\0"
-        + plan.fingerprint.encode("ascii")
-        + b"\0"
-        + confirmation.confirmation_id.encode("utf-8")
-    ).hexdigest()
+    return _receipt_id(plan, confirmation)
 
 
 def _capture_current_target(

@@ -8,7 +8,6 @@ must hold Product quiescence around execution.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.journal import (
@@ -18,14 +17,13 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionEventV1,
     PluginPrivateDataDeletionPlanV1,
-    PluginPrivateDataDeletionReceiptV1,
+    confirmed_deletion_digest,
 )
 from loushang.harness.plugin_management.private_data_deletion_journal import (
     PrivateDataDeletionJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle._record_schema import (
     RecordField,
-    RecordSchema,
 )
 
 from .private_data_deletion_preview import CodingArchPrivateDataTargetSnapshotV1
@@ -42,13 +40,20 @@ class CodingArchPrivateDataDeletionEventV1(
 
 
 def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:
-    digest = sha256(
-        b"loushang.coding-arch-private-data-tombstone/v1\0"
-        + started.plan.fingerprint.encode("ascii")
-        + b"\0"
-        + started.confirmation.confirmation_id.encode("utf-8")
-    ).hexdigest()
+    digest = confirmed_deletion_digest(
+        started.plan, started.confirmation,
+        domain=b"loushang.coding-arch-private-data-tombstone/v1\0",
+    )
     return ".deleting-" + digest
+
+
+def _receipt_id(
+    plan: PluginPrivateDataDeletionPlanV1,
+    confirmation: PluginPrivateDataDeletionConfirmationV1,
+) -> str:
+    return confirmed_deletion_digest(
+        plan, confirmation, domain=b"loushang.coding-arch-private-data-receipt/v1\0"
+    )
 
 
 
@@ -80,40 +85,13 @@ class CodingArchPrivateDataDeletionJournal(
         )
 
 
-_SCHEMA_DELETION_EVENT_V1 = RecordSchema(
-    lambda value: value,
-    (
-        RecordField("revision"),
-        RecordField("phase"),
-        RecordField(
-            "plan",
-            decoder=PluginPrivateDataDeletionPlanV1.from_dict,
-            encoder=PluginPrivateDataDeletionPlanV1.to_dict,
-        ),
-        RecordField(
-            "confirmation",
-            decoder=PluginPrivateDataDeletionConfirmationV1.from_dict,
-            encoder=PluginPrivateDataDeletionConfirmationV1.to_dict,
-        ),
-        RecordField(
-            "target",
-            decoder=CodingArchPrivateDataTargetSnapshotV1.from_dict,
-            encoder=CodingArchPrivateDataTargetSnapshotV1.to_dict,
-        ),
-        RecordField(
-            "receipt",
-            decoder=lambda item: (
-                None
-                if item is None
-                else PluginPrivateDataDeletionReceiptV1.from_dict(item)
-            ),
-            encoder=lambda item: None if item is None else item.to_dict(),
-        ),
-        RecordField("record_version"),
+_SCHEMA_DELETION_EVENT_V1 = CodingArchPrivateDataDeletionEventV1._bind_target_schema(
+    RecordField(
+        "target",
+        decoder=CodingArchPrivateDataTargetSnapshotV1.from_dict,
+        encoder=CodingArchPrivateDataTargetSnapshotV1.to_dict,
     ),
 )
-
-CodingArchPrivateDataDeletionEventV1.schema = _SCHEMA_DELETION_EVENT_V1
 
 __all__ = [
     "CodingArchPrivateDataDeletionEventV1",

@@ -146,14 +146,8 @@ class PrivateDataDeletionJournal(Generic[_TargetT, _EventT]):
         elif started.plan != plan or started.confirmation != confirmation:
             raise ValueError(unfinished_message)
         disposition, terminal_start = remove_started(started)
-        receipt = PluginPrivateDataDeletionReceiptV1(
-            installation_key=plan.installation_key,
-            owner_id=plan.owner_id,
-            target_id=plan.target_id,
-            plan_fingerprint=plan.fingerprint,
-            confirmation_id=confirmation.confirmation_id,
-            receipt_id=receipt_id(),
-            disposition=disposition,
+        receipt = PluginPrivateDataDeletionReceiptV1._from_confirmed_plan(
+            plan, confirmation, receipt_id=receipt_id, disposition=disposition
         )
         self.record_completion(terminal_start, receipt)
         return receipt
