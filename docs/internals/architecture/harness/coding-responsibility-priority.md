@@ -6,6 +6,8 @@
 
 本批 Coding 减少 1,892 行，Harness 增加 140 行，AppHost 增加 1,425 行，HarnessWork 增加 790 行，AppServer 增加 4 行，系统生产 Python 增加 467 行。共享的命令、资源与工作记录机制在现有组件内实现。六批候选比 `546b209f6` 的 Coding 少 7,479 行，系统生产 Python 少 397 行。
 
+Linux 定向回归通过 41 项，覆盖交互选择、资源权限、启动与失败交接、Goal 计划，以及保留原始会话日志的只读回放和历史工作区隔离。回放与隔离的三项复验保持原超时和断言。原生 Windows 与 macOS 路线仍需验证。
+
 ## C01 启动装配与 Continuity 交付候选
 
 以旧版切换候选 `12fc10042` 为基线。Harness Session 接管已围栏、历史和初始工作区的 Catalog 准备、刷新与失败交接，并统一能力插件的已批准输入绑定。Harness Package Product 负责已安装来源的身份与工厂交接。Harness Continuity 接管已安装 Provider 的启动、发布、状态复原与关闭。Coding 保留 CompositionSet、产品默认值、批准和工作区执行上限。只读资源预览沿用基线的围栏复核和句柄寿命，并复用 Harness Plugin Management 的资源编译。
