@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Set
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -339,7 +339,7 @@ def prepare_managed_coding_base_plugin_assembly(
         legacy_disabled=legacy_disabled,
         source_root=lambda: coding_base_plugin_root(),
         owner_contributions=lambda: _selected_owner_contributions(
-            host_environment=environment,
+            os_family=environment.os_family if include_tool_contribution else "",
             include_tools=include_tool_contribution,
             include_prompt=include_tool_claim_prompt,
             include_skill=include_skill_contribution,
@@ -496,49 +496,6 @@ def _build_coding_base_owners_from_admissions(
     )
 
 
-def _build_selection_plan(
-    package: PublishedPluginPackage,
-    *,
-    binding: PluginSourceBinding,
-    scope_id: str,
-    composition_set: CodingCompositionSetPlan,
-    host_environment: HostEnvironment,
-    include_tool_contribution: bool,
-    include_tool_claim_prompt: bool,
-    include_skill_contribution: bool,
-    include_command_contribution: bool,
-    instance_revision_ref: PluginInstanceRevisionRef | None = None,
-) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
-    return _build_selection_plan_from_evidence(
-        contributions=package.contribution_index.items,
-        source_trust_snapshot=PluginSourceTrustSnapshotV1(
-            plugin_id=_PLUGIN_ID,
-            package_source_identity=binding.source_identity,
-            source_trust_class=_SOURCE_TRUST_CLASS,
-            source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
-            trusted=True,
-        ),
-        instance_revision_ref=(
-            instance_revision_ref
-            or PluginInstanceRevisionRef(
-                instance_id=f"{_PLUGIN_ID}@{scope_id}",
-                plugin_id=_PLUGIN_ID,
-                revision=1,
-            )
-        ),
-        policy_revision_base=(
-            f"coding-base-plc6-v1:{composition_set.set_id}:"
-            f"{composition_set.fingerprint}"
-        ),
-        scope_id=scope_id,
-        host_environment=host_environment,
-        include_tool_contribution=include_tool_contribution,
-        include_tool_claim_prompt=include_tool_claim_prompt,
-        include_skill_contribution=include_skill_contribution,
-        include_command_contribution=include_command_contribution,
-    )
-
-
 def prepare_coding_base_product_plan(
     selected: PackageProductSelectedPluginManifestV1,
     composition_set: CodingCompositionSetPlan,
@@ -606,6 +563,13 @@ def prepare_coding_base_product_plan(
             f"{selected.snapshot.committed_record.committed_set.set_id}"
         ),
         scope_id=scope_id,
+        selected_owners=_selected_owner_contributions(
+            os_family=host_environment.os_family,
+            include_tools=include_tool_contribution,
+            include_prompt=include_tool_claim_prompt,
+            include_skill=include_skill_contribution,
+            include_command=include_command_contribution,
+        ),
         host_environment=host_environment,
         include_tool_contribution=include_tool_contribution,
         include_tool_claim_prompt=include_tool_claim_prompt,
@@ -622,6 +586,7 @@ def _build_selection_plan_from_evidence(
     instance_revision_ref: PluginInstanceRevisionRef,
     policy_revision_base: str,
     scope_id: str,
+    selected_owners: tuple[tuple[str, tuple[str, ...]], ...],
     host_environment: HostEnvironment,
     include_tool_contribution: bool,
     include_tool_claim_prompt: bool,
@@ -629,20 +594,8 @@ def _build_selection_plan_from_evidence(
     include_command_contribution: bool,
     require_complete: bool = False,
 ) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
-    tool_contribution_id = (
-        "coding.builtin.windows"
-        if host_environment.os_family == "windows"
-        else "coding.builtin"
-    )
-    selected_ids = set()
-    if include_command_contribution:
-        selected_ids.add("coding.standard")
-    if include_skill_contribution:
-        selected_ids.add("skill-standard")
-    if include_tool_contribution:
-        selected_ids.add(tool_contribution_id)
-    if include_tool_claim_prompt:
-        selected_ids.add("prompt-standard")
+    owners = dict(selected_owners)
+    selected_ids = {item for contributions in owners.values() for item in contributions}
     selected_contributions = tuple(
         PluginContributionRef(_PLUGIN_ID, item.contribution_id)
         for item in contributions
@@ -698,7 +651,7 @@ def _build_selection_plan_from_evidence(
         )
     return (
         plan,
-        tool_contribution_id if include_tool_contribution else None,
+        owners["tools.workspace"][0] if include_tool_contribution else None,
         selected_tool_names,
     )
 
@@ -720,17 +673,41 @@ def _assemble_base_runtime(
     [package] = runtime.packages
     [binding] = runtime.bindings
     scope_id = f"session:{session_id}"
-    plan, tool_contribution_id, tool_names = _build_selection_plan(
-        package,
-        binding=binding,
+    selected_owners = _selected_owner_contributions(
+        os_family=host_environment.os_family,
+        include_tools=include_tool_contribution,
+        include_prompt=include_tool_claim_prompt,
+        include_skill=include_skill_contribution,
+        include_command=include_command_contribution,
+    )
+    plan, tool_contribution_id, tool_names = _build_selection_plan_from_evidence(
+        contributions=package.contribution_index.items,
+        source_trust_snapshot=PluginSourceTrustSnapshotV1(
+            plugin_id=_PLUGIN_ID,
+            package_source_identity=binding.source_identity,
+            source_trust_class=_SOURCE_TRUST_CLASS,
+            source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
+            trusted=True,
+        ),
+        instance_revision_ref=(
+            instance_revision_ref
+            or PluginInstanceRevisionRef(
+                instance_id=f"{_PLUGIN_ID}@{scope_id}",
+                plugin_id=_PLUGIN_ID,
+                revision=1,
+            )
+        ),
+        policy_revision_base=(
+            f"coding-base-plc6-v1:{composition_set.set_id}:"
+            f"{composition_set.fingerprint}"
+        ),
         scope_id=scope_id,
-        composition_set=composition_set,
+        selected_owners=selected_owners,
         host_environment=host_environment,
         include_tool_contribution=include_tool_contribution,
         include_tool_claim_prompt=include_tool_claim_prompt,
         include_skill_contribution=include_skill_contribution,
         include_command_contribution=include_command_contribution,
-        instance_revision_ref=instance_revision_ref,
     )
     return CodingBasePluginAssembly(
         runtime=runtime,
@@ -740,12 +717,7 @@ def _assemble_base_runtime(
             plan=plan,
             packages=(package,),
             bindings=(binding,),
-            owner_bindings=_owner_bindings(
-                include_tools=include_tool_contribution,
-                include_prompt=include_tool_claim_prompt,
-                include_skill=include_skill_contribution,
-                include_command=include_command_contribution,
-            ),
+            owner_bindings=_owner_bindings({owner_id for owner_id, _ in selected_owners}),
         ),
         scope_id=scope_id,
         composition_set_fingerprint=composition_set.fingerprint,
@@ -778,22 +750,8 @@ def _validate_base_request(composition_set: CodingCompositionSetPlan) -> None:
 
 
 def _owner_bindings(
-    *,
-    include_tools: bool,
-    include_prompt: bool,
-    include_skill: bool,
-    include_command: bool,
-    include_theme: bool = False,
+    owner_ids: Set[str],
 ) -> tuple[ProductContributionOwnerBinding, ...]:
-    selected_specs = tuple(
-        spec
-        for spec in _OWNER_SPECS
-        if (include_tools or spec[0] != "tools.workspace")
-        and (include_prompt or spec[0] != "resources.prompt")
-        and (include_skill or spec[0] != "resources.skill")
-        and (include_theme or spec[0] != "resources.theme")
-        and (include_command or spec[0] != "commands.session")
-    )
     return tuple(
         ProductContributionOwnerBinding(
             authority=OwnerContributionAuthority.for_direct_session(
@@ -806,37 +764,30 @@ def _owner_bindings(
             ),
             admission_ttl_seconds=_ADMISSION_TTL_SECONDS,
         )
-        for owner_id, contribution_kind, collection_id in selected_specs
+        for owner_id, contribution_kind, collection_id in _OWNER_SPECS
+        if owner_id in owner_ids
     )
 
 
 def _selected_owner_contributions(
     *,
-    host_environment: HostEnvironment,
+    os_family: str,
     include_tools: bool,
     include_prompt: bool,
     include_skill: bool,
     include_command: bool,
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    values: list[tuple[str, tuple[str, ...]]] = []
-    if include_command:
-        values.append(("commands.session", ("coding.standard",)))
-    if include_skill:
-        values.append(("resources.skill", ("skill-standard",)))
-    if include_prompt:
-        values.append(("resources.prompt", ("prompt-standard",)))
-    if include_tools:
-        values.append(
-            (
-                "tools.workspace",
-                (
-                    "coding.builtin.windows"
-                    if host_environment.os_family == "windows"
-                    else "coding.builtin",
-                ),
-            )
+    tool = "coding.builtin.windows" if os_family == "windows" else "coding.builtin"
+    return tuple(
+        (owner_id, (contribution_id,))
+        for owner_id, contribution_id, include in (
+            ("commands.session", "coding.standard", include_command),
+            ("resources.prompt", "prompt-standard", include_prompt),
+            ("resources.skill", "skill-standard", include_skill),
+            ("tools.workspace", tool, include_tools),
         )
-    return tuple(sorted(values))
+        if include
+    )
 
 
 def _normalized(value: str, *, name: str) -> str:

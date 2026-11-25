@@ -244,14 +244,7 @@ def compile_coding_base_product_selection(
             'Selected Coding base Product declarations are incomplete',
             code='coding_base_product_selection_mismatch',
         )
-    owners = {item.owner_id for item in candidates}
-    owner_bindings = _owner_bindings(
-        include_tools="tools.workspace" in owners,
-        include_prompt="resources.prompt" in owners,
-        include_skill="resources.skill" in owners,
-        include_theme="resources.theme" in owners,
-        include_command="commands.session" in owners,
-    )
+    owner_bindings = _owner_bindings({item.owner_id for item in candidates})
     product_composition = assemble_agent_data_composition(
         plan, candidates, owner_bindings, evaluated_at=evaluated_at
     )
@@ -308,13 +301,7 @@ def extend_coding_base_product_data_resources(
 def _make_external_resource_owners(
     missing: set[str],
 ) -> tuple[ProductContributionOwnerBinding, ...]:
-    return _owner_bindings(
-        include_tools=False,
-        include_prompt="resources.prompt" in missing,
-        include_skill="resources.skill" in missing,
-        include_theme="resources.theme" in missing,
-        include_command=False,
-    )
+    return _owner_bindings(missing & EXTERNAL_DATA_RESOURCE_OWNERS)
 
 
 def _resource_bodies(
