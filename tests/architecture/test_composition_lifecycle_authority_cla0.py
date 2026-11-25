@@ -79,8 +79,8 @@ EXPECTED_CONSTRUCTION_SITES = {
     },
     "RuntimeProfileBinder": {
         (
-            Path('src/loushang/coding/session/continuity.py'),
-            "_compose_coding_continuity_base",
+            Path("src/loushang/harness/continuity/composition.py"),
+            "_bind_base_continuity_profile",
         ),
         (
             Path("src/loushang/harness/capabilities/composition_runtime.py"),
