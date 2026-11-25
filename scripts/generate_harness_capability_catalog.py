@@ -519,11 +519,42 @@ def _validate_providers(seam: CapabilitySeam) -> None:
             and _mentions(node, definition_symbol)
             for node in ast.walk(tree)
         )
-        if not provider_call:
+        if not provider_call and not _uses_definition_factory(
+            tree, _parts(provider)[1], definition_symbol
+        ):
             raise RuntimeError(
                 f"catalog Provider does not construct {definition_symbol}: "
                 f"{_label(provider)}"
             )
+
+
+def _uses_definition_factory(
+    tree: ast.Module, provider_symbol: str, definition_symbol: str
+) -> bool:
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or function.name != provider_symbol:
+            continue
+        assignments = {
+            target.id: statement.value
+            for statement in function.body
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+        }
+        for node in ast.walk(function):
+            match node:
+                case ast.Call(
+                    func=ast.Attribute(
+                        value=ast.Name(id="CapabilityBundleProvider"),
+                        attr="for_definition",
+                    ),
+                    args=[argument],
+                ):
+                    if isinstance(argument, ast.Name):
+                        argument = assignments.get(argument.id, argument)
+                    if _mentions(argument, definition_symbol):
+                        return True
+    return False
 
 
 def _validate_consumers(
