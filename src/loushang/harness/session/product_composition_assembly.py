@@ -1056,6 +1056,57 @@ class ProductPluginPlanSeed:
     owner_bindings: tuple[ProductContributionOwnerBinding, ...]
 
     @classmethod
+    def compile_capability_plan(
+        cls,
+        package_bindings: tuple[tuple[PublishedPluginPackage, PluginSourceBinding], ...],
+        *,
+        product_id: str,
+        scope_id: str,
+        policy_revision: str,
+        plugin_ids: tuple[str, ...],
+        instance_refs: tuple[PluginInstanceRevisionRef, ...],
+        source_trust: Iterable[PluginSourceTrustSnapshotV1],
+        configuration_packages: Iterable[PublishedPluginPackage],
+        configure_capability: Callable[[str], Mapping[str, object]],
+        allowed_authority_ceiling: tuple[str, ...],
+        tool_authority: OwnerContributionAuthority,
+        owner_bindings: tuple[ProductContributionOwnerBinding, ...] = (),
+        base: PluginSelectionPlanV2 | ProductPluginPlanSeed | None = None,
+    ) -> ProductPluginPlanSeed:
+        """Bind capability configuration, package evidence and Tool custody in one seed."""
+        extend_seed = base if isinstance(base, ProductPluginPlanSeed) else None
+        plan = build_product_plugin_selection_plan(
+            product_id=product_id,
+            scope_id=scope_id,
+            policy_revision=policy_revision,
+            plugin_ids=plugin_ids,
+            instance_refs=instance_refs,
+            source_trust=source_trust,
+            additions=(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=package.manifest.name,
+                    contribution_id=contribution.contribution_id,
+                    configuration=(
+                        configure_capability(package.manifest.name)
+                        if contribution.kind == "capability_provider"
+                        else {}
+                    ),
+                )
+                for package in configuration_packages
+                for contribution in package.contribution_index.items
+            ),
+            allowed_authority_ceiling=allowed_authority_ceiling,
+            base=base.plan if isinstance(base, ProductPluginPlanSeed) else base,
+            extend_base_selection=extend_seed is not None,
+        )
+        return cls.from_package_bindings(
+            plan,
+            package_bindings,
+            owner_bindings=(*owner_bindings, ProductContributionOwnerBinding(authority=tool_authority)),
+            extend_seed=extend_seed,
+        )
+
+    @classmethod
     def from_package_bindings(
         cls,
         plan: PluginSelectionPlanV2,

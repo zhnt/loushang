@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
@@ -86,13 +86,11 @@ from loushang.harness.resources.plugins.authority import (
     PluginRuntimeResolution,
 )
 from loushang.harness.resources.plugins.selection import (
-    PluginEffectiveConfigurationEntry,
     PluginExecutionApprovalSubject,
     PluginInstanceRevisionRef,
     PluginSelection,
     PluginSourceTrustSnapshotV1,
 )
-from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
@@ -103,14 +101,12 @@ from loushang.harness.session.plugin_lifecycle._composition_cleanup import (
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
-    ProductContributionOwnerBinding,
     ProductPluginCompositionAssembly,
     ProductPluginCompositionAssemblyRequest,
     ProductPluginCompositionPreparation,
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
     _PreparedCapabilityComposition,
-    build_product_plugin_selection_plan,
 )
 from loushang.harness.session.product_composition_assembly import (
     prepare_product_plugin_composition as prepare_product_plugin_composition,
@@ -1022,24 +1018,6 @@ def _finalize_selection(
     )
 
 
-def _capability_configuration_entries(
-    packages: Iterable[PublishedPluginPackage],
-    configurations: Mapping[str, CodingCapabilityPluginConfig],
-) -> Iterator[PluginEffectiveConfigurationEntry]:
-    for package in packages:
-        plugin_id = package.manifest.name
-        for contribution in package.contribution_index.items:
-            yield PluginEffectiveConfigurationEntry(
-                plugin_id=plugin_id,
-                contribution_id=contribution.contribution_id,
-                configuration=(
-                    configurations[plugin_id].to_dict()
-                    if contribution.kind == "capability_provider"
-                    else {}
-                ),
-            )
-
-
 def _prepare_selection_plan_seed(
     runtime: PluginRuntimeResolution,
     *,
@@ -1052,7 +1030,8 @@ def _prepare_selection_plan_seed(
     package_bindings = tuple(zip(runtime.packages, runtime.bindings, strict=True))
     base_plan = coding_product_plan_seed.plan if coding_product_plan_seed else None
     plugin_ids = tuple(sorted(configurations))
-    plan = build_product_plugin_selection_plan(
+    return ProductPluginPlanSeed.compile_capability_plan(
+        package_bindings,
         product_id=CODING_PRODUCT_ID,
         scope_id=scope_id,
         policy_revision=(
@@ -1081,18 +1060,11 @@ def _prepare_selection_plan_seed(
                 package_bindings, key=lambda pair: pair[0].manifest.name
             )
         ),
-        additions=_capability_configuration_entries(
-            (package for package, _ in package_bindings), configurations
-        ),
-        base=base_plan,
-        extend_base_selection=True,
+        configuration_packages=(package for package, _ in package_bindings),
+        configure_capability=lambda plugin_id: configurations[plugin_id].to_dict(),
         allowed_authority_ceiling=("filesystem", "process"),
-    )
-    return ProductPluginPlanSeed.from_package_bindings(
-        plan,
-        package_bindings,
-        owner_bindings=(ProductContributionOwnerBinding(authority=tool_authority),),
-        extend_seed=coding_product_plan_seed,
+        tool_authority=tool_authority,
+        base=coding_product_plan_seed,
     )
 
 
