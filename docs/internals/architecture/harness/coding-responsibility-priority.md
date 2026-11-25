@@ -6,6 +6,8 @@
 
 相对 `69e8c2a93`，Coding 减少 46 行，Harness 增加 12 行，Hosting、其他生产 Python 和测试均变化 0 行，系统生产 Python 减少 34 行。Coding 为 77,880 行。67 项 Linux 既有用例通过，包含回收拒绝、中断后重放和保留历史复核。Ruff 与 mypy 通过，读取型绑定生成时未新增加载模块。
 
+后续 C54 架构清单移除了已由 Package Product 接管的 Windows 批准依赖。修正涉及 3 行测试代码，C54 的 7 项既有断言均通过。
+
 ## Worker 原生操作入口和历史识别
 
 Harness Worker CLI 先核实原生平台，再解析工作区并持有相应的 Product。Linux 续用只读候选状态入口，Windows 续用精确的原生 owner 类型检查。Linux 发布的审阅、批准、安装和修复由共享命令实现调用原有 Package Product 权限。Windows 共用 Wheel 读取、审阅身份校验与批准回执投影，平台自身的后端安装与恢复保留各自的合同。
