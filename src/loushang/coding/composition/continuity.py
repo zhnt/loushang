@@ -12,7 +12,7 @@ import re
 import secrets
 import sys as sys
 from collections.abc import Callable
-from contextlib import ExitStack, suppress
+from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -65,6 +65,7 @@ from loushang.harness.approval.plugin_execution import (
     PluginExecutionDecisionJournal,
 )
 from loushang.harness.continuity._binding_lifetime import (
+    _ContinuityBootstrapStatus,
     configured_continuity_request_fingerprint,
 )
 from loushang.harness.continuity.plugin_declaration import (
@@ -141,8 +142,12 @@ CodingContinuityBootstrapState = Literal["idle", "ready", "failed"]
 
 
 @dataclass(frozen=True, slots=True)
-class CodingContinuityBootstrapStatus:
+class CodingContinuityBootstrapStatus(_ContinuityBootstrapStatus):
     """Finite operational projection; it intentionally contains no source path."""
+
+    _status_attribute = _BOOTSTRAP_STATUS_ATTRIBUTE
+    _last_ready_attribute = _LAST_READY_STATUS_ATTRIBUTE
+    _product_label = "Coding"
 
     state: CodingContinuityBootstrapState = "idle"
     code: str = "coding_continuity_not_started"
@@ -151,17 +156,6 @@ class CodingContinuityBootstrapStatus:
     provider_count: int = 0
     recovered_deletion_count: int = 0
     retryable: bool = False
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "state": self.state,
-            "code": self.code,
-            "configuredSourceCount": self.configured_source_count,
-            "pluginCount": self.plugin_count,
-            "providerCount": self.provider_count,
-            "recoveredDeletionCount": self.recovered_deletion_count,
-            "retryable": self.retryable,
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,12 +225,8 @@ def resolve_coding_continuity_state_layout(
 def get_coding_continuity_bootstrap_status(
     runtime: object,
 ) -> CodingContinuityBootstrapStatus:
-    status = getattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, None)
-    return (
-        status
-        if isinstance(status, CodingContinuityBootstrapStatus)
-        else (CodingContinuityBootstrapStatus())
-    )
+    status = CodingContinuityBootstrapStatus._current_status(runtime)
+    return status if status is not None else CodingContinuityBootstrapStatus()
 
 
 def get_coding_configured_continuity_composition(
@@ -698,60 +688,21 @@ def _record_ready_status(
     provider_count: int,
     recovered_deletion_count: int,
 ) -> None:
-    _publish_bootstrap_status(
-        runtime,
-        diagnostics,
-        CodingContinuityBootstrapStatus(
-            state="ready",
-            code="coding_continuity_ready",
-            configured_source_count=configured_source_count,
-            plugin_count=plugin_count,
-            provider_count=provider_count,
-            recovered_deletion_count=recovered_deletion_count,
-        ),
-    )
-
-
-def _publish_bootstrap_status(
-    runtime: object,
-    diagnostics: DiagnosticsService | None,
-    status: CodingContinuityBootstrapStatus,
-) -> None:
-    ready = status.state == "ready"
-    with suppress(AttributeError, TypeError):
-        setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
-        if ready:
-            setattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, status)
-    capture = getattr(diagnostics, "capture_failure", None)
-    if callable(capture):
-        with suppress(Exception):
-            capture(
-                code=status.code,
-                error=(
-                    "Coding Continuity composition is ready."
-                    if ready
-                    else f"Coding Continuity bootstrap failed ({status.code})."
-                ),
-                phase="startup",
-                source="bootstrap",
-                **({"level": "info"} if ready else {}),
-                details=status.to_dict(),
-            )
+    CodingContinuityBootstrapStatus(
+        state="ready",
+        code="coding_continuity_ready",
+        configured_source_count=configured_source_count,
+        plugin_count=plugin_count,
+        provider_count=provider_count,
+        recovered_deletion_count=recovered_deletion_count,
+    )._publish(runtime, diagnostics)
 
 
 def _restore_ready_status(
     runtime: object,
     diagnostics: DiagnosticsService | None,
 ) -> None:
-    status = getattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, None)
-    if not isinstance(status, CodingContinuityBootstrapStatus):
-        current = getattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, None)
-        status = (
-            current
-            if isinstance(current, CodingContinuityBootstrapStatus)
-            and current.state == "ready"
-            else None
-        )
+    status = CodingContinuityBootstrapStatus._previous_ready_status(runtime)
     if status is None:
         return
     _record_ready_status(
@@ -774,20 +725,14 @@ def _raise_bootstrap_failure(
     if not isinstance(error, Exception):
         raise error
     code = _stable_error_code(error)
-    _publish_bootstrap_status(
-        runtime,
-        diagnostics_service,
-        CodingContinuityBootstrapStatus(
-            state="failed",
-            code=code,
-            configured_source_count=configured_source_count,
-            retryable=(
-                error.retryable
-                if isinstance(error, CodingContinuityBootstrapError)
-                else True
-            ),
+    CodingContinuityBootstrapStatus(
+        state="failed",
+        code=code,
+        configured_source_count=configured_source_count,
+        retryable=(
+            error.retryable if isinstance(error, CodingContinuityBootstrapError) else True
         ),
-    )
+    )._publish(runtime, diagnostics_service)
     if isinstance(error, CodingContinuityBootstrapError):
         raise error
     raise CodingContinuityBootstrapError(code=code) from None

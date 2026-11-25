@@ -11,11 +11,12 @@ from collections.abc import Callable, Mapping
 from contextlib import suppress
 from hashlib import sha256
 from pathlib import Path
-from typing import ClassVar, TypeVar
+from typing import ClassVar, Literal, Self, TypeVar
 
 from loushang.harness.capabilities.owner_component_host import (
     CapabilityOwnerComponentHost,
 )
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.runtime import (
     RuntimeProfileBinder,
     RuntimeProfileBinding,
@@ -72,6 +73,69 @@ def configured_continuity_request_fingerprint(
     for plugin_id in ordered_disabled:
         update_value("disabledPlugin", plugin_id)
     return digest.hexdigest()
+
+
+class _ContinuityBootstrapStatus:
+    """Publish and recover a Product's diagnostic projection for startup."""
+
+    __slots__ = ()
+
+    _status_attribute: ClassVar[str]
+    _last_ready_attribute: ClassVar[str]
+    _product_label: ClassVar[str]
+    state: Literal["idle", "ready", "failed"]
+    code: str
+    configured_source_count: int
+    plugin_count: int
+    provider_count: int
+    recovered_deletion_count: int
+    retryable: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "state": self.state,
+            "code": self.code,
+            "configuredSourceCount": self.configured_source_count,
+            "pluginCount": self.plugin_count,
+            "providerCount": self.provider_count,
+            "recoveredDeletionCount": self.recovered_deletion_count,
+            "retryable": self.retryable,
+        }
+
+    @classmethod
+    def _current_status(cls, runtime: object) -> Self | None:
+        status = getattr(runtime, cls._status_attribute, None)
+        return status if isinstance(status, cls) else None
+
+    @classmethod
+    def _previous_ready_status(cls, runtime: object) -> Self | None:
+        status = getattr(runtime, cls._last_ready_attribute, None)
+        if isinstance(status, cls):
+            return status
+        current = cls._current_status(runtime)
+        return current if current is not None and current.state == "ready" else None
+
+    def _publish(self, runtime: object, diagnostics: DiagnosticsService | None) -> None:
+        ready = self.state == "ready"
+        with suppress(AttributeError, TypeError):
+            setattr(runtime, self._status_attribute, self)
+            if ready:
+                setattr(runtime, self._last_ready_attribute, self)
+        capture = getattr(diagnostics, "capture_failure", None)
+        if callable(capture):
+            with suppress(Exception):
+                capture(
+                    code=self.code,
+                    error=(
+                        f"{self._product_label} Continuity composition is ready."
+                        if ready
+                        else f"{self._product_label} Continuity bootstrap failed ({self.code})."
+                    ),
+                    phase="startup",
+                    source="bootstrap",
+                    **({"level": "info"} if ready else {}),
+                    details=self.to_dict(),
+                )
 
 
 class _ContinuityCompositionLifetime:
