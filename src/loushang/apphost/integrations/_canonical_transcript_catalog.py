@@ -1351,7 +1351,7 @@ class _WorkspaceTranscriptCatalogMethods(Generic[WorkspaceCatalogT]):
             item = await settled_io(self.registry.default_workspace)
             scope = (await self._logical_catalog(item)).scopes[0]
             return WorkspaceResultV1((_workspace_info(scope.cwd, scope),))
-        if request.is_logical_workspace_action:
+        if request.action in request.logical_actions:
             if self._closed:
                 raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             return await self._logical_workspace(request)

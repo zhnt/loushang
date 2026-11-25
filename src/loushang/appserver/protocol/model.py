@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import TypeAlias
+from typing import ClassVar, TypeAlias
 
 from loushang.foundation.reasoning import THINKING_LEVELS
 
@@ -802,9 +802,7 @@ class WorkspaceRequestV1:
 
     scope_fingerprint: str | None = None
 
-    @property
-    def is_logical_workspace_action(self) -> bool:
-        return self.action in _WORKSPACE_FIELDS
+    logical_actions: ClassVar[frozenset[str]] = frozenset(_WORKSPACE_FIELDS)
 
     def __post_init__(self) -> None:
         if self.scope_fingerprint is not None and (
@@ -814,7 +812,7 @@ class WorkspaceRequestV1:
             raise ValueError("invalid workspace inspection fingerprint")
         logical = {"workspace_id": self.workspace_id, "name": self.name,
                    "path_id": self.path_id, "alias": self.alias}
-        if self.is_logical_workspace_action:
+        if self.action in self.logical_actions:
             fields = {key for key, value in logical.items() if value is not None}
             if self.path is not None:
                 fields.add("path")
@@ -827,11 +825,7 @@ class WorkspaceRequestV1:
                 if self.action != "inspect-workspace":
                     raise ValueError("unexpected workspace inspection session")
                 _require_opaque_id(self.session_id, field="session_id")
-            if self.action == "preview-workspace":
-                if type(self.preview) is not WorkspacePreviewRequestV1:
-                    raise ValueError("missing workspace preview request")
-            elif self.preview is not None:
-                raise ValueError("unexpected workspace preview request")
+            self._require_preview("preview-workspace")
             for key, value in logical.items():
                 if value is not None:
                     if key.endswith("_id"):
@@ -845,11 +839,7 @@ class WorkspaceRequestV1:
             raise ValueError("unexpected logical workspace fields")
         if self.action not in {"list", "projects", "create", "register", "open", "unregister", "allocate-temporary", "inspect", "preview"}:
             raise ValueError("invalid workspace action")
-        if self.action == "preview":
-            if type(self.preview) is not WorkspacePreviewRequestV1:
-                raise ValueError("missing workspace preview request")
-        elif self.preview is not None:
-            raise ValueError("unexpected workspace preview request")
+        self._require_preview("preview")
         if self.session_id is not None:
             if self.action != "inspect":
                 raise ValueError("invalid workspace inspection session")
@@ -860,6 +850,12 @@ class WorkspaceRequestV1:
         elif (type(self.path) is not str or len(self.path) > 4096 or "\0" in self.path
               or not (self.path.startswith("/") or _WINDOWS_DRIVE_PATH.match(self.path))):
             raise ValueError("invalid workspace path")
+
+    def _require_preview(self, action: str) -> None:
+        if self.action == action and type(self.preview) is not WorkspacePreviewRequestV1:
+            raise ValueError("missing workspace preview request")
+        if self.action != action and self.preview is not None:
+            raise ValueError("unexpected workspace preview request")
 
 
 @dataclass(frozen=True, slots=True)

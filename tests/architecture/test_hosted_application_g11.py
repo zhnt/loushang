@@ -153,7 +153,7 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/apphost/managed/mux_management.py"),
         Path("src/loushang/apphost/managed/mux_probe.py"),
         Path('src/loushang/coding/hosted/managed/local.py'),
-        Path('src/loushang/coding/hosted/foreground.py'),
+        Path("src/loushang/apphost/local_application.py"),
         Path('src/loushang/coding/hosted/managed/bootstrap.py'),
     }
     assert {name for name in _imports(Path("src/loushang/apphost/managed/mux_probe.py"))
