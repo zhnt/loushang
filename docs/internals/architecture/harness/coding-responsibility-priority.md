@@ -4,7 +4,7 @@
 
 以 `c3581c798` 为基线。AppHost 持有显式应用准入与失败交接、Hosted 工作区目录和资源权限、交互选择恢复、会话标题请求，以及 Goal 命令与断线后的任务寿命。HarnessWork 处理工作计划准备、验证证据投影、事务关闭与历史回放。Coding 保留仓库验证和批准规则、产品默认值、会话及工作区的具体绑定。合并时保留 Windows 与 macOS 原生存储的检查路径，执行提交和资源字节保管沿用基线已有实现。
 
-本批 Coding 减少 1,892 行，Harness 增加 140 行，AppHost 增加 1,437 行，HarnessWork 增加 790 行，系统生产 Python 增加 475 行。共享的命令、资源与工作记录机制在现有组件内实现。六批候选比 `546b209f6` 的 Coding 少 7,479 行，系统生产 Python 少 389 行。
+本批 Coding 减少 1,892 行，Harness 增加 140 行，AppHost 增加 1,425 行，HarnessWork 增加 790 行，AppServer 增加 4 行，系统生产 Python 增加 467 行。共享的命令、资源与工作记录机制在现有组件内实现。六批候选比 `546b209f6` 的 Coding 少 7,479 行，系统生产 Python 少 397 行。
 
 ## C01 启动装配与 Continuity 交付候选
 
