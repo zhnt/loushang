@@ -44,8 +44,7 @@ def test_concurrent_starts_reuse_the_authenticated_host(tmp_path):
     env = {**os.environ, 'LOUSHANG_HOME': str(home),
            'PYTHONPATH': str(Path(__file__).resolve().parents[2] / 'src'),
            'LOUSHANG_RUNTIME_DIR': str(tmp_path / 'runtime'),
-           'LOUSHANG_TMPDIR': str(tmp_path / 'temporary'),
-           'LOUSHANG_MUX_BACKEND': 'managed'}
+           'LOUSHANG_TMPDIR': str(tmp_path / 'temporary')}
 
     def call(action, *, allow_error=False, instance_id=None):
         command = [sys.executable, "-m", "loushang.coding.cli.mux", "service", action, "--json"]
@@ -92,8 +91,7 @@ def test_restart_after_killed_host_preserves_home(tmp_path):
     import signal
     from time import monotonic, sleep
 
-    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
-           "LOUSHANG_MUX_BACKEND": "managed"}
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src")}
     for name, leaf in (("LOUSHANG_HOME", "home"), ("LOUSHANG_RUNTIME_DIR", "runtime"),
                        ("LOUSHANG_TMPDIR", "temporary")):
         env[name] = str(tmp_path / leaf)

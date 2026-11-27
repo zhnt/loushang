@@ -123,7 +123,6 @@ function prepareDevMux() {
   }
   if (installed) {
     childEnv.LOUSHANG_MUX = mux;
-    if (!windows) childEnv.LOUSHANG_MUX_BACKEND ??= "managed";
   } else {
     process.stderr.write(`Local AppHost command not found at ${mux}.\n`);
     process.stderr.write("Run uv sync --locked in this checkout or set LOUSHANG_MUX to the absolute path of the installed command.\n");

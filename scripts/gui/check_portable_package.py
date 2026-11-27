@@ -89,7 +89,6 @@ def check_host(package: Path, root: Path) -> None:
         "HOME": str(home),
         "PATH": "/nonexistent",
         "LANG": "C.UTF-8",
-        "LOUSHANG_MUX_BACKEND": "managed",
         "LOUSHANG_HOME": str(home / ".loushang"),
         "LOUSHANG_RUNTIME_DIR": str(root / "runtime"),
         "PYTHONPATH": "/nonexistent",

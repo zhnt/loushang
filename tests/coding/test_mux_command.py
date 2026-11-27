@@ -8,32 +8,21 @@ import pytest
 from loushang.coding.cli.mux import main
 
 
-@pytest.mark.parametrize(
-    ("operation", "command", "exit_status"),
-    [
-        ("start", ["systemctl", "--user", "--no-pager", "start", "--"], 0),
-        ("stop", ["systemctl", "--user", "--no-pager", "stop", "--"], 0),
-        ("restart", ["systemctl", "--user", "--no-pager", "restart", "--"], 1),
-        ("status", ["systemctl", "--user", "--no-pager", "status", "--"], 3),
-        ("logs", ["journalctl", "--user", "--no-pager", "--lines=100", "--user-unit"], 0),
-    ],
-)
-def test_service_control_routes_to_user_manager_without_connection(
-    monkeypatch, operation, command, exit_status,
-):
+@pytest.mark.parametrize("as_json", [False, True])
+def test_linux_service_status_uses_managed_control(monkeypatch, capsys, as_json):
     from loushang.coding.cli import mux_service
+    from loushang.coding.hosted.managed import service
 
-    calls = []
-
-    def run(argv, *, check):
-        calls.append(argv)
-        assert check is False
-        return SimpleNamespace(returncode=exit_status)
+    async def control(operation, expected):
+        assert (operation, expected) == ("status", None)
+        return {"state": "not_running"}
 
     monkeypatch.setattr(mux_service, "sys", SimpleNamespace(platform="linux"))
-    monkeypatch.setattr(mux_service.subprocess, "run", run)
-    assert main(["service", operation]) == exit_status
-    assert calls == [[*command, "loushang-host.service"]]
+    monkeypatch.setattr(service, "control_managed_service", control)
+    flags = ["--json"] if as_json else []
+    assert main(["service", "status", *flags]) == 0
+    output = capsys.readouterr().out.strip()
+    assert output == ('{"state": "not_running"}' if as_json else "not_running")
 
 
 def test_service_stop_rejects_an_unrelated_unit():

@@ -34,7 +34,6 @@ def install_portable_mux(package: Path) -> Path:
     manager = package / "loushang-mux"
     manager.write_text(
         _DIRECTORY + r"""
-export LOUSHANG_MUX_BACKEND=managed
 exec "$directory/runtime/bin/python3" -I -m loushang.coding.cli.mux "$@"
 """
     )

@@ -89,9 +89,8 @@ def main() -> None:
             "GUI close/quit leaves the Host running. Stop it before replacing/removing\n"
             "this package. Existing settings and Session data remain in user storage.\n"
             "loushang-tui service also controls AppHost. Attach with a named Mux.\n"
-            "loushang-mux service controls the installed systemd user unit.\n"
-            "Fresh installation leaves the user service disabled and stopped.\n"
-                        "Provider credentials and optional external tools are not included.\n"
+            "loushang-mux service controls the local managed AppHost.\n"
+            "Provider credentials and optional external tools are not included.\n"
         )
         (stage / "usr/bin").mkdir(parents=True)
         (stage / "usr/bin/loushang").symlink_to("../../opt/loushang/loushang")
@@ -101,9 +100,6 @@ def main() -> None:
         install_command(stage, package, "loushang-mux", "-m loushang.coding.cli.mux")
         manifest["managerSha256"] = digest(package / "loushang-mux")
         manifest_file.write_text(json.dumps(manifest, indent=2) + "\n")
-        unit = stage / "usr/lib/systemd/user/loushang-host.service"
-        unit.parent.mkdir(parents=True)
-        shutil.copy2(ROOT / "scripts/gui/loushang-host.service", unit)
         desktop = stage / "usr/share/applications/ai.loushang.desktop"
         desktop.parent.mkdir(parents=True)
         desktop.write_text(
@@ -172,7 +168,7 @@ def build_deb(work, stage, package, version, arch):
         "Maintainer: Loushang Contributors <noreply@loushang.ai>\n"
         f"Depends: {depends}\nInstalled-Size: {size}\nSection: devel\nPriority: optional\n"
         "Description: Loushang desktop, terminal, Web and AppHost backend\n"
-        " Includes a Python runtime and a systemd user unit for AppHost.\n"
+        " Includes a Python runtime for the managed AppHost.\n"
     )
     target = work / f"loushang_{version}_{arch}.deb"
     run("dpkg-deb", "--root-owner-group", "--build", str(stage), str(target))

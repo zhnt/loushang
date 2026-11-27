@@ -36,13 +36,13 @@ def main() -> None:
             )
             assert expected in help_text
         unit = root / "extracted/usr/lib/systemd/user/loushang-host.service"
-        assert "ExecStart=/usr/bin/loushang-mux " in unit.read_text()
+        assert not unit.exists()
         assert (package / "web/index.html").is_file()
         for name in ("loushang", "bin/harness-gui", "bin/loushang-web"):
             with (package / name).open("rb") as binary:
                 assert binary.read(4) == b"\x7fELF"
         print(
-            "PASS: extracted Debian GUI, bundled Web, TUI/mux, user unit and managed AppHost"
+            "PASS: extracted Debian GUI, bundled Web, TUI/mux and managed AppHost"
         )
 
 

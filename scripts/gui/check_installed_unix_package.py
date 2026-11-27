@@ -218,8 +218,6 @@ def verify(args: argparse.Namespace) -> None:
                         run("sudo", "-n", "apt-get", "install", "-y",
                             *(("--reinstall",) if phase == "reinstall" else ()), package)
                         assert run("dpkg-query", "-W", "-f=${Version}", "loushang") == version
-                    run("systemctl", "--user", "daemon-reload", env=env)
-                    run("systemctl", "--user", "set-environment", f"LOUSHANG_HOME={state}", env=env)
                 else:
                     run("sudo", "-n", "/usr/sbin/installer", "-verboseR", "-pkg", package, "-target", "/")
                     receipt = plistlib.loads(run("/usr/sbin/pkgutil", "--pkg-info-plist", RECEIPT).encode())
@@ -288,8 +286,6 @@ def verify(args: argparse.Namespace) -> None:
                         run("sudo", "-n", "dnf", "remove", "--no-autoremove", "-y", "loushang")
                     else:
                         run("sudo", "-n", "apt-get", "remove", "-y", "loushang")
-                run("systemctl", "--user", "unset-environment", "LOUSHANG_HOME", env=env)
-                run("systemctl", "--user", "daemon-reload", env=env)
             elif APP.exists():
                 host_log = state / "state/macos-host/host.log"
                 if host_log.is_file():

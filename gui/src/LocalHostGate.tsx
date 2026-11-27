@@ -272,7 +272,8 @@ export default function LocalHostGate() {
       if (!(result.state in states)) throw new Error("management_response_invalid");
       setHost(result);
       if (result.state !== "running" || result.errorCode) setConnection("disconnected");
-      if (["connect", "start", "restart"].includes(action) && result.state === "running" && !result.errorCode) {
+      const newlyRunning = action === "status" && host.state !== "running";
+      if ((newlyRunning || ["connect", "start", "restart"].includes(action)) && result.state === "running" && !result.errorCode) {
         const directory = await refreshDirectory().catch(() => { setWorkspaceError(true); });
         if (serial !== generation.current) return;
         const path = restoreSelection?.workspace;
@@ -366,8 +367,8 @@ export default function LocalHostGate() {
   }, [host.state, supported]);
 
   useEffect(() => {
-    if (host.state !== "running" || !supported) return;
-    const timer = window.setInterval(() => { void perform("status"); }, 5000);
+    if (!supported || !["running", "not_running", "exited"].includes(host.state)) return;
+    const timer = window.setInterval(() => { void perform("status", null); }, 5000);
     return () => window.clearInterval(timer);
   });
 

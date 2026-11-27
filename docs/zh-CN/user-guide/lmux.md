@@ -143,32 +143,28 @@ Loushang 进程。非交互 close/stop 必须显式加 `--yes`；它不代表强
 
 开发与验收状态见 [lmux 合同记录](../../internals/architecture/apphost/lmux-contract-m0.md)。
 
-## 使用 systemd 管理 AppHost（Linux）
+## 管理默认本地 AppHost
 
-在 Ubuntu 上，可以把 `loushang-mux serve` 作为 systemd 用户服务运行。
-将[示例服务文件](../../en/user-guide/systemd-host-unit.md)保存为
-`~/.config/systemd/user/loushang-host.service`。安装 Loushang 后，检查服务文件中的可执行文件
-绝对路径、工作区和数据目录。示例使用 `~/.local/bin/loushang-mux`，以用户主目录
-为工作区，并使用系统分配的持久状态目录和临时连接目录。
-已有显式 `serve` 部署可沿用原有的应用和 Session 目录。请先停掉该部署，
-再让 systemd 使用这些目录。旧 `lmux` 的注册表和 Mux 状态继续由原部署持有。
+Linux 开发环境、便携版和 DEB/RPM 安装版共用同一套受管 AppHost。
+请以工作空间所属用户执行以下命令。开发环境可在命令前加 `uv run`。
 
 ```sh
-systemctl --user daemon-reload
 loushang-mux service start
-loushang-mux service status
+loushang-mux service status --json
 loushang-mux service logs
-loushang-mux service restart
+loushang-mux service restart --instance INSTANCE_ID
 loushang-mux service stop
 ```
 
-`start` 和 `restart` 等待 Host 报告就绪。`status` 显示系统服务状态，
-`logs` 查看该单元最近的 100 行日志。对示例服务可以用
-`loushang-mux --connection-root "$XDG_RUNTIME_DIR/loushang-host/connections" --endpoint workspace list`
-确认实际连接。`service stop` 由 systemd 等待进程退出，Host 收到 SIGTERM 后
-执行应用清理。现有显式连接的 `loushang-mux stop` 仍返回应用停止请求的确认。
+启动命令会复用已运行的实例。状态查询不会启动服务。GUI、Web 和 Hosted TUI
+可连接该实例，关闭前端后 AppHost 继续运行。Linux 的日志命令显示受管服务的
+生命周期事件。旧安装包自带 unit 的自动重启和 journal 日志随该 unit 退役。
 
-要随用户服务管理器启动，执行 `systemctl --user enable loushang-host.service`。
-要在没有用户登录时开机运行，需为该用户启用 systemd linger。
-若为不同工作区配置多个单元，为每个单元分配独立的连接目录和应用状态目录，
-并用 `--unit loushang-host@NAME.service` 指定要操作的单元。
+升级旧 DEB/RPM 前，请让每个运行旧默认 AppHost 的用户在旧包仍安装时执行
+`systemctl --user disable --now loushang-host.service`，确认服务已经停机。
+升级后执行 `systemctl --user daemon-reload`，再保留原 `LOUSHANG_HOME`
+使用以上命令。保留所有已有的持久数据目录。安装包在发现安装目录中的程序
+仍在运行时会拦截替换和卸载。
+
+如需自行用 systemd 托管独立的前台 `serve`，可参考
+[外部 unit 示例](../../en/user-guide/systemd-host-unit.md)，客户端通过显式连接目录接入。

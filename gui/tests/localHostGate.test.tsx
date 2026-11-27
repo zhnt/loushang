@@ -184,6 +184,33 @@ describe("local managed Host presentation", () => {
     expect(countActions("start")).toBe(0);
   });
 
+  it("discovers a Host started independently after opening the frontend", async () => {
+    const timers = vi.spyOn(window, "setInterval");
+    let running = false;
+    try {
+      installMock(async (command) => {
+        if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };
+        if (command === "sync_tray") return;
+        if (command === "environment") return { supported: true, workspace: "/workspace" };
+        return running
+          ? { state: "running", errorCode: null, instanceId: "instance-1" }
+          : { state: "not_running", errorCode: null };
+      });
+      render(<LocalHostGate />);
+      const settings = openHostSettings();
+      await settings.findByRole("button", { name: "Start and connect" });
+      const poll = timers.mock.calls.find(([, delay]) => delay === 5000)?.[0];
+      expect(typeof poll).toBe("function");
+      running = true;
+      await act(async () => { if (typeof poll === "function") poll(); });
+      expect(await settings.findByText("Running")).toBeVisible();
+      expect(countActions("status")).toBeGreaterThanOrEqual(1);
+      expect(countActions("start")).toBe(0);
+    } finally {
+      timers.mockRestore();
+    }
+  });
+
   it("offers Start when the recorded Host has exited", async () => {
     installMock(async (command, args) => {
       if (command === "offline_account") return { name: "desktop-user", id: "local-test-id" };

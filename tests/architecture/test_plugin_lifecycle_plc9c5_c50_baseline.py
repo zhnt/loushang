@@ -1112,12 +1112,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             "service_launchd": {"LaunchdJobError", "LaunchdUserJob"},
         },
         APPHOST_ROOT / "managed/systemd.py": {
-            "foreground_service": {
-                "in_current_systemd_scope",
-                "notify_systemd_ready",
-                "read_systemd_user_unit",
-                "run_systemd_user_action",
-            },
+            "foreground_service": {"notify_systemd_ready"},
         },
         APPHOST_ROOT / "managed/starter.py": {
             "contracts": {"ProcessLaunchRequest"},

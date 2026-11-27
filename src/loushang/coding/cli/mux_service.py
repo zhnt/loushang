@@ -1,4 +1,4 @@
-"""Local AppHost lifecycle and the systemd foreground service adapter."""
+"""Coding AppHost commands and optional foreground readiness."""
 
 from __future__ import annotations
 
@@ -9,10 +9,8 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 
-DEFAULT_UNIT = "loushang-host.service"
-OPERATIONS = ("start", "stop", "restart", "status", "logs", "run")
+OPERATIONS = ("start", "stop", "restart", "status", "logs")
 
 
 def register_arguments(
@@ -24,7 +22,6 @@ def register_arguments(
     )
     service = commands.add_parser("service", help="control the local AppHost service")
     service.add_argument("operation", choices=OPERATIONS)
-    service.add_argument("--unit", type=unit_name, default=DEFAULT_UNIT)
     service.add_argument("--json", action="store_true", help="return the local service state as JSON")
     service.add_argument("--instance", help="require this running instance for stop or restart")
 
@@ -51,86 +48,35 @@ def foreground_notification_socket(
 
 def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if args.connection_root is not None or args.endpoint is not None:
-        parser.error("service selects a systemd unit with --unit")
-    if args.operation == "run":
-        if args.unit != DEFAULT_UNIT or args.json or args.instance is not None:
-            parser.error("service run requires the default unit without client options")
-        return run_systemd_host()
+        parser.error("service uses the local managed AppHost")
     if args.instance is not None and (
         args.operation not in {"stop", "restart"} or re.fullmatch(r"[0-9a-f]{32}", args.instance) is None
     ):
         parser.error("--instance requires a lowercase hexadecimal instance ID and stop or restart")
-    if args.json or args.instance is not None:
-        if args.unit != DEFAULT_UNIT or args.operation == "logs":
-            parser.error("this operation requires the default local service and a lifecycle action")
-        return control_local(args.operation, args.instance, as_json=args.json)
-    return control(args.operation, args.unit)
-
-
-def run_systemd_host() -> int:
-    """Start the existing managed Host and hand its PID directly to systemd."""
-    from loushang.apphost.managed.systemd import start_systemd_application
-    from loushang.coding.hosted.managed.service import (
-        ServiceControlError,
-        control_managed_service,
-    )
-
-    notify_socket = _take_systemd_socket()
-    if notify_socket is None:
-        print("loushang-mux service run requires a systemd notification socket", file=sys.stderr)
-        return 1
-    if start_systemd_application(
-        control_managed_service, notify_socket, _systemd_endpoint, control_error=ServiceControlError,
-    ):
-        return 0
-    print("loushang-mux service: systemd_host_start_failed", file=sys.stderr)
-    return 1
-
-
-def _systemd_endpoint() -> Path:
-    runtime = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
-    return runtime / "loushang-host" / "endpoint.json"
-
-
-def unit_name(value: str) -> str:
-    if not re.fullmatch(r"loushang-host(?:@[a-zA-Z0-9_.-]{1,128})?\.service", value):
-        raise argparse.ArgumentTypeError(
-            "expected loushang-host.service or loushang-host@NAME.service"
-        )
-    return value
-
-
-def _uses_managed_backend() -> bool:
-    return sys.platform == "win32" or os.environ.get("LOUSHANG_MUX_BACKEND") == "managed"
-
-
-def control(operation: str, unit: str) -> int:
-    if sys.platform == "darwin":
-        if unit != DEFAULT_UNIT:
-            return 1
-        if operation == "logs":
-            from loushang.coding.hosted.macos_service import print_logs
-            return print_logs()
-        return control_local(operation, None, as_json=False)
-    if _uses_managed_backend():
-        if operation == "logs" or unit != DEFAULT_UNIT:
-            print("loushang-mux service: this action requires a systemd user unit", file=sys.stderr)
-            return 1
-        return control_local(operation, None, as_json=False)
-    if sys.platform != "linux":
-        print("loushang-mux service requires Linux and a systemd user manager", file=sys.stderr)
-        return 1
-    from loushang.apphost.managed.systemd import run_systemd_user_action
-
     try:
-        return run_systemd_user_action(operation, unit)
-    except OSError as error:
-        executable = "journalctl" if operation == "logs" else "systemctl"
-        print(f"loushang-mux service: cannot run {executable}: {error.strerror}", file=sys.stderr)
-        return 1
+        if args.operation == "logs":
+            if args.json:
+                parser.error("service logs does not accept --json")
+            return _logs()
+        return control_local(args.operation, args.instance, as_json=args.json)
     except KeyboardInterrupt:
         return 130
 
+
+def _logs() -> int:
+    if sys.platform == "darwin":
+        from loushang.coding.hosted.macos_service import print_logs
+        return print_logs()
+    if sys.platform == "linux":
+        from loushang.apphost.managed.contracts import ManagedServiceKeyV1
+        from loushang.apphost.managed.defaults import resolve_managed_defaults
+        from loushang.coding.cli.lmux import main
+
+        namespace = resolve_managed_defaults().namespace
+        service = ManagedServiceKeyV1("coding", namespace.platform_home)
+        return main(["logs", "--server", service.service_id])
+    print("loushang-mux service: logs_unavailable", file=sys.stderr)
+    return 1
 
 
 def control_local(operation: str, expected: str | None, *, as_json: bool) -> int:
@@ -143,15 +89,8 @@ def control_local(operation: str, expected: str | None, *, as_json: bool) -> int
         if sys.platform == "darwin":
             from loushang.coding.hosted.macos_service import control_launchd_service
             reply = control_launchd_service(operation, expected)
-        elif _uses_managed_backend():
+        elif sys.platform in {"linux", "win32"}:
             reply = asyncio.run(control_managed_service(operation, expected))
-        elif sys.platform == "linux":
-            from loushang.apphost.managed.systemd import control_systemd_application
-
-            reply = control_systemd_application(
-                operation, expected, unit=DEFAULT_UNIT,
-                endpoint=_systemd_endpoint, error=ServiceControlError,
-            )
         else:
             raise ServiceControlError("platform_unsupported")
     except ServiceControlError as error:
