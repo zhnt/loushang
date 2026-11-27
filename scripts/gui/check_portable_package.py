@@ -84,10 +84,10 @@ def check_host(package: Path, root: Path) -> None:
     workspace.mkdir(mode=0o700)
     home = root / "home"
     home.mkdir(mode=0o700)
-    # No inherited provider keys, source paths, developer environment or tools.
+    # Use only the system command path and the packaged runtime.
     env = {
         "HOME": str(home),
-        "PATH": "/nonexistent",
+        "PATH": "/usr/bin:/bin",
         "LANG": "C.UTF-8",
         "LOUSHANG_HOME": str(home / ".loushang"),
         "LOUSHANG_RUNTIME_DIR": str(root / "runtime"),
