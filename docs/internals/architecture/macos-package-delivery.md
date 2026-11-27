@@ -1,8 +1,8 @@
 # macOS Intel full-package delivery
 
-Status: accepted for Intel packaging and native macOS 15 runner operation;
-actual macOS 12 installation acceptance remains pending. Scope: macOS 12+
-Intel packaging and launchd integration.
+Scope: macOS 12+ full-package delivery and local AppHost lifetime. The native
+acceptance below records the previous launchd-based build. The Managed Service
+cutover has source and migration tests. A native macOS package run is pending.
 
 The full installer places `loushang-gui.app` in `/Applications`. The native GUI,
 frozen `loushang` TUI, Rust Web listener, Mux launcher and foreground Host entry
@@ -10,21 +10,17 @@ live in `Contents/MacOS`. Web assets and the backend-only Python runtime live
 in `Contents/Resources`. `/usr/local/bin` provides the five command names.
 The GUI bridge remains Rust/TypeScript; there is no Python connection helper.
 
-`loushang-mux service` delegates macOS process ownership to launchd's per-user
-domain with the explicit Background session type. A label derived from the configured product home isolates installations
-and test homes. Start/stop/restart serialize under a private local control lock;
-an expected instance rejects stale shutdown requests. The service is not
-registered for automatic login startup. Exiting the GUI leaves the Host alive.
-Provider credentials are never written into the launchd property list.
+`loushang-mux service` uses the shared Managed Service journal and
+AppClient authentication. Hosting starts the child in its own POSIX session,
+captures its boot and start identity and observes its exit using kqueue.
+The AppHost lives independently of GUI, TUI and Web clients.
 
-The foreground Host reuses the existing workspace catalog, AppHost, AppService,
-AppServer, continuity store and session factory. launchd is the native process
-owner, so this adapter does not introduce another native-process registry.
-The existing application continuity lease excludes simultaneous owners of the
-same application root. Internal named-Mux permits use stable operation IDs and
-per-instance random authority; remote callers cannot mint permits. Admission
-and shutdown fencing use the existing AppService commit/settlement boundary.
-The macOS catalog follows the existing portable Session writer path.
+An existing installation must unregister its previous launchd job before
+Managed Service can spawn. The cutover keeps the legacy application,
+workspace and Session store paths and retains Mux and Session IDs. It
+imports existing Mux receipts under the application lease and startup
+fence before the child publishes its connection record. This is a one-way
+transfer of Mux authority. See the [upgrade instructions](../../../scripts/gui/macos-package.md).
 
 The private workspace storage adapter uses macOS `renameatx_np(RENAME_EXCL)`
 for atomic no-replace moves. Linux keeps `renameat2(RENAME_NOREPLACE)`.
@@ -45,13 +41,7 @@ credentials or live model requests are used. This verifies the runner's OS;
 macOS 12 Intel acceptance remains a separate required claim before declaring
 that runtime tested.
 
-Internal review: the implementation agent reviewed the Coding launch adapter,
-AppService managed-Mux admission contract, continuity ownership, private
-workspace storage, GUI resource lookup and manual-only CI boundaries. The
-delivery does not change wire schemas or add PR blocking jobs. Native runner
-findings were resolved before accepting the implementation within this scope.
-
-## Native acceptance record
+## Previous launchd-based native acceptance record
 
 The implementation agent accepted the reviewed implementation after the full
 installer from source commit `e9f93e919286d6d31056c07f4a65d3cd1d75a1a6` passed

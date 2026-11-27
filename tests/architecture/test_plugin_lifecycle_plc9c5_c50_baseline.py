@@ -1097,7 +1097,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         APPHOST_ROOT / "managed/defaults.py",
         APPHOST_ROOT / "managed/connection.py",
         APPHOST_ROOT / "managed/mux_management.py",
-        APPHOST_ROOT / "managed/launchd.py",
+        CODING_ROOT / "hosted/macos_service.py",
         APPHOST_ROOT / "managed/systemd.py",
         CODING_ROOT / 'hosted/managed/process.py',
     } - optional_shared_receipt_owner
@@ -1108,7 +1108,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         APPHOST_ROOT / "local_application.py": {
             "foreground_service": {"foreground_stop_signals"},
         },
-        APPHOST_ROOT / "managed/launchd.py": {
+        CODING_ROOT / "hosted/macos_service.py": {
             "service_launchd": {"LaunchdJobError", "LaunchdUserJob"},
         },
         APPHOST_ROOT / "managed/systemd.py": {

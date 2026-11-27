@@ -147,15 +147,16 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
                 Path("src/loushang/apphost/local_application.py"): {
                     "loushang.hosting.foreground_service",
                 },
-                Path("src/loushang/apphost/managed/launchd.py"): {"loushang.hosting.service_launchd"},
                 Path("src/loushang/apphost/managed/systemd.py"): {
                     "loushang.hosting.foreground_service",
                 },
                 Path("src/loushang/apphost/managed/handoff.py"): {
+                    "loushang.hosting.service_darwin",
                     "loushang.hosting.errors", "loushang.hosting.service",
                     "loushang.hosting.service_handoff", "loushang.hosting.service_windows",
                 },
                 Path("src/loushang/apphost/managed/lifecycle.py"): {
+                    "loushang.hosting.service_darwin",
                     "loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_windows",
                     "loushang.hosting.service_group",
                 },
@@ -163,6 +164,7 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
                     "loushang.hosting.contracts", "loushang.hosting.service_windows",
                 },
                 Path("src/loushang/apphost/managed/bootstrap.py"): {
+                    "loushang.hosting.service_darwin",
                     "loushang.hosting.errors", "loushang.hosting.service",
                     "loushang.hosting.service_handoff", "loushang.hosting.service_windows",
                 },
@@ -171,6 +173,7 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
                     "loushang.hosting.service_windows",
                 },
                 Path("src/loushang/apphost/managed/stopper.py"): {
+                    "loushang.hosting.service_darwin",
                     "loushang.hosting.errors",
                     "loushang.hosting.service", "loushang.hosting.service_group",
                     "loushang.hosting.service_windows",
@@ -182,6 +185,7 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
                     "loushang.hosting.errors", "loushang.hosting.service",
                 },
                 Path("src/loushang/apphost/managed/mux_management.py"): {
+                    "loushang.hosting.service_darwin",
                     "loushang.hosting.service", "loushang.hosting.service_windows",
                 },
             }.get(path)

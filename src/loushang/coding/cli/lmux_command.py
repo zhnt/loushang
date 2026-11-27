@@ -57,6 +57,7 @@ from loushang.coding.hosted.managed.process import (
     ENDPOINT,
     coding_managed_process_request,
 )
+from loushang.coding.hosted.managed.service import ServiceControlError
 
 from .lmux_stop_all import StopAll
 from .mux import _bind_coding_mux_shell, _execute
@@ -444,6 +445,9 @@ def execute(args: argparse.Namespace, *, stdin: TextIO, stdout: TextIO, stderr: 
         status = 130
     except ManagedStorageError as error:
         print("lmux_" + error.code, file=stderr)
+        status = 1
+    except ServiceControlError as error:
+        print("lmux_" + str(error), file=stderr)
         status = 1
     except Exception:
         print("lmux_unavailable", file=stderr)

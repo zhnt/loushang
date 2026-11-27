@@ -1,7 +1,7 @@
 """Foreground workspace-capable AppHost for an external service manager.
 
-launchd owns the process lifetime. The application continuity lease owns its
-Mux history; no second native-process registry or watchdog is introduced.
+The caller or external supervisor owns the process lifetime. The application
+continuity lease owns its Mux history.
 """
 
 from __future__ import annotations

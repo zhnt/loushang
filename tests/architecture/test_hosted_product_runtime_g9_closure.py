@@ -641,7 +641,6 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
         assert hosting_imports == {
             APPHOST / "launcher.py": {"loushang.hosting.contracts"},
             APPHOST / "local_application.py": {"loushang.hosting.foreground_service"},
-            APPHOST / "managed/launchd.py": {"loushang.hosting.service_launchd"},
             APPHOST / "managed/systemd.py": {"loushang.hosting.foreground_service"},
             APPHOST / "managed/handoff.py": {
                 "loushang.hosting.service_darwin",

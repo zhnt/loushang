@@ -561,7 +561,6 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "managed/handoff.py",
         "managed/child.py",
         "managed/bootstrap.py",
-        "managed/launchd.py",
         "managed/systemd.py",
         "managed/_lifetime.py",
         "managed/_process.py",

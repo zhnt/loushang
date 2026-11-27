@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from contextlib import AbstractContextManager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hmac import compare_digest
 from secrets import token_hex
 from threading import get_ident
@@ -145,9 +145,71 @@ class ManagedMuxManagerV1:
         self._recovery_admitted = False
         self._recovery_record: ApplicationContinuityRecordV1 | None = None
         self._recovery_transition: ManagedServiceTransitionV1 | None = None
+        self._foreground_import: ApplicationContinuityRecordV1 | None = None
         # Data on this original manager, not another cleanup owner. Never
         # evict: after restart old pending must use startup recovery instead.
         self._continued_closures: dict[str, ManagedMuxCloseStateV1] = {}
+
+    def import_foreground_muxes(
+        self, record: ApplicationContinuityRecordV1, *, deadline: float,
+    ) -> ApplicationContinuityRecordV1:
+        """Bind verified foreground receipts to this admitted startup generation."""
+        if (
+            self._startup_native is None
+            or record.application_id != self._application_id
+            or record.product_id != self._service.product_id
+            or record.contract_version != MANAGED_CONTINUITY_VERSION
+            or record.managed_closures
+        ):
+            raise ManagedStorageError("conflict")
+        migrated = replace(record, managed_service_id=self._service.service_id,
+                           record_revision=record.record_revision + 1)
+        journal = self._journal
+        journal._require_open()
+        active_muxes = {mux.mux_space_id for mux in record.mux_spaces}
+        with journal._fence.lock("lifecycle.lock", deadline=deadline, wait_for_lock=True):
+            with journal._database.transaction(write=True, deadline=deadline, wait_for_lock=True) as connection:
+                state = journal._read(connection)
+                if (
+                    state is None or state.handoff.instance != self._instance
+                    or state.handoff.attempt_id != self._startup_attempt
+                    or state.handoff.phase is not ManagedHandoffPhaseV1.PROVISIONAL
+                    or state.handoff.stop_requested
+                    or state.native_identity != self._startup_native
+                ):
+                    raise ManagedStorageError("conflict")
+                self._import_foreground_rows(connection, record.managed_creations, active_muxes)
+                # A previous attempt may have committed these rows before the
+                # continuity file replacement. Accept only the exact same receipts.
+                self._recovery_history(connection, migrated)
+                journal._fence._check()
+        self._foreground_import = migrated
+        return migrated
+
+    def _import_foreground_rows(
+        self, connection: sqlite3.Connection, receipts: tuple[ManagedMuxCreatedV1, ...],
+        active_muxes: set[str],
+    ) -> None:
+        used = connection.execute("SELECT count(*) FROM mux_intents").fetchone()[0]
+        for receipt in receipts:
+            existing = self._permit(connection, receipt.name, receipt.operation_id)
+            if existing is not None:
+                if existing.created != receipt:
+                    raise ManagedStorageError("conflict")
+                continue
+            if used >= MAX_MUXES:
+                raise ManagedStorageError("capacity")
+            self._registry._database.admit_growth(connection)
+            used += 1
+            values = (receipt.name, self._service.service_id, receipt.operation_id)
+            connection.execute("INSERT INTO mux_intents VALUES (?, ?, ?)", values)
+            if receipt.mux_space_id in active_muxes:
+                connection.execute("INSERT INTO muxes VALUES (?, ?, ?)", values)
+            connection.execute(
+                "INSERT INTO mux_authorities VALUES (?, ?, ?, ?, ?, ?)",
+                (receipt.operation_id, self._instance.instance_id, receipt.instance_id,
+                 token_hex(32), receipt.instance_id, receipt.mux_space_id),
+            )
 
     def binding(self) -> ManagedMuxServiceBindingV1:
         return ManagedMuxServiceBindingV1(
@@ -735,7 +797,8 @@ class ManagedMuxRecoveryAdmission(_ManagedMuxFence):
                 or state.handoff.attempt_id != manager._startup_attempt
                 or state.native_identity != manager._startup_native
                 or state.handoff.phase not in (ManagedHandoffPhaseV1.PROVISIONAL, ManagedHandoffPhaseV1.ABORTING)
-                or self._record is not None and transition.previous is None):
+                or self._record is not None and transition.previous is None
+                and self._record != manager._foreground_import):
             raise ManagedStorageError("conflict")
         if self._use is ManagedMuxCloseUseV1.ADMIT:
             if state.handoff.stop_requested or state.handoff.phase is not ManagedHandoffPhaseV1.PROVISIONAL:

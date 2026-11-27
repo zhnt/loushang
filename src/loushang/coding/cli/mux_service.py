@@ -64,10 +64,7 @@ def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
 
 
 def _logs() -> int:
-    if sys.platform == "darwin":
-        from loushang.coding.hosted.macos_service import print_logs
-        return print_logs()
-    if sys.platform == "linux":
+    if sys.platform in {"linux", "darwin"}:
         from loushang.apphost.managed.contracts import ManagedServiceKeyV1
         from loushang.apphost.managed.defaults import resolve_managed_defaults
         from loushang.coding.cli.lmux import main
@@ -86,10 +83,7 @@ def control_local(operation: str, expected: str | None, *, as_json: bool) -> int
     )
 
     try:
-        if sys.platform == "darwin":
-            from loushang.coding.hosted.macos_service import control_launchd_service
-            reply = control_launchd_service(operation, expected)
-        elif sys.platform in {"linux", "win32"}:
+        if sys.platform in {"linux", "darwin", "win32"}:
             reply = asyncio.run(control_managed_service(operation, expected))
         else:
             raise ServiceControlError("platform_unsupported")

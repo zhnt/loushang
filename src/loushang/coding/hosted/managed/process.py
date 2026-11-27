@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
@@ -28,6 +30,10 @@ def coding_managed_process_request(
     invocation: ManagedChildInvocationV1, descriptor: int, *, executable: str,
     environment: Mapping[str, str], session_root: Path | None = None,
 ) -> ProcessLaunchRequest | WindowsServiceLaunchRequestV1:
+    if sys.platform == "darwin":
+        from loushang.coding.hosted.macos_service import require_legacy_job_stopped
+
+        require_legacy_job_stopped(Path(invocation.service.host_root))
     return build_managed_child_launch_request(
         invocation,
         descriptor,
@@ -56,6 +62,22 @@ def _load_application() -> ManagedChildApplicationPreparation:
             store_state_root=Path(invocation.namespace.platform_home) / "state/session-stores",
             managed_mux=bootstrap.managed_mux_binding(application_id=APPLICATION_ID),
         )
+        if sys.platform == "darwin":
+            from loushang.coding.hosted.macos_service import (
+                import_legacy_continuity,
+                legacy_application_root,
+            )
+
+            legacy = legacy_application_root(launch.application.host_root, launch.application.application_root)
+            if legacy is not None:
+                asyncio.run(import_legacy_continuity(
+                    legacy, partial(bootstrap.import_foreground_muxes, deadline=deadline),
+                    application_id=APPLICATION_ID, service_id=invocation.service.service_id,
+                    attempt_id=invocation.attempt_id,
+                ))
+                launch = replace(launch, application=replace(
+                    launch.application, application_root=legacy, store_state_root=legacy.parent / "session-stores",
+                ))
         return partial(
             CodingManagedLocalCommandV1, launch,
             output_capture_factory=bootstrap.output_capture_factory(deadline=deadline),

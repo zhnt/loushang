@@ -17,6 +17,7 @@ from pathlib import Path
 from threading import RLock, current_thread, main_thread
 from time import monotonic, sleep
 
+from loushang.appservice.continuity import ApplicationContinuityRecordV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.hosting.errors import HostingError
 from loushang.hosting.service import LinuxServiceObserverV1, ServiceObserverV1
@@ -232,6 +233,30 @@ class ManagedChildBootstrapV1:
             if binding.application_id != application_id:
                 raise ManagedStorageError("conflict")
             return binding
+        finally:
+            self._mutex.release()
+
+    def import_foreground_muxes(
+        self, record: ApplicationContinuityRecordV1, *, deadline: float,
+    ) -> ApplicationContinuityRecordV1:
+        """Use the original admitted startup manager before binding the application."""
+        _outside_loop()
+        if not self._mutex.acquire(blocking=False):
+            raise ManagedStorageError("busy")
+        try:
+            if self._closing or not self._opened or self._child is not None or self._mux_manager is None:
+                raise ManagedStorageError("closed")
+            assert self._journal is not None and self._observer is not None
+            while True:
+                state = self._journal.read(deadline=deadline, wait_for_lock=True)
+                if (state is None or state.handoff.instance != self._instance
+                        or state.handoff.attempt_id != self._attempt or state.handoff.stop_requested):
+                    raise ManagedStorageError("conflict")
+                if state.native_identity is not None:
+                    break
+                _check_deadline(deadline)
+                sleep(0.01)
+            return self._mux_manager.import_foreground_muxes(record, deadline=deadline)
         finally:
             self._mutex.release()
 
