@@ -1,6 +1,7 @@
 """Existing macOS data and launchd cutover checks without a native launchd."""
 
 import asyncio
+import sys
 from functools import partial
 from time import monotonic
 
@@ -66,6 +67,7 @@ def test_legacy_workspace_root_is_preserved_and_conflicting_state_is_rejected(tm
         macos_service.legacy_application_root(tmp_path, managed)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="uses the Linux managed lifecycle fixture")
 def test_migrates_real_foreground_mux_receipt_and_restores_it_on_restart(owners, tmp_path):
     root = tmp_path / "state/macos-host/application"
     root.parent.mkdir(parents=True)
