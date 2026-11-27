@@ -47,6 +47,7 @@ def coding_managed_process_request(
 
 
 def _load_application() -> ManagedChildApplicationPreparation:
+    from loushang.coding.hosted.managed.bootstrap import import_foreground_continuity
     from loushang.coding.hosted.managed.local import (
         CodingManagedLocalCommandV1,
         create_coding_managed_local_launch,
@@ -63,14 +64,11 @@ def _load_application() -> ManagedChildApplicationPreparation:
             managed_mux=bootstrap.managed_mux_binding(application_id=APPLICATION_ID),
         )
         if sys.platform == "darwin":
-            from loushang.coding.hosted.macos_service import (
-                import_legacy_continuity,
-                legacy_application_root,
-            )
+            from loushang.coding.hosted.macos_service import legacy_application_root
 
             legacy = legacy_application_root(launch.application.host_root, launch.application.application_root)
             if legacy is not None:
-                asyncio.run(import_legacy_continuity(
+                asyncio.run(import_foreground_continuity(
                     legacy, partial(bootstrap.import_foreground_muxes, deadline=deadline),
                     application_id=APPLICATION_ID, service_id=invocation.service.service_id,
                     attempt_id=invocation.attempt_id,

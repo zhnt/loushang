@@ -16,6 +16,7 @@ from loushang.appservice import (
 from loushang.appservice.continuity_file import JsonFileApplicationContinuityStoreV1
 from loushang.coding.hosted import macos_service
 from loushang.coding.hosted.foreground import NamedMuxProvisioner
+from loushang.coding.hosted.managed.bootstrap import import_foreground_continuity
 from loushang.coding.hosted.managed.service import ServiceControlError
 from tests.apphost.test_managed_mux_recovery import owners as _owners
 from tests.apphost.test_managed_mux_recovery import recovery, successor
@@ -91,7 +92,7 @@ def test_migrates_real_foreground_mux_receipt_and_restores_it_on_restart(owners,
         key = owners[3]
         # The control rows may settle before the legacy record is rewritten.
         await asyncio.to_thread(manager.import_foreground_muxes, previous, deadline=monotonic() + 5)
-        await macos_service.import_legacy_continuity(
+        await import_foreground_continuity(
             root, partial(manager.import_foreground_muxes, deadline=monotonic() + 5),
             application_id=app_id, service_id=key.service_id, attempt_id=first_attempt,
         )

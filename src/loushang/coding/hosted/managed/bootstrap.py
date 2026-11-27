@@ -6,12 +6,16 @@ returned application attempt retains admission before its explicit open.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from hashlib import sha256
 from pathlib import Path
 from secrets import token_hex
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
+from loushang.apphost.managed._files import ManagedStorageError
 from loushang.apphost.managed.contracts import ManagedContractError
 from loushang.apphost.managed.invocation import ManagedChildInvocationV1
 from loushang.apphost.managed.paths import (
@@ -20,7 +24,11 @@ from loushang.apphost.managed.paths import (
     require_separate_managed_session_storage,
     resolve_managed_paths,
 )
-from loushang.appservice.continuity import require_application_id
+from loushang.appservice.continuity import (
+    ApplicationContinuityRecordV1,
+    require_application_id,
+)
+from loushang.appservice.continuity_file import JsonFileApplicationContinuityStoreV1
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.coding.hosted.application import CODING_MANAGED_APPLICATION_PROFILE_ID
 from loushang.coding.hosted.bootstrap import (
@@ -61,6 +69,26 @@ class CodingManagedApplicationLaunchV1:
                     or _overlaps(state, self.application_root)):
                 raise ValueError("store admission state must be separate from writable application data")
 
+
+
+async def import_foreground_continuity(
+    root: Path, import_record: Callable[[ApplicationContinuityRecordV1], ApplicationContinuityRecordV1], *,
+    application_id: str, service_id: str, attempt_id: str,
+) -> None:
+    """Transfer receipts under the same lease used by the Coding application."""
+    lease = await JsonFileApplicationContinuityStoreV1(root).acquire(
+        application_id=application_id, owner_epoch=attempt_id,
+    )
+    try:
+        record = await lease.load()
+        if record is None or record.managed_service_id == service_id:
+            return
+        if record.managed_service_id != sha256(str(root).encode()).hexdigest():
+            raise ManagedStorageError("conflict")
+        migrated = await asyncio.to_thread(import_record, record)
+        await lease.commit(expected_revision=record.record_revision, record=migrated)
+    finally:
+        await lease.close()
 
 
 def create_coding_managed_attempt(

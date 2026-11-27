@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
 
 from loushang.apphost.managed._files import ManagedStorageError
-from loushang.appservice.continuity import ApplicationContinuityRecordV1
-from loushang.appservice.continuity_file import JsonFileApplicationContinuityStoreV1
 from loushang.coding.hosted.managed.service import ServiceControlError
 from loushang.hosting.service_launchd import LaunchdJobError, LaunchdUserJob
 
@@ -40,22 +36,3 @@ def legacy_application_root(home: Path, managed_root: Path) -> Path | None:
     if continuity.exists() or continuity.is_symlink():
         raise ManagedStorageError("conflict")
     return legacy
-
-
-async def import_legacy_continuity(
-    root: Path, import_record: Callable[[ApplicationContinuityRecordV1], ApplicationContinuityRecordV1], *,
-    application_id: str, service_id: str, attempt_id: str,
-) -> None:
-    lease = await JsonFileApplicationContinuityStoreV1(root).acquire(
-        application_id=application_id, owner_epoch=attempt_id,
-    )
-    try:
-        record = await lease.load()
-        if record is None or record.managed_service_id == service_id:
-            return
-        if record.managed_service_id != sha256(str(root).encode()).hexdigest():
-            raise ManagedStorageError("conflict")
-        migrated = await asyncio.to_thread(import_record, record)
-        await lease.commit(expected_revision=record.record_revision, record=migrated)
-    finally:
-        await lease.close()
