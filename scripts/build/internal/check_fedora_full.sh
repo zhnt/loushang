@@ -33,7 +33,8 @@ docker run --rm --user builder "${workspace_mounts[@]}" \
   "$image:build" uv run --no-project --python 3.11 python scripts/build/build_full_linux.py \
   --arch "$arch" --format rpm 2>&1 | tee "$evidence/build.log"
 
-docker run --rm --user builder "${workspace_mounts[@]}" \
+# Reap detached AppHost children after they exit.
+docker run --rm --init --user builder "${workspace_mounts[@]}" \
   --env HOME=/home/builder \
   --env PATH=/usr/local/bin:/usr/bin:/usr/sbin \
   --env GITHUB_ACTIONS=true --env RUNNER_ENVIRONMENT=github-hosted \

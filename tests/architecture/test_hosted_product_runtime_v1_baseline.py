@@ -144,6 +144,7 @@ CURRENT_SOURCE_SEAMS = (
     Path('src/loushang/coding/hosted/managed/local.py'),
     Path('src/loushang/coding/hosted/managed/process.py'),
     Path('src/loushang/coding/hosted/managed/service.py'),
+    HOSTING_SOURCE / "service_darwin.py",
     Path('src/loushang/coding/hosted/macos_service.py'),
     Path("src/loushang/coding/cli/lmux.py"),
     Path("src/loushang/coding/cli/lmux_command.py"),
