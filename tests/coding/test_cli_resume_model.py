@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from io import StringIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -13,7 +14,16 @@ from loushang.coding.composition.bootstrap import (
     create_agent_session_runtime,
     create_services,
 )
-from loushang.coding.session.manager import SessionManager
+from loushang.harness.transcript import build_agent_transcript_session_context
+from loushang.harness.transcript.jsonl_file import load_agent_transcript_file
+
+
+@pytest.fixture(autouse=True)
+def isolated_coding_home(monkeypatch: pytest.MonkeyPatch):
+    # Linux store admission isolates state from the transcript's parent, too.
+    with TemporaryDirectory(prefix="loushang-resume-model-platform-") as platform_home:
+        monkeypatch.setenv("LOUSHANG_HOME", platform_home)
+        yield
 
 
 async def _saved_history(
@@ -111,18 +121,13 @@ def test_cli_restores_history_with_explicit_replacement_model(
         )
         assert result == 0, stderr.getvalue()
         assert seen == [session_id]
-        restored = await SessionManager.open(
+        # Replay persisted bytes without opening another writer on an owned store.
+        _, records = load_agent_transcript_file(
             session_file,
-            session_dir=sessions,
-            cwd_override=str(tmp_path),
+            read_only=True,
         )
-        try:
-            assert (
-                restored.build_session_context().model["model_id"]
-                == replacement.model_id
-            )
-        finally:
-            await restored.dispose_runtime_profile()
+        restored = build_agent_transcript_session_context(records)
+        assert restored.model["model_id"] == replacement.model_id
 
     asyncio.run(scenario())
 
