@@ -12,6 +12,7 @@ from typing import TypeVar
 
 from loushang.hosting.errors import HostingError
 from loushang.hosting.service import ServiceObserverV1, reopen_service_observer
+from loushang.hosting.service_darwin import DarwinServiceObserverV1
 from loushang.hosting.service_group import LinuxServiceGroupObservationV1
 from loushang.hosting.service_windows import (
     WindowsServiceJobV1,
@@ -131,14 +132,17 @@ class ManagedServiceStopOperationV1:
         self._native_uncertain = False
         if isinstance(self._observer, WindowsServiceObserverV1):
             self._group = self._observer.open_scope(state.handoff.attempt_id)
-        else:
+        elif not isinstance(self._observer, DarwinServiceObserverV1):
             self._group = LinuxServiceGroupObservationV1(self._observer)
             self._group.admit()
 
     def _observe(self) -> tuple[bool, bool]:
-        assert self._observer is not None and self._group is not None
+        assert self._observer is not None
         if not self._observer.exited():
             return False, False
+        if isinstance(self._observer, DarwinServiceObserverV1):
+            return True, self._observer.scope_exited()
+        assert self._group is not None
         return True, self._group.exited()
 
     async def _run_once(self, deadline: float) -> ManagedServiceStateV1:

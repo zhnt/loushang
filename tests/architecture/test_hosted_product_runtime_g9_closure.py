@@ -644,12 +644,14 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
             APPHOST / "managed/launchd.py": {"loushang.hosting.service_launchd"},
             APPHOST / "managed/systemd.py": {"loushang.hosting.foreground_service"},
             APPHOST / "managed/handoff.py": {
+                "loushang.hosting.service_darwin",
                 "loushang.hosting.errors",
                 "loushang.hosting.service",
                 "loushang.hosting.service_handoff",
                 "loushang.hosting.service_windows",
             },
             APPHOST / "managed/lifecycle.py": {
+                "loushang.hosting.service_darwin",
                 "loushang.hosting.errors",
                 "loushang.hosting.service",
                 "loushang.hosting.service_group",
@@ -659,12 +661,14 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
                 "loushang.hosting.contracts", "loushang.hosting.service_windows",
             },
             APPHOST / "managed/bootstrap.py": {
+                "loushang.hosting.service_darwin",
                 "loushang.hosting.errors", "loushang.hosting.service",
                 "loushang.hosting.service_handoff", "loushang.hosting.service_windows",
             },
             # Managed startup/continuation compares the original native value;
             # process creation and cleanup remain with their existing owners.
             APPHOST / "managed/mux_management.py": {
+                "loushang.hosting.service_darwin",
                 "loushang.hosting.service", "loushang.hosting.service_windows",
             },
             APPHOST / "managed/starter.py": {
@@ -673,6 +677,7 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
                 "loushang.hosting.service_windows",
             },
             APPHOST / "managed/stopper.py": {
+                "loushang.hosting.service_darwin",
                 "loushang.hosting.errors",
                 "loushang.hosting.service",
                 "loushang.hosting.service_group",

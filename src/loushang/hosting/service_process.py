@@ -1,4 +1,4 @@
-"""Optional Linux background launch owner, without implicit termination.
+"""Optional POSIX background launch owner, without implicit termination.
 
 The consumer adopts this owner before spawn and fences its durable attempt
 before crossing the native effect. This local managed profile accepts complete
@@ -14,7 +14,7 @@ import subprocess
 import sys
 from threading import Event, RLock
 from time import monotonic
-from typing import Any
+from typing import Any, ClassVar
 
 from ._posix_process import _PosixProcess
 from .contracts import (
@@ -25,6 +25,7 @@ from .contracts import (
 )
 from .errors import HostingError, HostingFailureCategory
 from .service import LinuxServiceIdentityV1, LinuxServiceObserverV1
+from .service_darwin import DarwinServiceIdentityV1, DarwinServiceObserverV1
 
 
 class _ServiceChild:
@@ -44,7 +45,7 @@ class _ServiceChild:
         return self._process.poll()
 
 
-class LinuxServiceProcessV1:
+class _PosixServiceProcessV1:
     """Adopt the child endpoint at construction, then allow exactly one spawn.
 
     The caller owns the parent endpoint and durable handoff. close() releases
@@ -57,12 +58,14 @@ class LinuxServiceProcessV1:
     consumer retains this owner and the durable fence across uncertain returns.
     """
 
+    _platform: ClassVar[str]
+    _observer_type: ClassVar[type[LinuxServiceObserverV1] | type[DarwinServiceObserverV1]]
     _request: ProcessLaunchRequest | None
     _endpoint: socket.socket
     _process: subprocess.Popen[bytes] | None
     _scope: _PosixProcess | None
-    _observer: LinuxServiceObserverV1 | None
-    _identity: LinuxServiceIdentityV1 | None
+    _observer: LinuxServiceObserverV1 | DarwinServiceObserverV1 | None
+    _identity: LinuxServiceIdentityV1 | DarwinServiceIdentityV1 | None
     _attempted: bool
     _handles_closed: bool
     _observer_close_unknown: bool
@@ -73,7 +76,7 @@ class LinuxServiceProcessV1:
     _mutex: Any
 
     def __init__(self, request: ProcessLaunchRequest, child_endpoint: socket.socket) -> None:
-        if sys.platform != "linux":
+        if sys.platform != self._platform:
             raise _error(HostingFailureCategory.PLATFORM_UNSUPPORTED)
         if (type(request) is not ProcessLaunchRequest or not os.path.isabs(request.argv[0])
                 or request.streams.stdin is not ProcessStdinMode.CLOSED
@@ -82,7 +85,7 @@ class LinuxServiceProcessV1:
                 or type(child_endpoint) is not socket.socket):
             raise _error(HostingFailureCategory.INVALID_REQUEST)
         try:
-            if (child_endpoint.family != socket.AF_UNIX or child_endpoint.fileno() < 3
+            if (child_endpoint.family != getattr(socket, "AF_UNIX", None) or child_endpoint.fileno() < 3
                     or child_endpoint.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_STREAM):
                 raise _error(HostingFailureCategory.INVALID_REQUEST)
             child_endpoint.getpeername()
@@ -94,8 +97,8 @@ class LinuxServiceProcessV1:
         self._endpoint = child_endpoint
         self._process: subprocess.Popen[bytes] | None = None
         self._scope: _PosixProcess | None = None
-        self._observer: LinuxServiceObserverV1 | None = None
-        self._identity: LinuxServiceIdentityV1 | None = None
+        self._observer: LinuxServiceObserverV1 | DarwinServiceObserverV1 | None = None
+        self._identity: LinuxServiceIdentityV1 | DarwinServiceIdentityV1 | None = None
         self._attempted = False
         self._handles_closed = False
         self._observer_close_unknown = False
@@ -106,7 +109,7 @@ class LinuxServiceProcessV1:
         self._mutex = RLock()
 
     @property
-    def identity(self) -> LinuxServiceIdentityV1 | None:
+    def identity(self) -> LinuxServiceIdentityV1 | DarwinServiceIdentityV1 | None:
         """Captured lookup facts, never readiness or signal authority."""
         return self._identity
 
@@ -132,7 +135,7 @@ class LinuxServiceProcessV1:
             raise _error(HostingFailureCategory.HOST_CLOSED)
         return deadline
 
-    def spawn(self) -> LinuxServiceIdentityV1:
+    def spawn(self) -> LinuxServiceIdentityV1 | DarwinServiceIdentityV1:
         """One effect, no retry and no settled-without-process error receipt."""
         self._enter()
         try:
@@ -151,7 +154,7 @@ class LinuxServiceProcessV1:
                 )
                 self._scope = _PosixProcess(_ServiceChild(self._process))
                 self._observer_adoption_unknown = True
-                self._observer = LinuxServiceObserverV1.capture(self._process.pid)
+                self._observer = self._observer_type.capture(self._process.pid)
                 self._observer_adoption_unknown = False
                 self._identity = self._observer.identity
                 self._close_endpoint()  # No parent copy of the child's socket.
@@ -255,3 +258,13 @@ class LinuxServiceProcessV1:
 
 def _error(category: HostingFailureCategory) -> HostingError:
     return HostingError(category, "service_process_" + category.value)
+
+
+class LinuxServiceProcessV1(_PosixServiceProcessV1):
+    _platform = "linux"
+    _observer_type = LinuxServiceObserverV1
+
+
+class DarwinServiceProcessV1(_PosixServiceProcessV1):
+    _platform = "darwin"
+    _observer_type = DarwinServiceObserverV1

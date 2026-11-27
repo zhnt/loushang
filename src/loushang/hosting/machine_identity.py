@@ -8,8 +8,10 @@ The system administrator remains responsible for unique IDs on cloned hosts.
 from __future__ import annotations
 
 import os
+import plistlib
 import re
 import stat
+import subprocess
 import sys
 from hashlib import blake2b, sha256
 from uuid import UUID
@@ -76,8 +78,8 @@ def windows_machine_key(*, domain: str) -> str:
         with winreg.OpenKey(
             winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography",
             access=winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
-        ) as key:
-            value, kind = winreg.QueryValueEx(key, "MachineGuid")
+        ) as registry_key:
+            value, kind = winreg.QueryValueEx(registry_key, "MachineGuid")
     except OSError:
         raise _error(HostingFailureCategory.PREPARATION_FAILED) from None
     if kind != winreg.REG_SZ or type(value) is not str or len(value) != 36:
@@ -89,6 +91,32 @@ def windows_machine_key(*, domain: str) -> str:
     if identity.int == 0 or str(identity) != value.lower():
         raise _error(HostingFailureCategory.PREPARATION_REJECTED)
     key = sha256(("windows/" + domain).encode("ascii")).digest()
+    return blake2b(identity.bytes, key=key, digest_size=16).hexdigest()
+
+
+def darwin_machine_key(*, domain: str) -> str:
+    """Derive a private key from the platform expert's hardware UUID."""
+    if type(domain) is not str or _DOMAIN.fullmatch(domain) is None:
+        raise _error(HostingFailureCategory.INVALID_REQUEST)
+    if sys.platform != "darwin":
+        raise _error(HostingFailureCategory.PLATFORM_UNSUPPORTED)
+    try:
+        payload = subprocess.check_output(
+            ["/usr/sbin/ioreg", "-a", "-r", "-d", "1", "-c", "IOPlatformExpertDevice"],
+            stderr=subprocess.DEVNULL, timeout=2,
+        )
+        properties, = plistlib.loads(payload)
+        value = properties["IOPlatformUUID"]
+        if type(value) is not str or len(value) != 36:
+            raise ValueError("invalid platform identity")
+        identity = UUID(value)
+        if identity.int == 0 or str(identity) != value.lower():
+            raise ValueError("invalid platform identity")
+    except (OSError, subprocess.SubprocessError):
+        raise _error(HostingFailureCategory.PREPARATION_FAILED) from None
+    except (ValueError, TypeError, KeyError, plistlib.InvalidFileException):
+        raise _error(HostingFailureCategory.PREPARATION_REJECTED) from None
+    key = sha256(("darwin/" + domain).encode("ascii")).digest()
     return blake2b(identity.bytes, key=key, digest_size=16).hexdigest()
 
 
@@ -120,4 +148,4 @@ def _error(category: HostingFailureCategory) -> HostingError:
     return HostingError(category, "machine_identity_" + category.value)
 
 
-__all__ = ["linux_machine_key", "windows_machine_key"]
+__all__ = ["darwin_machine_key", "linux_machine_key", "windows_machine_key"]

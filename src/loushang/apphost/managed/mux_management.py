@@ -36,6 +36,7 @@ from loushang.appservice.managed_mux_close import (
     ManagedMuxCloseUseV1,
 )
 from loushang.hosting.service import LinuxServiceIdentityV1, ServiceIdentityV1
+from loushang.hosting.service_darwin import DarwinServiceIdentityV1
 from loushang.hosting.service_windows import WindowsServiceIdentityV1
 
 from ._files import ManagedStorageError, _check_deadline
@@ -137,7 +138,7 @@ class ManagedMuxManagerV1:
         if startup_attempt_id is not None:
             _match(startup_attempt_id, _HEX32)
             if (startup_native_identity is None
-                    or type(startup_native_identity) not in {LinuxServiceIdentityV1, WindowsServiceIdentityV1}
+                    or type(startup_native_identity) not in {LinuxServiceIdentityV1, DarwinServiceIdentityV1, WindowsServiceIdentityV1}
                     or startup_native_identity.user_id != namespace.user_id):
                 raise ManagedContractError()
         self._startup_attempt, self._startup_native = startup_attempt_id, startup_native_identity

@@ -15,7 +15,10 @@ from secrets import token_hex
 from threading import Event, RLock
 
 from loushang.hosting.contracts import ProcessLaunchRequest
-from loushang.hosting.service_process import LinuxServiceProcessV1
+from loushang.hosting.service_process import (
+    DarwinServiceProcessV1,
+    LinuxServiceProcessV1,
+)
 from loushang.hosting.service_windows import (
     WindowsServiceLaunchRequestV1,
     WindowsServiceProcessV1,
@@ -75,7 +78,7 @@ class ManagedServiceStarterV1:
         self._attempt = token_hex(16)
         self._state: ManagedServiceStateV1 | None = None
         self._layout: ManagedLayoutPreparationV1 | None = None
-        self._process: LinuxServiceProcessV1 | WindowsServiceProcessV1 | None = None
+        self._process: LinuxServiceProcessV1 | DarwinServiceProcessV1 | WindowsServiceProcessV1 | None = None
         self._endpoints: tuple[socket.socket, socket.socket] | None = None
         self._closed_endpoints: set[int] = set()
         self._unknown_endpoints: set[int] = set()
@@ -146,10 +149,11 @@ class ManagedServiceStarterV1:
         else:
             if type(request) is not ProcessLaunchRequest:
                 raise ManagedContractError()
-            linux = LinuxServiceProcessV1(request, child)
-            self._process = linux
+            process_type = DarwinServiceProcessV1 if sys.platform == "darwin" else LinuxServiceProcessV1
+            posix = process_type(request, child)
+            self._process = posix
             self._check(deadline)
-            linux.spawn()
+            posix.spawn()
 
     def _require_current(self, deadline: float) -> ManagedServiceStateV1:
         # A reader may hold the fence after this starter publishes its

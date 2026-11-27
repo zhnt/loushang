@@ -20,6 +20,7 @@ from time import monotonic, sleep
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.hosting.errors import HostingError
 from loushang.hosting.service import LinuxServiceObserverV1, ServiceObserverV1
+from loushang.hosting.service_darwin import DarwinServiceObserverV1
 from loushang.hosting.service_handoff import require_service_channel
 from loushang.hosting.service_windows import (
     WindowsServiceObserverV1,
@@ -178,8 +179,12 @@ class ManagedChildBootstrapV1:
             if not self._native_attempted:
                 self._native_attempted = True
                 try:
-                    observer = WindowsServiceObserverV1 if sys.platform == "win32" else LinuxServiceObserverV1
-                    self._observer = observer.capture(os.getpid())
+                    if sys.platform == "win32":
+                        self._observer = WindowsServiceObserverV1.capture(os.getpid())
+                    elif sys.platform == "darwin":
+                        self._observer = DarwinServiceObserverV1.capture(os.getpid())
+                    else:
+                        self._observer = LinuxServiceObserverV1.capture(os.getpid())
                 except BaseException:
                     # The capture factory may have acquired native descriptors
                     # before failing; absent a returned owner, do not invent a
@@ -442,7 +447,7 @@ class ManagedChildBootstrapV1:
         does not alter signal policy. Neither cleanup domain may hide the other.
         """
         _outside_loop()
-        if sys.platform not in {"linux", "win32"} or current_thread() is not main_thread():
+        if sys.platform not in {"linux", "darwin", "win32"} or current_thread() is not main_thread():
             raise ManagedStorageError("unsupported")
         if not self._mutex.acquire(blocking=False):
             raise ManagedStorageError("busy")

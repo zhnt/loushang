@@ -1116,10 +1116,11 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         },
         APPHOST_ROOT / "managed/starter.py": {
             "contracts": {"ProcessLaunchRequest"},
-            "service_process": {"LinuxServiceProcessV1"},
+            "service_process": {"DarwinServiceProcessV1", "LinuxServiceProcessV1"},
             "service_windows": {"WindowsServiceLaunchRequestV1", "WindowsServiceProcessV1"},
         },
         APPHOST_ROOT / "managed/stopper.py": {
+            "service_darwin": {"DarwinServiceObserverV1"},
             "errors": {"HostingError"},
             "service": {"ServiceObserverV1", "reopen_service_observer"},
             "service_group": {"LinuxServiceGroupObservationV1"},
@@ -1127,29 +1128,33 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         },
         APPHOST_ROOT / "managed/defaults.py": {
             "errors": {"HostingError", "HostingFailureCategory"},
-            "machine_identity": {"linux_machine_key", "windows_machine_key"},
+            "machine_identity": {"darwin_machine_key", "linux_machine_key", "windows_machine_key"},
         },
         APPHOST_ROOT / "managed/connection.py": {
             "errors": {"HostingError"},
             "service": {"ServiceObserverV1", "reopen_service_observer"},
         },
         APPHOST_ROOT / "managed/mux_management.py": {
+            "service_darwin": {"DarwinServiceIdentityV1"},
             "service": {"LinuxServiceIdentityV1", "ServiceIdentityV1"},
             "service_windows": {"WindowsServiceIdentityV1"},
         },
         APPHOST_ROOT / "managed/handoff.py": {
+            "service_darwin": {"DarwinServiceIdentityV1"},
             "errors": {"HostingError"},
             "service": {"LinuxServiceIdentityV1", "ServiceIdentityV1"},
             "service_handoff": {"ServiceChildHandoffV1", "ServiceHandoffPhaseV1"},
             "service_windows": {"WindowsServiceIdentityV1"},
         },
         APPHOST_ROOT / "managed/lifecycle.py": {
+            "service_darwin": {"DarwinServiceIdentityV1", "darwin_service_group_absent"},
             "errors": {"HostingError"},
             "service": {"LinuxServiceIdentityV1", "ServiceIdentityV1"},
             "service_group": {"linux_service_group_recovery_status"},
             "service_windows": {"WindowsServiceIdentityV1", "windows_service_job_settled"},
         },
         APPHOST_ROOT / "managed/bootstrap.py": {
+            "service_darwin": {"DarwinServiceObserverV1"},
             "errors": {"HostingError"},
             "service": {"LinuxServiceObserverV1", "ServiceObserverV1"},
             "service_handoff": {"require_service_channel"},

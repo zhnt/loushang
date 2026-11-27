@@ -16,6 +16,10 @@ from secrets import token_hex
 
 from loushang.hosting.errors import HostingError
 from loushang.hosting.service import LinuxServiceIdentityV1, ServiceIdentityV1
+from loushang.hosting.service_darwin import (
+    DarwinServiceIdentityV1,
+    darwin_service_group_absent,
+)
 from loushang.hosting.service_group import linux_service_group_recovery_status
 from loushang.hosting.service_windows import (
     WindowsServiceIdentityV1,
@@ -81,7 +85,7 @@ class ManagedServiceStateV1:
             or type(self.handoff) is not ManagedHandoffV1
             or type(self.evidence) is not ManagedStopEvidenceV1
             or self.handoff.instance != self.evidence.instance
-            or (self.native_identity is not None and type(self.native_identity) not in {LinuxServiceIdentityV1, WindowsServiceIdentityV1})
+            or (self.native_identity is not None and type(self.native_identity) not in {LinuxServiceIdentityV1, DarwinServiceIdentityV1, WindowsServiceIdentityV1})
             or (self.handoff.phase is ManagedHandoffPhaseV1.COMMITTED and self.native_identity is None)
         ):
             raise ManagedContractError()
@@ -292,7 +296,7 @@ class ManagedServiceJournalV1:
         return self._update(instance, update, deadline=deadline)
 
     def _require_native(self, identity: ServiceIdentityV1 | None) -> None:
-        if identity is None or type(identity) not in {LinuxServiceIdentityV1, WindowsServiceIdentityV1} or identity.user_id != self._namespace.user_id:
+        if identity is None or type(identity) not in {LinuxServiceIdentityV1, DarwinServiceIdentityV1, WindowsServiceIdentityV1} or identity.user_id != self._namespace.user_id:
             raise ManagedContractError()
 
     def commit(
@@ -430,6 +434,8 @@ class ManagedServiceJournalV1:
             return expected
         if isinstance(native, WindowsServiceIdentityV1):
             settled = windows_service_job_settled(expected.handoff.attempt_id)
+        elif isinstance(native, DarwinServiceIdentityV1):
+            settled = darwin_service_group_absent(native)
         else:
             settled = linux_service_group_recovery_status(native) in {"absent", "prior_boot_absent"}
         if not settled:
@@ -688,6 +694,8 @@ def _decode_native(value: object) -> ServiceIdentityV1 | None:
     identity: ServiceIdentityV1
     if "creation_filetime" in row:
         identity = WindowsServiceIdentityV1(**row)
+    elif "start_microseconds" in row:
+        identity = DarwinServiceIdentityV1(**row)
     else:
         identity = LinuxServiceIdentityV1(**row)
     if _encode_native(identity) != value:

@@ -20,6 +20,7 @@ from threading import Event, RLock
 from time import monotonic
 
 from .errors import HostingError, HostingFailureCategory
+from .service_darwin import DarwinServiceIdentityV1, DarwinServiceObserverV1
 from .service_windows import WindowsServiceIdentityV1, WindowsServiceObserverV1
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
@@ -163,13 +164,15 @@ class LinuxServiceObserverV1:
 
 
 
-ServiceIdentityV1 = LinuxServiceIdentityV1 | WindowsServiceIdentityV1
-ServiceObserverV1 = LinuxServiceObserverV1 | WindowsServiceObserverV1
+ServiceIdentityV1 = LinuxServiceIdentityV1 | DarwinServiceIdentityV1 | WindowsServiceIdentityV1
+ServiceObserverV1 = LinuxServiceObserverV1 | DarwinServiceObserverV1 | WindowsServiceObserverV1
 
 
 def reopen_service_observer(expected: ServiceIdentityV1) -> ServiceObserverV1:
     if isinstance(expected, WindowsServiceIdentityV1):
         return WindowsServiceObserverV1.reopen(expected)
+    if isinstance(expected, DarwinServiceIdentityV1):
+        return DarwinServiceObserverV1.reopen(expected)
     return LinuxServiceObserverV1.reopen(expected)
 
 

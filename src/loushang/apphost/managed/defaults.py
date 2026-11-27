@@ -18,7 +18,11 @@ from loushang.foundation.platform_paths import (
     resolve_platform_paths,
 )
 from loushang.hosting.errors import HostingError, HostingFailureCategory
-from loushang.hosting.machine_identity import linux_machine_key, windows_machine_key
+from loushang.hosting.machine_identity import (
+    darwin_machine_key,
+    linux_machine_key,
+    windows_machine_key,
+)
 
 from .contracts import ManagedContractError, ManagedNamespaceV1
 
@@ -44,7 +48,7 @@ def resolve_managed_defaults(
     and read-only listing must not trigger tempfile's writable-directory probe.
     """
     values = dict(os.environ if environ is None else environ)
-    if sys.platform not in {"linux", "win32"}:
+    if sys.platform not in {"linux", "darwin", "win32"}:
         raise HostingError(HostingFailureCategory.PLATFORM_UNSUPPORTED, "managed_defaults_platform_unsupported")
     for key in ("LOUSHANG_HOME", "LOUSHANG_RUNTIME_DIR", "LOUSHANG_TMPDIR", "XDG_RUNTIME_DIR"):
         if key == "XDG_RUNTIME_DIR" and values.get("LOUSHANG_RUNTIME_DIR"):
@@ -55,8 +59,11 @@ def resolve_managed_defaults(
     if not values.get("LOUSHANG_HOME") and home is not None and not Path(home).expanduser().is_absolute():
         raise ManagedContractError()
     if sys.platform == "win32":
-        paths = _windows_paths(values, home)
+        paths = _private_home_runtime_paths(values, home)
         machine = windows_machine_key(domain=MACHINE_DOMAIN)
+    elif sys.platform == "darwin":
+        paths = _private_home_runtime_paths(values, home)
+        machine = darwin_machine_key(domain=MACHINE_DOMAIN)
     else:
         paths = resolve_platform_paths(environ=values, home=home, temporary_root="/tmp")
         machine = linux_machine_key(domain=MACHINE_DOMAIN)
@@ -75,7 +82,7 @@ def resolve_managed_defaults(
     return ManagedDefaultsV1(namespace, paths, temporary_override)
 
 
-def _windows_paths(values: dict[str, str], home: str | Path | None) -> PlatformPaths:
+def _private_home_runtime_paths(values: dict[str, str], home: str | Path | None) -> PlatformPaths:
     # A detached process and any later caller use the same runtime location,
     # even when launched under a different shell or temporary directory.
     default_runtime = resolve_platform_home(environ=values, home=home) / "run"
@@ -85,9 +92,11 @@ def _windows_paths(values: dict[str, str], home: str | Path | None) -> PlatformP
 
 
 def current_managed_user() -> int | str:
-    """Read the effective Linux user or the native Windows process token SID."""
-    if sys.platform == "linux":
-        return os.geteuid()
+    """Read the effective POSIX user or the native Windows process token SID."""
+    if sys.platform in {"linux", "darwin"}:
+        geteuid = getattr(os, "geteuid", None)
+        if callable(geteuid):
+            return geteuid()
     if sys.platform != "win32":
         raise HostingError(HostingFailureCategory.PLATFORM_UNSUPPORTED, "managed_defaults_platform_unsupported")
     from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl

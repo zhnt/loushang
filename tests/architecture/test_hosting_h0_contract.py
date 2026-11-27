@@ -50,6 +50,7 @@ OPTIONAL_MANAGED_SERVICE_MODULES = {
     HOSTING_ROOT / "machine_identity.py",
     HOSTING_ROOT / "service_group.py",
     HOSTING_ROOT / "service.py",
+    HOSTING_ROOT / "service_darwin.py",
     HOSTING_ROOT / "service_handoff.py",
     HOSTING_ROOT / "service_launchd.py",
     HOSTING_ROOT / "service_process.py",
