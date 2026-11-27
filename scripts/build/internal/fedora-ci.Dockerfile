@@ -1,7 +1,6 @@
 FROM registry.fedoraproject.org/fedora:43 AS acceptance
-ENV container=docker
 RUN dnf -y --setopt=install_weak_deps=False install \
-    bash ca-certificates dbus-broker file procps-ng shadow-utils sudo systemd systemd-pam \
+    bash ca-certificates dbus-daemon file procps-ng shadow-utils sudo \
     xdotool xorg-x11-server-Xvfb && dnf clean all
 ARG HOST_UID
 ARG HOST_GID

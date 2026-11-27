@@ -105,7 +105,7 @@ jobs:
         if: matrix.format == 'deb'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential desktop-file-utils dpkg-dev file \
+          sudo apt-get install -y build-essential dbus-daemon desktop-file-utils dpkg-dev file \
             libayatana-appindicator3-dev libssl-dev librsvg2-dev libwebkit2gtk-4.1-dev \
             libxdo-dev pkg-config xdg-utils xauth xdotool xvfb
       - uses: Swatinem/rust-cache@v2
@@ -130,15 +130,10 @@ jobs:
         shell: bash
         timeout-minutes: 12
         run: |
-          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-          sudo loginctl enable-linger "$(id -un)"
-          for attempt in {1..30}; do
-            if systemctl --user show-environment >/dev/null 2>&1; then break; fi
-            sleep 1
-          done
-          systemctl --user show-environment >/dev/null
-          xvfb-run -a uv run --no-project --python 3.11 python scripts/gui/check_installed_unix_package.py \
+          XDG_RUNTIME_DIR=$(mktemp -d)
+          export XDG_RUNTIME_DIR
+          trap 'rmdir "$XDG_RUNTIME_DIR" || true' EXIT
+          dbus-run-session -- xvfb-run -a uv run --no-project --python 3.11 python scripts/gui/check_installed_unix_package.py \
             dist/packages/*.deb --arch ${{ matrix.arch }} --evidence dist/package-evidence --commit "${{ needs.resolve.outputs.sha }}" \
             2>&1 | tee dist/package-evidence/install.log
       - name: Install and test Windows installers

@@ -8,12 +8,12 @@ import json
 import os
 import platform
 import plistlib
-import shutil
 import struct
 import subprocess
 import sys
 import tempfile
 import tomllib
+from contextlib import suppress
 from pathlib import Path
 from time import monotonic, sleep
 from urllib.error import HTTPError
@@ -280,6 +280,10 @@ def verify(args: argparse.Namespace) -> None:
                 if phase == "clean":
                     run("sudo", "-n", "rm", resources / "web/index.html")
         finally:
+            if mux.exists():
+                with suppress(OSError, subprocess.TimeoutExpired), (evidence / "host.log").open("w") as log:
+                    subprocess.run([str(mux), "service", "logs"], cwd=cwd, env=env,
+                                   stdout=log, stderr=subprocess.STDOUT, timeout=20)
             if linux:
                 if control.exists():
                     if rpm:
@@ -287,9 +291,6 @@ def verify(args: argparse.Namespace) -> None:
                     else:
                         run("sudo", "-n", "apt-get", "remove", "-y", "loushang")
             elif APP.exists():
-                host_log = state / "state/macos-host/host.log"
-                if host_log.is_file():
-                    shutil.copyfile(host_log, evidence / "host.log")
                 # Apple Installer has no uninstall command. Remove this PKG's
                 # exact installed paths, then remove its receipt.
                 run("sudo", "-n", "/bin/rm", "-rf", APP)

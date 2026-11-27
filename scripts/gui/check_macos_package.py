@@ -9,6 +9,7 @@ import platform
 import plistlib
 import subprocess
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from time import monotonic, sleep
 from urllib.error import HTTPError
@@ -136,10 +137,12 @@ def main() -> None:
             assert command("stop", "--instance", second["instanceId"])["state"] == "not_running"
             report["restartAndInstanceFence"] = True
         finally:
-            command("stop")
-            backend_log = home / "state/macos-host/host.log"
-            if backend_log.exists():
-                (evidence / "host.log").write_text(backend_log.read_text())
+            try:
+                command("stop")
+            finally:
+                with suppress(OSError, subprocess.TimeoutExpired), (evidence / "host.log").open("w") as log:
+                    subprocess.run(["/usr/local/bin/loushang-mux", "service", "logs"],
+                                   cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=20)
             (evidence / "acceptance.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 
