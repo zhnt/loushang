@@ -361,6 +361,13 @@ def default_runtime_builder(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
     )
+    selection = parse_model_selection_reference(
+        getattr(args, "model", None),
+        provider=getattr(args, "provider", None),
+        registry=services.model_registry.ai_registry,
+    )
+    if selection is not None:
+        runtime_options["model"] = selection
     runtime_options["enable_multiagent"] = True
     runtime_factory = (
         _create_agent_invocation_session_runtime

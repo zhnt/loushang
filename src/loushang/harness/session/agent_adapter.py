@@ -194,10 +194,17 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         return definitions
 
     def _apply_agent_transcript_context(
-        self, session_context: AgentTranscriptContext
+        self,
+        session_context: AgentTranscriptContext,
+        *,
+        model_override: Model | None = None,
     ) -> None:
-        resolved_model = self._session_default_model
-        if session_context.model is not None:
+        # Explicit startup selection applies once. Navigation and resource
+        # refresh still restore the model recorded on their selected branch.
+        resolved_model = (
+            model_override if model_override is not None else self._session_default_model
+        )
+        if session_context.model is not None and model_override is None:
             selection = ModelSelection(
                 provider=session_context.model["provider"],
                 endpoint_id=session_context.model["endpoint_id"],

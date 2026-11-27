@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai import Context, PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
+from loushang.ai.model import Model
 from loushang.ai.types import Tool, UserMessage
 from loushang.coding.arch._plugin_tool_owner import (
     CodingArchToolOwner,
@@ -420,6 +421,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
         *,
         agent: Agent,
         session_manager: SessionManager,
+        initial_model_override: Model | None = None,
         settings_manager: SettingsManager | None = None,
         model_registry: ModelRegistry | None = None,
         resource_loader: ResourceLoader | None = None,
@@ -699,6 +701,7 @@ class AgentSession(_ResumeContinuationSession[CodingActivationAttemptV1]):
             super().__init__(
                 agent=agent,
                 session_manager=session_manager,
+                initial_model_override=initial_model_override,
                 capability_runtime=resolved_capability_runtime,
                 side_question_binding=side_question_binding,
                 execute_compaction=partial(

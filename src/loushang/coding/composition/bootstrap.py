@@ -1373,6 +1373,7 @@ def _create_agent_session(
             session = AgentSession(
                 agent=agent,
                 session_manager=session_manager,
+                initial_model_override=agent.model if model is not None else None,
                 settings_manager=services.settings_manager,
                 model_registry=services.model_registry,
                 resource_loader=services.resource_loader,
