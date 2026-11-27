@@ -295,6 +295,16 @@ def build_agent_session_lifecycle_hooks(
         transition: SessionLifecycleTransition,
     ) -> None:
         _open_session_approvals(session)
+        if previous is not None and transition.reason == "new":
+            level = getattr(previous, "thinking_level", object())
+            available = getattr(session, "get_available_thinking_levels", None)
+            setter = getattr(session, "set_thinking_level", None)
+            if (
+                callable(available)
+                and callable(setter)
+                and (level is None or (isinstance(level, str) and level in available()))
+            ):
+                await setter(level)
         if transition.metadata.get("activate_extensions", True) is False:
             return
         starter = getattr(session, "start_extension_runtime", None)

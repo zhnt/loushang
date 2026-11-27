@@ -15,6 +15,7 @@ import pytest
 import loushang.coding.plugin_manager.lifecycle as plugin_lifecycle_module
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
+    AnthropicMessagesConfig,
     Capabilities,
     Endpoint,
     Model,
@@ -2436,6 +2437,107 @@ def test_create_agent_session_runtime_can_build_services_per_session_cwd(
         assert first.settings_manager is not second.settings_manager
         assert first.resource_loader is not second.resource_loader
         assert second.cwd_bound_services_audit.ok is True
+
+    asyncio.run(scenario())
+
+
+@pytest.fixture
+def adaptive_reasoning_model() -> Model:
+    model = _model()
+    return replace(
+        model,
+        api="anthropic-messages",
+        adapter=AnthropicMessagesConfig(thinking_mode="adaptive"),
+        capabilities=replace(model.capabilities, reasoning_efforts=("low", "high")),
+    )
+
+
+def test_new_session_keeps_explicit_reasoning_level(tmp_path, adaptive_reasoning_model) -> None:
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.interaction.reasoning import effective_reasoning_label
+
+    async def scenario() -> None:
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path,
+            model=adaptive_reasoning_model,
+            thinking_level=None,
+            persist=False,
+        )
+        previous = await runtime.create_session(cwd=str(tmp_path))
+        await previous.set_thinking_level("high")
+        new = await runtime.new_session(cwd=str(tmp_path))
+
+        assert new.thinking_level == "high"
+        assert effective_reasoning_label(new) == "high"
+        assert new.agent.get_effective_call_options().reasoning.effort == "high"
+        assert previous.session_manager.build_session_context().thinking_level == "high"
+        assert new.session_manager.build_session_context().thinking_level == "high"
+
+    asyncio.run(scenario())
+
+
+def test_new_session_keeps_provider_default_reset(tmp_path, adaptive_reasoning_model) -> None:
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+    from loushang.coding.interaction.reasoning import effective_reasoning_label
+
+    async def scenario() -> None:
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path, model=adaptive_reasoning_model, thinking_level="high", persist=False,
+        )
+        previous = await runtime.create_session(cwd=str(tmp_path))
+        assert previous.thinking_level == "high"
+        await previous.set_thinking_level(None)
+        new = await runtime.new_session(cwd=str(tmp_path))
+        assert new.thinking_level is None
+        assert effective_reasoning_label(new) == "default"
+        assert new.agent.get_effective_call_options().reasoning is None
+
+    asyncio.run(scenario())
+
+
+def test_new_session_keeps_restored_reasoning_level(tmp_path, adaptive_reasoning_model) -> None:
+    from loushang.coding.composition.bootstrap import create_agent_session, create_agent_session_runtime
+    from loushang.coding.session.manager import SessionManager
+
+    async def scenario() -> None:
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path, model=adaptive_reasoning_model, persist=True,
+        )
+        manager = await SessionManager.new_with_composition(
+            session_dir=tmp_path, cwd=str(tmp_path), defer_materialization=False,
+        )
+        original = create_agent_session(session_manager=manager, model=adaptive_reasoning_model)
+        await original.set_thinking_level("high")
+        path = manager.get_session_file()
+        assert path is not None and path.is_file()
+        await original.dispose()
+        restored = await runtime.switch_session(path)
+        assert restored is not original
+        assert restored.thinking_level == "high"
+        new = await runtime.new_session(cwd=str(tmp_path))
+        assert new.agent.get_effective_call_options().reasoning.effort == "high"
+
+    asyncio.run(scenario())
+
+
+def test_new_session_skips_unsupported_reasoning_level(tmp_path, adaptive_reasoning_model) -> None:
+    from loushang.coding.composition.bootstrap import create_agent_session_runtime
+
+    async def scenario() -> None:
+        limited = replace(
+            adaptive_reasoning_model,
+            id="low-only",
+            capabilities=replace(adaptive_reasoning_model.capabilities, reasoning_efforts=("low",)),
+        )
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path, model=limited, thinking_level="low", persist=False,
+        )
+        previous = await runtime.create_session(cwd=str(tmp_path))
+        await previous.set_model(adaptive_reasoning_model)
+        await previous.set_thinking_level("high")
+        new = await runtime.new_session(cwd=str(tmp_path))
+        assert "high" not in new.get_available_thinking_levels()
+        assert new.thinking_level == "low"
 
     asyncio.run(scenario())
 
