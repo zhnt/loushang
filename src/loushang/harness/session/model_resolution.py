@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from loushang.ai.model import Model, ModelSelection
+from loushang.ai.model import Model, ModelSelection, model_selection_ref
 from loushang.foundation.reasoning import THINKING_LEVELS
 from loushang.harness.diagnostics.service import DiagnosticsService
 
@@ -65,7 +65,12 @@ def resolve_session_model(
     if isinstance(model, Model):
         return model
     if isinstance(model, ModelSelection):
-        return build_model(model)
+        try:
+            return build_model(model)
+        except KeyError as error:
+            raise ValueError(
+                f"Selected model is unavailable: {model_selection_ref(model)}"
+            ) from error
     return resolve_default_model(
         default_selection,
         build_model=build_model,

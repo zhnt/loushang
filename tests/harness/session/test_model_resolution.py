@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from loushang.ai.model import Model, ModelSelection
 from loushang.harness.session.model_resolution import (
     classify_model_resolution_failure,
@@ -77,6 +79,25 @@ def test_resolve_session_model_builds_explicit_selection() -> None:
         )
         is model
     )
+
+
+def test_unavailable_explicit_model_reports_selection_without_using_default() -> None:
+    selection = ModelSelection("provider", "primary", "missing")
+    calls = []
+
+    def build_model(selected):
+        calls.append(selected)
+        raise KeyError(selected.model_id)
+
+    with pytest.raises(
+        ValueError, match="Selected model is unavailable: provider:primary:missing"
+    ):
+        resolve_session_model(
+            selection,
+            default_selection=ModelSelection("provider", "primary", "default"),
+            build_model=build_model,
+        )
+    assert calls == [selection]
 
 
 def test_classify_explicit_endpoint_failure_is_stable() -> None:

@@ -497,6 +497,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         *,
         agent: Agent,
         session_manager: ProductTranscriptSession[Any, Any],
+        initial_model_override: Model | None = None,
         capability_runtime: StagedResourceCompositionCandidate,
         execute_compaction: ProductCompactionExecutor,
         single_call_capacity_probe: (
@@ -1094,7 +1095,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
             active_tool_names=active_tool_names,
             show_empty_tool_prompt=show_empty_tool_prompt,
             tool_registry=self._tool_registry,
-            apply_context=self._apply_agent_transcript_context,
+            apply_context=lambda context: self._apply_agent_transcript_context(
+                context, model_override=initial_model_override,
+            ),
             sync_footer=self._sync_footer_available_provider_count,
         )
         self._install_agent_model_call_boundary()
