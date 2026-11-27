@@ -54,7 +54,13 @@ pub(crate) fn activate(app: &AppHandle) {
     let window = history
         .iter()
         .rev()
-        .find_map(|label| app.get_webview_window(label))
+        .filter_map(|label| app.get_webview_window(label))
+        .find(is_open)
+        .or_else(|| {
+            app.webview_windows()
+                .into_values()
+                .find(|window| window.label().starts_with(SECONDARY_PREFIX) && is_open(window))
+        })
         .or_else(|| app.get_webview_window(MAIN));
     if let Some(window) = window {
         reveal(&window);
@@ -65,6 +71,10 @@ pub(crate) fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN) {
         reveal(&window);
     }
+}
+
+fn is_open(window: &tauri::WebviewWindow) -> bool {
+    window.is_visible().unwrap_or(false) || window.is_minimized().unwrap_or(false)
 }
 
 fn reveal(window: &tauri::WebviewWindow) {
