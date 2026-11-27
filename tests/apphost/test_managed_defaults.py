@@ -46,11 +46,25 @@ def test_xdg_runtime_precedence(tmp_path):
 
 
 def test_platform_rejection_before_uid_or_path_lookup(monkeypatch):
-    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setattr(module.sys, "platform", "freebsd13")
     monkeypatch.setattr(module, "resolve_platform_paths", lambda **k: pytest.fail("unsupported lookup"))
+    monkeypatch.setattr(module, "current_managed_user", lambda: pytest.fail("unsupported user lookup"))
     with pytest.raises(HostingError) as caught:
         module.resolve_managed_defaults(environ={})
     assert caught.value.category == HostingFailureCategory.PLATFORM_UNSUPPORTED
+
+
+def test_darwin_runtime_is_shared_across_launcher_environments(tmp_path, monkeypatch):
+    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setattr(module, "darwin_machine_key", lambda *, domain: "a" * 32)
+    installed = module.resolve_managed_defaults(environ={}, home=tmp_path)
+    terminal = module.resolve_managed_defaults(
+        environ={"TMPDIR": str(tmp_path / "shell"), "XDG_RUNTIME_DIR": str(tmp_path / "xdg")},
+        home=tmp_path,
+    )
+    assert installed == terminal
+    assert terminal.platform.runtime == tmp_path / ".loushang/run"
+    assert not list(tmp_path.iterdir())
 
 
 def test_shell_tmpdir_does_not_change_reconnect_namespace(tmp_path):
